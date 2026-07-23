@@ -255,6 +255,8 @@ expected 'end' to close while statement:
   en: expected 'end' to close while statement
   zh_CN: 期望 'end' 来关闭while语句
   zh_HK: 期望 'end' 來關閉while語句
+expected end of block after return:
+  en: expected end of block after return
 expected 'function', variable name, or attribute after 'local':
   en: expected 'function', variable name, or attribute after 'local'
   zh_CN: 期望在 'local' 后有 'function'、变量名或属性

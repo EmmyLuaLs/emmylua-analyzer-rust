@@ -1,7 +1,7 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaChunk, LuaDocOpType, LuaExpr,
-    LuaForStat, LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr,
-    LuaVarExpr, UnaryOperator,
+    LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaChunk, LuaDocOpType, LuaExpr, LuaForStat,
+    LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr, LuaVarExpr,
+    UnaryOperator,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
@@ -99,6 +99,14 @@ enum Continuation {
         antecedent_flow_id: FlowId,
         expr_type: LuaType,
         reuse_antecedent_narrowing: bool,
+    },
+    // Resume RHS replay once the assigned ref's pre-assignment type is known.
+    // This resolves self-reads before earlier RHS dependencies can repeatedly
+    // walk the same assignment chain.
+    AssignmentSelfAntecedent {
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        replay_query: FlowReplayQuery,
     },
     // Resume an assignment result after proving the branch can reach the
     // assignment. An impossible branch must not contribute this result to a merge.
@@ -218,9 +226,39 @@ impl FlowReplayQuery {
         Ok(())
     }
 
-    fn resolve_dependencies(&mut self, var_ref_id: &VarRefId, typ: LuaType) {
+    fn has_unskippable_dependency(&self, var_ref_id: &VarRefId, flow_id: FlowId) -> bool {
+        // A resolved index can skip its prefix and key dependencies. Only hoist
+        // a self-read when every earlier success path still reaches it.
+        let mut furthest_success_jump = self.next_dependency_idx;
+        for (idx, query) in self
+            .dependency_queries
+            .iter()
+            .enumerate()
+            .skip(self.next_dependency_idx)
+        {
+            if idx >= furthest_success_jump
+                && query.resolved_type.is_none()
+                && query.var_ref_id == *var_ref_id
+                && query.flow_id == flow_id
+            {
+                return true;
+            }
+            if let Some(next_idx) = query.next_dependency_idx_on_success {
+                furthest_success_jump = furthest_success_jump.max(next_idx);
+            }
+        }
+
+        false
+    }
+
+    fn resolve_dependencies_at_flow(
+        &mut self,
+        var_ref_id: &VarRefId,
+        flow_id: FlowId,
+        typ: LuaType,
+    ) {
         for query in &mut self.dependency_queries {
-            if query.var_ref_id == *var_ref_id {
+            if query.var_ref_id == *var_ref_id && query.flow_id == flow_id {
                 query.resolved_type = Some(typ.clone());
             }
         }
@@ -496,6 +534,16 @@ impl<'a> FlowTypeEngine<'a> {
                         reuse_antecedent_narrowing,
                         query_result,
                     ),
+                    Some(Continuation::AssignmentSelfAntecedent {
+                        walk,
+                        replay,
+                        replay_query,
+                    }) => self.resume_assignment_self_antecedent(
+                        walk,
+                        replay,
+                        replay_query,
+                        query_result,
+                    ),
                     Some(Continuation::AssignmentReachability { walk, result_type }) => {
                         match query_result {
                             Ok(FlowQueryResult::Unreachable) => {
@@ -690,6 +738,30 @@ impl<'a> FlowTypeEngine<'a> {
             None,
         );
         Ok(self.finish_walk(walk, result_type))
+    }
+
+    fn resume_assignment_self_antecedent(
+        &mut self,
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        mut replay_query: FlowReplayQuery,
+        antecedent_result: FlowResult,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let antecedent_type = match antecedent_result {
+            Ok(FlowQueryResult::Type(antecedent_type)) => antecedent_type,
+            Ok(FlowQueryResult::Unreachable) => {
+                return Ok(self.finish_unreachable_branch(walk));
+            }
+            Err(err) => return self.fail_query(&walk.query, err),
+        };
+
+        let antecedent_flow_id = replay_query.flow_id;
+        replay_query.resolve_dependencies_at_flow(
+            &walk.query.var_ref_id,
+            antecedent_flow_id,
+            antecedent_type,
+        );
+        self.start_expr_replay(walk, replay, replay_query)
     }
 
     fn start_expr_replay(
@@ -1106,29 +1178,31 @@ impl<'a> FlowTypeEngine<'a> {
             let expr_idx = i.min(last_expr_idx);
             let result_slot = i.saturating_sub(last_expr_idx);
             let expr = assignment_info.exprs[expr_idx].clone();
-            let mut replay_query = FlowReplayQuery::new(
+            let replay_query = FlowReplayQuery::new(
                 self.db,
                 Some(self.tree),
                 self.cache,
                 antecedent_flow_id,
-                expr.clone(),
+                expr,
                 true,
             );
-            // A plain self-dependent RHS would replay this assignment while
-            // trying to type itself. Treat that self read as unknown; `and`/`or`
-            // assignments still need the antecedent value for their semantics.
-            if explicit_var_type.is_none() && !contains_short_circuit_binary_expr(&expr) {
-                replay_query.resolve_dependencies(&var_ref_id, LuaType::Unknown);
+            let replay = FlowExprReplay::Assignment {
+                antecedent_flow_id,
+                explicit_var_type,
+                result_slot,
+            };
+            if replay_query.has_unskippable_dependency(&var_ref_id, antecedent_flow_id) {
+                let query = FlowQuery::new(self.cache, &var_ref_id, antecedent_flow_id);
+                return Ok(SchedulerStep::StartQuery {
+                    query,
+                    continuation: Some(Continuation::AssignmentSelfAntecedent {
+                        walk,
+                        replay,
+                        replay_query,
+                    }),
+                });
             }
-            return self.start_expr_replay(
-                walk,
-                FlowExprReplay::Assignment {
-                    antecedent_flow_id,
-                    explicit_var_type,
-                    result_slot,
-                },
-                replay_query,
-            );
+            return self.start_expr_replay(walk, replay, replay_query);
         }
 
         self.finish_assignment_expr_type(walk, antecedent_flow_id, explicit_var_type, LuaType::Nil)
@@ -1969,17 +2043,6 @@ fn integer_enum_assignment_declared_type(
         .iter()
         .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
         .then_some(declared_type)
-}
-
-fn contains_short_circuit_binary_expr(expr: &LuaExpr) -> bool {
-    expr.descendants::<LuaExpr>().any(|expr| {
-        let LuaExpr::BinaryExpr(binary_expr) = expr else {
-            return false;
-        };
-        binary_expr.get_op_token().is_some_and(|token| {
-            matches!(token.get_op(), BinaryOperator::OpAnd | BinaryOperator::OpOr)
-        })
-    })
 }
 
 fn is_partial_assignment_expr_compatible(
