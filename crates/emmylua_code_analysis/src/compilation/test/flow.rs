@@ -1896,7 +1896,7 @@ n = n + 1
     fn test_unreachable_continue_loop_after_return_does_not_cycle() {
         let mut ws = VirtualWorkspace::new();
         let mut emmyrc = ws.get_emmyrc();
-        emmyrc.runtime.version = EmmyrcLuaVersion::LuaJITExt;
+        emmyrc.runtime.version = EmmyrcLuaVersion::LuaJIT2;
         ws.update_emmyrc(emmyrc);
 
         ws.def(

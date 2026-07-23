@@ -1914,7 +1914,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "const x = 1\n";
         let expected = "const x = 1\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1925,7 +1925,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "const a,b = 1,2\n";
         let expected = "const a, b = 1, 2\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1938,7 +1938,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "while true do\n    if x then\n        continue\n    end\nend\n";
         let expected = "while true do\n    if x then\n        continue\n    end\nend\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1951,7 +1951,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = a ? b : c\n";
         let expected = "local x = a ? b : c\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1962,7 +1962,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = a ? b ? c : d : e\n";
         let expected = "local x = a ? b ? c : d : e\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1973,7 +1973,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local d = true ? 1 + fun(f:m()) : f()\n";
         let expected = "local d = true ? 1 + fun(f:m()) : f()\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1984,7 +1984,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = cond ? (obj:method()) : default\n";
         let expected = "local x = cond ? (obj:method()) : default\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -1997,7 +1997,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = obj?.field\n";
         let expected = "local x = obj?.field\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2010,7 +2010,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = a ?? b\n";
         let expected = "local x = a ?? b\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2021,7 +2021,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = a ?? b ?? c\n";
         let expected = "local x = a ?? b ?? c\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2032,7 +2032,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "self.call?.()\n";
         let expected = "self.call?.()\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2043,7 +2043,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = MyClass.myField?.:byte(1)\n";
         let expected = "local x = MyClass.myField?.:byte(1)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2054,7 +2054,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "f(|a, b, c| -> do\n    return a + b + c\nend, 1, 2, 3)\n";
         let expected = "f(|a, b, c| -> do\n    return a + b + c\nend, 1, 2, 3)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2065,7 +2065,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "do\n    f(|a, b, c| -> do\n        local d = 123\n        return a + b + c\n    end, 1, 2, 3)\nend\n";
         let expected = "do\n    f(|a, b, c| -> do\n        local d = 123\n        return a + b + c\n    end, 1, 2, 3)\nend\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2076,7 +2076,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = e -> 42\n";
         let expected = "local x = e -> 42\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2087,7 +2087,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = || -> 42\n";
         let expected = "local x = || -> 42\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2098,7 +2098,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "local x = |a, b| -> a + b\n";
         let expected = "local x = |a, b| -> a + b\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2108,7 +2108,7 @@ end
         use emmylua_parser::LuaLanguageLevel;
         let config = LuaFormatConfig::default();
         let input = "f(|| -> do return 1 end)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert!(!result.is_empty());
     }
 
@@ -2119,7 +2119,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "f(|| -> do\n    local x = 1\n    -- comment\n    return x\nend)\n";
         let expected = "f(|| -> do\n    local x = 1\n    -- comment\n    return x\nend)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2130,7 +2130,7 @@ end
         let config = LuaFormatConfig::default();
         let input = "f(|| -> do end)\n";
         let expected = "f(|| -> do end)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert_eq!(result, expected);
     }
 
@@ -2140,7 +2140,7 @@ end
         use emmylua_parser::LuaLanguageLevel;
         let config = LuaFormatConfig::default();
         let input = "f(|| -> do\nend)\n";
-        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
         assert!(!result.is_empty());
     }
 }

@@ -134,7 +134,7 @@ impl From<LanguageLevel> for LuaLanguageLevel {
             LanguageLevel::Lua53 => LuaLanguageLevel::Lua53,
             LanguageLevel::Lua54 => LuaLanguageLevel::Lua54,
             LanguageLevel::Lua55 => LuaLanguageLevel::Lua55,
-            LanguageLevel::LuaJIT => LuaLanguageLevel::LuaJIT,
+            LanguageLevel::LuaJIT => LuaLanguageLevel::LuaJIT2,
         }
     }
 }

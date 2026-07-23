@@ -831,7 +831,7 @@
         {
           "type": "string",
           "enum": [
-            "LuaJIT-Ext",
+            "LuaJIT2",
             "LuaJIT3"
           ]
         },

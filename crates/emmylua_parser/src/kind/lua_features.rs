@@ -94,7 +94,7 @@ impl LuaFeaturesSet {
         set
     }
 
-    pub fn features_luajit() -> Self {
+    pub fn features_luajit_legacy() -> Self {
         let mut set = LuaFeaturesSet::features_lua51();
         set.add(LuaFeatures::ComplexNumber);
         set.add(LuaFeatures::LLInteger);
@@ -103,8 +103,8 @@ impl LuaFeaturesSet {
         set
     }
 
-    pub fn features_luajit_extension() -> Self {
-        let mut set = LuaFeaturesSet::features_luajit();
+    pub fn features_luajit() -> Self {
+        let mut set = LuaFeaturesSet::features_luajit_legacy();
 
         // luajit-extension
         set.add(LuaFeatures::BitwiseOperation);
@@ -137,7 +137,7 @@ impl LuaFeaturesSet {
     }
 
     pub fn features_luajit3() -> Self {
-        let mut set = LuaFeaturesSet::features_luajit_extension();
+        let mut set = LuaFeaturesSet::features_luajit();
 
         // luajit3
         set.add(LuaFeatures::IntegerFloorDivision);

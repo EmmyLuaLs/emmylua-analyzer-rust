@@ -40,8 +40,8 @@ pub enum EmmyrcLuaVersion {
     /// LuaJIT
     #[serde(rename = "LuaJIT")]
     LuaJIT,
-    #[serde(rename = "LuaJIT-Ext", alias = "LuaJIT Ext")]
-    LuaJITExt,
+    #[serde(rename = "LuaJIT2", alias = "LuaJIT 2")]
+    LuaJIT2,
     #[serde(rename = "LuaJIT3", alias = "LuaJIT 3")]
     LuaJIT3,
     /// Lua 5.2
@@ -67,7 +67,7 @@ impl EmmyrcLuaVersion {
         match self {
             EmmyrcLuaVersion::Lua51 => LuaVersionNumber::new(5, 1, 0),
             EmmyrcLuaVersion::LuaJIT => LuaVersionNumber::LUA_JIT,
-            EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT,
+            EmmyrcLuaVersion::LuaJIT2 => LuaVersionNumber::LUA_JIT,
             EmmyrcLuaVersion::LuaJIT3 => LuaVersionNumber::LUA_JIT,
             EmmyrcLuaVersion::Lua52 => LuaVersionNumber::new(5, 2, 0),
             EmmyrcLuaVersion::Lua53 => LuaVersionNumber::new(5, 3, 0),
@@ -81,7 +81,7 @@ impl EmmyrcLuaVersion {
         match self {
             EmmyrcLuaVersion::Lua51 => LuaLanguageLevel::Lua51,
             EmmyrcLuaVersion::LuaJIT => LuaLanguageLevel::LuaJIT,
-            EmmyrcLuaVersion::LuaJITExt => LuaLanguageLevel::LuaJITExt,
+            EmmyrcLuaVersion::LuaJIT2 => LuaLanguageLevel::LuaJIT2,
             EmmyrcLuaVersion::LuaJIT3 => LuaLanguageLevel::LuaJIT3,
             EmmyrcLuaVersion::Lua52 => LuaLanguageLevel::Lua52,
             EmmyrcLuaVersion::Lua53 => LuaLanguageLevel::Lua53,
@@ -94,7 +94,7 @@ impl EmmyrcLuaVersion {
     pub fn is_luajit(&self) -> bool {
         matches!(
             self,
-            EmmyrcLuaVersion::LuaJIT | EmmyrcLuaVersion::LuaJITExt | EmmyrcLuaVersion::LuaJIT3
+            EmmyrcLuaVersion::LuaJIT | EmmyrcLuaVersion::LuaJIT2 | EmmyrcLuaVersion::LuaJIT3
         )
     }
 }

@@ -1,4 +1,4 @@
-use emmylua_code_analysis::EmmyrcLuaVersion::LuaJITExt;
+use emmylua_code_analysis::EmmyrcLuaVersion::LuaJIT2;
 use emmylua_parser::{LuaAstNode, LuaKind, LuaNameExpr, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionItemLabelDetails, InsertTextFormat, InsertTextMode};
 
@@ -116,7 +116,7 @@ fn add_stat_keyword_completions(
                     keyword_info.insert_text.to_string(),
                 )
             };
-        if level != LuaJITExt && keyword_info.label == "continue" {
+        if level != LuaJIT2 && keyword_info.label == "continue" {
             continue;
         }
 

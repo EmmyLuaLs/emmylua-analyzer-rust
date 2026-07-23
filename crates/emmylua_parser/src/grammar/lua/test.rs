@@ -1275,7 +1275,7 @@ Syntax(Chunk)@0..32
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1312,7 +1312,7 @@ Syntax(Chunk)@0..20
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1360,7 +1360,7 @@ Syntax(Chunk)@0..28
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1407,7 +1407,7 @@ Syntax(Chunk)@0..29
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1447,7 +1447,7 @@ Syntax(Chunk)@0..20
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1473,7 +1473,7 @@ Syntax(Chunk)@0..12
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1502,7 +1502,7 @@ Syntax(Chunk)@0..27
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1539,7 +1539,7 @@ Syntax(Chunk)@0..30
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1566,7 +1566,7 @@ Syntax(Chunk)@0..15
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1596,7 +1596,7 @@ Syntax(Chunk)@0..12
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1625,7 +1625,7 @@ Syntax(Chunk)@0..21
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1657,7 +1657,7 @@ Syntax(Chunk)@0..17
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -1691,7 +1691,7 @@ Syntax(Chunk)@0..20
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -2067,7 +2067,7 @@ Syntax(Chunk)@0..356
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 
@@ -2090,7 +2090,7 @@ Syntax(Chunk)@0..6
         assert_ast_eq!(
             code,
             result,
-            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+            ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
 }
