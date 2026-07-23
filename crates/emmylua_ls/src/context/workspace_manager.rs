@@ -219,15 +219,6 @@ impl WorkspaceManager {
         self.match_file_pattern.is_match(&file_path)
     }
 
-    pub async fn check_schema_update(&self) {
-        let read_analysis = self.analysis.read().await;
-        if read_analysis.check_schema_update() {
-            drop(read_analysis);
-            let mut write_analysis = self.analysis.write().await;
-            write_analysis.update_schema().await;
-        }
-    }
-
     fn config_root(&self) -> Option<PathBuf> {
         self.workspace_folders
             .first()

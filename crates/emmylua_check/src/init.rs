@@ -120,11 +120,6 @@ pub async fn load_workspace(
         .map(|file| file.into_tuple())
         .collect();
     analysis.update_files_by_path(files);
-
-    if analysis.check_schema_update() {
-        analysis.update_schema().await;
-    }
-
     Some(analysis)
 }
 

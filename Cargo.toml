@@ -57,13 +57,6 @@ ntest = "0.9.5"
 unicode-general-category = "1.0.0"
 luars = { version = "0.26.2", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
-# which causes a linking error on Windows
-reqwest = { version = "0.13.1", default-features = false, features = [
-  "http2",
-  "charset",
-  "system-proxy",
-  "native-tls-vendored",
-]}
 similar = { version = "2.7.0", features = ["inline"] }
 hashbrown = "0.17.0"
 

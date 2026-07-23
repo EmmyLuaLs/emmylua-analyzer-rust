@@ -165,10 +165,6 @@ pub async fn init_analysis(
         Some("Indexing complete".to_string()),
     );
 
-    if mut_analysis.check_schema_update() {
-        mut_analysis.update_schema().await;
-    }
-
     drop(mut_analysis);
 
     if !lsp_features.supports_pull_diagnostic() {
