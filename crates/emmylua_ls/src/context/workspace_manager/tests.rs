@@ -1,6 +1,6 @@
 use super::*;
 use crate::context::{ServerContext, ServerContextSnapshot};
-use emmylua_code_analysis::{Emmyrc, FileId, file_path_to_uri};
+use emmylua_code_analysis::{Emmyrc, file_path_to_uri};
 use lsp_server::{Connection, Message};
 use lsp_types::{
     ClientCapabilities, DidChangeWatchedFilesClientCapabilities, PublishDiagnosticsParams,
@@ -148,6 +148,7 @@ async fn file_text(snapshot: &ServerContextSnapshot, uri: &Uri) -> Option<String
 }
 
 // Run the same initialization path that startup uses for a single workspace root.
+#[allow(dead_code)]
 async fn run_init_analysis(snapshot: &ServerContextSnapshot, workspace_root: PathBuf) {
     init_analysis(
         snapshot.analysis(),

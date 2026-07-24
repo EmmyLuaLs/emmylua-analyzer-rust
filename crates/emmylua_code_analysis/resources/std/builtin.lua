@@ -112,9 +112,9 @@
 
 --- @class function
 
---- @alias std.NotNull<T> T - ?
+--- @alias std.NotNull<T> T -?
 
---- @alias std.Nullable<T> T + ?
+--- @alias std.Nullable<T> T +?
 
 ---
 --- built-in type for Select function
@@ -127,10 +127,6 @@
 ---
 --- built-in type for Rawget
 --- @alias std.RawGet<T, K> unknown
-
---- built-in type for generic template, for match integer const and `true`/`false`
---- @deprecated use `const T` as a replacement, for example `---@generic const T`.
---- @alias std.ConstTpl<T> unknown
 
 --- compact luals
 
@@ -157,7 +153,7 @@
 
 ---
 --- Make all properties in T optional
---- @alias Partial<T> {[P in keyof T]?: T[P]; }
+--- @alias Partial<T> { [P in keyof T]?: T[P]; }
 
 ---
 --- Exclude from T those types that are assignable to U
@@ -166,7 +162,6 @@
 ---
 --- Extract from T those types that are assignable to U
 --- @alias Extract<T, U> T extends U and T or never
-
 
 --- attribute
 
@@ -185,7 +180,7 @@
 --- - `delayed_definition`: Indicates that the type of the variable is determined by the first assignment.
 ---    Only valid for `local` declarations with no initial value.
 --- @class lsp_optimization: Attribute
---- @overload fun(code: "skip_table_fields_check"|"delayed_definition")
+--- @overload fun(code: "skip_table_fields_check" | "delayed_definition")
 
 ---
 --- Index field alias, will be displayed in `hint` and `completion`.
@@ -206,7 +201,7 @@
 ---                 and `"default"` prefers the documented return type and falls back to `self`.
 ---                 Defaults to `"default"`
 --- @class constructor: Attribute
---- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
+--- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self" | "doc" | "default")
 
 ---
 --- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
@@ -217,4 +212,4 @@
 --- - `getter`: Getter method name. Takes precedence over `convention`.
 --- - `setter`: Setter method name. Takes precedence over `convention`.
 --- @class field_accessor: Attribute
---- @overload fun(convention?: "camelCase"|"PascalCase"|"snake_case", getter?: string, setter?: string)
+--- @overload fun(convention?: "camelCase" | "PascalCase" | "snake_case", getter?: string, setter?: string)

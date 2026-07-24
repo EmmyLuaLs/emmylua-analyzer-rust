@@ -241,11 +241,10 @@ function debug.setfenv(object, env) end
 --- call `getinfo` with level 2 to get more information about the running
 --- function (level 0 is the `getinfo` function, and level 1 is the hook
 --- function)
---- @overload fun(hook:(fun(event: string): any), mask: debuglib.Hookmask|string)
---- @param thread thread
---- @param hook   fun(): any
---- @param mask?  debuglib.Hookmask|string
---- @param count? integer
+--- @param thread? thread
+--- @param hook?   fun(event: string): any
+--- @param mask?   debuglib.Hookmask | string
+--- @param count?  integer
 function debug.sethook(thread, hook, mask, count) end
 
 ---
