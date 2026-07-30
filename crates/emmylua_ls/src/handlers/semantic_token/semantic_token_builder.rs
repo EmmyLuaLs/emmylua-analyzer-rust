@@ -140,6 +140,12 @@ impl SemanticTokenTypeKind {
     }
 }
 
+pub struct CustomSemanticTokenModifierKind;
+impl CustomSemanticTokenModifierKind {
+    pub const OPERATOR_LOGICAL: SemanticTokenModifier = SemanticTokenModifier::new("operator.logical");
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SemanticTokenModifierKind(u32);
 
@@ -154,6 +160,8 @@ impl SemanticTokenModifierKind {
     pub const MODIFICATION: SemanticTokenModifierKind = SemanticTokenModifierKind(1 << 7);
     pub const DOCUMENTATION: SemanticTokenModifierKind = SemanticTokenModifierKind(1 << 8);
     pub const DEFAULT_LIBRARY: SemanticTokenModifierKind = SemanticTokenModifierKind(1 << 9);
+    // CUSTOM MODIFIERS
+    pub const OPERATOR_LOGICAL: SemanticTokenModifierKind = SemanticTokenModifierKind(1 << 10);
 
     pub const fn empty() -> Self {
         SemanticTokenModifierKind(0)
@@ -171,6 +179,7 @@ impl SemanticTokenModifierKind {
             Self::MODIFICATION => SemanticTokenModifier::MODIFICATION,
             Self::DOCUMENTATION => SemanticTokenModifier::DOCUMENTATION,
             Self::DEFAULT_LIBRARY => SemanticTokenModifier::DEFAULT_LIBRARY,
+            Self::OPERATOR_LOGICAL => CustomSemanticTokenModifierKind::OPERATOR_LOGICAL,
             _ => unreachable!("Invalid modifier bit"),
         }
     }
@@ -191,6 +200,7 @@ impl SemanticTokenModifierKind {
             Self::MODIFICATION,
             Self::DOCUMENTATION,
             Self::DEFAULT_LIBRARY,
+            Self::OPERATOR_LOGICAL,
         ]
         .into_iter()
         .map(|m| m.to_modifier())

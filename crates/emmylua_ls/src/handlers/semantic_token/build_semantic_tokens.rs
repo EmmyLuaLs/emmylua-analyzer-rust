@@ -35,13 +35,7 @@ pub fn build_semantic_tokens(
                 build_node_semantic_token(semantic_model, &mut builder, node, emmyrc);
             }
             NodeOrToken::Token(token) => {
-                build_tokens_semantic_token(
-                    semantic_model,
-                    &mut builder,
-                    &token,
-                    client_id,
-                    emmyrc,
-                );
+                build_tokens_semantic_token(&mut builder, &token, client_id, emmyrc);
             }
         }
     }
@@ -50,7 +44,6 @@ pub fn build_semantic_tokens(
 }
 
 fn build_tokens_semantic_token(
-    _semantic_model: &SemanticModel,
     builder: &mut SemanticBuilder,
     token: &LuaSyntaxToken,
     client_id: ClientId,
@@ -62,8 +55,7 @@ fn build_tokens_semantic_token(
                 builder.push(token, SemanticTokenTypeKind::String);
             }
         }
-        LuaTokenKind::TkAnd
-        | LuaTokenKind::TkBreak
+        LuaTokenKind::TkBreak
         | LuaTokenKind::TkDo
         | LuaTokenKind::TkElse
         | LuaTokenKind::TkElseIf
@@ -73,8 +65,6 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkGoto
         | LuaTokenKind::TkIf
         | LuaTokenKind::TkIn
-        | LuaTokenKind::TkNot
-        | LuaTokenKind::TkOr
         | LuaTokenKind::TkRepeat
         | LuaTokenKind::TkReturn
         | LuaTokenKind::TkThen
@@ -82,10 +72,18 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkWhile
         | LuaTokenKind::TkConst
         | LuaTokenKind::TkContinue
-        | LuaTokenKind::TkGlobal
-        | LuaTokenKind::TkLogicalOr
-        | LuaTokenKind::TkLogicalAnd => {
+        | LuaTokenKind::TkGlobal => {
             builder.push(token, SemanticTokenTypeKind::Keyword);
+        }
+        LuaTokenKind::TkLogicalOr | LuaTokenKind::TkLogicalAnd | LuaTokenKind::TkToggle => {
+            builder.push(token, SemanticTokenTypeKind::Operator);
+        }
+        LuaTokenKind::TkAnd | LuaTokenKind::TkOr | LuaTokenKind::TkNot => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenTypeKind::Keyword,
+                SemanticTokenModifierKind::OPERATOR_LOGICAL,
+            );
         }
         LuaTokenKind::TkLocal => {
             if !client_id.is_vscode() {
@@ -117,7 +115,6 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTernary
         | LuaTokenKind::TkSafeNavigation
         | LuaTokenKind::TkShrArithmetic
-        | LuaTokenKind::TkToggle
         | LuaTokenKind::TkNilCoalescing => {
             builder.push(token, SemanticTokenTypeKind::Operator);
         }
