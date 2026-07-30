@@ -8,6 +8,8 @@
 
 - **`lsp_optimization`**: Removed the `skip_table_fields_check` optimization (including the old `check_table_field` alias). Table field diagnostics are no longer skipped via this attribute.
 
+- **`config`**: Removed the `strict.docBaseConstMatchBaseType` configuration option, as it increases type check complexity.
+
 ## [0.24.0] - 2026-7-10
 
 ### ✨ Added

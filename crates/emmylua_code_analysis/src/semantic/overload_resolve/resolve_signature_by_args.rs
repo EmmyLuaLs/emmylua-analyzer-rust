@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::{
     InferFailReason,
     db_index::{DbIndex, LuaFunctionType, LuaType},
-    semantic::{RelationKind, RelationOutcome, infer::InferCallFuncResult, is_assignable_ex},
+    semantic::{RelationOutcome, infer::InferCallFuncResult, probe_assignable},
 };
 
 pub(crate) fn callable_accepts_args(
@@ -443,7 +443,7 @@ enum ParamMatchResult {
 
 fn is_definitely_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> bool {
     matches!(
-        is_assignable_ex(db, source, target, RelationKind::Assignable),
+        probe_assignable(db, source, target),
         RelationOutcome::Related
     )
 }

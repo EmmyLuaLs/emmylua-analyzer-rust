@@ -43,12 +43,6 @@ pub(crate) enum RelationOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RelationKind {
-    Assignable,
-    ConditionalExtends,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeclaredRelationPolicy {
     LegacyAssignable,
     Directional,
@@ -93,7 +87,6 @@ struct ActiveRelation<'active> {
 
 pub(crate) struct RelationSession<'db> {
     db: &'db DbIndex,
-    kind: RelationKind,
     evidence: EvidenceMode,
     relation_budget: u32,
     recursion_depth: u16,
@@ -107,10 +100,9 @@ pub(crate) struct Relater<'session, 'active, 'db> {
 }
 
 impl<'db> RelationSession<'db> {
-    fn new(db: &'db DbIndex, kind: RelationKind, evidence: EvidenceMode) -> Self {
+    fn new(db: &'db DbIndex, evidence: EvidenceMode) -> Self {
         Self {
             db,
-            kind,
             evidence,
             relation_budget: 20_000,
             recursion_depth: 0,
@@ -132,13 +124,8 @@ impl<'db> RelationSession<'db> {
         relater.relate(source, target, intersection_state)
     }
 
-    pub(crate) fn probe(
-        db: &'db DbIndex,
-        kind: RelationKind,
-        source: &LuaType,
-        target: &LuaType,
-    ) -> RelationOutcome {
-        let mut session = Self::new(db, kind, EvidenceMode::Silent);
+    pub(crate) fn probe(db: &'db DbIndex, source: &LuaType, target: &LuaType) -> RelationOutcome {
+        let mut session = Self::new(db, EvidenceMode::Silent);
         match session.relate(source, target, IntersectionState::NONE) {
             Ok(()) => RelationOutcome::Related,
             Err(RelationFailure::Unrelated(_)) => RelationOutcome::Unrelated,
@@ -148,11 +135,10 @@ impl<'db> RelationSession<'db> {
 
     pub(crate) fn explain(
         db: &'db DbIndex,
-        kind: RelationKind,
         source: &LuaType,
         target: &LuaType,
     ) -> Result<(), TypeMismatch> {
-        let mut session = Self::new(db, kind, EvidenceMode::Explain);
+        let mut session = Self::new(db, EvidenceMode::Explain);
         let mismatch = match session.relate(source, target, IntersectionState::NONE) {
             Ok(()) => return Ok(()),
             Err(RelationFailure::Unrelated(mismatch)) => {
@@ -169,10 +155,6 @@ impl<'db> RelationSession<'db> {
 impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
     pub(super) fn db(&self) -> &'db DbIndex {
         self.session.db
-    }
-
-    pub(super) fn kind(&self) -> RelationKind {
-        self.session.kind
     }
 
     pub(super) fn policy(&self) -> DeclaredRelationPolicy {
@@ -534,16 +516,9 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             }
             return self.relate(constraint, target, intersection_state);
         }
-        if self.session.kind == RelationKind::ConditionalExtends && source.is_never() {
-            return Ok(());
-        }
 
         if matches!(source, LuaType::Unknown) {
-            return if self.session.kind == RelationKind::ConditionalExtends {
-                self.unrelated(|| TypeMismatch::incompatible(source, target))
-            } else {
-                Ok(())
-            };
+            return Ok(());
         }
 
         if matches!(source, LuaType::Never) {

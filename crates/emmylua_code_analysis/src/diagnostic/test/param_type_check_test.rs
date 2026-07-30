@@ -1102,11 +1102,8 @@ mod test {
     #[test]
     fn test_int_to_alias() {
         let mut ws = VirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.get_emmyrc().deref().clone();
-        emmyrc.strict.doc_base_const_match_base_type = true;
-        ws.analysis.update_config(Arc::new(emmyrc));
 
-        assert!(ws.has_no_diagnostic(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@alias IdAlias
@@ -1127,10 +1124,6 @@ mod test {
     #[test]
     fn test_enum_value_matching() {
         let mut ws = VirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.get_emmyrc().deref().clone();
-        emmyrc.strict.doc_base_const_match_base_type = true;
-        ws.analysis.update_config(Arc::new(emmyrc));
-
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
@@ -1176,7 +1169,7 @@ mod test {
     #[test]
     fn test_super_type_match() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.has_no_diagnostic(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class UnitKey: integer

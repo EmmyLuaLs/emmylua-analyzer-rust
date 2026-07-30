@@ -24,9 +24,6 @@ pub struct EmmyrcStrict {
     /// meta define overrides file define
     #[serde(default = "default_true")]
     pub meta_override_file_define: bool,
-    /// Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.
-    #[serde(default = "default_false")]
-    pub doc_base_const_match_base_type: bool,
 }
 
 impl Default for EmmyrcStrict {
@@ -36,7 +33,6 @@ impl Default for EmmyrcStrict {
             type_call: false,
             array_index: true,
             meta_override_file_define: true,
-            doc_base_const_match_base_type: true,
         }
     }
 }

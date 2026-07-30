@@ -7,7 +7,7 @@ use crate::{
     is_assignable,
     semantic::{
         member::find_members_with_key,
-        type_check::{RelationKind, RelationOutcome, is_assignable_ex},
+        type_check::{RelationOutcome, probe_assignable},
     },
 };
 
@@ -240,7 +240,7 @@ fn check_conditional_extends(db: &DbIndex, source: &LuaType, target: &LuaType) -
     }
 
     if matches!(
-        is_assignable_ex(db, source, target, RelationKind::ConditionalExtends),
+        probe_assignable(db, source, target),
         RelationOutcome::Related
     ) {
         ConditionalCheck::True

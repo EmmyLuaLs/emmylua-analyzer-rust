@@ -4,7 +4,7 @@ mod test {
         DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
         LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaObjectType, LuaType,
         LuaTypeDeclId, VirtualWorkspace, is_assignable,
-        semantic::type_check::{RelationKind, RelationOutcome, check_assignable, is_assignable_ex},
+        semantic::type_check::{RelationOutcome, check_assignable, probe_assignable},
     };
 
     #[test]
@@ -305,7 +305,7 @@ mod test {
 
         assert!(is_assignable(&db, &source, &target));
         assert!(matches!(
-            is_assignable_ex(&db, &source, &target, RelationKind::Assignable),
+            probe_assignable(&db, &source, &target),
             RelationOutcome::Indeterminate(_)
         ));
     }
@@ -324,7 +324,7 @@ mod test {
         );
 
         assert_eq!(
-            is_assignable_ex(&db, &source, &target, RelationKind::Assignable),
+            probe_assignable(&db, &source, &target),
             RelationOutcome::Unrelated
         );
     }
@@ -361,12 +361,7 @@ mod test {
         );
 
         assert!(matches!(
-            is_assignable_ex(
-                ws.analysis.compilation.get_db(),
-                &source,
-                &target,
-                RelationKind::Assignable,
-            ),
+            probe_assignable(ws.analysis.compilation.get_db(), &source, &target,),
             RelationOutcome::Indeterminate(_)
         ));
     }

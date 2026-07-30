@@ -2,9 +2,7 @@ use crate::{LuaType, LuaUnionType};
 
 use super::{
     mismatch::{TypeMismatch, TypePathSegment},
-    relation::{
-        IntersectionState, Relater, RelationFailure, RelationKind, RelationOutcome, RelationResult,
-    },
+    relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
 };
 
 pub(crate) fn relate_union(
@@ -43,7 +41,7 @@ fn relate_source_union(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let members = source_union.into_vec();
-    let conditional_extends = relater.kind() == RelationKind::ConditionalExtends;
+    let conditional_extends = false;
     let mut first_indeterminate = None;
     for (index, member) in members.iter().enumerate() {
         match relater.probe_relation(member, target, intersection_state).0 {

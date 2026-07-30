@@ -2229,6 +2229,7 @@ mod test {
     #[test]
     fn test_wrapped_checked_type_does_not_distribute() {
         let mut ws = VirtualWorkspace::new();
+        //  Wrapped 中 `{ value: T }` 不是裸参数类型, 因此不会发生分发
         ws.def(
             r#"
                 ---@alias Wrapped<T, U> { value: T } extends { value: U } and T or never
@@ -2238,14 +2239,17 @@ mod test {
                 ---@return Wrapped<T, nil>
                 function wrapped(value) end
 
+            "#,
+        );
+        ws.def(
+            r#"
                 ---@type string|nil
                 local value
 
                 A = wrapped(value)
             "#,
         );
-
-        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("A"), ws.ty("never"));
     }
 
     #[test]
@@ -2267,7 +2271,7 @@ mod test {
             "#,
         );
 
-        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("A"), ws.ty("never"));
     }
 
     #[test]

@@ -14,8 +14,8 @@ mod union;
 pub use mismatch::{
     OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, render_type_mismatch,
 };
+pub(crate) use relation::RelationOutcome;
 use relation::RelationSession;
-pub(crate) use relation::{RelationKind, RelationOutcome};
 pub use sub_type::is_sub_type_of;
 
 use crate::{
@@ -26,22 +26,16 @@ use crate::{
 /// 保守类型检查, 对于无法确定的类型关系也会返回 `true`, 仅在确定不兼容时返回 `false`.
 pub fn is_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> bool {
     !matches!(
-        is_assignable_ex(db, source, target, RelationKind::Assignable),
+        probe_assignable(db, source, target),
         RelationOutcome::Unrelated
     )
 }
 
-pub fn is_assignable_ex(
-    db: &DbIndex,
-    source: &LuaType,
-    target: &LuaType,
-    kind: RelationKind,
-) -> RelationOutcome {
+pub fn probe_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> RelationOutcome {
     if fast_eq_check(source, target) {
         return RelationOutcome::Related;
     }
-
-    RelationSession::probe(db, kind, source, target)
+    RelationSession::probe(db, source, target)
 }
 
 /// 检查 source 到 target 的赋值关系, 并在最终失败分支保留最小诊断证据.
@@ -54,7 +48,7 @@ pub fn check_assignable(
         return Ok(());
     }
 
-    RelationSession::explain(db, RelationKind::Assignable, source, target)
+    RelationSession::explain(db, source, target)
 }
 
 pub fn fast_eq_check(source: &LuaType, target: &LuaType) -> bool {

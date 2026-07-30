@@ -2,7 +2,7 @@ use crate::{LuaType, VariadicType};
 
 use super::{
     mismatch::TypeMismatch,
-    relation::{IntersectionState, Relater, RelationKind, RelationResult},
+    relation::{IntersectionState, Relater, RelationResult},
 };
 
 #[inline(always)]
@@ -12,7 +12,7 @@ pub(crate) fn relate_simple<const EARLY: bool>(
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
-    let conditional_extends = relater.kind() == RelationKind::ConditionalExtends;
+    let conditional_extends = false;
     let (can_reject_simple_target_early, related) = match source {
         LuaType::Unknown => {
             if !conditional_extends {
@@ -62,7 +62,7 @@ pub(crate) fn relate_simple<const EARLY: bool>(
                     | LuaType::IntegerConst(_)
                     | LuaType::Number
                     | LuaType::FloatConst(_)
-            ) || matches!(target, LuaType::DocIntegerConst(_) if relater.db().get_emmyrc().strict.doc_base_const_match_base_type),
+            ),
         ),
         LuaType::IntegerConst(source_value) | LuaType::DocIntegerConst(source_value) => (
             true,

@@ -11,8 +11,7 @@ use crate::{
 use super::super::{
     mismatch::TypeMismatch,
     relation::{
-        DeclaredRelationPolicy, IntersectionState, Relater, RelationKind, RelationOutcome,
-        RelationResult,
+        DeclaredRelationPolicy, IntersectionState, Relater, RelationOutcome, RelationResult,
     },
     sub_type::{get_base_type_id, is_sub_type_of},
 };
@@ -403,17 +402,11 @@ fn relate_class_source_to_simple_target(
     source_id: &LuaTypeDeclId,
     target: &LuaType,
 ) -> Option<RelationResult> {
-    let conditional_extends = relater.kind() == RelationKind::ConditionalExtends;
+    let conditional_extends = false;
     match target {
         LuaType::String | LuaType::StringConst(_) | LuaType::Integer | LuaType::IntegerConst(_) => {
         }
-        LuaType::DocStringConst(_) | LuaType::DocIntegerConst(_)
-            if conditional_extends
-                || relater
-                    .db()
-                    .get_emmyrc()
-                    .strict
-                    .doc_base_const_match_base_type => {}
+        LuaType::DocStringConst(_) | LuaType::DocIntegerConst(_) if conditional_extends => {}
         _ => return None,
     }
 

@@ -7,7 +7,7 @@ use crate::{
     DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel, TypeMismatch,
     diagnostic::checker::assign_type_mismatch::check_table_expr,
     humanize_type, render_type_mismatch,
-    semantic::{RelationKind, RelationOutcome, get_func_param_type, is_assignable_ex},
+    semantic::{RelationOutcome, get_func_param_type, probe_assignable},
 };
 
 use super::{super::DiagnosticContext, call_facts::CallFacts};
@@ -168,12 +168,7 @@ fn check_arg_index_candidates<'func, 'arg>(
         }
 
         if matches!(
-            is_assignable_ex(
-                semantic_model.get_db(),
-                arg.typ,
-                &param_type,
-                RelationKind::Assignable,
-            ),
+            probe_assignable(semantic_model.get_db(), arg.typ, &param_type,),
             RelationOutcome::Related
         ) {
             next_candidates.push(func);

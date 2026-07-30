@@ -71,12 +71,7 @@ pub(super) fn instantiate_alias_call(
             }
 
             let compact = matches!(
-                type_check::is_assignable_ex(
-                    context.db,
-                    &operands[0],
-                    &operands[1],
-                    type_check::RelationKind::ConditionalExtends,
-                ),
+                type_check::probe_assignable(context.db, &operands[0], &operands[1],),
                 type_check::RelationOutcome::Related
             );
             LuaType::BooleanConst(compact)

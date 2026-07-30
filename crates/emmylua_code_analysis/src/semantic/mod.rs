@@ -39,7 +39,7 @@ pub(crate) use semantic_info::{infer_node_semantic_decl, resolve_global_decl_id}
 use semantic_info::{
     infer_node_semantic_info, infer_token_semantic_decl, infer_token_semantic_info,
 };
-pub(crate) use type_check::{RelationKind, RelationOutcome, is_assignable_ex, is_sub_type_of};
+pub(crate) use type_check::{RelationOutcome, is_sub_type_of, probe_assignable};
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
