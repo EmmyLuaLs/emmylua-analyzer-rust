@@ -160,7 +160,7 @@ fn get_text_edit_range_in_string(
     }
 
     if end_offset <= start_offset {
-        return None;
+        end_offset = start_offset + 1;
     }
 
     let new_text_range = TextRange::new(start_offset.into(), end_offset.into());
