@@ -2532,23 +2532,46 @@ fn try_format_simple_inline_closure_expr(
     }
 
     let mut stats = block.get_stats();
-    let LuaStat::ReturnStat(return_stat) = stats.next()? else {
+    let first_stat = stats.next()?;
+    if stats.next().is_some() || node_has_direct_comment_child(first_stat.syntax()) {
         return None;
+    }
+
+    // Format a single-statement closure inline: `function (args) stmt end`.
+    // Supports return, call, and other statement types subject to line-width constraint.
+    let body_docs: Vec<DocIR> = match &first_stat {
+        LuaStat::ReturnStat(return_stat) => {
+            let mut returned_exprs = return_stat.get_expr_list();
+            let returned_expr = returned_exprs.next()?;
+            if returned_exprs.next().is_some() {
+                return None;
+            }
+            let returned_docs = format_expr(ctx, plan, &returned_expr);
+            if ir::ir_has_forced_line_break(&returned_docs) {
+                return None;
+            }
+            let mut docs = vec![ir::syntax_token(LuaTokenKind::TkReturn)];
+            docs.push(ir::space());
+            docs.extend(returned_docs);
+            docs
+        }
+        LuaStat::CallExprStat(call_stat) => {
+            let call_expr = call_stat.get_call_expr()?;
+            let docs = format_expr(ctx, plan, &call_expr.into());
+            if ir::ir_has_forced_line_break(&docs) {
+                return None;
+            }
+            docs
+        }
+        _ => {
+            let stmt_text = first_stat.syntax().text().to_string();
+            let trimmed = stmt_text.trim();
+            if trimmed.contains('\n') {
+                return None;
+            }
+            vec![ir::source_node_trimmed(first_stat.syntax().clone())]
+        }
     };
-    if stats.next().is_some() || node_has_direct_comment_child(return_stat.syntax()) {
-        return None;
-    }
-
-    let mut returned_exprs = return_stat.get_expr_list();
-    let returned_expr = returned_exprs.next()?;
-    if returned_exprs.next().is_some() {
-        return None;
-    }
-
-    let returned_docs = format_expr(ctx, plan, &returned_expr);
-    if ir::ir_has_forced_line_break(&returned_docs) {
-        return None;
-    }
 
     let mut docs = vec![ir::syntax_token(LuaTokenKind::TkFunction)];
     if let Some(params) = expr.get_params_list() {
@@ -2557,9 +2580,7 @@ fn try_format_simple_inline_closure_expr(
     }
     docs.extend(shell_plan.params);
     docs.push(ir::space());
-    docs.push(ir::syntax_token(LuaTokenKind::TkReturn));
-    docs.push(ir::space());
-    docs.extend(returned_docs);
+    docs.extend(body_docs);
     docs.push(ir::space());
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
 

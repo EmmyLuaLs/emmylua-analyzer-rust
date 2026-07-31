@@ -768,6 +768,16 @@ end)
     }
 
     #[test]
+    fn test_inline_lambda_callback_no_return_stays_inline() {
+        assert_format!(
+            r#"buttonRegister(self._btnClose, function() self:_onBtnEventClose() end)
+"#,
+            r#"buttonRegister(self._btnClose, function () self:_onBtnEventClose() end)
+"#
+        );
+    }
+
+    #[test]
     fn test_simple_inline_lambda_callback_stays_inline() {
         assert_format!(
             r#"map(items, function(x) return  x + 1 end)

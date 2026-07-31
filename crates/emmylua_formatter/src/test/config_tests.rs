@@ -528,6 +528,51 @@ end
         );
     }
 
+    #[test]
+    fn test_simple_lambda_always_collapses_non_return_closure() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                simple_lambda_single_line: SimpleLambdaSingleLine::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"buttonRegister(self._btnClose, function()
+    self:_onBtnEventClose()
+end)
+"#,
+            r#"buttonRegister(self._btnClose, function () self:_onBtnEventClose() end)
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_simple_lambda_never_expands_non_return_closure() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                simple_lambda_single_line: SimpleLambdaSingleLine::Never,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"buttonRegister(self._btnClose, function() self:_onBtnEventClose() end)
+"#,
+            r#"buttonRegister(
+    self._btnClose,
+    function ()
+        self:_onBtnEventClose()
+    end
+)
+"#,
+            config
+        );
+    }
+
     // ========== indentation ==========
 
     #[test]
