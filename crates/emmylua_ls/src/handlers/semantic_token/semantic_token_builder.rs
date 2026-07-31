@@ -142,9 +142,9 @@ impl SemanticTokenTypeKind {
 
 pub struct CustomSemanticTokenModifierKind;
 impl CustomSemanticTokenModifierKind {
-    pub const OPERATOR_LOGICAL: SemanticTokenModifier = SemanticTokenModifier::new("operator.logical");
+    pub const OPERATOR_LOGICAL: SemanticTokenModifier =
+        SemanticTokenModifier::new("operator.logical");
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SemanticTokenModifierKind(u32);

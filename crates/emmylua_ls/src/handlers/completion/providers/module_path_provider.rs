@@ -55,7 +55,6 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     }
 
     let string_token = LuaStringToken::cast(builder.trigger_token.clone())?;
-
     let text_edit_range = get_text_edit_range_in_string(builder, string_token.clone());
     add_modules(builder, &string_token.get_value(), text_edit_range);
     Some(())
