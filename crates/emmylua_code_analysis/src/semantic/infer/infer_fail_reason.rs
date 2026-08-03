@@ -6,6 +6,8 @@ use crate::{FileId, InFiled, LuaDeclId, LuaMemberId, LuaSignatureId, LuaTypeDecl
 pub enum InferFailReason {
     None,
     RecursiveInfer,
+    /// Inference nesting depth exceeded; degrade gracefully instead of overflowing the stack
+    DepthLimit,
     UnResolveExpr(InFiled<LuaExpr>),
     UnResolveSignatureReturn(LuaSignatureId),
     FieldNotFound,

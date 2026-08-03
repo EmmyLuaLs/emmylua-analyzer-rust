@@ -4,25 +4,25 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
 use rowan::TextRange;
 
 use super::{
-    super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
+    super::{LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
+    engine::MAX_INFER_DEPTH,
 };
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, TypeOps, TypeVisitTrait, VariadicType,
+    LuaType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, TypeVisitTrait, VariadicType,
 };
 use crate::{
     InferGuardRef,
     semantic::{
         generic::{TypeSubstitutor, instantiate_call_self_type},
-        infer::narrow::get_type_at_call_expr_inline_cast,
         overload_resolve::{collect_callable_overload_groups, match_callable_by_arg_types},
     },
 };
 use crate::{infer_call_generic, semantic::infer_expr};
-use infer_require::infer_require_call;
-use infer_setmetatable::infer_setmetatable_call;
+pub(super) use infer_require::infer_require_call;
+pub(super) use infer_setmetatable::infer_setmetatable_call;
 
 mod infer_require;
 mod infer_setmetatable;
@@ -31,6 +31,30 @@ pub type InferCallFuncResult = Result<Arc<LuaFunctionType>, InferFailReason>;
 
 // TODO: 如果没有完全匹配的签名也会返回一个不精确的类型, 考虑返回`None`
 pub fn infer_call_expr_func(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+    call_expr_type: LuaType,
+    infer_guard: &InferGuardRef,
+    args_count: Option<usize>,
+) -> InferCallFuncResult {
+    if cache.infer_depth >= MAX_INFER_DEPTH {
+        return Err(InferFailReason::DepthLimit);
+    }
+    cache.infer_depth += 1;
+    let result = infer_call_expr_func_inner(
+        db,
+        cache,
+        call_expr,
+        call_expr_type,
+        infer_guard,
+        args_count,
+    );
+    cache.infer_depth -= 1;
+    result
+}
+
+fn infer_call_expr_func_inner(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
@@ -172,7 +196,11 @@ pub fn infer_call_expr_func(
                     .insert(key, CacheEntry::Cache(func_ty.clone()));
             }
         }
-        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) if is_no_flow => {
+        Err(InferFailReason::None)
+        | Err(InferFailReason::RecursiveInfer)
+        | Err(InferFailReason::DepthLimit)
+            if is_no_flow =>
+        {
             cache
                 .call_no_flow_cache
                 .insert(key, CacheEntry::Cache(None));
@@ -528,7 +556,7 @@ fn infer_union(
                         first_func = Some(func);
                     }
                 }
-                Err(InferFailReason::RecursiveInfer) => {
+                Err(InferFailReason::RecursiveInfer) | Err(InferFailReason::DepthLimit) => {
                     return Err(InferFailReason::RecursiveInfer);
                 }
                 Err(reason) if reason.is_need_resolve() => {
@@ -588,7 +616,9 @@ fn infer_intersection(
             args_count,
         ) {
             Ok(func) => overloads.push(func),
-            Err(InferFailReason::RecursiveInfer) => return Err(InferFailReason::RecursiveInfer),
+            Err(InferFailReason::RecursiveInfer) | Err(InferFailReason::DepthLimit) => {
+                return Err(InferFailReason::RecursiveInfer);
+            }
             Err(reason) if reason.is_need_resolve() => {
                 if need_resolve.is_none() {
                     need_resolve = Some(reason);
@@ -709,53 +739,7 @@ fn is_last_call_expr(call_expr: &LuaCallExpr) -> bool {
     false
 }
 
-pub fn infer_call_expr(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    call_expr: LuaCallExpr,
-) -> InferResult {
-    if call_expr.is_require() {
-        return infer_require_call(db, cache, call_expr);
-    } else if call_expr.is_setmetatable() {
-        return infer_setmetatable_call(db, cache, call_expr);
-    }
-
-    check_can_infer(db, cache, &call_expr)?;
-
-    let is_safe_call = call_expr.has_safe_navigation();
-
-    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
-    let ret_type = infer_call_expr_func(
-        db,
-        cache,
-        call_expr.clone(),
-        prefix_type.clone(),
-        &InferGuard::new(),
-        None,
-    )?
-    .get_ret()
-    .clone();
-
-    let ret_type = if is_safe_call && prefix_type.is_nullable() {
-        TypeOps::Union.apply(db, &ret_type, &LuaType::Nil)
-    } else {
-        ret_type
-    };
-
-    if !cache.is_no_flow()
-        && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
-        && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
-        && let Some(flow_ret_type) =
-            get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())
-    {
-        return Ok(flow_ret_type);
-    }
-
-    Ok(ret_type)
-}
-
-fn check_can_infer(
+pub(super) fn check_can_infer(
     db: &DbIndex,
     cache: &LuaInferCache,
     call_expr: &LuaCallExpr,
