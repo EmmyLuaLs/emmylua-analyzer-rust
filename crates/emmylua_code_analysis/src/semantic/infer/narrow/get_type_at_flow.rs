@@ -284,6 +284,7 @@ impl FlowReplayQuery {
             Err(
                 InferFailReason::None
                 | InferFailReason::RecursiveInfer
+                | InferFailReason::DepthLimit
                 | InferFailReason::FieldNotFound,
             ) => None,
             Err(err) => return Err(err),

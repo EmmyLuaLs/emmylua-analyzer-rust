@@ -5,7 +5,7 @@ use crate::{
     semantic::infer::InferResult,
 };
 
-pub(super) fn infer_require_call(
+pub(in crate::semantic) fn infer_require_call(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,

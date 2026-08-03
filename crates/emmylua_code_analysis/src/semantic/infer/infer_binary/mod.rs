@@ -7,22 +7,22 @@ use infer_binary_or::{infer_binary_expr_or, special_or_rule};
 use smol_str::SmolStr;
 
 use crate::{
-    LuaInferCache, TypeOps, check_type_compact,
+    TypeOps, check_type_compact,
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
     get_real_type,
 };
 
-use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
+use super::{InferFailReason, InferResult, get_custom_type_operator};
 
-pub fn infer_binary_expr(
+/// 左右操作数类型已知后的二元运算推断(纯函数, 无表达式推断)
+pub(super) fn infer_binary_expr_result(
     db: &DbIndex,
-    cache: &mut LuaInferCache,
     expr: LuaBinaryExpr,
+    left_type: LuaType,
+    right_type: LuaType,
 ) -> InferResult {
     let op = expr.get_op_token().ok_or(InferFailReason::None)?.get_op();
     let (left, right) = expr.get_exprs().ok_or(InferFailReason::None)?;
-    let left_type = infer_expr(db, cache, left.clone())?;
-    let right_type = infer_expr(db, cache, right.clone())?;
     let real_left_type = get_real_type(db, &left_type);
     let real_right_type = get_real_type(db, &right_type);
     let left_type_ref = real_left_type.unwrap_or(&left_type);

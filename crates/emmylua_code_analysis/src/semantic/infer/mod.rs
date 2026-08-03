@@ -1,3 +1,4 @@
+mod engine;
 mod infer_binary;
 mod infer_call;
 mod infer_doc_type;
@@ -15,8 +16,7 @@ use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
     LuaSyntaxId, LuaTableExpr, LuaVarExpr, NumberResult,
 };
-use infer_binary::infer_binary_expr;
-use infer_call::infer_call_expr;
+use engine::{InferEngine, MAX_INFER_DEPTH};
 pub use infer_call::infer_call_expr_func;
 pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
@@ -26,7 +26,6 @@ use infer_name::infer_name_expr;
 pub use infer_name::{find_self_decl_or_member_id, infer_param};
 use infer_table::infer_table_expr;
 pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
-use infer_unary::infer_unary_expr;
 pub use narrow::VarRefId;
 pub(super) use narrow::apply_assignment_target_casts;
 pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
@@ -37,7 +36,6 @@ use smol_str::SmolStr;
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
-    semantic::infer::infer_index::infer_ternary_expr,
 };
 
 use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
@@ -45,7 +43,7 @@ use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
 pub type InferResult = Result<LuaType, InferFailReason>;
 pub use infer_call::InferCallFuncResult;
 
-fn prepare_expr_cache(
+pub(super) fn prepare_expr_cache(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     syntax_id: LuaSyntaxId,
@@ -106,83 +104,13 @@ fn prepare_expr_cache(
 }
 
 pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
-    let no_flow = cache.is_no_flow();
-    let syntax_id = expr.get_syntax_id();
-    if let Some(result_type) = prepare_expr_cache(db, cache, syntax_id)? {
-        return Ok(result_type);
+    if cache.infer_depth >= MAX_INFER_DEPTH {
+        return Err(InferFailReason::DepthLimit);
     }
-    if no_flow
-        && matches!(expr, LuaExpr::TableExpr(_))
-        && !cache.no_flow_table_exprs.contains(&syntax_id)
-    {
-        cache
-            .expr_no_flow_cache
-            .insert(syntax_id, CacheEntry::Cache(None));
-        return Err(InferFailReason::None);
-    }
-    let result_type = match expr {
-        LuaExpr::CallExpr(call_expr) => infer_call_expr(db, cache, call_expr),
-        LuaExpr::TableExpr(table_expr) => infer_table_expr(db, cache, table_expr),
-        LuaExpr::LiteralExpr(literal_expr) => infer_literal_expr(db, cache, literal_expr),
-        LuaExpr::BinaryExpr(binary_expr) => infer_binary_expr(db, cache, binary_expr),
-        LuaExpr::UnaryExpr(unary_expr) => infer_unary_expr(db, cache, unary_expr),
-        LuaExpr::ClosureExpr(closure_expr) => infer_closure_expr(db, cache, closure_expr),
-        LuaExpr::ParenExpr(paren_expr) => infer_expr(
-            db,
-            cache,
-            paren_expr.get_expr().ok_or(InferFailReason::None)?,
-        ),
-        LuaExpr::NameExpr(name_expr) => infer_name_expr(db, cache, name_expr),
-        LuaExpr::IndexExpr(index_expr) => infer_index_expr(db, cache, index_expr, !no_flow),
-        LuaExpr::TernaryExpr(ternary_expr) => infer_ternary_expr(db, cache, ternary_expr),
-    };
-
-    match &result_type {
-        Ok(result_type) => {
-            if no_flow {
-                cache
-                    .expr_no_flow_cache
-                    .insert(syntax_id, CacheEntry::Cache(Some(result_type.clone())));
-            } else {
-                cache
-                    .expr_cache
-                    .insert(syntax_id, CacheEntry::Cache(result_type.clone()));
-            }
-        }
-        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) => {
-            if no_flow {
-                cache
-                    .expr_no_flow_cache
-                    .insert(syntax_id, CacheEntry::Cache(None));
-            } else {
-                cache
-                    .expr_cache
-                    .insert(syntax_id, CacheEntry::Cache(LuaType::Unknown));
-                return Ok(LuaType::Unknown);
-            }
-        }
-        Err(InferFailReason::FieldNotFound) => {
-            if no_flow {
-                cache.expr_no_flow_cache.remove(&syntax_id);
-            } else if cache.get_config().analysis_phase.is_force() {
-                cache
-                    .expr_cache
-                    .insert(syntax_id, CacheEntry::Cache(LuaType::Nil));
-                return Ok(LuaType::Nil);
-            } else {
-                cache.expr_cache.remove(&syntax_id);
-            }
-        }
-        _ => {
-            if no_flow {
-                cache.expr_no_flow_cache.remove(&syntax_id);
-            } else {
-                cache.expr_cache.remove(&syntax_id);
-            }
-        }
-    }
-
-    result_type
+    cache.infer_depth += 1;
+    let result = InferEngine::new(db, cache).run(expr);
+    cache.infer_depth -= 1;
+    result
 }
 
 pub(crate) fn try_infer_expr_no_flow(
@@ -192,7 +120,9 @@ pub(crate) fn try_infer_expr_no_flow(
 ) -> Result<Option<LuaType>, InferFailReason> {
     match cache.with_no_flow(|cache| infer_expr(db, cache, expr)) {
         Ok(result_type) => Ok(Some(result_type)),
-        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) => Ok(None),
+        Err(InferFailReason::None)
+        | Err(InferFailReason::RecursiveInfer)
+        | Err(InferFailReason::DepthLimit) => Ok(None),
         Err(err) => Err(err),
     }
 }

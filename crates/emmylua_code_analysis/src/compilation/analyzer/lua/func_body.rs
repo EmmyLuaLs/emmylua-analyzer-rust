@@ -384,7 +384,9 @@ where
 
     let condition_type = match infer_expr_type(&condition) {
         Ok(condition_type) => condition_type,
-        Err(InferFailReason::None | InferFailReason::RecursiveInfer) => {
+        Err(
+            InferFailReason::None | InferFailReason::RecursiveInfer | InferFailReason::DepthLimit,
+        ) => {
             return Ok(ConditionState::Dynamic);
         }
         Err(reason) => return Err(reason),

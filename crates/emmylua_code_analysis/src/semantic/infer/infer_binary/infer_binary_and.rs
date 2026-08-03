@@ -1,6 +1,9 @@
 use emmylua_parser::LuaExpr;
 
-use crate::{DbIndex, LuaType, TypeOps, semantic::infer::narrow::narrow_false_or_nil};
+use crate::{
+    DbIndex, LuaType, TypeOps,
+    semantic::infer::{InferResult, narrow::narrow_false_or_nil},
+};
 
 /// Special handling for `and` operator with specific patterns
 ///
@@ -48,11 +51,7 @@ pub fn special_and_rule(
 /// - `x and y` where `x: string` → `y` (string is always truthy, returns right)
 /// - `x and y` where `x: boolean`, `y: string` → `false | string`
 /// - `x and y` where `x: string | nil`, `y: number` → `nil | number`
-pub fn infer_binary_expr_and(
-    db: &DbIndex,
-    left: LuaType,
-    right: LuaType,
-) -> crate::semantic::infer::InferResult {
+pub fn infer_binary_expr_and(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_always_falsy() {
         return Ok(left);
     } else if left.is_always_truthy() {

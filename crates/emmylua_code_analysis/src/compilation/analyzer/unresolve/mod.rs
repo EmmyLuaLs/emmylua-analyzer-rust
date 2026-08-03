@@ -217,7 +217,11 @@ fn try_resolve(
                     Ok(_) => {
                         changed = true;
                     }
-                    Err(InferFailReason::None | InferFailReason::RecursiveInfer) => {}
+                    Err(
+                        InferFailReason::None
+                        | InferFailReason::RecursiveInfer
+                        | InferFailReason::DepthLimit,
+                    ) => {}
                     Err(InferFailReason::FieldNotFound) => {
                         if !cache.get_config().analysis_phase.is_force() {
                             retain_unresolve.push((unresolve, InferFailReason::FieldNotFound));

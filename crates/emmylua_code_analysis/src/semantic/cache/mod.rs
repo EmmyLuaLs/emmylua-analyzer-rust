@@ -79,6 +79,8 @@ pub struct LuaInferCache {
     file_id: FileId,
     config: CacheOptions,
     no_flow_mode: bool,
+    /// Native recursion nesting depth counter; returns `InferFailReason::DepthLimit` when the limit is exceeded
+    pub(in crate::semantic) infer_depth: u32,
     pub expr_cache: HashMap<LuaSyntaxId, CacheEntry<LuaType>>,
     pub(in crate::semantic) expr_no_flow_cache: HashMap<LuaSyntaxId, CacheEntry<Option<LuaType>>>,
     pub call_cache:
@@ -102,6 +104,7 @@ impl LuaInferCache {
             file_id,
             config,
             no_flow_mode: false,
+            infer_depth: 0,
             expr_cache: HashMap::new(),
             expr_no_flow_cache: HashMap::new(),
             call_cache: HashMap::new(),

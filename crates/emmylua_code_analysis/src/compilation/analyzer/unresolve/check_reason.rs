@@ -19,7 +19,8 @@ pub fn check_reach_reason(
         InferFailReason::None
         | InferFailReason::FieldNotFound
         | InferFailReason::UnResolveOperatorCall
-        | InferFailReason::RecursiveInfer => Some(true),
+        | InferFailReason::RecursiveInfer
+        | InferFailReason::DepthLimit => Some(true),
         InferFailReason::UnResolveDeclType(decl_id) => {
             let decl = db.get_decl_index().get_decl(decl_id)?;
             let typ = db.get_type_index().get_type_cache(&(*decl_id).into());
@@ -70,7 +71,8 @@ pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason, loop_count: us
         | InferFailReason::FieldNotFound
         | InferFailReason::UnResolveTypeDecl(_)
         | InferFailReason::UnResolveOperatorCall
-        | InferFailReason::RecursiveInfer => {
+        | InferFailReason::RecursiveInfer
+        | InferFailReason::DepthLimit => {
             return Some(());
         }
         InferFailReason::UnResolveDeclType(decl_id) => {

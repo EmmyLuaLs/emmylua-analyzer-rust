@@ -1,7 +1,7 @@
 mod infer_array;
 
 use emmylua_parser::{
-    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, LuaTernaryExpr, NumberResult, PathTrait,
+    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult, PathTrait,
 };
 use hashbrown::HashSet;
 use internment::ArcIntern;
@@ -34,7 +34,8 @@ use crate::{
 };
 
 use super::{
-    InferFailReason, InferResult, infer_expr, infer_name::infer_global_type, try_infer_expr_no_flow,
+    InferFailReason, InferResult, engine::MAX_INFER_DEPTH, infer_expr,
+    infer_name::infer_global_type, try_infer_expr_no_flow,
 };
 
 pub(crate) fn try_infer_expr_for_index(
@@ -75,7 +76,6 @@ pub fn infer_index_expr(
     index_expr: LuaIndexExpr,
     pass_flow: bool,
 ) -> InferResult {
-    let is_safe = index_expr.is_safe_index();
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
     let prefix_type = infer_expr_for_index(db, cache, prefix_expr)?;
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
@@ -88,6 +88,19 @@ pub fn infer_index_expr(
         &InferGuard::new(),
     )?;
 
+    infer_index_expr_with_member(db, cache, index_expr, prefix_type, member_type, pass_flow)
+}
+
+/// Complete the index expression inference once the member type is known (flow narrowing + safe navigation)
+pub(super) fn infer_index_expr_with_member(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    index_expr: LuaIndexExpr,
+    prefix_type: LuaType,
+    member_type: LuaType,
+    pass_flow: bool,
+) -> InferResult {
+    let is_safe = index_expr.is_safe_index();
     let mut result_type = if pass_flow {
         infer_member_type_pass_flow(db, cache, index_expr, member_type)?
     } else {
@@ -99,19 +112,6 @@ pub fn infer_index_expr(
     }
 
     Ok(result_type)
-}
-
-pub fn infer_ternary_expr(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    ternary_expr: LuaTernaryExpr,
-) -> InferResult {
-    let Some((true_expr, false_expr)) = ternary_expr.get_true_false_exprs() else {
-        return Err(InferFailReason::None);
-    };
-    let true_type = infer_expr(db, cache, true_expr)?;
-    let false_type = infer_expr(db, cache, false_expr)?;
-    Ok(TypeOps::Union.apply(db, &true_type, &false_type))
 }
 
 fn infer_member_type_pass_flow(
@@ -277,6 +277,22 @@ pub fn infer_member_by_key_type(
 }
 
 fn infer_member_by_lookup(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    prefix_type: &LuaType,
+    lookup: &MemberLookupQuery,
+    infer_guard: &InferGuardRef,
+) -> InferResult {
+    if cache.infer_depth >= MAX_INFER_DEPTH {
+        return Err(InferFailReason::DepthLimit);
+    }
+    cache.infer_depth += 1;
+    let result = infer_member_by_lookup_inner(db, cache, prefix_type, lookup, infer_guard);
+    cache.infer_depth -= 1;
+    result
+}
+
+fn infer_member_by_lookup_inner(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     prefix_type: &LuaType,
@@ -773,6 +789,23 @@ fn infer_instance_member(
 }
 
 fn infer_member_by_operator_key_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    prefix_type: &LuaType,
+    key_type: &LuaType,
+    infer_guard: &InferGuardRef,
+) -> InferResult {
+    if cache.infer_depth >= MAX_INFER_DEPTH {
+        return Err(InferFailReason::DepthLimit);
+    }
+    cache.infer_depth += 1;
+    let result =
+        infer_member_by_operator_key_type_inner(db, cache, prefix_type, key_type, infer_guard);
+    cache.infer_depth -= 1;
+    result
+}
+
+fn infer_member_by_operator_key_type_inner(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     prefix_type: &LuaType,

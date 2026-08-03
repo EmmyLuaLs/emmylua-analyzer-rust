@@ -6,7 +6,7 @@ use crate::{
     semantic::{infer::InferResult, member::find_members_with_key},
 };
 
-pub(super) fn infer_setmetatable_call(
+pub(in crate::semantic) fn infer_setmetatable_call(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,

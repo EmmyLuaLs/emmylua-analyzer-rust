@@ -1,23 +1,15 @@
-use emmylua_parser::{LuaUnaryExpr, UnaryOperator};
+use emmylua_parser::UnaryOperator;
 
-use crate::{
-    LuaInferCache,
-    db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
-};
+use crate::db_index::{DbIndex, LuaOperatorMetaMethod, LuaType};
 
-use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
+use super::{InferResult, get_custom_type_operator};
 
-pub fn infer_unary_expr(
+/// 操作数类型已知后的一元运算推断(纯函数, 无表达式推断)
+pub(super) fn infer_unary_expr_result(
     db: &DbIndex,
-    cache: &mut LuaInferCache,
-    unary_expr: LuaUnaryExpr,
+    op: UnaryOperator,
+    inner_type: LuaType,
 ) -> InferResult {
-    let op = unary_expr
-        .get_op_token()
-        .ok_or(InferFailReason::None)?
-        .get_op();
-    let inner_expr = unary_expr.get_expr().ok_or(InferFailReason::None)?;
-    let inner_type = infer_expr(db, cache, inner_expr)?;
     match op {
         UnaryOperator::OpNot => infer_unary_expr_not(inner_type),
         UnaryOperator::OpLen => Ok(LuaType::Integer),
