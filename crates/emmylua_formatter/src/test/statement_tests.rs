@@ -2001,6 +2001,39 @@ end
         assert_eq!(result, expected);
     }
 
+    #[test]
+    fn test_safe_navigation_continuous_assign_alignment() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+
+        let config = LuaFormatConfig {
+            indent: crate::config::IndentConfig {
+                kind: crate::config::IndentKind::Space,
+                width: 2,
+            },
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let input = "\
+function func()
+    self.foo?.bar = true
+    self.foo?.barbar  = 0.250
+end
+";
+        let expected = "\
+function func()
+  self.foo?.bar    = true
+  self.foo?.barbar = 0.250
+end
+";
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
     // ========== LuaJIT extension: nil-coalescing ==========
 
     #[test]
