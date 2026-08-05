@@ -78,6 +78,40 @@ fn verify_idempotent(
     }
 }
 
+/// Writes a fresh default config file to `target`, refusing to overwrite.
+fn write_init_config(target: &Path) -> Result<(), String> {
+    if target.exists() {
+        return Err(format!("{} already exists", target.display()));
+    }
+    let config = default_config_toml().map_err(|err| err.to_string())?;
+    fs::write(target, config)
+        .map_err(|err| format!("failed to write {}: {err}", target.display()))?;
+    println!("Wrote {}", target.display());
+    Ok(())
+}
+
+/// Prints the effective configuration for `path`: where it came from and which
+/// settings differ from defaults.
+fn explain_config_for_path(args: &cmd_args::CliArgs, path: &Path) -> Result<(), String> {
+    let resolved = cmd_args::resolve_style(args, Some(path))?;
+    match &resolved.source_path {
+        Some(config_path) => println!("config file: {}", config_path.display()),
+        None => println!("config file: <defaults>"),
+    }
+    println!("resolved for: {}", path.display());
+
+    let diffs = resolved.config.settings_differing_from_default();
+    if diffs.is_empty() {
+        println!("no settings differ from defaults");
+    } else {
+        println!("settings differing from defaults:");
+        for (key, value) in diffs {
+            println!("  {key} = {value}");
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let args = cmd_args::CliArgs::parse();
     let diff_render_options = DiffRenderOptions {
@@ -94,6 +128,26 @@ fn main() {
             }
             Err(e) => {
                 eprintln!("Error: {e}");
+                exit(2);
+            }
+        }
+    }
+
+    if let Some(target) = &args.init {
+        match write_init_config(target) {
+            Ok(()) => exit(0),
+            Err(message) => {
+                eprintln!("Error: {message}");
+                exit(2);
+            }
+        }
+    }
+
+    if let Some(path) = &args.explain_config {
+        match explain_config_for_path(&args, path) {
+            Ok(()) => exit(0),
+            Err(message) => {
+                eprintln!("Error: {message}");
                 exit(2);
             }
         }
@@ -140,7 +194,25 @@ fn main() {
         let changed = output.changed;
 
         if args.check || args.list_different {
-            if changed {
+            if args.json {
+                let has_error = output.syntax_error.is_some();
+                let changed_files: Vec<&str> = if changed { vec!["<stdin>"] } else { Vec::new() };
+                let error_files: Vec<&str> = if has_error {
+                    vec!["<stdin>"]
+                } else {
+                    Vec::new()
+                };
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "changed_files": changed_files,
+                        "changed_count": changed_files.len(),
+                        "ok_count": usize::from(!changed && !has_error),
+                        "error_files": error_files,
+                        "error_count": error_files.len(),
+                    })
+                );
+            } else if changed {
                 exit_code = 1;
                 if args.check && !args.list_different {
                     eprint!(
@@ -198,6 +270,8 @@ fn main() {
     }
 
     let mut different_paths: Vec<String> = Vec::new();
+    let mut error_files: Vec<String> = Vec::new();
+    let mut ok_count: usize = 0;
 
     for path in &files {
         let format_result = cmd_args::resolve_style(&args, Some(path.as_path()))
@@ -217,6 +291,11 @@ fn main() {
             Ok((result_path, source, config, level, output)) => {
                 if let Some(error) = &output.syntax_error {
                     report_syntax_error(&result_path.to_string_lossy(), error, &mut exit_code);
+                    error_files.push(result_path.to_string_lossy().to_string());
+                } else if output.changed {
+                    different_paths.push(result_path.to_string_lossy().to_string());
+                } else {
+                    ok_count += 1;
                 }
 
                 if args.verify {
@@ -233,11 +312,9 @@ fn main() {
                 let changed = output.changed;
 
                 if args.check || args.list_different {
-                    if changed {
+                    if changed && !args.json {
                         exit_code = 1;
-                        if args.list_different {
-                            different_paths.push(result_path.to_string_lossy().to_string());
-                        } else if args.check {
+                        if args.check && !args.list_different {
                             eprint!(
                                 "{}",
                                 render_unified_diff(
@@ -274,10 +351,34 @@ fn main() {
         }
     }
 
-    if args.list_different && !different_paths.is_empty() {
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "changed_files": different_paths,
+                "changed_count": different_paths.len(),
+                "ok_count": ok_count,
+                "error_files": error_files,
+                "error_count": error_files.len(),
+            })
+        );
+    } else if args.list_different && !different_paths.is_empty() {
         for p in different_paths {
             println!("{p}");
         }
+    } else if args.check {
+        let mut summary = format!(
+            "{} file(s) would be reformatted, {} file(s) OK",
+            different_paths.len(),
+            ok_count
+        );
+        if !error_files.is_empty() {
+            summary.push_str(&format!(
+                ", {} file(s) could not be formatted",
+                error_files.len()
+            ));
+        }
+        eprintln!("{summary}");
     }
 
     exit(exit_code);

@@ -25,6 +25,7 @@ pub use workspace::{
     FormatPathResult, FormatterError, ResolvedConfig, check_file, check_text, check_text_for_path,
     collect_lua_files, default_config_toml, discover_config_path, format_file, format_text,
     format_text_for_path, load_format_config, parse_format_config, resolve_config_for_path,
+    serialize_config_toml,
 };
 
 pub use formatter::range_format::RangeFormatOutput;

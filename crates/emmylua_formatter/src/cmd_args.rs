@@ -50,6 +50,11 @@ pub struct CliArgs {
     #[arg(long, alias = "list-different")]
     pub list_different: bool,
 
+    /// With --check/--list-different, print a machine-readable JSON summary
+    /// instead of diffs or a plain path list
+    #[arg(long)]
+    pub json: bool,
+
     /// Colorize --check diff output
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
@@ -69,6 +74,14 @@ pub struct CliArgs {
     /// Print the default configuration as TOML and exit
     #[arg(long)]
     pub dump_default_config: bool,
+
+    /// Write a config file and exit. Defaults to ./luafmt.toml.
+    #[arg(long, value_name = "PATH", num_args = 0..=1, default_missing_value = "luafmt.toml")]
+    pub init: Option<PathBuf>,
+
+    /// Print the effective configuration for PATH and exit
+    #[arg(long, value_name = "PATH", value_hint = clap::ValueHint::AnyPath)]
+    pub explain_config: Option<PathBuf>,
 
     /// Use tabs for indentation
     #[arg(long)]

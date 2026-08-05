@@ -66,6 +66,17 @@ impl LuaFormatConfig {
         }
     }
 
+    /// Returns `section.key = value` pairs for every setting that differs from
+    /// the default config. Useful for showing the "effective delta" of a
+    /// resolved config.
+    pub fn settings_differing_from_default(&self) -> Vec<(String, String)> {
+        let default_value = serde_json::to_value(LuaFormatConfig::default()).unwrap_or_default();
+        let actual_value = serde_json::to_value(self).unwrap_or_default();
+        let mut out = Vec::new();
+        collect_json_diff(&mut out, "", &actual_value, &default_value);
+        out
+    }
+
     pub fn should_align_statement_line_comments(&self) -> bool {
         self.comments.align_line_comments && self.comments.align_in_statements
     }
@@ -472,4 +483,41 @@ pub enum EndOfLine {
     Preserve,
     LF,
     CRLF,
+}
+
+/// Recursively walks `actual` and records leaves whose value differs from the
+/// corresponding leaf in `default`, using `section.key` paths.
+fn collect_json_diff(
+    out: &mut Vec<(String, String)>,
+    prefix: &str,
+    actual: &serde_json::Value,
+    default: &serde_json::Value,
+) {
+    let (serde_json::Value::Object(actual_obj), serde_json::Value::Object(default_obj)) =
+        (actual, default)
+    else {
+        return;
+    };
+
+    for (key, actual_value) in actual_obj {
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        let default_value = default_obj
+            .get(key)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+
+        if matches!(actual_value, serde_json::Value::Object(_)) {
+            collect_json_diff(out, &path, actual_value, &default_value);
+        } else if actual_value != &default_value {
+            let rendered = match actual_value {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.push((path, rendered));
+        }
+    }
 }

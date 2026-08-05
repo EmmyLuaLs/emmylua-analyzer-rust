@@ -232,9 +232,14 @@ pub fn check_file(
 }
 
 pub fn default_config_toml() -> Result<String, FormatterError> {
-    to_toml_string(&LuaFormatConfig::default()).map_err(|err| FormatterError::ConfigParse {
+    serialize_config_toml(&LuaFormatConfig::default())
+}
+
+/// Serializes a config as pretty TOML.
+pub fn serialize_config_toml(config: &LuaFormatConfig) -> Result<String, FormatterError> {
+    to_toml_string(config).map_err(|err| FormatterError::ConfigParse {
         path: None,
-        message: format!("failed to serialize default config: {err}"),
+        message: format!("failed to serialize config: {err}"),
     })
 }
 
