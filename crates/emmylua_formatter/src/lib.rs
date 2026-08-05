@@ -1,6 +1,7 @@
 #![cfg(feature = "cli")]
 pub mod cmd_args;
 pub mod config;
+pub mod diff;
 mod formatter;
 pub mod ir;
 mod printer;
@@ -12,7 +13,7 @@ pub use config::{
     LayoutConfig, LuaFormatConfig, LuaSyntaxLevel, OutputConfig, QuoteStyle, SingleArgCallParens,
     SpacingConfig, SyntaxConfig, TrailingComma, TrailingTableSeparator,
 };
-use emmylua_parser::{LuaChunk, LuaLanguageLevel, LuaParser, ParserConfig};
+use emmylua_parser::{LuaAstNode, LuaChunk, LuaLanguageLevel, LuaParser, ParserConfig};
 use formatter::FormatContext;
 use printer::Printer;
 pub use rowan::TextRange;
@@ -40,6 +41,7 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
     let chunk = tree.get_chunk_node();
     let ir = formatter::format_chunk(&ctx, &chunk);
     let mut p = Printer::new(config);
+    p = p.with_source_line_ending(source.text);
     let capacity = (source.text.len() as f64 * 1.2).ceil() as usize;
     p = p.with_capacity(capacity);
     p.print(&ir)
@@ -48,8 +50,10 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
 pub fn reformat_chunk(chunk: &LuaChunk, config: &LuaFormatConfig) -> String {
     let ctx = FormatContext::new(config);
     let ir = formatter::format_chunk(&ctx, chunk);
-
-    Printer::new(config).print(&ir)
+    let source = chunk.syntax().text().to_string();
+    Printer::new(config)
+        .with_source_line_ending(&source)
+        .print(&ir)
 }
 
 pub fn reformat_range(

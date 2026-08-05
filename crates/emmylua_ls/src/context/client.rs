@@ -142,7 +142,7 @@ impl ClientProxy {
         match response.response_result {
             Ok(r) => serde_json::from_value(r).ok(),
             Err(e) => {
-                log::error!("get_configuration error: {:?}", e);
+                log::error!("show_message_request error: {:?}", e);
                 None
             }
         }
@@ -164,7 +164,7 @@ impl ClientProxy {
         match response.response_result {
             Ok(r) => serde_json::from_value(r).ok(),
             Err(e) => {
-                log::error!("get_configuration error: {:?}", e);
+                log::error!("apply_edit error: {:?}", e);
                 None
             }
         }

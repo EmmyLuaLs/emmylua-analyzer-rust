@@ -1,33 +1,15 @@
 use std::{
     fs,
     io::{self, IsTerminal, Read, Write},
+    path::Path,
     process::exit,
 };
 
 use clap::Parser;
-use emmylua_formatter::{check_text, cmd_args, collect_lua_files, default_config_toml};
-use similar::{ChangeTag, TextDiff};
-
-#[derive(Clone, Copy)]
-struct DiffRenderOptions {
-    use_color: bool,
-    style: cmd_args::DiffStyle,
-}
-
-impl DiffRenderOptions {
-    fn marker_mode(self) -> bool {
-        !self.use_color && matches!(self.style, cmd_args::DiffStyle::Marker)
-    }
-}
-
-fn render_diff_header_path(path: &str, is_new: bool, style: cmd_args::DiffStyle) -> String {
-    if matches!(style, cmd_args::DiffStyle::Git) {
-        let prefix = if is_new { "b/" } else { "a/" };
-        return format!("{}{path}", prefix);
-    }
-
-    path.to_string()
-}
+use emmylua_formatter::{
+    check_text, cmd_args, collect_lua_files, default_config_toml,
+    diff::{DiffRenderOptions, render_unified_diff},
+};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -38,135 +20,6 @@ fn read_stdin_to_string() -> io::Result<String> {
     Ok(s)
 }
 
-fn format_unified_diff(
-    path: &str,
-    original: &str,
-    formatted: &str,
-    options: DiffRenderOptions,
-) -> String {
-    let diff = TextDiff::from_lines(original, formatted);
-    let mut out = String::new();
-    out.push_str(&colorize(
-        &format!(
-            "--- {}",
-            render_diff_header_path(path, false, options.style)
-        ),
-        "1;31",
-        options.use_color,
-    ));
-    out.push('\n');
-    out.push_str(&colorize(
-        &format!("+++ {}", render_diff_header_path(path, true, options.style)),
-        "1;32",
-        options.use_color,
-    ));
-    out.push('\n');
-
-    for group in diff.grouped_ops(3) {
-        let mut old_start_line = None;
-        let mut old_end_line = None;
-        let mut new_start_line = None;
-        let mut new_end_line = None;
-        let mut body = String::new();
-
-        for op in group {
-            for change in diff.iter_inline_changes(&op) {
-                if old_start_line.is_none() {
-                    old_start_line = change.old_index().map(|index| index + 1);
-                }
-                if new_start_line.is_none() {
-                    new_start_line = change.new_index().map(|index| index + 1);
-                }
-                if let Some(index) = change.old_index() {
-                    old_end_line = Some(index + 1);
-                }
-                if let Some(index) = change.new_index() {
-                    new_end_line = Some(index + 1);
-                }
-
-                body.push_str(&render_line_prefix(change.tag(), options));
-                for (emphasized, value) in change.iter_strings_lossy() {
-                    if emphasized {
-                        body.push_str(&render_emphasized_segment(
-                            change.tag(),
-                            value.as_ref(),
-                            options,
-                        ));
-                    } else {
-                        body.push_str(&render_plain_segment(change.tag(), value.as_ref(), options));
-                    }
-                }
-                if !body.ends_with('\n') {
-                    body.push('\n');
-                }
-            }
-        }
-
-        out.push_str(&colorize(
-            &format!(
-                "@@ -{} +{} @@",
-                format_hunk_range(old_start_line, old_end_line),
-                format_hunk_range(new_start_line, new_end_line)
-            ),
-            "1;36",
-            options.use_color,
-        ));
-        out.push('\n');
-        out.push_str(&body);
-    }
-
-    out
-}
-
-fn render_line_prefix(tag: ChangeTag, options: DiffRenderOptions) -> String {
-    let (prefix, color) = match tag {
-        ChangeTag::Equal => (" ", "0"),
-        ChangeTag::Delete => ("-", "31"),
-        ChangeTag::Insert => ("+", "32"),
-    };
-    colorize(prefix, color, options.use_color)
-}
-
-fn render_plain_segment(tag: ChangeTag, text: &str, options: DiffRenderOptions) -> String {
-    if !options.use_color {
-        return text.to_string();
-    }
-
-    let color = match tag {
-        ChangeTag::Equal => return text.to_string(),
-        ChangeTag::Delete => "31",
-        ChangeTag::Insert => "32",
-    };
-
-    colorize(text, color, true)
-}
-
-fn render_emphasized_segment(tag: ChangeTag, text: &str, options: DiffRenderOptions) -> String {
-    if options.marker_mode() {
-        return match tag {
-            ChangeTag::Delete => format!("[-{}-]", text),
-            ChangeTag::Insert => format!("{{+{}+}}", text),
-            ChangeTag::Equal => text.to_string(),
-        };
-    }
-
-    let color = match tag {
-        ChangeTag::Delete => "1;91",
-        ChangeTag::Insert => "1;92",
-        ChangeTag::Equal => return text.to_string(),
-    };
-
-    colorize(text, color, true)
-}
-
-fn colorize(text: &str, ansi_code: &str, enabled: bool) -> String {
-    if !enabled || text.is_empty() {
-        return text.to_string();
-    }
-
-    format!("\x1b[{ansi_code}m{text}\x1b[0m")
-}
-
 fn should_use_color(choice: cmd_args::ColorChoice) -> bool {
     match choice {
         cmd_args::ColorChoice::Auto => io::stderr().is_terminal(),
@@ -175,23 +28,22 @@ fn should_use_color(choice: cmd_args::ColorChoice) -> bool {
     }
 }
 
-fn format_hunk_range(start: Option<usize>, end: Option<usize>) -> String {
-    match (start, end) {
-        (Some(start_line), Some(end_line)) => {
-            let count = end_line.saturating_sub(start_line) + 1;
-            format!("{},{}", start_line, count)
-        }
-        (Some(start_line), None) => format!("{},0", start_line),
-        (None, Some(end_line)) => format!("0,{}", end_line),
-        (None, None) => "0,0".to_string(),
-    }
+/// Renders a path relative to the current working directory with forward
+/// slashes, so the diff can be consumed by `git apply`.
+fn relative_diff_path(path: &Path) -> String {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    path.strip_prefix(&cwd)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn main() {
     let args = cmd_args::CliArgs::parse();
     let diff_render_options = DiffRenderOptions {
         use_color: should_use_color(args.color),
-        style: args.diff_style,
+        inline_highlight: args.inline,
+        context_lines: 3,
     };
 
     if args.dump_default_config {
@@ -240,11 +92,11 @@ fn main() {
                 if args.check && !args.list_different {
                     eprint!(
                         "{}",
-                        format_unified_diff(
-                            "<stdin>",
+                        render_unified_diff(
+                            None,
                             &content,
                             &output.formatted,
-                            diff_render_options,
+                            &diff_render_options,
                         )
                     );
                 }
@@ -322,11 +174,11 @@ fn main() {
                         } else if args.check {
                             eprint!(
                                 "{}",
-                                format_unified_diff(
-                                    &result_path.to_string_lossy(),
+                                render_unified_diff(
+                                    Some(&relative_diff_path(&result_path)),
                                     &source,
                                     &formatted,
-                                    diff_render_options,
+                                    &diff_render_options,
                                 )
                             );
                         }
@@ -363,60 +215,4 @@ fn main() {
     }
 
     exit(exit_code);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_plain_diff_keeps_inline_markers() {
-        let rendered = format_unified_diff(
-            "<stdin>",
-            "local x=1\n",
-            "local x = 1\n",
-            DiffRenderOptions {
-                use_color: false,
-                style: cmd_args::DiffStyle::Marker,
-            },
-        );
-
-        assert!(rendered.contains("[-x=1-]") || rendered.contains("{+x = 1+}"));
-        assert!(!rendered.contains("\x1b["));
-    }
-
-    #[test]
-    fn test_color_diff_uses_ansi_without_inline_markers() {
-        let rendered = format_unified_diff(
-            "<stdin>",
-            "local x=1\n",
-            "local x = 1\n",
-            DiffRenderOptions {
-                use_color: true,
-                style: cmd_args::DiffStyle::Marker,
-            },
-        );
-
-        assert!(rendered.contains("\x1b["));
-        assert!(!rendered.contains("[-"));
-        assert!(!rendered.contains("{+"));
-    }
-
-    #[test]
-    fn test_git_diff_style_uses_prefixed_headers_without_inline_markers() {
-        let rendered = format_unified_diff(
-            "src/test.lua",
-            "local x=1\n",
-            "local x = 1\n",
-            DiffRenderOptions {
-                use_color: false,
-                style: cmd_args::DiffStyle::Git,
-            },
-        );
-
-        assert!(rendered.contains("--- a/src/test.lua"));
-        assert!(rendered.contains("+++ b/src/test.lua"));
-        assert!(!rendered.contains("[-"));
-        assert!(!rendered.contains("{+"));
-    }
 }

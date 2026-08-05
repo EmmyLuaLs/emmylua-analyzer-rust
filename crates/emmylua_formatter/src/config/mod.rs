@@ -55,10 +55,13 @@ impl LuaFormatConfig {
         }
     }
 
-    pub fn newline_str(&self) -> &'static str {
+    /// Returns the configured line ending sequence, or `None` when the source
+    /// line ending style should be preserved.
+    pub fn newline_str(&self) -> Option<&'static str> {
         match &self.output.end_of_line {
-            EndOfLine::LF => "\n",
-            EndOfLine::CRLF => "\r\n",
+            EndOfLine::Preserve => None,
+            EndOfLine::LF => Some("\n"),
+            EndOfLine::CRLF => Some("\r\n"),
         }
     }
 
@@ -215,7 +218,7 @@ impl Default for OutputConfig {
             quote_style: QuoteStyle::Preserve,
             single_arg_call_parens: SingleArgCallParens::Preserve,
             simple_lambda_single_line: SimpleLambdaSingleLine::Preserve,
-            end_of_line: EndOfLine::LF,
+            end_of_line: EndOfLine::Preserve,
         }
     }
 }
@@ -461,8 +464,11 @@ pub enum ExpandStrategy {
     Auto,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum EndOfLine {
+    /// Keep the line ending style of the source text.
+    #[default]
+    Preserve,
     LF,
     CRLF,
 }

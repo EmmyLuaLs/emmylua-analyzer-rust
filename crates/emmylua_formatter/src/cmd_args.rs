@@ -44,9 +44,9 @@ pub struct CliArgs {
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
 
-    /// Diff rendering style for --check output
-    #[arg(long, value_enum, default_value_t = DiffStyle::Marker)]
-    pub diff_style: DiffStyle,
+    /// Highlight changed words inside modified lines in --check diff output
+    #[arg(long)]
+    pub inline: bool,
 
     /// Write output to a specific file (only with a single input or stdin)
     #[arg(short, long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
@@ -106,13 +106,6 @@ pub enum ColorChoice {
     Auto,
     Always,
     Never,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
-pub enum DiffStyle {
-    #[default]
-    Marker,
-    Git,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]

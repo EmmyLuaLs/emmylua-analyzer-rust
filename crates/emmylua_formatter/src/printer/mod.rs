@@ -14,6 +14,17 @@ pub fn measure_docs(config: &LuaFormatConfig, docs: &[DocIR]) -> PrintedDocMetri
     MeasuringPrinter::new(config).measure(docs)
 }
 
+/// Detects the dominant line ending style of a source text.
+///
+/// Returns `\r\n` when the text contains any CRLF sequence, otherwise `\n`.
+pub fn detect_source_line_ending(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PrintMode {
     Flat,
@@ -37,6 +48,7 @@ pub struct Printer {
     indent_str: String,
     indent_width: usize,
     newline_str: &'static str,
+    preserve_newline: bool,
     line_comment_min_spaces_before: usize,
     line_comment_min_column: usize,
     output: String,
@@ -68,7 +80,8 @@ impl Printer {
             max_line_width: config.layout.max_line_width,
             indent_str: config.indent_str(),
             indent_width: config.indent_width(),
-            newline_str: config.newline_str(),
+            newline_str: config.newline_str().unwrap_or("\n"),
+            preserve_newline: config.newline_str().is_none(),
             line_comment_min_spaces_before: config.comments.line_comment_min_spaces_before.max(1),
             line_comment_min_column: config.comments.line_comment_min_column,
             output: String::new(),
@@ -79,6 +92,15 @@ impl Printer {
             line_suffixes: Vec::new(),
             profile: PrinterProfile::default(),
         }
+    }
+
+    /// When the config is in preserve mode, detects the line ending style from
+    /// `source` and uses it for output. Otherwise this is a no-op.
+    pub fn with_source_line_ending(mut self, source: &str) -> Self {
+        if self.preserve_newline {
+            self.newline_str = detect_source_line_ending(source);
+        }
+        self
     }
 
     pub fn with_capacity(mut self, capacity: usize) -> Self {
