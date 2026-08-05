@@ -124,6 +124,7 @@ pub enum LanguageLevel {
     #[default]
     Lua55,
     LuaJIT,
+    LuaJIT3,
 }
 
 impl From<LanguageLevel> for LuaLanguageLevel {
@@ -134,7 +135,8 @@ impl From<LanguageLevel> for LuaLanguageLevel {
             LanguageLevel::Lua53 => LuaLanguageLevel::Lua53,
             LanguageLevel::Lua54 => LuaLanguageLevel::Lua54,
             LanguageLevel::Lua55 => LuaLanguageLevel::Lua55,
-            LanguageLevel::LuaJIT => LuaLanguageLevel::LuaJIT2,
+            LanguageLevel::LuaJIT => LuaLanguageLevel::LuaJIT,
+            LanguageLevel::LuaJIT3 => LuaLanguageLevel::LuaJIT3,
         }
     }
 }
@@ -148,6 +150,7 @@ impl From<LanguageLevel> for LuaSyntaxLevel {
             LanguageLevel::Lua54 => LuaSyntaxLevel::Lua54,
             LanguageLevel::Lua55 => LuaSyntaxLevel::Lua55,
             LanguageLevel::LuaJIT => LuaSyntaxLevel::LuaJIT,
+            LanguageLevel::LuaJIT3 => LuaSyntaxLevel::LuaJIT3,
         }
     }
 }

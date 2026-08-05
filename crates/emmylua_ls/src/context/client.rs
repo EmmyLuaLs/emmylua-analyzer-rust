@@ -98,7 +98,13 @@ impl ClientProxy {
         let response = self
             .send_request(request_id, "workspace/configuration", params, cancel_token)
             .await?;
-        serde_json::from_value(response.result?).ok()
+        match response.response_result {
+            Ok(r) => serde_json::from_value(r).ok(),
+            Err(e) => {
+                log::error!("get_configuration error: {:?}", e);
+                None
+            }
+        }
     }
 
     pub fn dynamic_register_capability(&self, registration_param: RegistrationParams) {
@@ -133,7 +139,13 @@ impl ClientProxy {
                 cancel_token,
             )
             .await?;
-        serde_json::from_value(response.result?).ok()
+        match response.response_result {
+            Ok(r) => serde_json::from_value(r).ok(),
+            Err(e) => {
+                log::error!("get_configuration error: {:?}", e);
+                None
+            }
+        }
     }
 
     pub fn publish_diagnostics(&self, params: PublishDiagnosticsParams) {
@@ -146,10 +158,16 @@ impl ClientProxy {
         cancel_token: CancellationToken,
     ) -> Option<ApplyWorkspaceEditResponse> {
         let request_id = self.next_id();
-        let r = self
+        let response = self
             .send_request(request_id, "workspace/applyEdit", params, cancel_token)
             .await?;
-        serde_json::from_value(r.result?).ok()
+        match response.response_result {
+            Ok(r) => serde_json::from_value(r).ok(),
+            Err(e) => {
+                log::error!("get_configuration error: {:?}", e);
+                None
+            }
+        }
     }
 
     pub fn send_request_no_response(&self, method: &str, params: impl serde::Serialize) {

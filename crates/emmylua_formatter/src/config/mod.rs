@@ -437,7 +437,6 @@ pub enum LuaSyntaxLevel {
     #[default]
     Lua55,
     LuaJIT,
-    LuaJITExt,
     LuaJIT3,
 }
 
@@ -449,8 +448,7 @@ impl From<LuaSyntaxLevel> for emmylua_parser::LuaLanguageLevel {
             LuaSyntaxLevel::Lua53 => emmylua_parser::LuaLanguageLevel::Lua53,
             LuaSyntaxLevel::Lua54 => emmylua_parser::LuaLanguageLevel::Lua54,
             LuaSyntaxLevel::Lua55 => emmylua_parser::LuaLanguageLevel::Lua55,
-            LuaSyntaxLevel::LuaJIT => emmylua_parser::LuaLanguageLevel::LuaJIT2,
-            LuaSyntaxLevel::LuaJITExt => emmylua_parser::LuaLanguageLevel::LuaJIT,
+            LuaSyntaxLevel::LuaJIT => emmylua_parser::LuaLanguageLevel::LuaJIT,
             LuaSyntaxLevel::LuaJIT3 => emmylua_parser::LuaLanguageLevel::LuaJIT3,
         }
     }
