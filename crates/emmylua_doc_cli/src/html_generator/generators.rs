@@ -1,10 +1,11 @@
 use emmylua_code_analysis::{
     DbIndex, LuaDecl, LuaDeclId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    LuaTypeCache, LuaTypeDecl, LuaTypeDeclId, ModuleInfo,
+    LuaTypeCache, LuaTypeDecl, ModuleInfo,
 };
 use emmylua_parser::VisibilityKind;
 
-use crate::html_generator::types::HtmlDoc;
+use crate::html_generator::html_type;
+use crate::html_generator::types::{HtmlDoc, HtmlMember};
 use crate::markdown_generator::generator::collect_property;
 
 use super::html_type::{render_const_type_html, render_function_signature_html, render_type_html};
@@ -15,7 +16,7 @@ pub struct GenContext<'a> {
     pub db: &'a DbIndex,
     /// Maps a type declaration id to a page href (prefixed relative to the
     /// page being generated).
-    pub linker: &'a dyn Fn(&LuaTypeDeclId) -> Option<String>,
+    pub linker: &'a super::html_type::TypeLinker<'a>,
 }
 
 pub fn build_type_doc(ctx: &GenContext, typ: &LuaTypeDecl) -> Option<HtmlDoc> {
@@ -204,6 +205,16 @@ fn build_simple_global(ctx: &GenContext, decl: &LuaDecl, doc: &mut HtmlDoc) {
     }
 }
 
+/// Renders a field path like `Vector.x` with syntax highlighting
+/// (`owner` as variable, `.` as operator, `name` as property).
+fn field_name_html(owner: &str, name: &str) -> String {
+    format!(
+        "<span class=\"hl-var\">{}</span><span class=\"hl-op\">.</span><span class=\"hl-prop\">{}</span>",
+        html_escape(owner),
+        html_escape(name)
+    )
+}
+
 /// Collects public methods and fields of a member owner with linked signatures.
 pub fn collect_members(
     ctx: &GenContext,
@@ -252,18 +263,14 @@ pub fn collect_members(
                 false,
                 ctx.linker,
             ));
-            let mut member = crate::html_generator::types::HtmlMember::from_property(
-                title_name,
-                display,
-                member_property,
-            );
+            let mut member = HtmlMember::from_property(title_name, display, member_property);
             if let Some((params, returns)) =
                 super::html_type::function_details_html(db, member_type, ctx.linker)
             {
                 member.params = params;
                 member.returns = returns;
             }
-            member.overloads = super::html_type::signature_overloads_html(
+            member.overloads = html_type::signature_overloads_html(
                 db,
                 member_type,
                 &format!("{}.{}", owner_name, name),
@@ -276,12 +283,11 @@ pub fn collect_members(
         } else if member_type.is_const() {
             let const_type_display = render_const_type_html(db, member_type, ctx.linker);
             let display = signature_pre(format!(
-                "{}.{}: {}",
-                html_escape(owner_name),
-                html_escape(&name),
+                "{}<span class=\"hl-op\">:</span> {}",
+                field_name_html(owner_name, &name),
                 const_type_display
             ));
-            fields.push(crate::html_generator::types::HtmlMember::from_property(
+            fields.push(HtmlMember::from_property(
                 title_name,
                 display,
                 member_property,
@@ -289,12 +295,11 @@ pub fn collect_members(
         } else {
             let typ_display = render_type_html(db, member_type, ctx.linker);
             let display = signature_pre(format!(
-                "{}.{} : {}",
-                html_escape(owner_name),
-                html_escape(&name),
+                "{} <span class=\"hl-op\">:</span> {}",
+                field_name_html(owner_name, &name),
                 typ_display
             ));
-            fields.push(crate::html_generator::types::HtmlMember::from_property(
+            fields.push(HtmlMember::from_property(
                 title_name,
                 display,
                 member_property,

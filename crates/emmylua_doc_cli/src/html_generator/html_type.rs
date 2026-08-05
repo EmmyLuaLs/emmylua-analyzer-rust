@@ -34,21 +34,21 @@ pub fn render_type_style(
 ) -> String {
     match typ {
         // ─── primitives ─────────────────────────────────────────────
-        LuaType::Unknown => "unknown".to_string(),
-        LuaType::Any => "any".to_string(),
-        LuaType::Nil => "nil".to_string(),
-        LuaType::Table => "table".to_string(),
-        LuaType::Userdata => "userdata".to_string(),
-        LuaType::Function => "function".to_string(),
-        LuaType::Thread => "thread".to_string(),
-        LuaType::Boolean => "boolean".to_string(),
-        LuaType::String => "string".to_string(),
-        LuaType::Integer => "integer".to_string(),
-        LuaType::Number => "number".to_string(),
-        LuaType::Io => "io".to_string(),
-        LuaType::SelfInfer => "self".to_string(),
-        LuaType::Global => "global".to_string(),
-        LuaType::Never => "never".to_string(),
+        LuaType::Unknown => type_kw("unknown"),
+        LuaType::Any => type_kw("any"),
+        LuaType::Nil => type_kw("nil"),
+        LuaType::Table => type_kw("table"),
+        LuaType::Userdata => type_kw("userdata"),
+        LuaType::Function => type_kw("function"),
+        LuaType::Thread => type_kw("thread"),
+        LuaType::Boolean => type_kw("boolean"),
+        LuaType::String => type_kw("string"),
+        LuaType::Integer => type_kw("integer"),
+        LuaType::Number => type_kw("number"),
+        LuaType::Io => type_kw("io"),
+        LuaType::SelfInfer => type_kw("self"),
+        LuaType::Global => type_kw("global"),
+        LuaType::Never => type_kw("never"),
         LuaType::Language(s) => html_escape(s),
 
         // ─── constants ──────────────────────────────────────────────
@@ -145,7 +145,12 @@ pub fn render_type_style(
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }
-        LuaType::TplRef(tpl) => html_escape(tpl.get_name()),
+        LuaType::TplRef(tpl) => {
+            format!(
+                "<span class=\"hl-type\">{}</span>",
+                html_escape(tpl.get_name())
+            )
+        }
         LuaType::Variadic(variadic) => match variadic.get_type(0) {
             Some(inner) => format!(
                 "...{}",
@@ -187,7 +192,8 @@ fn render_named(db: &DbIndex, id: &LuaTypeDeclId, linker: &TypeLinker) -> String
             html_escape(&name)
         )
     } else {
-        html_escape(&name)
+        // No documentation page for this type — render it as a type name.
+        format!("<span class=\"hl-type\">{}</span>", html_escape(&name))
     }
 }
 
@@ -202,6 +208,9 @@ pub fn render_const_type_html(db: &DbIndex, typ: &LuaType, linker: &TypeLinker) 
     }
 }
 
+/// A function's parameter and return-value rows.
+pub type FunctionDetails = (Vec<HtmlParam>, Vec<HtmlParam>);
+
 /// Extracts parameter and return-value rows (with descriptions) for a function
 /// type, used to render detail tables under a method signature.
 ///
@@ -212,7 +221,7 @@ pub fn function_details_html(
     db: &DbIndex,
     typ: &LuaType,
     linker: &TypeLinker,
-) -> Option<(Vec<HtmlParam>, Vec<HtmlParam>)> {
+) -> Option<FunctionDetails> {
     let (params, returns) = match typ {
         LuaType::Signature(signature_id) => {
             let signature = db.get_signature_index().get(signature_id)?;
@@ -274,6 +283,11 @@ pub fn function_details_html(
 /// Wraps a Lua keyword in a syntax-highlight span.
 fn kw(text: &str) -> String {
     format!("<span class=\"hl-kw\">{text}</span>")
+}
+
+/// Wraps a primitive type name in a syntax-highlight span.
+fn type_kw(text: &str) -> String {
+    kw(text)
 }
 
 /// Wraps a function/method name in a syntax-highlight span.

@@ -24,6 +24,27 @@ pub struct NavGroup {
     pub items: Vec<NavItem>,
 }
 
+/// A node in the module/namespace hierarchy tree used by the sidebar.
+///
+/// Folders have `href == None` and children; leaves have an `href` and point to
+/// a generated page.
+#[derive(Debug, Clone, Serialize)]
+pub struct NavTreeNode {
+    /// Visible label (namespace segment or simple type name).
+    pub label: String,
+    /// Full search key (e.g. `class lsp.CodeActionKind`); `Some` for leaves.
+    pub data_name: Option<String>,
+    /// `class` / `enum` / `alias` for leaves, empty for folders.
+    pub kind: String,
+    pub href: Option<String>,
+    #[serde(default)]
+    pub active: bool,
+    /// Whether this folder starts expanded (on the active branch).
+    #[serde(default)]
+    pub open: bool,
+    pub children: Vec<NavTreeNode>,
+}
+
 /// Sidebar navigation model shared by every page.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct NavModel {
@@ -37,6 +58,10 @@ pub struct NavModel {
     pub type_groups: Vec<NavGroup>,
     pub module_groups: Vec<NavGroup>,
     pub global_groups: Vec<NavGroup>,
+    /// Module hierarchy tree for types (sidebar).
+    pub type_tree: Vec<NavTreeNode>,
+    /// Pre-rendered sidebar HTML (module hierarchy tree for types).
+    pub sidebar_html: String,
 }
 
 /// A parameter or return value row in a function's detail table.

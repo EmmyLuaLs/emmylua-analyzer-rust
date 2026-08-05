@@ -11,7 +11,7 @@ use emmylua_code_analysis::{DbIndex, LuaDeclId, LuaTypeDeclId};
 use tera::Tera;
 
 use crate::OutputDestination;
-use types::{HtmlDoc, NavGroup, NavItem, NavModel};
+use types::{HtmlDoc, NavGroup, NavItem, NavModel, NavTreeNode};
 
 use self::generators::{GenContext, build_global_doc, build_module_doc, build_type_doc};
 
@@ -227,11 +227,14 @@ fn mark_active(nav: &mut NavModel, kind: &str, name: &str) {
     }
 }
 
-/// Splits each nav list into letter groups (used by the sidebar).
+/// Prepares the nav for rendering: letter groups (index page), the module
+/// hierarchy tree and the pre-rendered sidebar HTML.
 fn finalize_nav(nav: &mut NavModel) {
     nav.type_groups = build_groups(&nav.types);
     nav.module_groups = build_groups(&nav.modules);
     nav.global_groups = build_groups(&nav.globals);
+    nav.type_tree = build_type_tree(&nav.types);
+    nav.sidebar_html = build_sidebar_html(nav);
 }
 
 fn build_groups(items: &[NavItem]) -> Vec<NavGroup> {
@@ -274,6 +277,160 @@ fn group_key(name: &str) -> String {
 
 fn escape(name: String) -> String {
     super::markdown_generator::escape_type_name(&name)
+}
+
+// ─── Module hierarchy tree ───────────────────────────────────────────────
+
+/// Builds the module/namespace hierarchy tree from the flat type nav items.
+///
+/// Each item name is `"class lsp.CodeActionKind"`; the namespace path
+/// (`lsp`) becomes folders and the final segment a leaf.
+fn build_type_tree(items: &[NavItem]) -> Vec<NavTreeNode> {
+    let mut roots: Vec<NavTreeNode> = Vec::new();
+    for item in items {
+        let (kind, full_name) = split_type_name(&item.name);
+        let segments: Vec<&str> = full_name.split('.').collect();
+        insert_tree(&mut roots, &segments, item, kind);
+    }
+    sort_tree(&mut roots);
+    set_open(&mut roots);
+    roots
+}
+
+fn split_type_name(name: &str) -> (&str, &str) {
+    for prefix in ["class ", "enum ", "alias "] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            return (prefix.trim(), rest);
+        }
+    }
+    ("class", name)
+}
+
+fn insert_tree(nodes: &mut Vec<NavTreeNode>, path: &[&str], item: &NavItem, kind: &str) {
+    let head = path[0];
+    if path.len() == 1 {
+        nodes.push(NavTreeNode {
+            label: head.to_string(),
+            data_name: Some(item.name.clone()),
+            kind: kind.to_string(),
+            href: Some(item.href.clone()),
+            active: item.active,
+            open: false,
+            children: Vec::new(),
+        });
+        return;
+    }
+    let idx = match nodes
+        .iter()
+        .position(|n| n.href.is_none() && n.label == head)
+    {
+        Some(idx) => idx,
+        None => {
+            nodes.push(NavTreeNode {
+                label: head.to_string(),
+                data_name: None,
+                kind: String::new(),
+                href: None,
+                active: false,
+                open: false,
+                children: Vec::new(),
+            });
+            nodes.len() - 1
+        }
+    };
+    insert_tree(&mut nodes[idx].children, &path[1..], item, kind);
+}
+
+fn sort_tree(nodes: &mut [NavTreeNode]) {
+    nodes.sort_by(|a, b| a.label.cmp(&b.label));
+    for node in nodes.iter_mut() {
+        sort_tree(&mut node.children);
+    }
+}
+
+/// Marks folders on the active branch as open. Returns whether `nodes` contain
+/// an active item.
+fn set_open(nodes: &mut [NavTreeNode]) -> bool {
+    let mut has_active = false;
+    for node in nodes.iter_mut() {
+        if node.active {
+            has_active = true;
+        } else if set_open(&mut node.children) {
+            node.open = true;
+            has_active = true;
+        }
+    }
+    has_active
+}
+
+/// Renders the full sidebar: the type hierarchy tree plus flat module/global
+/// lists. Kept in Rust (not the template) so the tree can recurse freely.
+fn build_sidebar_html(nav: &NavModel) -> String {
+    let mut html = String::new();
+    if !nav.type_tree.is_empty() {
+        html.push_str(
+            "<div class=\"sidebar-category\"><div class=\"category-title\">Types</div><ul>",
+        );
+        html.push_str(&render_tree_html(&nav.type_tree, &nav.root_prefix));
+        html.push_str("</ul></div>");
+    }
+    if !nav.modules.is_empty() {
+        html.push_str(
+            "<div class=\"sidebar-category\"><div class=\"category-title\">Modules</div><ul>",
+        );
+        for item in &nav.modules {
+            html.push_str(&render_flat_item(item, &nav.root_prefix));
+        }
+        html.push_str("</ul></div>");
+    }
+    if !nav.globals.is_empty() {
+        html.push_str(
+            "<div class=\"sidebar-category\"><div class=\"category-title\">Globals</div><ul>",
+        );
+        for item in &nav.globals {
+            html.push_str(&render_flat_item(item, &nav.root_prefix));
+        }
+        html.push_str("</ul></div>");
+    }
+    html
+}
+
+fn render_flat_item(item: &NavItem, root_prefix: &str) -> String {
+    let active_cls = if item.active { " active" } else { "" };
+    format!(
+        "<li><a data-name=\"{}\" href=\"{}{}\" class=\"nav-item{active_cls}\">{}</a></li>",
+        render::html_escape(&item.name),
+        root_prefix,
+        render::html_escape(&item.href),
+        render::html_escape(&item.name)
+    )
+}
+
+fn render_tree_html(nodes: &[NavTreeNode], root_prefix: &str) -> String {
+    let mut html = String::new();
+    for node in nodes {
+        if let Some(href) = &node.href {
+            let active_cls = if node.active { " active" } else { "" };
+            let data = node.data_name.as_deref().unwrap_or(&node.label);
+            html.push_str(&format!(
+                "<li><a data-name=\"{}\" href=\"{}{}\" class=\"nav-item{active_cls}\"><span class=\"kind-dot kind-{}\"></span>{}</a></li>",
+                render::html_escape(data),
+                root_prefix,
+                render::html_escape(href),
+                render::html_escape(&node.kind),
+                render::html_escape(&node.label)
+            ));
+        } else {
+            let open = if node.open { " open" } else { "" };
+            html.push_str(&format!(
+                "<li><details{open}><summary class=\"group-label\">{}</summary><ul>",
+                render::html_escape(&node.label)
+            ));
+            html.push_str(&render_tree_html(&node.children, root_prefix));
+            html.push_str("</ul></details></li>");
+        }
+    }
+    html
 }
 
 fn render_page(

@@ -13,23 +13,6 @@
 {% if doc.see %}<div class="see">See: {{ doc.see }}</div>{% endif %}
 {% if doc.other %}<div class="other">{{ doc.other }}</div>{% endif %}
 
-{% if doc.methods or doc.fields %}
-<nav class="member-nav">
-  {% if doc.methods %}
-  <div class="member-nav-group">
-    <span class="member-nav-title">Methods</span>
-    {% for m in doc.methods %}<a href="#{{ m.name }}">{{ m.name }}</a>{% endfor %}
-  </div>
-  {% endif %}
-  {% if doc.fields %}
-  <div class="member-nav-group">
-    <span class="member-nav-title">Fields</span>
-    {% for f in doc.fields %}<a href="#{{ f.name }}">{{ f.name }}</a>{% endfor %}
-  </div>
-  {% endif %}
-</nav>
-{% endif %}
-
 {% if doc.methods %}
 <section class="section">
   <h2>Methods</h2>

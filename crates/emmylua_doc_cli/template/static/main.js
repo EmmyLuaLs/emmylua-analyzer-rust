@@ -99,6 +99,12 @@
       sidebar.addEventListener('scroll', function () {
         sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(sidebar.scrollTop));
       });
+
+      // Bring the active nav item into view (e.g. after opening its branch).
+      var activeLink = sidebar.querySelector('a.nav-item.active');
+      if (activeLink && activeLink.scrollIntoView) {
+        activeLink.scrollIntoView({ block: 'center' });
+      }
     }
 
     if (!input || !resultsPanel) {
