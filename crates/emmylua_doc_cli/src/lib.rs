@@ -5,6 +5,7 @@ pub use cmd_args::*;
 
 mod cmd_args;
 mod common;
+mod html_generator;
 mod init;
 mod json_generator;
 mod markdown_generator;
@@ -12,16 +13,6 @@ mod markdown_generator;
 #[allow(unused)]
 pub fn run_doc_cli(mut cmd_args: CmdArgs) -> Result<(), Box<dyn std::error::Error>> {
     setup_logger(cmd_args.verbose);
-
-    if !cmd_args.input.is_empty() {
-        log::warn!("`--input` is deprecated, please use `workspace` instead");
-        cmd_args.workspace.append(&mut cmd_args.input);
-    }
-
-    if let Some(format) = cmd_args.format {
-        log::warn!("`--format` is deprecated, please use `--output-format` instead");
-        cmd_args.output_format = format;
-    }
 
     let cwd = std::env::current_dir()?;
     let workspaces: Vec<_> = cmd_args
@@ -62,5 +53,8 @@ pub fn run_doc_cli(mut cmd_args: CmdArgs) -> Result<(), Box<dyn std::error::Erro
             cmd_args.mixin,
         ),
         Format::Json => json_generator::generate_json(&analysis, cmd_args.output),
+        Format::Html => {
+            html_generator::generate_html(&analysis, cmd_args.output, cmd_args.site_name)
+        }
     }
 }

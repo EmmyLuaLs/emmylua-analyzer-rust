@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }}{% endblock title %}
+{% block content %}
+<div class="item-header">
+  <span class="item-kind">{{ doc.kind }}</span>
+  <span class="item-name">{{ doc.name }}</span>
+</div>
+{% if doc.supers %}<div class="meta"><span class="meta-label">supers:</span> {{ doc.supers | safe }}</div>{% endif %}
+{% if doc.namespace %}<div class="meta"><span class="meta-label">namespace:</span> {{ doc.namespace }}</div>{% endif %}
+{% if doc.display %}<div class="display">{{ doc.display | safe }}</div>{% endif %}
+{% if doc.description %}<div class="docblock">{{ doc.description }}</div>{% endif %}
+{% if doc.deprecated %}<div class="deprecated">Deprecated: {{ doc.deprecated }}</div>{% endif %}
+{% if doc.see %}<div class="see">See: {{ doc.see }}</div>{% endif %}
+{% if doc.other %}<div class="other">{{ doc.other }}</div>{% endif %}
+
+{% if doc.methods or doc.fields %}
+<nav class="member-nav">
+  {% if doc.methods %}
+  <div class="member-nav-group">
+    <span class="member-nav-title">Methods</span>
+    {% for m in doc.methods %}<a href="#{{ m.name }}">{{ m.name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  {% if doc.fields %}
+  <div class="member-nav-group">
+    <span class="member-nav-title">Fields</span>
+    {% for f in doc.fields %}<a href="#{{ f.name }}">{{ f.name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</nav>
+{% endif %}
+
+{% if doc.methods %}
+<section class="section">
+  <h2>Methods</h2>
+  {% for m in doc.methods %}
+  <div class="member" id="{{ m.name }}">
+    <div class="member-signature">{{ m.display | safe }}</div>
+    {% if m.overloads %}
+    <div class="member-overloads">
+      <div class="detail-title">Overloads</div>
+      {% for o in m.overloads %}<div class="member-signature">{{ o | safe }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% if m.params %}
+    <div class="member-detail">
+      <div class="detail-title">Parameters</div>
+      <table class="doc-table">
+        <tbody>
+          {% for p in m.params %}
+          <tr>
+            <td class="cell-name"><code>{{ p.name }}</code></td>
+            <td class="cell-type">{{ p.type_html | safe }}</td>
+            <td class="cell-desc">{% if p.description %}{{ p.description }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if m.returns %}
+    <div class="member-detail">
+      <div class="detail-title">Returns</div>
+      <table class="doc-table">
+        <tbody>
+          {% for r in m.returns %}
+          <tr>
+            <td class="cell-name">{% if r.name %}<code>{{ r.name }}</code>{% endif %}</td>
+            <td class="cell-type">{{ r.type_html | safe }}</td>
+            <td class="cell-desc">{% if r.description %}{{ r.description }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if m.description %}<div class="docblock">{{ m.description }}</div>{% endif %}
+    {% if m.deprecated %}<div class="deprecated">Deprecated: {{ m.deprecated }}</div>{% endif %}
+    {% if m.see %}<div class="see">See: {{ m.see }}</div>{% endif %}
+    {% if m.other %}<div class="other">{{ m.other }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if doc.fields %}
+<section class="section">
+  <h2>Fields</h2>
+  {% for f in doc.fields %}
+  <div class="member" id="{{ f.name }}">
+    <div class="member-signature">{{ f.display | safe }}</div>
+    {% if f.description %}<div class="docblock">{{ f.description }}</div>{% endif %}
+    {% if f.deprecated %}<div class="deprecated">Deprecated: {{ f.deprecated }}</div>{% endif %}
+    {% if f.see %}<div class="see">See: {{ f.see }}</div>{% endif %}
+    {% if f.other %}<div class="other">{{ f.other }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock content %}

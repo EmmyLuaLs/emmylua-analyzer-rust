@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site_name }}{% endblock title %}</title>
+<link rel="stylesheet" href="{{ root_prefix }}static/rustdoc.css">
+<script src="{{ root_prefix }}static/search-index.js" defer></script>
+<script>window.LUAFMT_ROOT = "{{ root_prefix }}";</script>
+<script src="{{ root_prefix }}static/main.js" defer></script>
+</head>
+<body>
+<header class="docbar">
+  <div class="docbar-inner">
+    <a class="docbar-title" href="{{ root_prefix }}index.html">{{ site_name }}</a>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Search..." autocomplete="off" spellcheck="false">
+      <div id="search-results" class="search-results" hidden></div>
+    </div>
+  </div>
+</header>
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    {% block sidebar %}
+    <div class="sidebar-category">
+      {% if nav.type_groups %}
+      <div class="category-title">Types</div>
+      {% for group in nav.type_groups %}
+      <details {% if group.open %}open{% endif %}>
+        <summary class="group-label">{{ group.letter }}</summary>
+        <ul>
+          {% for item in group.items %}
+          <li><a data-name="{{ item.name }}" href="{{ nav.root_prefix }}{{ item.href }}"{% if item.active %} class="active"{% endif %}>{{ item.name }}</a></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="sidebar-category">
+      {% if nav.module_groups %}
+      <div class="category-title">Modules</div>
+      {% for group in nav.module_groups %}
+      <details {% if group.open %}open{% endif %}>
+        <summary class="group-label">{{ group.letter }}</summary>
+        <ul>
+          {% for item in group.items %}
+          <li><a data-name="{{ item.name }}" href="{{ nav.root_prefix }}{{ item.href }}"{% if item.active %} class="active"{% endif %}>{{ item.name }}</a></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="sidebar-category">
+      {% if nav.global_groups %}
+      <div class="category-title">Globals</div>
+      {% for group in nav.global_groups %}
+      <details {% if group.open %}open{% endif %}>
+        <summary class="group-label">{{ group.letter }}</summary>
+        <ul>
+          {% for item in group.items %}
+          <li><a data-name="{{ item.name }}" href="{{ nav.root_prefix }}{{ item.href }}"{% if item.active %} class="active"{% endif %}>{{ item.name }}</a></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+      {% endif %}
+    </div>
+    {% endblock sidebar %}
+  </nav>
+  <main class="content">
+    {% block content %}{% endblock content %}
+  </main>
+</div>
+</body>
+</html>

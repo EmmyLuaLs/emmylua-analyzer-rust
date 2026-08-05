@@ -10,10 +10,6 @@ pub struct CmdArgs {
     #[arg(short, long, value_delimiter = ',')]
     pub config: Option<Vec<PathBuf>>,
 
-    /// Deprecated, use [WORKSPACE] instead
-    #[arg(short, long, num_args = 1..)]
-    pub input: Vec<PathBuf>,
-
     /// Path to the workspace directory
     #[arg(num_args = 1..)]
     pub workspace: Vec<PathBuf>,
@@ -33,15 +29,11 @@ pub struct CmdArgs {
     #[arg(
         long,
         short = 'f',
-        default_value = "markdown",
+        default_value = "html",
         value_enum,
         ignore_case = true
     )]
     pub output_format: Format,
-
-    /// Deprecated, use --output-format instead
-    #[arg(long, value_enum, ignore_case = true)]
-    pub format: Option<Format>,
 
     /// Specify output destination (can be stdout when output_format is json)
     #[arg(long, short, default_value = "./output")]
@@ -69,6 +61,7 @@ pub struct CmdArgs {
 pub enum Format {
     Json,
     Markdown,
+    Html,
 }
 
 #[allow(unused)]

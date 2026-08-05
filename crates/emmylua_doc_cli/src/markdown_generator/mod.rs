@@ -1,6 +1,6 @@
-mod generator;
+pub(crate) mod generator;
 mod init_tl;
-mod markdown_types;
+pub(crate) mod markdown_types;
 mod mixin_copy;
 mod render;
 
@@ -91,7 +91,7 @@ pub fn generate_markdown(
     Ok(())
 }
 
-fn escape_type_name(name: &str) -> String {
+pub(crate) fn escape_type_name(name: &str) -> String {
     name.chars()
         .map(|c| {
             // Windows Invalid Characters

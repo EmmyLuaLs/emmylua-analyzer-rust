@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ site_name }}{% endblock title %}
+{% block content %}
+<h1 class="item-title">{{ site_name }}</h1>
+<p class="lead">Documentation generated from EmmyLua annotations.</p>
+
+{% if nav.type_groups %}
+<section class="section">
+  <h2>Types</h2>
+  <div class="index-groups">
+    {% for group in nav.type_groups %}
+    <div class="index-group">
+      <div class="index-letter">{{ group.letter }}</div>
+      <ul class="index-list">
+        {% for item in group.items %}
+        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if nav.module_groups %}
+<section class="section">
+  <h2>Modules</h2>
+  <div class="index-groups">
+    {% for group in nav.module_groups %}
+    <div class="index-group">
+      <div class="index-letter">{{ group.letter }}</div>
+      <ul class="index-list">
+        {% for item in group.items %}
+        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if nav.global_groups %}
+<section class="section">
+  <h2>Globals</h2>
+  <div class="index-groups">
+    {% for group in nav.global_groups %}
+    <div class="index-group">
+      <div class="index-letter">{{ group.letter }}</div>
+      <ul class="index-list">
+        {% for item in group.items %}
+        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock content %}

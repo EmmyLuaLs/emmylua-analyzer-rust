@@ -19,6 +19,7 @@ include = [
 # local
 emmylua_code_analysis.workspace = true
 emmylua_parser.workspace = true
+emmylua_parser_desc.workspace = true
 
 # external
 serde.workspace = true

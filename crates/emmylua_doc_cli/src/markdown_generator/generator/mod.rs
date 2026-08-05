@@ -11,7 +11,7 @@ pub use typ_gen::generate_type_markdown;
 
 use super::markdown_types::Property;
 
-fn collect_property(db: &DbIndex, semantic_decl: LuaSemanticDeclId) -> Property {
+pub(crate) fn collect_property(db: &DbIndex, semantic_decl: LuaSemanticDeclId) -> Property {
     let mut doc_property = Property::default();
     let property = db.get_property_index().get_property(&semantic_decl);
     if let Some(property) = property {

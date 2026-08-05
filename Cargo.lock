@@ -588,6 +588,7 @@ dependencies = [
  "emmy_lsp_types",
  "emmylua_code_analysis",
  "emmylua_parser",
+ "emmylua_parser_desc",
  "fern",
  "include_dir",
  "log",
