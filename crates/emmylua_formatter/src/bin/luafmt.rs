@@ -7,9 +7,11 @@ use std::{
 
 use clap::Parser;
 use emmylua_formatter::{
-    check_text, cmd_args, collect_lua_files, default_config_toml,
+    LuaFormatConfig, SourceText, check_text, cmd_args, collect_lua_files, default_config_toml,
     diff::{DiffRenderOptions, render_unified_diff},
+    reformat_lua_code,
 };
+use emmylua_parser::LuaLanguageLevel;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -36,6 +38,44 @@ fn relative_diff_path(path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+/// Reports a syntax error to stderr and flags a non-zero exit code.
+fn report_syntax_error(
+    label: &str,
+    error: &emmylua_formatter::LuaSyntaxErrorInfo,
+    exit_code: &mut i32,
+) {
+    eprintln!(
+        "{label}: syntax error at {}:{}: {}",
+        error.line, error.column, error.message
+    );
+    *exit_code = 2;
+}
+
+/// When `--verify` is set, reformats the output and warns if it is not stable.
+fn verify_idempotent(
+    source: &str,
+    formatted: &str,
+    level: LuaLanguageLevel,
+    config: &LuaFormatConfig,
+    label: &str,
+    exit_code: &mut i32,
+) {
+    if formatted == source {
+        return;
+    }
+    let re_formatted = reformat_lua_code(
+        &SourceText {
+            text: formatted,
+            level,
+        },
+        config,
+    );
+    if re_formatted != formatted {
+        eprintln!("warning: {label}: formatting is not idempotent");
+        *exit_code = 2;
+    }
 }
 
 fn main() {
@@ -72,18 +112,31 @@ fn main() {
             }
         };
 
-        let resolved = match cmd_args::resolve_style(&args, None) {
+        let resolved = match cmd_args::resolve_style(&args, args.stdin_filename.as_deref()) {
             Ok(resolved) => resolved,
             Err(err) => {
                 eprintln!("Error: {err}");
                 exit(2);
             }
         };
-        let output = check_text(
-            &content,
-            resolved.config.syntax.level.into(),
-            &resolved.config,
-        );
+        let level = resolved.config.syntax.level.into();
+        let output = check_text(&content, level, &resolved.config);
+
+        if let Some(error) = &output.syntax_error {
+            report_syntax_error("<stdin>", error, &mut exit_code);
+        }
+
+        if args.verify {
+            verify_idempotent(
+                &content,
+                &output.formatted,
+                level,
+                &resolved.config,
+                "<stdin>",
+                &mut exit_code,
+            );
+        }
+
         let changed = output.changed;
 
         if args.check || args.list_different {
@@ -150,21 +203,34 @@ fn main() {
         let format_result = cmd_args::resolve_style(&args, Some(path.as_path()))
             .map_err(emmylua_formatter::FormatterError::SyntaxError)
             .and_then(|resolved| {
+                let config = resolved.config;
                 fs::read_to_string(path)
                     .map_err(emmylua_formatter::FormatterError::from)
                     .map(|source| {
-                        let output = check_text(
-                            &source,
-                            resolved.config.syntax.level.into(),
-                            &resolved.config,
-                        );
-                        (path.clone(), source, output.formatted, output.changed)
+                        let level: emmylua_parser::LuaLanguageLevel = config.syntax.level.into();
+                        let output = check_text(&source, level, &config);
+                        (path.clone(), source, config, level, output)
                     })
             });
 
         match format_result {
-            Ok(result) => {
-                let (result_path, source, formatted, changed) = result;
+            Ok((result_path, source, config, level, output)) => {
+                if let Some(error) = &output.syntax_error {
+                    report_syntax_error(&result_path.to_string_lossy(), error, &mut exit_code);
+                }
+
+                if args.verify {
+                    verify_idempotent(
+                        &source,
+                        &output.formatted,
+                        level,
+                        &config,
+                        &result_path.to_string_lossy(),
+                        &mut exit_code,
+                    );
+                }
+
+                let changed = output.changed;
 
                 if args.check || args.list_different {
                     if changed {
@@ -177,25 +243,25 @@ fn main() {
                                 render_unified_diff(
                                     Some(&relative_diff_path(&result_path)),
                                     &source,
-                                    &formatted,
+                                    &output.formatted,
                                     &diff_render_options,
                                 )
                             );
                         }
                     }
                 } else if args.write {
-                    if changed && let Err(e) = fs::write(path, formatted) {
+                    if changed && let Err(e) = fs::write(path, &output.formatted) {
                         eprintln!("Failed to write {}: {e}", path.to_string_lossy());
                         exit_code = 2;
                     }
                 } else if let Some(out) = &args.output {
-                    if let Err(e) = fs::write(out, formatted) {
+                    if let Err(e) = fs::write(out, &output.formatted) {
                         eprintln!("Failed to write output to {out:?}: {e}");
                         exit(2);
                     }
                 } else {
                     let mut stdout = io::stdout();
-                    if let Err(e) = stdout.write_all(formatted.as_bytes()) {
+                    if let Err(e) = stdout.write_all(output.formatted.as_bytes()) {
                         eprintln!("Failed to write to stdout: {e}");
                         exit(2);
                     }

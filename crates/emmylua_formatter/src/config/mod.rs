@@ -1,3 +1,4 @@
+use emmylua_parser::LuaLanguageLevel;
 use serde::{Deserialize, Serialize};
 
 /// Formatter root config.
@@ -443,16 +444,16 @@ pub enum LuaSyntaxLevel {
     LuaJIT3,
 }
 
-impl From<LuaSyntaxLevel> for emmylua_parser::LuaLanguageLevel {
+impl From<LuaSyntaxLevel> for LuaLanguageLevel {
     fn from(level: LuaSyntaxLevel) -> Self {
         match level {
-            LuaSyntaxLevel::Lua51 => emmylua_parser::LuaLanguageLevel::Lua51,
-            LuaSyntaxLevel::Lua52 => emmylua_parser::LuaLanguageLevel::Lua52,
-            LuaSyntaxLevel::Lua53 => emmylua_parser::LuaLanguageLevel::Lua53,
-            LuaSyntaxLevel::Lua54 => emmylua_parser::LuaLanguageLevel::Lua54,
-            LuaSyntaxLevel::Lua55 => emmylua_parser::LuaLanguageLevel::Lua55,
-            LuaSyntaxLevel::LuaJIT => emmylua_parser::LuaLanguageLevel::LuaJIT,
-            LuaSyntaxLevel::LuaJIT3 => emmylua_parser::LuaLanguageLevel::LuaJIT3,
+            LuaSyntaxLevel::Lua51 => LuaLanguageLevel::Lua51,
+            LuaSyntaxLevel::Lua52 => LuaLanguageLevel::Lua52,
+            LuaSyntaxLevel::Lua53 => LuaLanguageLevel::Lua53,
+            LuaSyntaxLevel::Lua54 => LuaLanguageLevel::Lua54,
+            LuaSyntaxLevel::Lua55 => LuaLanguageLevel::Lua55,
+            LuaSyntaxLevel::LuaJIT => LuaLanguageLevel::LuaJIT,
+            LuaSyntaxLevel::LuaJIT3 => LuaLanguageLevel::LuaJIT3,
         }
     }
 }

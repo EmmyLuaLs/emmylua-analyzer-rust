@@ -9,7 +9,7 @@ use glob::Pattern;
 use toml_edit::{de::from_str as from_toml_str, ser::to_string_pretty as to_toml_string};
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{LuaFormatConfig, SourceText, reformat_lua_code};
+use crate::{LuaFormatConfig, LuaSyntaxErrorInfo, SourceText, reformat_lua_code_with_info};
 
 const CONFIG_FILE_NAMES: [&str; 2] = [".luafmt.toml", "luafmt.toml"];
 const IGNORE_FILE_NAME: &str = ".luafmtignore";
@@ -32,6 +32,8 @@ pub struct FormatCheckResult {
     pub formatted: String,
     pub changed: bool,
     pub changed_line_ranges: Vec<ChangedLineRange>,
+    /// Set when the source could not be parsed and was returned unchanged.
+    pub syntax_error: Option<LuaSyntaxErrorInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,7 +149,9 @@ pub fn check_text(
     config: &LuaFormatConfig,
 ) -> FormatCheckResult {
     let source = SourceText { text: code, level };
-    let formatted = reformat_lua_code(&source, config);
+    let result = reformat_lua_code_with_info(&source, config);
+    let formatted = result.formatted;
+    let syntax_error = result.syntax_error;
     let changed = formatted != code;
     let changed_line_ranges = if changed {
         collect_changed_line_ranges(code, &formatted)
@@ -158,6 +162,7 @@ pub fn check_text(
         formatted,
         changed,
         changed_line_ranges,
+        syntax_error,
     }
 }
 
@@ -668,6 +673,47 @@ mod tests {
         assert_eq!(result.changed_line_ranges.len(), 1);
         assert_eq!(result.changed_line_ranges[0].start_line, 1);
         assert_eq!(result.changed_line_ranges[0].end_line, 1);
+    }
+
+    #[test]
+    fn test_check_text_reports_syntax_error() {
+        let config = LuaFormatConfig::default();
+        let source = "local x = )\nprint(1)\n";
+
+        let result = check_text(source, LuaLanguageLevel::default(), &config);
+
+        assert!(!result.changed);
+        assert_eq!(result.formatted, source);
+        let error = result.syntax_error.expect("expected a syntax error");
+        assert!(error.line >= 1);
+        assert!(!error.message.is_empty());
+    }
+
+    #[test]
+    fn test_check_text_reports_no_syntax_error_for_valid_code() {
+        let config = LuaFormatConfig::default();
+
+        let result = check_text("local x = 1\n", LuaLanguageLevel::default(), &config);
+
+        assert!(result.syntax_error.is_none());
+    }
+
+    #[test]
+    fn test_reformat_lua_code_with_info_reports_error_position() {
+        let config = LuaFormatConfig::default();
+        let source = "local a = 1\nlocal b = ()\n";
+
+        let result = crate::reformat_lua_code_with_info(
+            &crate::SourceText {
+                text: source,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+
+        let error = result.syntax_error.expect("expected a syntax error");
+        assert_eq!(error.line, 2);
+        assert_eq!(result.formatted, source);
     }
 
     #[test]

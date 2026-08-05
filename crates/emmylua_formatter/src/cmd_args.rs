@@ -28,6 +28,16 @@ pub struct CliArgs {
     #[arg(long)]
     pub stdin: bool,
 
+    /// Path to associate with stdin so config resolution and diffs work as if
+    /// the input came from that file
+    #[arg(long, value_name = "PATH", value_hint = clap::ValueHint::FilePath)]
+    pub stdin_filename: Option<PathBuf>,
+
+    /// After formatting, format the result again and warn if the output is not
+    /// idempotent
+    #[arg(long)]
+    pub verify: bool,
+
     /// Write formatted result back to the file(s)
     #[arg(long)]
     pub write: bool,
