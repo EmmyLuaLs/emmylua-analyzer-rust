@@ -60,6 +60,8 @@ pub enum OutputFormat {
     Json,
     Text,
     Sarif,
+    /// GitHub Actions workflow commands (`::error` / `::warning` / `::notice`)
+    Github,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

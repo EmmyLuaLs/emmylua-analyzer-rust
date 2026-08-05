@@ -80,6 +80,19 @@ Only output warnings and errors:
 emmylua_check . --severity warn
 ```
 
+#### GitHub Actions Annotations
+
+Output diagnostics as [GitHub Actions workflow commands](https://docs.github.com/actions/reference/workflow-commands-for-github-actions#setting-an-error-message), so issues appear as inline annotations on the changed lines in pull requests:
+```shell
+emmylua_check . -f github
+```
+
+Example output:
+```
+::error file=src/main.lua,line=10,col=5,endLine=10,endColumn=16::undefined global variable: foo
+::warning file=src/util.lua,line=3,col=1,endLine=3,endColumn=9::use new_fn instead
+```
+
 ---
 
 ## ⚙️ Configuration
@@ -103,7 +116,7 @@ For detailed information on all available diagnostics and configuration options,
 
 ## 🛠️ CI/CD Integration
 
-You can easily integrate `emmylua_check` into your GitHub Actions workflow to automate code checks.
+You can easily integrate `emmylua_check` into your GitHub Actions workflow to automate code checks. Using the `-f github` output format, every diagnostic is emitted as an annotation directly on the affected lines in pull requests.
 
 **Example `.github/workflows/check.yml`:**
 ```yaml
@@ -121,7 +134,13 @@ jobs:
       - name: Install emmylua_check
         run: cargo install emmylua_check
       - name: Run check
-        run: emmylua_check .
+        run: emmylua_check . -f github
+```
+
+With `--warnings-as-errors`, the workflow fails the build when warnings are present, while still showing them as annotations:
+```yaml
+      - name: Run check (warnings as errors)
+        run: emmylua_check . -f github --warnings-as-errors
 ```
 
 ---
@@ -137,7 +156,7 @@ Arguments:
 Options:
   -c, --config <CONFIG>                Path to configuration file. If not provided, ".emmyrc.json" and ".luarc.json" will be searched in the workspace directory
   -i, --ignore <IGNORE>                Comma-separated list of ignore patterns. Patterns must follow glob syntax
-  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif]
+  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif, github]
       --output <OUTPUT>                Specify output target (stdout or file path, only used when output_format is json) [default: stdout]
       --warnings-as-errors             Treat warnings as errors
       --severity <SEVERITY>            Only output diagnostics at this severity or above [possible values: error, warn, info, hint]

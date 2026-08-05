@@ -1,3 +1,4 @@
+mod github_output_writer;
 mod json_output_writer;
 mod sarif_output_writer;
 mod text_output_writer;
@@ -31,6 +32,9 @@ pub async fn output_result(
             Box::new(text_output_writer::TextOutputWriter::new(workspace.clone()))
         }
         OutputFormat::Sarif => Box::new(sarif_output_writer::SarifOutputWriter::new(output)),
+        OutputFormat::Github => Box::new(github_output_writer::GithubOutputWriter::new(
+            workspace.clone(),
+        )),
     };
 
     let terminal_display = TerminalDisplay::new(workspace);
