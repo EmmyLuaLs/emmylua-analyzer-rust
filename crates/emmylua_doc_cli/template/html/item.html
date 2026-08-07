@@ -48,13 +48,13 @@
     {% if doc.methods %}
     <li><a href="#methods">Methods</a></li>
     {% for m in doc.methods %}
-    <li class="toc-sub"><a href="#{{ m.name }}">{{ m.name }}</a></li>
+    <li class="toc-sub"><a href="#{{ m.name }}">{{ m.short_name }}</a></li>
     {% endfor %}
     {% endif %}
     {% if doc.fields %}
     <li><a href="#fields">Fields</a></li>
     {% for f in doc.fields %}
-    <li class="toc-sub"><a href="#{{ f.name }}">{{ f.name }}</a></li>
+    <li class="toc-sub"><a href="#{{ f.name }}">{{ f.short_name }}</a></li>
     {% endfor %}
     {% endif %}
   </ul>

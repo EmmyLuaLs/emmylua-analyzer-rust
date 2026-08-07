@@ -1,81 +1,36 @@
 {% extends "base.html" %}
+{% import "macros.html" as macros %}
 {% block title %}{{ site_name }}{% endblock title %}
 {% block content %}
-<h1 class="item-title">{{ site_name }}</h1>
-<p class="lead">Documentation generated from EmmyLua annotations.</p>
-
-<div class="stat-cards">
-  {% if nav.types | length > 0 %}
-  <a class="stat-card" href="#types">
-    <span class="stat-num">{{ nav.types | length }}</span>
-    <span class="stat-label">Types</span>
-  </a>
-  {% endif %}
-  {% if nav.modules | length > 0 %}
-  <a class="stat-card" href="#modules">
-    <span class="stat-num">{{ nav.modules | length }}</span>
-    <span class="stat-label">Modules</span>
-  </a>
-  {% endif %}
-  {% if nav.globals | length > 0 %}
-  <a class="stat-card" href="#globals">
-    <span class="stat-num">{{ nav.globals | length }}</span>
-    <span class="stat-label">Globals</span>
-  </a>
-  {% endif %}
-</div>
-
-{% if nav.type_groups %}
-<section class="section" id="types">
-  <h2>Types</h2>
-  <div class="index-groups">
-    {% for group in nav.type_groups %}
-    <div class="index-group">
-      <div class="index-letter">{{ group.letter }}</div>
-      <ul class="index-list">
-        {% for item in group.items %}
-        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endfor %}
+<header class="hero">
+  <h1 class="hero-title">{{ site_name }}</h1>
+  <p class="hero-lead">Documentation generated from EmmyLua annotations.</p>
+  <div class="hero-search-hint">
+    Press <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> to search, or browse below.
   </div>
-</section>
-{% endif %}
-
-{% if nav.module_groups %}
-<section class="section" id="modules">
-  <h2>Modules</h2>
-  <div class="index-groups">
-    {% for group in nav.module_groups %}
-    <div class="index-group">
-      <div class="index-letter">{{ group.letter }}</div>
-      <ul class="index-list">
-        {% for item in group.items %}
-        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endfor %}
+  <div class="stat-cards">
+    {% if nav.types | length > 0 %}
+    <a class="stat-card" href="#types">
+      <span class="stat-num">{{ nav.types | length }}</span>
+      <span class="stat-label">Types</span>
+    </a>
+    {% endif %}
+    {% if nav.modules | length > 0 %}
+    <a class="stat-card" href="#modules">
+      <span class="stat-num">{{ nav.modules | length }}</span>
+      <span class="stat-label">Modules</span>
+    </a>
+    {% endif %}
+    {% if nav.globals | length > 0 %}
+    <a class="stat-card" href="#globals">
+      <span class="stat-num">{{ nav.globals | length }}</span>
+      <span class="stat-label">Globals</span>
+    </a>
+    {% endif %}
   </div>
-</section>
-{% endif %}
+</header>
 
-{% if nav.global_groups %}
-<section class="section" id="globals">
-  <h2>Globals</h2>
-  <div class="index-groups">
-    {% for group in nav.global_groups %}
-    <div class="index-group">
-      <div class="index-letter">{{ group.letter }}</div>
-      <ul class="index-list">
-        {% for item in group.items %}
-        <li><a href="{{ item.href }}">{{ item.name }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
+{{ macros::index_section(id="types", title="Types", groups=nav.type_groups) }}
+{{ macros::index_section(id="modules", title="Modules", groups=nav.module_groups) }}
+{{ macros::index_section(id="globals", title="Globals", groups=nav.global_groups) }}
 {% endblock content %}

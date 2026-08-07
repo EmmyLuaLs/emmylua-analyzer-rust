@@ -69,6 +69,9 @@ pub fn generate_html(
             nav.types.push(NavItem {
                 name: format!("{} {}", doc.kind, doc.name),
                 href: filename.clone(),
+                kind: doc.kind.clone(),
+                kind_letter: String::new(),
+                short_name: doc.name.clone(),
                 active: false,
             });
             pages.push((filename, doc));
@@ -88,6 +91,9 @@ pub fn generate_html(
             nav.modules.push(NavItem {
                 name: doc.name.clone(),
                 href: filename.clone(),
+                kind: "module".to_string(),
+                kind_letter: String::new(),
+                short_name: doc.name.clone(),
                 active: false,
             });
             pages.push((filename, doc));
@@ -104,6 +110,9 @@ pub fn generate_html(
             nav.globals.push(NavItem {
                 name: doc.name.clone(),
                 href: filename.clone(),
+                kind: "global".to_string(),
+                kind_letter: String::new(),
+                short_name: doc.name.clone(),
                 active: false,
             });
             pages.push((filename, doc));
@@ -111,6 +120,7 @@ pub fn generate_html(
     }
 
     sort_nav(&mut nav);
+    fill_kind_letters(&mut nav);
 
     // Render item pages (in subdirectories -> "../" prefix).
     for (filename, mut doc) in pages {
@@ -214,6 +224,23 @@ fn sort_nav(nav: &mut NavModel) {
     nav.globals.sort_by(|a, b| a.name.cmp(&b.name));
 }
 
+/// Fills the `kind_letter` badge field on every nav item.
+fn fill_kind_letters(nav: &mut NavModel) {
+    for item in nav
+        .types
+        .iter_mut()
+        .chain(nav.modules.iter_mut())
+        .chain(nav.globals.iter_mut())
+    {
+        item.kind_letter = item
+            .kind
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_default();
+    }
+}
+
 /// Marks the nav entry matching the current page as active.
 fn mark_active(nav: &mut NavModel, kind: &str, name: &str) {
     let target = match kind {
@@ -256,8 +283,14 @@ fn build_groups(items: &[NavItem]) -> Vec<NavGroup> {
         .into_iter()
         .map(|(letter, group_items)| {
             let open = group_items.iter().any(|item| item.active);
+            let anchor = if letter == "#" {
+                "num".to_string()
+            } else {
+                letter.clone()
+            };
             NavGroup {
                 letter,
+                anchor,
                 open,
                 items: group_items,
             }

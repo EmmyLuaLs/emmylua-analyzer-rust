@@ -1,10 +1,9 @@
 {% macro member(m) %}
-<details class="member{% if m.deprecated %} is-deprecated{% endif %}" id="{{ m.name }}">
-  <summary class="member-head">
-    <span class="group-caret" aria-hidden="true"></span>
+<div class="member{% if m.deprecated %} is-deprecated{% endif %}" id="{{ m.name }}">
+    <div class="member-head">
     <span class="member-signature">{{ m.display | safe }}</span>
-    {% if m.deprecated %}<span class="deprecated-badge deprecated-dot" title="Deprecated"></span>{% endif %}
-  </summary>
+    {% if m.deprecated %}<span class="deprecated-badge">Deprecated</span>{% endif %}
+    </div>
   <div class="member-body">
     {% if m.description %}<div class="docblock">{{ m.description }}</div>{% endif %}
     {% if m.overloads %}
@@ -41,9 +40,38 @@
       </dl>
     </div>
     {% endif %}
-    {% if m.deprecated %}<div class="deprecated"><span class="deprecated-badge">Deprecated</span>{{ m.deprecated }}</div>{% endif %}
+    {% if m.deprecated %}<div class="deprecated">{{ m.deprecated }}</div>{% endif %}
     {% if m.see %}<div class="see">See: {{ m.see }}</div>{% endif %}
     {% if m.other %}<div class="other">{{ m.other }}</div>{% endif %}
   </div>
-</details>
+</div>
+{% endmacro %}
+
+{% macro index_section(id, title, groups) %}
+{% if groups %}
+<section class="section" id="{{ id }}">
+    <h2><a class="section-link" href="#{{ id }}">{{ title }}</a></h2>
+    <nav class="letter-bar" aria-label="Jump to letter">
+        {% for group in groups %}
+        <a href="#{{ id }}-{{ group.anchor }}">{{ group.letter }}</a>
+        {% endfor %}
+    </nav>
+    <div class="index-groups">
+        {% for group in groups %}
+        <div class="index-group" id="{{ id }}-{{ group.anchor }}">
+            <div class="index-letter">{{ group.letter }}</div>
+            <ul class="index-list">
+                {% for item in group.items %}
+                <li>
+                    <a href="{{ item.href }}">{% if item.kind_letter %}<span class="kind-badge kind-{{ item.kind }}"
+                            aria-hidden="true">{{ item.kind_letter
+                            }}</span>{% endif %}{{ item.short_name }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 {% endmacro %}

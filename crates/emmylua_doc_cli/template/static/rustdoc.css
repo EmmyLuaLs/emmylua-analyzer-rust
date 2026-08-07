@@ -468,7 +468,7 @@ a:hover { text-decoration: underline; }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
+
   .pagehead .meta {
     margin: 6px 0 0;
 }
@@ -600,10 +600,10 @@ pre.signature a:hover { text-decoration: underline; }
 
 .display pre.signature { border-left-width: 4px; }
 
-/* ─── Members (collapsible) ───────────────────────────── */
-/* Each member is a <details>: the summary row shows caret + signature at a
-   glance; expanding reveals description, params, returns and overloads. Long
-   classes stay scannable without scrolling through giant cards. */
+/* ─── Members (rustdoc-style, always expanded) ────────── */
+/* Each member is a plain list entry: a bold signature row followed by its
+   indented description. No cards, no collapsing - long pages are scanned by
+   the signature column, exactly like rustdoc's Implementations section. */
 .section-count {
   font-size: 11px;
   font-weight: 600;
@@ -625,51 +625,32 @@ pre.signature a:hover { text-decoration: underline; }
   color: var(--accent);
   text-decoration: none;
 }
+
 .section .member {
-  margin: 0 0 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  transition: border-color .15s ease, box-shadow .15s ease;
+  padding: 10px 0 12px;
+    border-top: 1px solid var(--border);
 }
-.section .member:hover {
-  border-color: var(--accent);
-  }
-  
-  .section .member[open] {
-  box-shadow: var(--shadow);
+.section .member:first-of-type {
+  border-top: none;
 }
+.member:target {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+  border-radius: 4px;
+}
+
 .member-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.member-head::-webkit-details-marker {
-  display: none;
-}
-
-.member-head .group-caret {
-  color: var(--fg-muted);
-}
-
-.member[open]>.member-head .group-caret {
-  transform: rotate(90deg);
-}
-
-.member-head:hover .member-signature {
-  color: var(--accent-strong);
+  align-items: baseline;
+    gap: 10px;
 }
 
 .member-signature {
   flex: 1;
   min-width: 0;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
+  font-size: 13.5px;
+    font-weight: 600;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -677,21 +658,22 @@ pre.signature a:hover { text-decoration: underline; }
 .member-signature::-webkit-scrollbar {
   display: none;
 }
+
 .member-signature pre.signature {
   background: transparent;
   border: none;
   border-radius: 0;
   padding: 0;
   margin: 0;
+  font-weight: inherit;
 }
 
 .member-body {
-  padding: 2px 14px 12px 36px;
-  border-top: 1px dashed var(--border);
+  padding-left: 20px;
 }
 
 .member-body .docblock {
-  margin: 10px 0 0;
+  margin: 4px 0 0;
   color: var(--fg-muted);
   font-size: 14px;
 }
@@ -702,24 +684,6 @@ pre.signature a:hover { text-decoration: underline; }
 
 .member-body .docblock p:last-child {
   margin: 0;
-}
-
-.deprecated-dot {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  margin: 0;
-  border-radius: 50%;
-  font-size: 0;
-  vertical-align: 0;
-}
-.deprecated-dot::after {
-  content: "!";
-  font-size: 10px;
-  line-height: 14px;
-  display: block;
-  text-align: center;
 }
 
 /* Member detail: parameters / returns as a definition list. The name and its
@@ -805,21 +769,133 @@ pre.signature a:hover { text-decoration: underline; }
 }
 
 /* ─── Index page ──────────────────────────────────────── */
-.index-groups { display: flex; flex-wrap: wrap; gap: 20px 36px; }
-.index-group { min-width: 180px; }
+.hero {
+  padding: 20px 0 8px;
+}
+
+.hero-title {
+  margin: 0 0 6px;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.hero-lead {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: var(--fg-muted);
+}
+
+.hero-search-hint {
+  font-size: 13.5px;
+  color: var(--fg-muted);
+}
+
+.hero-search-hint kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-muted);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 17px;
+  text-align: center;
+}
+
+/* Letter quick-jump bar: sticky within the section so long listings stay
+   navigable without scrolling back up. */
+.letter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0 0 14px;
+  padding: 6px 4px;
+  position: sticky;
+  top: 52px;
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.letter-bar a {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.letter-bar a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.index-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.index-group {
+  min-width: 200px;
+  flex: 1 1 200px;
+  max-width: 300px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  scroll-margin-top: 112px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.index-group:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+.index-group:target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .index-letter {
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--accent);
   border-bottom: 1px solid var(--border);
-  padding-bottom: 3px;
-  margin-bottom: 6px;
+  padding-bottom: 5px;
+    margin-bottom: 7px;
 }
 .index-list { list-style: none; margin: 0; padding: 0; }
 .index-list li { margin: 1px 0; }
-.index-list a { font-size: 13.5px; color: var(--fg); }
-.index-list a:hover { color: var(--accent); }
+.index-list a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: 5px;
+  font-size: 13.5px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-list a:hover {
+  background: var(--bg-muted);
+  color: var(--accent);
+  text-decoration: none;
+}
 
 /* ─── Icon buttons (theme / drawer toggle) ───────────── */
 .icon-btn {
@@ -1140,7 +1216,7 @@ pre.signature a:hover { text-decoration: underline; }
     .pagehead {
       top: 52px;
     }
-  
+
     .pagehead-name {
       font-size: 20px;
     }
@@ -1162,12 +1238,12 @@ pre.signature a:hover { text-decoration: underline; }
       backdrop-filter: none;
       border-bottom: none;
     }
-  
+
     /* Expand every member so printouts contain the full documentation. */
     .member-body {
       display: block !important;
     }
-  
+
     .member>.member-head .group-caret {
       display: none;
     }

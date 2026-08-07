@@ -8,6 +8,17 @@ use super::render::html_escape;
 pub struct NavItem {
     pub name: String,
     pub href: String,
+    /// Item kind for types (`class` / `enum` / `alias`), empty for
+    /// modules/globals. Used for the small colored badge in listings.
+    #[serde(default)]
+    pub kind: String,
+    /// Uppercase first letter of `kind` (`C` / `E` / `A`), empty when `kind`
+    /// is empty. Shown on the badge next to the item in listings.
+    #[serde(default)]
+    pub kind_letter: String,
+    /// Display name without the kind prefix. Used by index page listings.
+    #[serde(default)]
+    pub short_name: String,
     /// Whether this entry corresponds to the current page.
     #[serde(default)]
     pub active: bool,
@@ -19,6 +30,9 @@ pub struct NavItem {
 pub struct NavGroup {
     /// The leading character, or `#` for non-alphabetic names.
     pub letter: String,
+    /// URL-safe anchor id for the group (letters map to themselves, `#` to `num`).
+    #[serde(default)]
+    pub anchor: String,
     /// Whether the group should start expanded (contains the active item).
     pub open: bool,
     pub items: Vec<NavItem>,
@@ -76,9 +90,16 @@ pub struct HtmlParam {
 /// A documented member (method or field).
 #[derive(Debug, Serialize, Default)]
 pub struct HtmlMember {
+    /// Full name including the owner prefix (e.g. `buffer.put`); used as the
+    /// in-page anchor id so deep links stay unique.
     pub name: String,
+    /// Bare member name (e.g. `put`); shown in the TOC, rustdoc-style.
+    pub short_name: String,
     /// Rendered `<pre>` code block.
     pub display: String,
+    /// First paragraph of the description (rendered markdown); shown in the
+    /// collapsed member header as a one-line summary.
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub deprecated: Option<String>,
     pub see: Option<String>,
@@ -136,10 +157,23 @@ impl HtmlMember {
         display: String,
         property: crate::markdown_generator::markdown_types::Property,
     ) -> HtmlMember {
+        let short_name = name.rsplit('.').next().unwrap_or(&name).to_string();
+        let description = property.description.map(|s| render_markdown(&s));
+        // The summary is the rendered first paragraph of the description.
+        let summary = description.as_deref().and_then(|html| {
+            let end = html.find("</p>").map(|i| i + 4).unwrap_or(0);
+            if end > 0 {
+                Some(html[..end].to_string())
+            } else {
+                None
+            }
+        });
         HtmlMember {
             name,
+            short_name,
             display,
-            description: property.description.map(|s| render_markdown(&s)),
+            summary,
+            description,
             deprecated: property.deprecated.map(|s| html_escape(&s)),
             see: property.see.map(|s| render_markdown(&s)),
             other: property.other.map(|s| render_markdown(&s)),
