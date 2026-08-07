@@ -11,7 +11,8 @@ use crate::{
 use super::super::{
     mismatch::TypeMismatch,
     relation::{
-        DeclaredRelationPolicy, IntersectionState, Relater, RelationOutcome, RelationResult,
+        DeclaredRelationPolicy, IntersectionState, Relater, RelationFailure, RelationOutcome,
+        RelationResult,
     },
     sub_type::{get_base_type_id, is_sub_type_of},
 };
@@ -318,7 +319,7 @@ fn relate_class_source_to_generic_target(
             }
 
             if let Some(kind) = indeterminate {
-                return Err(relater.indeterminate_failure(kind, source, target));
+                return Err(RelationFailure::Indeterminate(kind));
             }
             return relater.unrelated(|| TypeMismatch::incompatible(source, target));
         }

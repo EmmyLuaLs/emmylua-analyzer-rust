@@ -147,7 +147,7 @@ fn relate_to_callable_targets(
             });
     }
     if let Some(kind) = indeterminate {
-        return Err(relater.indeterminate_failure(kind, source, target));
+        return Err(RelationFailure::Indeterminate(kind));
     }
     Ok(())
 }

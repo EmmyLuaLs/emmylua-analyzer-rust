@@ -38,14 +38,17 @@ pub fn probe_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> Rel
     RelationSession::probe(db, source, target)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssignabilityResult {
+    Assignable,
+    NotAssignable(TypeMismatch),
+    Indeterminate(OverflowKind),
+}
+
 /// 检查 source 到 target 的赋值关系, 并在最终失败分支保留最小诊断证据.
-pub fn check_assignable(
-    db: &DbIndex,
-    source: &LuaType,
-    target: &LuaType,
-) -> Result<(), TypeMismatch> {
+pub fn check_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> AssignabilityResult {
     if fast_eq_check(source, target) {
-        return Ok(());
+        return AssignabilityResult::Assignable;
     }
 
     RelationSession::explain(db, source, target)

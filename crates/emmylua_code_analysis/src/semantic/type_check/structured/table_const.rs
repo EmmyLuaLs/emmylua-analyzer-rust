@@ -1,8 +1,8 @@
 use crate::{InFiled, LuaArrayType, LuaMemberKey, LuaMemberOwner, LuaTupleType, LuaType};
 
 use super::super::{
-    mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationResult},
+    mismatch::{OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment},
+    relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
 use super::{
     array::effective_array_base,
@@ -85,7 +85,7 @@ pub(super) fn relate_table_const_to_tuple(
 ) -> RelationResult {
     let owner = LuaMemberOwner::Element(range.clone());
     for (index, target_type) in target_tuple.get_types().iter().enumerate() {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let key = LuaMemberKey::Integer(index as i64 + 1);
         let source_type = relater
             .db()
@@ -128,11 +128,11 @@ pub(super) fn relate_table_const_to_array(
     let owner = LuaMemberOwner::Element(range.clone());
     let member_len = relater.db().get_member_index().get_member_len(&owner);
     if member_len > relater.remaining_relation_budget() {
-        return Err(relater.budget_failure(source, target));
+        return Err(RelationFailure::Indeterminate(OverflowKind::Budget));
     }
 
     for index in 0..member_len {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let key = LuaMemberKey::Integer(index as i64 + 1);
         let Some(source_type) = relater
             .db()

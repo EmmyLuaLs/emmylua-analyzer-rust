@@ -105,7 +105,7 @@ pub(super) fn relate_tuple_to_tuple(
     };
 
     for index in 0..target_check_len {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let Some(target_type) = target_tuple.get_type(index).and_then(|target_type| {
             if let LuaType::Variadic(variadic) = target_type {
                 variadic.get_type(0)
@@ -158,7 +158,7 @@ pub(super) fn relate_tuple_to_array(
 ) -> RelationResult {
     let target_base = effective_array_base(relater, target_array.get_base());
     for (index, source_type) in source_tuple.get_types().iter().enumerate() {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let source_type = match source_type {
             LuaType::Variadic(variadic) => match variadic.as_ref() {
                 VariadicType::Base(base) => base,
@@ -206,56 +206,72 @@ pub(super) fn relate_tuple_to_table_generic(
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));
     }
 
-    relater
-        .relate(&LuaType::Integer, &target_params[0], intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(TypePathSegment::GenericArgument(0), source, target)
-            })
-        })?;
-    relater.note_progress();
-    for (index, source_type) in source_tuple.get_types().iter().enumerate() {
-        let (check_len, variadic) = match source_type {
-            LuaType::Variadic(variadic) => (
-                variadic
-                    .get_max_len()
-                    .unwrap_or_else(|| variadic.get_min_len().map_or(1, |len| len + 1)),
-                Some(variadic),
-            ),
-            _ => (1, None),
-        };
-        for offset in 0..check_len {
-            let source_type = if let Some(variadic) = variadic {
-                let Some(source_type) = variadic.get_type(offset).and_then(|source_type| {
-                    if let LuaType::Variadic(inner) = source_type {
-                        inner.get_type(0)
-                    } else {
-                        Some(source_type)
-                    }
-                }) else {
-                    continue;
-                };
-                source_type
-            } else {
-                source_type
-            };
+    visit_tuple_index_entries(source_tuple, |key_type, source_type, index| {
+        relater.consume_relation_budget()?;
+        relater
+            .relate(key_type, &target_params[0], intersection_state)
+            .map_err(|failure| {
+                failure.map_mismatch(|mismatch| {
+                    mismatch.at(TypePathSegment::GenericArgument(0), source, target)
+                })
+            })?;
+        relater
+            .relate(source_type, &target_params[1], intersection_state)
+            .map_err(|failure| {
+                failure.map_mismatch(|mismatch| {
+                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
+                })
+            })?;
+        relater.note_progress();
+        Ok(())
+    })
+}
 
-            relater.consume_relation_budget(source, target)?;
-            relater
-                .relate(source_type, &target_params[1], intersection_state)
-                .map_err(|failure| {
-                    failure.map_mismatch(|mismatch| {
-                        mismatch.at(
-                            TypePathSegment::TupleElement(index + offset),
-                            source,
-                            target,
-                        )
-                    })
-                })?;
-            relater.note_progress();
+/// 按真实索引遍历元组元素, 无界可变尾部使用抽象整数键.
+pub(super) fn visit_tuple_index_entries<E>(
+    tuple: &LuaTupleType,
+    mut visitor: impl FnMut(&LuaType, &LuaType, usize) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut index = 0;
+    for typ in tuple.get_types() {
+        if let LuaType::Variadic(variadic) = typ {
+            if visit_variadic_index_entries(variadic, &mut index, &mut visitor)? {
+                break;
+            }
+        } else {
+            let key = LuaType::IntegerConst(index as i64 + 1);
+            visitor(&key, typ, index)?;
+            index += 1;
         }
     }
     Ok(())
+}
+
+fn visit_variadic_index_entries<E>(
+    variadic: &VariadicType,
+    index: &mut usize,
+    visitor: &mut impl FnMut(&LuaType, &LuaType, usize) -> Result<(), E>,
+) -> Result<bool, E> {
+    match variadic {
+        VariadicType::Base(base) => {
+            visitor(&LuaType::Integer, base, *index)?;
+            Ok(true)
+        }
+        VariadicType::Multi(types) => {
+            for typ in types {
+                if let LuaType::Variadic(inner) = typ {
+                    if visit_variadic_index_entries(inner, index, visitor)? {
+                        return Ok(true);
+                    }
+                } else {
+                    let key = LuaType::IntegerConst(*index as i64 + 1);
+                    visitor(&key, typ, *index)?;
+                    *index += 1;
+                }
+            }
+            Ok(false)
+        }
+    }
 }
 
 pub(super) fn relate_keyed_source_to_tuple(
@@ -266,7 +282,7 @@ pub(super) fn relate_keyed_source_to_tuple(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     for (index, target_type) in target_tuple.get_types().iter().enumerate() {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let key = LuaMemberKey::Integer(index as i64 + 1);
         let source_type = find_members_with_key(relater.db(), source, key, false)
             .and_then(|members| members.into_iter().next())

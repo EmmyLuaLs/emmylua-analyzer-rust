@@ -32,7 +32,6 @@ pub enum TypeMismatchKind {
     MissingMember { key: LuaMemberKey },
     MissingTupleElement { index: usize },
     UnresolvedType,
-    Overflow(OverflowKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,10 +60,6 @@ impl TypeMismatch {
                 target: target.clone(),
             },
         )
-    }
-
-    pub(crate) fn overflow(source: &LuaType, target: &LuaType, kind: OverflowKind) -> Self {
-        Self::new(source, target, TypeMismatchKind::Overflow(kind))
     }
 
     pub(crate) fn at(mut self, frame: TypePathSegment, source: &LuaType, target: &LuaType) -> Self {
@@ -146,7 +141,6 @@ pub fn render_type_mismatch(db: &DbIndex, mismatch: &TypeMismatch) -> String {
             format!("Tuple element {} is missing.", index + 1)
         }
         TypeMismatchKind::UnresolvedType => "Type could not be resolved.".into(),
-        TypeMismatchKind::Overflow(kind) => format!("Type relation exceeded {:?}.", kind),
     });
     lines
         .into_iter()

@@ -46,12 +46,8 @@ fn relate_to_target_intersection(
         match relater.relate(source, member, IntersectionState::TARGET) {
             Ok(()) => {}
             // 遇到 Indeterminate 仅先暂存, 因为可能存在更精确的报错信息.
-            Err(failure @ RelationFailure::Indeterminate(_, _)) => {
-                indeterminate.get_or_insert_with(|| {
-                    failure.map_mismatch(|mismatch| {
-                        mismatch.at(TypePathSegment::IntersectionMember(index), source, target)
-                    })
-                });
+            Err(failure @ RelationFailure::Indeterminate(_)) => {
+                indeterminate.get_or_insert(failure);
             }
             Err(failure @ RelationFailure::Unrelated(_)) => {
                 return Err(failure.map_mismatch(|mismatch| {
@@ -70,7 +66,7 @@ fn relate_to_target_intersection(
         ) {
             Ok(()) => {}
             Err(failure @ RelationFailure::Unrelated(_)) => return Err(failure),
-            Err(failure @ RelationFailure::Indeterminate(_, _)) => {
+            Err(failure @ RelationFailure::Indeterminate(_)) => {
                 indeterminate.get_or_insert(failure);
             }
         }
@@ -120,7 +116,7 @@ fn relate_source_intersection(
         return Ok(());
     }
     if let Some(kind) = indeterminate {
-        return Err(relater.indeterminate_failure(kind, source, target));
+        return Err(RelationFailure::Indeterminate(kind));
     }
     let Some((best_index, _)) = best else {
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));

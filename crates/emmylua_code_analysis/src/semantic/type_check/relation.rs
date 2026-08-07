@@ -20,16 +20,13 @@ pub(crate) type RelationResult = Result<(), RelationFailure>;
 #[derive(Debug, Clone)]
 pub(crate) enum RelationFailure {
     Unrelated(Option<TypeMismatch>),
-    Indeterminate(OverflowKind, Option<TypeMismatch>),
+    Indeterminate(OverflowKind),
 }
 
 impl RelationFailure {
     pub(crate) fn map_mismatch(self, map: impl FnOnce(TypeMismatch) -> TypeMismatch) -> Self {
         match self {
             Self::Unrelated(Some(mismatch)) => Self::Unrelated(Some(map(mismatch))),
-            Self::Indeterminate(kind, Some(mismatch)) => {
-                Self::Indeterminate(kind, Some(map(mismatch)))
-            }
             failure => failure,
         }
     }
@@ -129,7 +126,7 @@ impl<'db> RelationSession<'db> {
         match session.relate(source, target, IntersectionState::NONE) {
             Ok(()) => RelationOutcome::Related,
             Err(RelationFailure::Unrelated(_)) => RelationOutcome::Unrelated,
-            Err(RelationFailure::Indeterminate(kind, _)) => RelationOutcome::Indeterminate(kind),
+            Err(RelationFailure::Indeterminate(kind)) => RelationOutcome::Indeterminate(kind),
         }
     }
 
@@ -137,18 +134,17 @@ impl<'db> RelationSession<'db> {
         db: &'db DbIndex,
         source: &LuaType,
         target: &LuaType,
-    ) -> Result<(), TypeMismatch> {
+    ) -> super::AssignabilityResult {
         let mut session = Self::new(db, EvidenceMode::Explain);
-        let mismatch = match session.relate(source, target, IntersectionState::NONE) {
-            Ok(()) => return Ok(()),
-            Err(RelationFailure::Unrelated(mismatch)) => {
-                mismatch.unwrap_or_else(|| TypeMismatch::incompatible(source, target))
+        match session.relate(source, target, IntersectionState::NONE) {
+            Ok(()) => super::AssignabilityResult::Assignable,
+            Err(RelationFailure::Unrelated(mismatch)) => super::AssignabilityResult::NotAssignable(
+                mismatch.unwrap_or_else(|| TypeMismatch::incompatible(source, target)),
+            ),
+            Err(RelationFailure::Indeterminate(kind)) => {
+                super::AssignabilityResult::Indeterminate(kind)
             }
-            Err(RelationFailure::Indeterminate(kind, mismatch)) => {
-                mismatch.unwrap_or_else(|| TypeMismatch::overflow(source, target, kind))
-            }
-        };
-        Err(mismatch)
+        }
     }
 }
 
@@ -173,13 +169,9 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         self.session.relation_budget as usize
     }
 
-    pub(super) fn consume_relation_budget(
-        &mut self,
-        source: &LuaType,
-        target: &LuaType,
-    ) -> RelationResult {
+    pub(super) fn consume_relation_budget(&mut self) -> RelationResult {
         if self.session.relation_budget == 0 {
-            return Err(self.budget_failure(source, target));
+            return Err(RelationFailure::Indeterminate(OverflowKind::Budget));
         }
         self.session.relation_budget -= 1;
         Ok(())
@@ -188,31 +180,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
     pub(super) fn unrelated(&self, build: impl FnOnce() -> TypeMismatch) -> RelationResult {
         let mismatch = self.is_explain().then(build);
         Err(RelationFailure::Unrelated(mismatch))
-    }
-
-    pub(super) fn budget_failure(&self, source: &LuaType, target: &LuaType) -> RelationFailure {
-        self.indeterminate(OverflowKind::Budget, source, target)
-    }
-
-    pub(super) fn indeterminate_failure(
-        &self,
-        kind: OverflowKind,
-        source: &LuaType,
-        target: &LuaType,
-    ) -> RelationFailure {
-        self.indeterminate(kind, source, target)
-    }
-
-    fn indeterminate(
-        &self,
-        kind: OverflowKind,
-        source: &LuaType,
-        target: &LuaType,
-    ) -> RelationFailure {
-        let mismatch = self
-            .is_explain()
-            .then(|| TypeMismatch::overflow(source, target, kind));
-        RelationFailure::Indeterminate(kind, mismatch)
     }
 
     pub(crate) fn relate(
@@ -271,7 +238,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         let (source_requires_scope, allow_structured_fast_path) = match source {
             LuaType::Array(source_array) => {
                 if let LuaType::Array(target_array) = target {
-                    return self.run_fast_path(source, target, |relater| {
+                    return self.run_fast_path(|relater| {
                         relate_array_to_array(
                             relater,
                             source,
@@ -286,7 +253,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             }
             LuaType::TableConst(_) | LuaType::Object(_) => {
                 if let LuaType::Object(target_object) = target {
-                    return self.run_fast_path(source, target, |relater| {
+                    return self.run_fast_path(|relater| {
                         relate_object_members(
                             relater,
                             source,
@@ -368,7 +335,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         // 一些高频结构需要在此提前处理以提高性能
         if allow_structured_fast_path {
             if let LuaType::Object(target_object) = target {
-                return self.run_fast_path(source, target, |relater| {
+                return self.run_fast_path(|relater| {
                     relate_object_members(
                         relater,
                         source,
@@ -400,7 +367,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                     _ => None,
                 };
                 if target_decl.is_some_and(|decl| !decl.is_alias() && !decl.is_enum()) {
-                    return self.run_fast_path(source, target, |relater| {
+                    return self.run_fast_path(|relater| {
                         relate_to_declared_target_members(
                             relater,
                             source,
@@ -417,7 +384,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         }
 
         if self.session.recursion_depth >= 100 {
-            return Err(self.indeterminate(OverflowKind::Recursion, source, target));
+            return Err(RelationFailure::Indeterminate(OverflowKind::Recursion));
         }
 
         let target_requires_scope = match target {
@@ -450,12 +417,12 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                 }
                 active = relation.parent;
             }
-            self.consume_relation_budget(source, target)?;
+            self.consume_relation_budget()?;
             self.with_relation_scope(source, target, intersection_state, |relater| {
                 relater.relate_with::<FIELD>(source, target, intersection_state, true)
             })
         } else {
-            self.run_fast_path(source, target, |relater| {
+            self.run_fast_path(|relater| {
                 relater.relate_with::<FIELD>(source, target, intersection_state, true)
             })
         }
@@ -504,7 +471,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             && let Some(constraint) = target_tpl.get_constraint()
         {
             if is_circular_tpl_constraint(target_tpl) {
-                return Err(self.indeterminate(OverflowKind::Recursion, source, target));
+                return Err(RelationFailure::Indeterminate(OverflowKind::Recursion));
             }
             return self.relate(source, constraint, intersection_state);
         }
@@ -512,7 +479,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             && let Some(constraint) = source_tpl.get_constraint()
         {
             if is_circular_tpl_constraint(source_tpl) {
-                return Err(self.indeterminate(OverflowKind::Recursion, source, target));
+                return Err(RelationFailure::Indeterminate(OverflowKind::Recursion));
             }
             return self.relate(constraint, target, intersection_state);
         }
@@ -561,12 +528,10 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
     /// 快速路径, 用在确定无复杂行为的类型检查
     fn run_fast_path(
         &mut self,
-        source: &LuaType,
-        target: &LuaType,
         body: impl FnOnce(&mut Relater<'_, '_, 'db>) -> RelationResult,
     ) -> RelationResult {
         if self.session.recursion_depth >= 100 {
-            return Err(self.indeterminate(OverflowKind::Recursion, source, target));
+            return Err(RelationFailure::Indeterminate(OverflowKind::Recursion));
         }
         self.session.recursion_depth += 1;
         let result = body(self);
@@ -621,16 +586,14 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         let progress = self.session.progress;
         self.session.evidence = EvidenceMode::Silent;
         self.session.progress = 0;
-        let relation_budget = self.session.relation_budget;
         let result = self.relate(source, target, intersection_state);
-        self.session.relation_budget = relation_budget;
         let candidate_progress = self.session.progress;
         self.session.progress = progress;
         self.session.evidence = evidence;
         let outcome = match result {
             Ok(()) => RelationOutcome::Related,
             Err(RelationFailure::Unrelated(_)) => RelationOutcome::Unrelated,
-            Err(RelationFailure::Indeterminate(kind, _)) => RelationOutcome::Indeterminate(kind),
+            Err(RelationFailure::Indeterminate(kind)) => RelationOutcome::Indeterminate(kind),
         };
         (outcome, candidate_progress)
     }

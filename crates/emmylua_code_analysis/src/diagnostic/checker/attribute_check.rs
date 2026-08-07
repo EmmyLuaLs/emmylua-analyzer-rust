@@ -1,5 +1,5 @@
 use crate::{
-    DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
+    AssignabilityResult, DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
     diagnostic::checker::humanize_lint_type, get_attribute_constructor_params, infer_doc_type,
     is_attribute_class, render_type_mismatch,
 };
@@ -144,7 +144,8 @@ fn check_param(
             }
             if let Some(variadic_type) = param.1.as_ref() {
                 for (arg_idx, arg_type) in call_arg_types[idx..].iter().enumerate() {
-                    if let Err(mismatch) = semantic_model.check_assignable(arg_type, variadic_type)
+                    if let AssignabilityResult::NotAssignable(mismatch) =
+                        semantic_model.check_assignable(arg_type, variadic_type)
                     {
                         add_type_check_diagnostic(
                             context,
@@ -161,7 +162,9 @@ fn check_param(
         }
         if let Some(param_type) = param.1.as_ref() {
             let arg_type = call_arg_types.get(idx).unwrap_or(&LuaType::Any);
-            if let Err(mismatch) = semantic_model.check_assignable(arg_type, param_type) {
+            if let AssignabilityResult::NotAssignable(mismatch) =
+                semantic_model.check_assignable(arg_type, param_type)
+            {
                 add_type_check_diagnostic(
                     context,
                     semantic_model,

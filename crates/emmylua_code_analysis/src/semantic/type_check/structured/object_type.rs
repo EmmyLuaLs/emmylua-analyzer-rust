@@ -12,7 +12,7 @@ use super::super::{
 };
 use super::{
     array::effective_array_base, declared::relate_structural_source_to_declared_target,
-    table_const::relate_to_table_const_target,
+    table_const::relate_to_table_const_target, tuple::visit_tuple_index_entries,
 };
 
 pub(super) fn relate_object_source(
@@ -86,7 +86,7 @@ pub(super) fn relate_object_to_tuple(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     for (index, target_type) in target_tuple.get_types().iter().enumerate() {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let key = LuaMemberKey::Integer(index as i64 + 1);
         let Some(source_type) = source_object.get_field(&key) else {
             if target_type.is_optional() {
@@ -126,7 +126,7 @@ pub(super) fn relate_object_to_array(
         if !matches!(key, LuaMemberKey::Integer(index) if *index > 0) {
             continue;
         }
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         relater
             .relate(source_type, &target_base, intersection_state)
             .map_err(|failure| {
@@ -141,7 +141,7 @@ pub(super) fn relate_object_to_array(
         if !source_key.is_integer() {
             continue;
         }
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         relater
             .relate(source_type, &target_base, intersection_state)
             .map_err(|failure| {
@@ -184,7 +184,7 @@ pub(super) fn relate_object_to_table_generic(
         )?;
     }
     for (source_key_type, source_type) in source_object.get_index_access() {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         relater
             .relate(source_key_type, &target_params[0], intersection_state)
             .map_err(|failure| {
@@ -221,7 +221,7 @@ pub(super) fn relate_member_to_table_generic(
     target_params: &[LuaType],
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    relater.consume_relation_budget(source, target)?;
+    relater.consume_relation_budget()?;
     let Some(source_key_type) = key.to_index_type() else {
         return Ok(());
     };
@@ -267,7 +267,7 @@ pub(in crate::semantic::type_check) fn relate_object_members(
 ) -> RelationResult {
     if let LuaType::Object(source_object) = source {
         for (target_key, target_member_type) in target_object.get_fields() {
-            relater.consume_relation_budget(source, target)?;
+            relater.consume_relation_budget()?;
             let source_member_type = source_object.get_field(target_key);
             let Some(source_member_type) = source_member_type else {
                 if target_member_type.is_optional() {
@@ -336,9 +336,8 @@ pub(super) fn relate_named_member_obligation(
     target_member_type: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    relater.consume_relation_budget(source, target)?;
-    let source_member_type =
-        find_source_member_type(relater, source, target, key, intersection_state)?;
+    relater.consume_relation_budget()?;
+    let source_member_type = find_source_member_type(relater, source, key, intersection_state)?;
     let Some(source_member_type) = source_member_type else {
         if target_member_type.is_optional() {
             return Ok(());
@@ -416,7 +415,6 @@ pub(in crate::semantic::type_check) fn relate_to_declared_target_members(
 fn find_source_member_type(
     relater: &mut Relater,
     source: &LuaType,
-    target: &LuaType,
     key: &LuaMemberKey,
     intersection_state: IntersectionState,
 ) -> Result<Option<LuaType>, RelationFailure> {
@@ -456,7 +454,7 @@ fn find_source_member_type(
                 RelationOutcome::Related => Some(source_params[1].clone()),
                 RelationOutcome::Unrelated => None,
                 RelationOutcome::Indeterminate(kind) => {
-                    return Err(relater.indeterminate_failure(kind, source, target));
+                    return Err(RelationFailure::Indeterminate(kind));
                 }
             }
         }
@@ -480,9 +478,10 @@ pub(super) fn relate_index_obligation(
 
     let relate_entry = |relater: &mut Relater,
                         source_key_type: &LuaType,
-                        source_value_type: &LuaType|
+                        source_value_type: &LuaType,
+                        require_compatible_key: bool|
      -> RelationResult {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         match relater
             .probe_relation(source_key_type, target_key_type, intersection_state)
             .0
@@ -502,10 +501,11 @@ pub(super) fn relate_index_obligation(
                 relater.note_progress();
                 Ok(())
             }
-            RelationOutcome::Unrelated => Ok(()),
-            RelationOutcome::Indeterminate(kind) => {
-                Err(relater.indeterminate_failure(kind, source, target))
+            RelationOutcome::Unrelated if !require_compatible_key => Ok(()),
+            RelationOutcome::Unrelated => {
+                relater.unrelated(|| TypeMismatch::incompatible(source, target))
             }
+            RelationOutcome::Indeterminate(kind) => Err(RelationFailure::Indeterminate(kind)),
         }
     };
 
@@ -515,10 +515,10 @@ pub(super) fn relate_index_obligation(
                 let Some(source_key_type) = key.to_index_type() else {
                     continue;
                 };
-                relate_entry(relater, &source_key_type, source_value_type)?;
+                relate_entry(relater, &source_key_type, source_value_type, false)?;
             }
             for (source_key_type, source_value_type) in source_object.get_index_access() {
-                relate_entry(relater, source_key_type, source_value_type)?;
+                relate_entry(relater, source_key_type, source_value_type, false)?;
             }
         }
         LuaType::TableConst(range) => {
@@ -529,30 +529,31 @@ pub(super) fn relate_index_obligation(
                     return Ok(());
                 };
                 let source_value_type = item.resolve_type(db).unwrap_or(LuaType::Any);
-                relate_entry(relater, &source_key_type, &source_value_type)
+                relate_entry(relater, &source_key_type, &source_value_type, false)
             })?;
         }
         LuaType::Tuple(source_tuple) => {
-            for (index, source_value_type) in source_tuple.get_types().iter().enumerate() {
+            visit_tuple_index_entries(source_tuple, |key_type, source_value_type, _| {
                 relate_entry(
                     relater,
-                    &LuaType::IntegerConst(index as i64 + 1),
+                    key_type,
                     source_value_type,
-                )?;
-            }
+                    matches!(key_type, LuaType::Integer),
+                )
+            })?;
         }
         LuaType::Array(source_array) => {
-            relate_entry(relater, &LuaType::Integer, source_array.get_base())?;
+            relate_entry(relater, &LuaType::Integer, source_array.get_base(), false)?;
         }
         LuaType::TableGeneric(source_params) if source_params.len() == 2 => {
-            relate_entry(relater, &source_params[0], &source_params[1])?;
+            relate_entry(relater, &source_params[0], &source_params[1], false)?;
         }
         LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => {
             visit_declared_members(relater, source, |relater, key, source_value_type| {
                 let Some(source_key_type) = key.to_index_type() else {
                     return Ok(());
                 };
-                relate_entry(relater, &source_key_type, source_value_type)
+                relate_entry(relater, &source_key_type, source_value_type, false)
             })?;
         }
         LuaType::Intersection(intersection) => {

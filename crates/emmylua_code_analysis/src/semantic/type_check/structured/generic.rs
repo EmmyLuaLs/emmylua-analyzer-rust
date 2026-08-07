@@ -167,7 +167,7 @@ fn relate_generic_source_to_generic_target(
     }
 
     let mut indeterminate = match &direct_result {
-        Err(RelationFailure::Indeterminate(kind, _)) => Some(*kind),
+        Err(RelationFailure::Indeterminate(kind)) => Some(*kind),
         _ => None,
     };
     for super_type in declared_super_types(relater.db(), source) {
@@ -187,7 +187,7 @@ fn relate_generic_source_to_generic_target(
     }
 
     if let Some(kind) = indeterminate {
-        return Err(relater.indeterminate_failure(kind, source, target));
+        return Err(RelationFailure::Indeterminate(kind));
     }
 
     if nominal_relation == DeclaredTypeRelation::LegacyReverse && !target_generic.contain_tpl() {

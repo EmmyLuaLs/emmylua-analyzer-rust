@@ -4,7 +4,8 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr};
 use rowan::TextRange;
 
 use crate::{
-    DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel, TypeMismatch,
+    AssignabilityResult, DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel,
+    TypeMismatch,
     diagnostic::checker::assign_type_mismatch::check_table_expr,
     humanize_type, render_type_mismatch,
     semantic::{RelationOutcome, get_func_param_type, probe_assignable},
@@ -79,9 +80,10 @@ pub(super) fn check_param_types(
             return Some(());
         }
 
-        let mismatch = semantic_model
-            .check_assignable(failed_arg.typ, &param_type)
-            .err();
+        let mismatch = match semantic_model.check_assignable(failed_arg.typ, &param_type) {
+            AssignabilityResult::NotAssignable(mismatch) => Some(mismatch),
+            AssignabilityResult::Assignable | AssignabilityResult::Indeterminate(_) => None,
+        };
         add_diagnostic(
             context,
             semantic_model,

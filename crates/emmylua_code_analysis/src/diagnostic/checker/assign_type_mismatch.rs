@@ -7,9 +7,9 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel, TypeMismatch, VariadicType, get_real_type, infer_index_expr,
-    render_type_mismatch,
+    AssignabilityResult, DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, TypeMismatch, VariadicType,
+    get_real_type, infer_index_expr, render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -228,7 +228,7 @@ fn check_table_expr_content(
     let mut check_count = 0;
     let mut has_diagnostic = false;
 
-    let fields = table_expr.get_fields_with_keys();
+    let fields = table_expr.get_fields_with_keys().collect::<Vec<_>>();
 
     for (idx, (field, field_key)) in fields.iter().enumerate() {
         check_count += 1;
@@ -378,7 +378,9 @@ fn check_assign_type_mismatch(
         _ => {}
     }
 
-    if let Err(mismatch) = semantic_model.check_assignable(value_type, source_type) {
+    if let AssignabilityResult::NotAssignable(mismatch) =
+        semantic_model.check_assignable(value_type, source_type)
+    {
         add_type_check_diagnostic(
             context,
             semantic_model,

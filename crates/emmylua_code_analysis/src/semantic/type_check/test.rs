@@ -4,7 +4,9 @@ mod test {
         DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
         LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaObjectType, LuaType,
         LuaTypeDeclId, VirtualWorkspace, is_assignable,
-        semantic::type_check::{RelationOutcome, check_assignable, probe_assignable},
+        semantic::type_check::{
+            AssignabilityResult, RelationOutcome, check_assignable, probe_assignable,
+        },
     };
 
     #[test]
@@ -137,10 +139,22 @@ mod test {
         let incompatible = ws.ty("fun(value: number)");
         let db = ws.analysis.compilation.get_db();
 
-        assert!(check_assignable(db, &callable, &compatible).is_ok());
-        assert!(check_assignable(db, &compatible, &callable).is_ok());
-        assert!(check_assignable(db, &callable, &incompatible).is_err());
-        assert!(check_assignable(db, &incompatible, &callable).is_err());
+        assert!(matches!(
+            check_assignable(db, &callable, &compatible),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &compatible, &callable),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &callable, &incompatible),
+            AssignabilityResult::NotAssignable(_)
+        ));
+        assert!(matches!(
+            check_assignable(db, &incompatible, &callable),
+            AssignabilityResult::NotAssignable(_)
+        ));
     }
 
     #[test]
@@ -160,10 +174,22 @@ mod test {
         let inherited_signature = ws.ty("fun(value: string)");
         let db = ws.analysis.compilation.get_db();
 
-        assert!(check_assignable(db, &callable, &own_signature).is_ok());
-        assert!(check_assignable(db, &own_signature, &callable).is_ok());
-        assert!(check_assignable(db, &callable, &inherited_signature).is_err());
-        assert!(check_assignable(db, &inherited_signature, &callable).is_err());
+        assert!(matches!(
+            check_assignable(db, &callable, &own_signature),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &own_signature, &callable),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &callable, &inherited_signature),
+            AssignabilityResult::NotAssignable(_)
+        ));
+        assert!(matches!(
+            check_assignable(db, &inherited_signature, &callable),
+            AssignabilityResult::NotAssignable(_)
+        ));
     }
 
     #[test]
@@ -182,10 +208,22 @@ mod test {
         let incompatible = ws.ty("fun(value: number)");
         let db = ws.analysis.compilation.get_db();
 
-        assert!(check_assignable(db, &callable, &compatible).is_ok());
-        assert!(check_assignable(db, &compatible, &callable).is_ok());
-        assert!(check_assignable(db, &callable, &incompatible).is_err());
-        assert!(check_assignable(db, &incompatible, &callable).is_err());
+        assert!(matches!(
+            check_assignable(db, &callable, &compatible),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &compatible, &callable),
+            AssignabilityResult::Assignable
+        ));
+        assert!(matches!(
+            check_assignable(db, &callable, &incompatible),
+            AssignabilityResult::NotAssignable(_)
+        ));
+        assert!(matches!(
+            check_assignable(db, &incompatible, &callable),
+            AssignabilityResult::NotAssignable(_)
+        ));
     }
 
     #[test]
@@ -307,6 +345,10 @@ mod test {
         assert!(matches!(
             probe_assignable(&db, &source, &target),
             RelationOutcome::Indeterminate(_)
+        ));
+        assert!(matches!(
+            check_assignable(&db, &source, &target),
+            AssignabilityResult::Indeterminate(_)
         ));
     }
 

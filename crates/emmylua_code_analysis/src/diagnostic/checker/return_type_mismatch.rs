@@ -4,8 +4,8 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
-    SignatureReturnStatus, TypeMismatch,
+    AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
+    SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
     diagnostic::checker::{assign_type_mismatch::check_table_expr, humanize_lint_type},
     render_type_mismatch,
 };
@@ -87,7 +87,8 @@ fn check_return_stat(
                     check_type = self_type;
                 }
 
-                if let Err(mismatch) = semantic_model.check_assignable(return_expr_type, check_type)
+                if let AssignabilityResult::NotAssignable(mismatch) =
+                    semantic_model.check_assignable(return_expr_type, check_type)
                 {
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
@@ -118,7 +119,9 @@ fn check_return_stat(
             }
             let return_expr_type = &return_expr_types[0];
             let return_expr_range = return_expr_ranges[0];
-            if let Err(mismatch) = semantic_model.check_assignable(return_expr_type, check_type) {
+            if let AssignabilityResult::NotAssignable(mismatch) =
+                semantic_model.check_assignable(return_expr_type, check_type)
+            {
                 if return_expr_type.is_table()
                     && let Some(return_expr) = return_exprs.first()
                 {

@@ -152,7 +152,7 @@ pub(super) fn relate_array_to_tuple(
         _ => target_tuple_types.len(),
     };
     for index in 0..target_tuple_check_len {
-        relater.consume_relation_budget(source, target)?;
+        relater.consume_relation_budget()?;
         let Some(target_type) = target_tuple.get_type(index).and_then(|target_type| {
             if let LuaType::Variadic(variadic) = target_type {
                 variadic.get_type(0)
@@ -217,7 +217,7 @@ pub(super) fn relate_keyed_source_to_array(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let target_base = effective_array_base(relater, target_array.get_base());
-    relater.consume_relation_budget(source, target)?;
+    relater.consume_relation_budget()?;
     let source_type = find_members_with_key(
         relater.db(),
         source,

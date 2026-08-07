@@ -37,7 +37,7 @@ pub fn locate_mismatch_range(source_expr: &LuaExpr, frames: &[TypePathSegment]) 
             TypePathSegment::ArrayElement => None,
             _ => break,
         };
-        let found = table.get_fields_with_keys().into_iter().find(|(field, k)| {
+        let found = table.get_fields_with_keys().find(|(field, k)| {
             if let Some(expected) = &key {
                 key_matches(k, expected)
             } else {
@@ -82,11 +82,7 @@ mod tests {
         let stat = workspace.get_node::<LuaLocalStat>(file_id);
         let source_expr = stat.get_value_exprs().next().expect("initializer");
         let table = LuaTableExpr::cast(source_expr.syntax().clone()).expect("table expression");
-        let (field, _) = table
-            .get_fields_with_keys()
-            .into_iter()
-            .next()
-            .expect("field");
+        let (field, _) = table.get_fields_with_keys().next().expect("field");
         let expected_range = field
             .get_value_expr()
             .expect("field value")
@@ -108,11 +104,7 @@ mod tests {
         let stat = workspace.get_node::<LuaLocalStat>(file_id);
         let source_expr = stat.get_value_exprs().next().expect("initializer");
         let table = LuaTableExpr::cast(source_expr.syntax().clone()).expect("table expression");
-        let (field, _) = table
-            .get_fields_with_keys()
-            .into_iter()
-            .next()
-            .expect("field");
+        let (field, _) = table.get_fields_with_keys().next().expect("field");
         let expected_range = field
             .get_value_expr()
             .expect("field value")

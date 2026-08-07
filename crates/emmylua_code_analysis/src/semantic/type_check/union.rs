@@ -68,7 +68,7 @@ fn relate_source_union(
         }
     }
     if let Some(kind) = first_indeterminate {
-        return Err(relater.indeterminate_failure(kind, source, target));
+        return Err(RelationFailure::Indeterminate(kind));
     }
     if conditional_extends {
         relater.unrelated(|| TypeMismatch::incompatible(source, target))
@@ -105,7 +105,7 @@ fn relate_to_target_union(
         }
     }
     if let Some(kind) = indeterminate {
-        return Err(relater.indeterminate_failure(kind, source, target));
+        return Err(RelationFailure::Indeterminate(kind));
     }
 
     let Some((best_index, _)) = best else {

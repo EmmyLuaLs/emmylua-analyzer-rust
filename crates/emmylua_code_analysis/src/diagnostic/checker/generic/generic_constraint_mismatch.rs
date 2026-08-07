@@ -11,8 +11,8 @@ use super::call_constraint::{
 };
 use crate::diagnostic::{checker::Checker, lua_diagnostic::DiagnosticContext};
 use crate::{
-    DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode, GenericTplId,
-    LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
+    AssignabilityResult, DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode,
+    GenericTplId, LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
     LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
     TypeMismatch, TypeSubstitutor, VariadicType, humanize_type, infer_doc_type,
     instantiate_type_generic_full, render_type_mismatch,
@@ -400,8 +400,11 @@ fn check_generic_default_satisfies_constraint_inner(
     let check_constraint = instantiate_decl_type_for_check(constraint, false);
     let check_default = instantiate_decl_type_for_check(default_type, true);
     match semantic_model.check_assignable(&check_default, &check_constraint) {
-        Ok(()) => Ok(()),
-        Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+        AssignabilityResult::Assignable => Ok(()),
+        AssignabilityResult::NotAssignable(mismatch) => {
+            Err(ConstraintCheckFailure::Mismatch(Some(mismatch)))
+        }
+        AssignabilityResult::Indeterminate(_) => Ok(()),
     }
 }
 
@@ -629,8 +632,11 @@ fn check_doc_tag_type(
             );
             let param_type = normalize_constraint_type(semantic_model.get_db(), param_type.clone());
             let result = match semantic_model.check_assignable(&param_type, &extend_type) {
-                Ok(()) => Ok(()),
-                Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+                AssignabilityResult::Assignable => Ok(()),
+                AssignabilityResult::NotAssignable(mismatch) => {
+                    Err(ConstraintCheckFailure::Mismatch(Some(mismatch)))
+                }
+                AssignabilityResult::Indeterminate(_) => Ok(()),
             };
             if result.is_err() {
                 add_type_check_diagnostic(
@@ -775,8 +781,11 @@ fn check_str_tpl_ref(
                 let type_id = type_decl.get_id();
                 let ref_type = LuaType::Ref(type_id);
                 let result = match semantic_model.check_assignable(&ref_type, &extend_type) {
-                    Ok(()) => Ok(()),
-                    Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+                    AssignabilityResult::Assignable => Ok(()),
+                    AssignabilityResult::NotAssignable(mismatch) => {
+                        Err(ConstraintCheckFailure::Mismatch(Some(mismatch)))
+                    }
+                    AssignabilityResult::Indeterminate(_) => Ok(()),
                 };
                 if result.is_err() {
                     add_type_check_diagnostic(

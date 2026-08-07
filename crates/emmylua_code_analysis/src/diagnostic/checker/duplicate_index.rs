@@ -24,7 +24,7 @@ fn check_table_duplicate_index(
     _: &SemanticModel,
     table: LuaTableExpr,
 ) -> Option<()> {
-    let fields = table.get_fields_with_keys();
+    let fields = table.get_fields_with_keys().collect::<Vec<_>>();
     if fields.len() > 50 {
         // Skip checking if there are too many fields to avoid performance issues
         return Some(());

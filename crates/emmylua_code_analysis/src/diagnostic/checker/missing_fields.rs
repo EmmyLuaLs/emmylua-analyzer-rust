@@ -96,7 +96,7 @@ fn check_table_expr(
         table_type => table_type,
     };
 
-    let fields = expr.get_fields_with_keys();
+    let fields = expr.get_fields_with_keys().collect::<Vec<_>>();
     if fields.len() > 50 {
         return Some(());
     }

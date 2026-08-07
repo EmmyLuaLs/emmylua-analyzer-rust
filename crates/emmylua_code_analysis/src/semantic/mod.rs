@@ -66,8 +66,8 @@ pub use overload_resolve::{
 };
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{
-    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, check_assignable, is_assignable,
-    render_type_mismatch,
+    AssignabilityResult, OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment,
+    check_assignable, is_assignable, render_type_mismatch,
 };
 
 pub use generic::get_keyof_members;
@@ -180,7 +180,7 @@ impl<'a> SemanticModel<'a> {
         is_assignable(self.db, source, target)
     }
 
-    pub fn check_assignable(&self, source: &LuaType, target: &LuaType) -> Result<(), TypeMismatch> {
+    pub fn check_assignable(&self, source: &LuaType, target: &LuaType) -> AssignabilityResult {
         check_assignable(self.db, source, target)
     }
 

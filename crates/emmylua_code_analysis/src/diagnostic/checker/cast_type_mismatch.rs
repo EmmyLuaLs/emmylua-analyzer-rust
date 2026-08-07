@@ -3,8 +3,8 @@ use hashbrown::HashSet;
 use rowan::TextRange;
 
 use crate::{
-    DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType, SemanticModel,
-    TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch,
+    AssignabilityResult, DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType,
+    SemanticModel, TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -200,17 +200,18 @@ fn cast_type_check(
                 return Ok(());
             }
             match semantic_model.check_assignable(origin_type, target_type) {
-                Ok(()) => Ok(()),
-                Err(mismatch) => {
-                    if semantic_model
-                        .check_assignable(target_type, origin_type)
-                        .is_ok()
-                    {
+                AssignabilityResult::Assignable => Ok(()),
+                AssignabilityResult::NotAssignable(mismatch) => {
+                    if matches!(
+                        semantic_model.check_assignable(target_type, origin_type),
+                        AssignabilityResult::Assignable
+                    ) {
                         Ok(())
                     } else {
                         Err(CastCheckFailure::Mismatch(Some(mismatch)))
                     }
                 }
+                AssignabilityResult::Indeterminate(_) => Ok(()),
             }
         }
     }

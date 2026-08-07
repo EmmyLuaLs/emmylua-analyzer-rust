@@ -61,7 +61,7 @@ If you're unfamiliar with `googletest-rust`, here's a quick overview:
 
 We use [`rustfmt`] and [`pre-commit`] to manage project's code style.
 
-- `rustfmt` formats Rust code. Simply run `cargo fmt --all` to reformat all files.
+- `rustfmt` formats Rust code. Simply run `cargo fmt` to reformat all files.
 
 - `pre-commit` fixes common issues like trailing whitespaces or broken symlinks in all text files.
 
