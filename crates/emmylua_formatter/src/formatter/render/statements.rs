@@ -1015,7 +1015,7 @@ fn render_assign_stat_align_split(
 
     let expr_list_plan = plan.layout.statement_expr_lists.get(&syntax_id).copied()?;
     let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
-    let assign_token = first_direct_token(stat.syntax(), LuaTokenKind::TkAssign);
+    let assign_token = stat.get_assign_op().map(|op| op.syntax().clone());
 
     let mut before = Vec::new();
     for (index, var) in vars.iter().enumerate() {

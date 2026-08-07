@@ -1905,6 +1905,26 @@ end
         );
     }
 
+    // ========== LuaJIT extension: compound assignment ==========
+
+    #[test]
+    fn test_compound_assignment_with_continuous_assignment_alignment() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+
+        let config = LuaFormatConfig {
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let input = "self.test += 1\n";
+        let expected = "self.test += 1\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJIT, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
     // ========== LuaJIT extension: const ==========
 
     #[test]
