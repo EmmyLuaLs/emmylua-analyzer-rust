@@ -114,6 +114,12 @@ pub fn generate_html(
 
     // Render item pages (in subdirectories -> "../" prefix).
     for (filename, mut doc) in pages {
+        doc.kind_letter = doc
+            .kind
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_else(|| "?".to_string());
         let mut sub_nav = nav.clone();
         sub_nav.root_prefix = "../".to_string();
         mark_active(&mut sub_nav, &doc.kind, &doc.name);

@@ -1,0 +1,49 @@
+{% macro member(m) %}
+<details class="member{% if m.deprecated %} is-deprecated{% endif %}" id="{{ m.name }}">
+  <summary class="member-head">
+    <span class="group-caret" aria-hidden="true"></span>
+    <span class="member-signature">{{ m.display | safe }}</span>
+    {% if m.deprecated %}<span class="deprecated-badge deprecated-dot" title="Deprecated"></span>{% endif %}
+  </summary>
+  <div class="member-body">
+    {% if m.description %}<div class="docblock">{{ m.description }}</div>{% endif %}
+    {% if m.overloads %}
+    <div class="member-detail">
+      <div class="detail-title">Overloads</div>
+      <div class="member-overloads">
+        {% for o in m.overloads %}<div class="member-signature">{{ o | safe }}</div>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if m.params %}
+    <div class="member-detail">
+      <div class="detail-title">Parameters</div>
+      <dl class="param-list">
+        {% for p in m.params %}
+        <div class="param-row">
+          <dt><code>{{ p.name }}</code>{% if p.type_html %}<span class="param-type">{{ p.type_html | safe }}</span>{% endif %}</dt>
+          <dd>{% if p.description %}{{ p.description }}{% endif %}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </div>
+    {% endif %}
+    {% if m.returns %}
+    <div class="member-detail">
+      <div class="detail-title">Returns</div>
+      <dl class="param-list">
+        {% for r in m.returns %}
+        <div class="param-row">
+          <dt>{% if r.name %}<code>{{ r.name }}</code>{% endif %}{% if r.type_html %}<span class="param-type">{{ r.type_html | safe }}</span>{% endif %}</dt>
+          <dd>{% if r.description %}{{ r.description }}{% endif %}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </div>
+    {% endif %}
+    {% if m.deprecated %}<div class="deprecated"><span class="deprecated-badge">Deprecated</span>{{ m.deprecated }}</div>{% endif %}
+    {% if m.see %}<div class="see">See: {{ m.see }}</div>{% endif %}
+    {% if m.other %}<div class="other">{{ m.other }}</div>{% endif %}
+  </div>
+</details>
+{% endmacro %}

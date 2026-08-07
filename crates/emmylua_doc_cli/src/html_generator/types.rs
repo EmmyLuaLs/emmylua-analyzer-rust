@@ -94,6 +94,8 @@ pub struct HtmlMember {
 pub struct HtmlDoc {
     /// Item kind: `class` / `enum` / `alias` / `module` / `global`.
     pub kind: String,
+    /// Uppercase first letter of `kind`, shown on the page-header badge.
+    pub kind_letter: String,
     pub name: String,
     pub title: String,
     /// Rendered `<pre>` code block (aliases, simple globals).

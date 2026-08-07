@@ -357,11 +357,96 @@
     });
   }
 
+  // ─── Member accordion helpers ──────────────────────────
+  // Members are <details> elements. A deep link (#name) should open the
+  // targeted member, and TOC links should open their target as well.
+  function initMembers() {
+    function openTarget() {
+      var id = decodeURIComponent(window.location.hash.slice(1));
+      if (!id) {
+        return;
+      }
+      var el = document.getElementById(id);
+      if (el && el.tagName === 'DETAILS' && !el.open) {
+        el.open = true;
+      }
+    }
+    openTarget();
+    window.addEventListener('hashchange', openTarget);
+
+    // Clicking a TOC link pointing at a collapsed member opens it.
+    document.querySelectorAll('.toc-list a[href^="#"]').forEach(function (link) {
+      link.addEventListener('click', function () {
+        var el = document.getElementById(link.getAttribute('href').slice(1));
+        if (el && el.tagName === 'DETAILS') {
+          el.open = true;
+        }
+      });
+    });
+  }
+
+  // ─── TOC scrollspy ─────────────────────────────────────
+  function initScrollSpy() {
+    var toc = document.getElementById('toc');
+    if (!toc) {
+      return;
+    }
+    var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+    if (links.length === 0) {
+      return;
+    }
+    var targets = links
+      .map(function (link) {
+        var el = document.getElementById(link.getAttribute('href').slice(1));
+        return el ? { link: link, el: el } : null;
+      })
+      .filter(Boolean);
+    if (targets.length === 0) {
+      return;
+    }
+    var current = null;
+    function update() {
+      // The active entry is the last target whose top is above the marker line.
+      var line = 140;
+      var best = null;
+      for (var i = 0; i < targets.length; i++) {
+        var top = targets[i].el.getBoundingClientRect().top;
+        if (top <= line) {
+          best = targets[i];
+        } else {
+          break;
+        }
+      }
+      if (!best) {
+        best = targets[0];
+      }
+      if (best === current) {
+        return;
+      }
+      current = best;
+      links.forEach(function (l) { l.classList.remove('active'); });
+      best.link.classList.add('active');
+    }
+    var ticking = false;
+    document.addEventListener('scroll', function () {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(function () {
+          update();
+          ticking = false;
+        });
+      }
+    }, { passive: true });
+    update();
+  }
+
   onReady(function () {
     initTheme();
     initDrawer();
     initSidebarScroll();
     initCopyButtons();
     initSearch();
+    initMembers();
+    initScrollSpy();
   });
 })();

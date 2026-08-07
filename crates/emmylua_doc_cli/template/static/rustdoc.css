@@ -177,7 +177,7 @@ a:hover { text-decoration: underline; }
   background: rgba(255, 255, 255, .15);
     box-shadow: 0 0 0 3px rgba(88, 166, 255, .28);
   }
-  
+
   .search-icon {
     position: absolute;
     left: 13px;
@@ -188,7 +188,7 @@ a:hover { text-decoration: underline; }
     color: rgba(255, 255, 255, .55);
     pointer-events: none;
   }
-  
+
   .search-hint {
     position: absolute;
     right: 10px;
@@ -206,7 +206,7 @@ a:hover { text-decoration: underline; }
     text-align: center;
     pointer-events: none;
   }
-  
+
   .search input:focus~.search-hint,
   .search input:not(:placeholder-shown)~.search-hint {
     display: none;
@@ -418,35 +418,67 @@ a:hover { text-decoration: underline; }
 }
 .lead { color: var(--fg-muted); margin: 0 0 8px; }
 
-/* Item header (rustdoc-style badge + name) */
-.item-header {
+/* ─── Page header (item pages) ────────────────────────── */
+/* Sticky header that stays visible while scrolling long pages: breadcrumb on
+   top, kind badge + full name below, frosted-glass backdrop so content slides
+   under it. */
+.pagehead {
+  position: sticky;
+  top: 52px;
+  z-index: 10;
+  margin: -12px -12px 16px;
+  padding: 12px 12px 12px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.pagehead .breadcrumb {
+  margin: 0 0 8px;
+}
+
+.pagehead-title {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 0 0 16px;
+  gap: 10px;
+    min-width: 0;
 }
-.item-kind {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: #fff;
+.kind-badge-lg {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 26px;
+}
+.kind-badge-lg.kind-module {
   background: var(--accent);
-  border-radius: 6px;
-  padding: 3px 9px;
-  flex-shrink: 0;
-  box-shadow: var(--shadow);
 }
-.item-name {
-  font-size: 30px;
-  font-weight: 600;
+
+.kind-badge-lg.kind-global {
+  background: var(--hl-num);
+}
+
+.pagehead-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .pagehead .meta {
+    margin: 6px 0 0;
 }
 
 .meta { font-size: 13.5px; color: var(--fg-muted); margin: 4px 0; }
 .meta-label { font-weight: 600; color: var(--fg); }
 
+.doc-lead {
+  font-size: 16px;
+}
 .docblock {
   margin: 14px 0;
   color: var(--fg);
@@ -568,20 +600,82 @@ pre.signature a:hover { text-decoration: underline; }
 
 .display pre.signature { border-left-width: 4px; }
 
-/* ─── Members ─────────────────────────────────────────── */
-.section .member {
-  position: relative;
-  margin: 0 0 10px;
-  padding: 12px 18px 12px 14px;
+/* ─── Members (collapsible) ───────────────────────────── */
+/* Each member is a <details>: the summary row shows caret + signature at a
+   glance; expanding reveals description, params, returns and overloads. Long
+   classes stay scannable without scrolling through giant cards. */
+.section-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: var(--bg-muted);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  line-height: 18px;
+  margin-left: 8px;
+  vertical-align: 2px;
+}
+
+.section-link {
+  color: inherit;
+}
+
+.section-link:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+.section .member {
+  margin: 0 0 6px;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-elevated);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 .section .member:hover {
-  border-left-color: var(--accent);
+  border-color: var(--accent);
+  }
+  
+  .section .member[open] {
   box-shadow: var(--shadow);
+}
+.member-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.member-head::-webkit-details-marker {
+  display: none;
+}
+
+.member-head .group-caret {
+  color: var(--fg-muted);
+}
+
+.member[open]>.member-head .group-caret {
+  transform: rotate(90deg);
+}
+
+.member-head:hover .member-signature {
+  color: var(--accent-strong);
+}
+
+.member-signature {
+  flex: 1;
+  min-width: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.member-signature::-webkit-scrollbar {
+  display: none;
 }
 .member-signature pre.signature {
   background: transparent;
@@ -589,13 +683,48 @@ pre.signature a:hover { text-decoration: underline; }
   border-radius: 0;
   padding: 0;
   margin: 0;
-  overflow-x: auto;
 }
-.member .docblock { margin: 8px 0 0; color: var(--fg-muted); font-size: 14px; }
-.member .docblock p { margin: 0 0 6px; }
-.member .docblock p:last-child { margin: 0; }
 
-/* Member detail tables (parameters / returns) */
+.member-body {
+  padding: 2px 14px 12px 36px;
+  border-top: 1px dashed var(--border);
+}
+
+.member-body .docblock {
+  margin: 10px 0 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.member-body .docblock p {
+  margin: 0 0 6px;
+}
+
+.member-body .docblock p:last-child {
+  margin: 0;
+}
+
+.deprecated-dot {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  font-size: 0;
+  vertical-align: 0;
+}
+.deprecated-dot::after {
+  content: "!";
+  font-size: 10px;
+  line-height: 14px;
+  display: block;
+  text-align: center;
+}
+
+/* Member detail: parameters / returns as a definition list. The name and its
+   type pill sit on one line; the description indents beneath, which reads
+   better than a three-column table for prose-heavy docs. */
 .member-detail { margin-top: 10px; }
 .detail-title {
   font-size: 11px;
@@ -605,19 +734,29 @@ pre.signature a:hover { text-decoration: underline; }
   color: var(--fg-muted);
   margin-bottom: 4px;
 }
-.doc-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
+.param-list {
+  margin: 0;
 }
-.doc-table td {
-  padding: 5px 14px 5px 0;
-  vertical-align: top;
+.param-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  padding: 6px 0;
   border-top: 1px solid var(--border);
 }
-.doc-table tr:first-child td { border-top: none; }
-.doc-table .cell-name { white-space: nowrap; width: 1%; padding-right: 8px; }
-.doc-table .cell-name code {
+.param-row:first-child {
+  border-top: none;
+}
+
+.param-row dt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 180px;
+}
+
+.param-row dt code {
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
   font-size: 12.5px;
   background: var(--code-bg);
@@ -625,18 +764,38 @@ pre.signature a:hover { text-decoration: underline; }
   border-radius: 4px;
   padding: 0 5px;
 }
-.doc-table .cell-type {
+.param-type {
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
   font-size: 12.5px;
   color: var(--fg-muted);
-  padding-right: 24px;
-  min-width: 120px;
 }
-.doc-table .cell-desc { color: var(--fg); }
-.doc-table .cell-desc p { margin: 0; }
-.doc-table .cell-desc p + p { margin-top: 4px; }
-.doc-table .cell-desc ul, .doc-table .cell-desc ol { margin: 0 0 4px; padding-left: 20px; }
-.doc-table .cell-desc code {
+.param-type a {
+  color: var(--accent);
+}
+
+.param-row dd {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 13.5px;
+}
+
+.param-row dd p {
+  margin: 0;
+}
+
+.param-row dd p+p {
+  margin-top: 4px;
+}
+
+.param-row dd ul,
+.param-row dd ol {
+  margin: 0 0 4px;
+  padding-left: 20px;
+}
+
+.param-row dd code {
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
   font-size: 12.5px;
   background: var(--code-bg);
@@ -707,39 +866,18 @@ pre.signature a:hover { text-decoration: underline; }
 /* ─── Anchors, scroll offset ──────────────────────────── */
 .section,
 .member {
-  scroll-margin-top: 68px;
+  scroll-margin-top: 128px;
 }
 
-.member .anchor {
-  position: absolute;
-  left: -22px;
-  top: 11px;
-  width: 20px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--fg-muted);
-  opacity: 0;
-  transition: opacity .15s ease, color .15s ease;
-}
-
-.member:hover .anchor,
-.member .anchor:focus-visible {
-  opacity: 1;
-}
-
-.member .anchor:hover {
-  color: var(--accent);
-  text-decoration: none;
+/* Deep-linked member: auto-opened by a tiny script; this highlights it. */
+.member:target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Deprecated emphasis */
-.member.is-deprecated {
-  border-left-color: var(--deprecated);
-}
-
-.member.is-deprecated:hover {
-  border-left-color: var(--deprecated);
+.member.is-deprecated>.member-head .member-signature {
+  opacity: .75;
 }
 
 .deprecated-badge {
@@ -965,7 +1103,7 @@ pre.signature a:hover { text-decoration: underline; }
   #sidebar-toggle {
     display: inline-flex;
     }
-    
+
     .docbar-inner {
       gap: 10px;
       padding: 0 12px;
@@ -973,7 +1111,7 @@ pre.signature a:hover { text-decoration: underline; }
     .search input {
       height: 34px;
     }
-  
+
     .layout,
     .layout:has(.toc) {
       grid-template-columns: minmax(0, 1fr);
@@ -990,7 +1128,7 @@ pre.signature a:hover { text-decoration: underline; }
       transition: transform .2s ease;
       background: var(--bg-sidebar);
     }
-    
+
     body.drawer-open .sidebar {
       transform: translateX(0);
       box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
@@ -999,31 +1137,46 @@ pre.signature a:hover { text-decoration: underline; }
   padding: 20px 16px 48px;
 }
 
-.member .anchor {
-  display: none;
-}
+    .pagehead {
+      top: 52px;
+    }
+  
+    .pagehead-name {
+      font-size: 20px;
+    }
 }
 
 /* ─── Print ───────────────────────────────────────────── */
 @media print {
   .docbar,
-    .sidebar,
+  .sidebar,
     .toc,
     .copy-btn,
-    .member .anchor,
+  .pagehead .breadcrumb,
     #sidebar-backdrop {
       display: none !important;
     }
-  
-    .layout {
-      display: block;
+    .pagehead {
+      position: static;
+      background: none;
+      backdrop-filter: none;
+      border-bottom: none;
     }
   
+    /* Expand every member so printouts contain the full documentation. */
+    .member-body {
+      display: block !important;
+    }
+  
+    .member>.member-head .group-caret {
+      display: none;
+    }
+
     .content {
       padding: 0;
       max-width: none;
     }
-  
+
     .section .member {
       break-inside: avoid;
     }
