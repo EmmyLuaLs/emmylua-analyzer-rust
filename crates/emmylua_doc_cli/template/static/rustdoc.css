@@ -35,7 +35,7 @@
     --dot-enum: #cf222e;
     --dot-alias: #0a7d33;
   }
-  
+
   /* Dark palette. Kept in sync between the explicit [data-theme="dark"] override
      and the system dark preference (used when no explicit light choice exists). */
   :root[data-theme="dark"] {
@@ -140,8 +140,6 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 20px;
-  max-width: 1280px;
-  margin: 0 auto;
   height: 52px;
   padding: 0 20px;
 }
@@ -153,23 +151,65 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 .docbar-title:hover { text-decoration: none; opacity: .85; }
-.search { flex: 1; max-width: 420px; position: relative; }
+/* The search box is the visual anchor of the top bar: centered, stretched
+   with the viewport up to a readable cap, with an icon and a shortcut hint. */
+.search {
+  position: relative;
+  flex: 1;
+  max-width: 640px;
+  margin: 0 auto;
+}
 .search input {
   width: 100%;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, .15);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, .08);
+  height: 38px;
+    padding: 0 42px 0 40px;
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .1);
   color: var(--header-fg);
-  font-size: 13.5px;
+  font-size: 14px;
   outline: none;
-  transition: border-color .15s ease, background .15s ease;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
 .search input::placeholder { color: rgba(255, 255, 255, .55); }
 .search input:focus {
   border-color: var(--accent);
-  background: rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .15);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, .28);
+  }
+  
+  .search-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, .55);
+    pointer-events: none;
+  }
+  
+  .search-hint {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 20px;
+    padding: 1px 6px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .06);
+    color: rgba(255, 255, 255, .65);
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+  }
+  
+  .search input:focus~.search-hint,
+  .search input:not(:placeholder-shown)~.search-hint {
+    display: none;
 }
 
 /* Search results dropdown */
@@ -216,17 +256,21 @@ a:hover { text-decoration: underline; }
 }
 
 /* ─── Layout ──────────────────────────────────────────── */
+/* Three-column grid: the sidebar hugs the left edge of the screen and the TOC
+   the right edge, while the content column is capped and centered inside the
+   middle track. On fullscreen windows the layout stretches with the viewport
+   instead of floating as a narrow centered band. */
 .layout {
-  display: flex;
-  max-width: 1280px;
-  margin: 0 auto;
+  display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
   min-height: calc(100vh - 52px);
+}
+.layout:has(.toc) {
+  grid-template-columns: 280px minmax(0, 1fr) 220px;
 }
 
 /* ─── Sidebar ─────────────────────────────────────────── */
 .sidebar {
-  width: 280px;
-  flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-sidebar);
   overflow-y: auto;
@@ -240,6 +284,9 @@ a:hover { text-decoration: underline; }
 
 .sidebar-category { margin: 0 0 8px; }
 .category-title {
+  display: flex;
+    align-items: baseline;
+    justify-content: space-between;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -247,33 +294,67 @@ a:hover { text-decoration: underline; }
   color: var(--fg-muted);
   padding: 10px 16px 4px;
 }
+.category-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 16px;
+}
 .sidebar details { margin: 0; }
 .sidebar summary.group-label {
+  display: flex;
+    align-items: center;
+    gap: 6px;
   cursor: pointer;
   font-family: "SFMono-Regular", Consolas, Menlo, monospace;
   font-size: 12px;
   font-weight: 600;
   color: var(--fg-muted);
-  padding: 3px 18px;
+  padding: 2px 18px;
   user-select: none;
+  list-style: none;
   transition: color .12s ease;
 }
+.sidebar summary.group-label::-webkit-details-marker {
+  display: none;
+}
 .sidebar summary.group-label:hover { color: var(--fg); }
+/* Folder expand arrow: a small caret that rotates when the branch opens. */
+.group-caret {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform .15s ease;
+}
+
+.sidebar details[open]>summary.group-label .group-caret {
+  transform: rotate(90deg);
+}
 .sidebar ul { list-style: none; margin: 0 0 4px; padding: 0 0 0 16px; }
 .sidebar li { margin: 0; }
-.sidebar details > ul { padding-left: 18px; border-left: 1px solid var(--border); margin-left: 20px; }
+.sidebar details>ul {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  margin-left: 21px;
+}
 .sidebar details[open] > ul { margin-bottom: 2px; }
 .sidebar a.nav-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 5px;
+  gap: 7px;
+    min-height: 26px;
+    padding: 2px 8px;
+    border-radius: 6px;
   font-size: 13px;
   color: var(--fg);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   transition: background .12s ease, color .12s ease;
 }
 .sidebar a.nav-item:hover { background: var(--bg-muted); text-decoration: none; }
@@ -282,31 +363,45 @@ a:hover { text-decoration: underline; }
   color: var(--accent-strong);
   font-weight: 600;
 }
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-/* Kind indicator dot on type leaves */
-.kind-dot {
+/* Kind indicator: a small colored letter badge (C/E/A) on type leaves. */
+.kind-badge {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    color: #fff;
   background: var(--fg-muted);
 }
-.kind-dot.kind-class {
+.kind-badge.kind-class {
   background: var(--dot-class);
 }
 
-.kind-dot.kind-enum {
+.kind-badge.kind-enum {
   background: var(--dot-enum);
 }
 
-.kind-dot.kind-alias {
+.kind-badge.kind-alias {
   background: var(--dot-alias);
 }
 
 /* ─── Content ─────────────────────────────────────────── */
+/* Capped for readability and centered inside the middle grid track, so long
+   lines never span an ultrawide monitor. */
 .content {
-  flex: 1;
   min-width: 0;
+  width: 100%;
+    max-width: 880px;
+    margin: 0 auto;
   padding: 32px 40px 64px;
 }
 .content h1.item-title {
@@ -784,8 +879,6 @@ pre.signature a:hover { text-decoration: underline; }
 
 /* ─── On-this-page TOC ────────────────────────────────── */
 .toc {
-  width: 220px;
-  flex-shrink: 0;
   position: sticky;
   top: 52px;
   height: calc(100vh - 52px);
@@ -843,6 +936,10 @@ pre.signature a:hover { text-decoration: underline; }
   .toc {
     display: none;
   }
+.layout,
+.layout:has(.toc) {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
 }
 
 /* Search match highlighting */
@@ -866,58 +963,68 @@ pre.signature a:hover { text-decoration: underline; }
 /* ─── Responsive ──────────────────────────────────────── */
 @media (max-width: 900px) {
   #sidebar-toggle {
-      display: inline-flex;
+    display: inline-flex;
     }
-  
+    
     .docbar-inner {
       gap: 10px;
       padding: 0 12px;
     }
+    .search input {
+      height: 34px;
+    }
   
+    .layout,
+    .layout:has(.toc) {
+      grid-template-columns: minmax(0, 1fr);
+    }
     .sidebar {
       position: fixed;
       left: 0;
       top: 52px;
       bottom: 0;
-      z-index: 40;
+    width: 280px;
+    z-index: 40;
       height: auto;
       transform: translateX(-102%);
       transition: transform .2s ease;
       background: var(--bg-sidebar);
     }
-  
+    
     body.drawer-open .sidebar {
       transform: translateX(0);
       box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
     }
-  .content { padding: 20px 16px 48px; }
-    .member .anchor {
-      display: none;
+.content {
+  padding: 20px 16px 48px;
+}
+
+.member .anchor {
+  display: none;
+}
+}
+
+/* ─── Print ───────────────────────────────────────────── */
+@media print {
+  .docbar,
+    .sidebar,
+    .toc,
+    .copy-btn,
+    .member .anchor,
+    #sidebar-backdrop {
+      display: none !important;
     }
+  
+    .layout {
+      display: block;
     }
   
-    /* ─── Print ───────────────────────────────────────────── */
-    @media print {
+    .content {
+      padding: 0;
+      max-width: none;
+    }
   
-      .docbar,
-      .sidebar,
-      .toc,
-      .copy-btn,
-      .member .anchor,
-      #sidebar-backdrop {
-        display: none !important;
-      }
-  
-      .layout {
-        display: block;
-      }
-  
-      .content {
-        padding: 0;
-        max-width: none;
-      }
-  
-      .section .member {
-        break-inside: avoid;
-      }
+    .section .member {
+      break-inside: avoid;
+    }
 }

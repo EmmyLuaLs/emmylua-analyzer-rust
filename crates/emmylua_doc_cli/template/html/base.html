@@ -33,8 +33,14 @@
     </button>
     <a class="docbar-title" href="{{ root_prefix }}index.html">{{ site_name }}</a>
     <div class="search">
-      <input id="search-input" type="search" placeholder="Search... ( / )" autocomplete="off" spellcheck="false"
-        role="combobox" aria-expanded="false" aria-controls="search-results" aria-keyshortcuts="/ control+k">
+      <svg class="search-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path
+          d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
+      </svg>
+      <input id="search-input" type="search" placeholder="Search types, modules, globals..." autocomplete="off"
+        spellcheck="false" role="combobox" aria-expanded="false" aria-controls="search-results"
+        aria-keyshortcuts="/ control+k">
+      <kbd class="search-hint" aria-hidden="true">/</kbd>
       <div id="search-results" class="search-results" role="listbox" hidden></div>
     </div>
     <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" aria-pressed="false">

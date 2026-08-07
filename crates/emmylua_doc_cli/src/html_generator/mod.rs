@@ -368,31 +368,42 @@ fn set_open(nodes: &mut [NavTreeNode]) -> bool {
 fn build_sidebar_html(nav: &NavModel) -> String {
     let mut html = String::new();
     if !nav.type_tree.is_empty() {
-        html.push_str(
-            "<div class=\"sidebar-category\"><div class=\"category-title\">Types</div><ul>",
-        );
+        html.push_str(&category_header("Types", nav.types.len()));
         html.push_str(&render_tree_html(&nav.type_tree, &nav.root_prefix));
         html.push_str("</ul></div>");
     }
     if !nav.modules.is_empty() {
-        html.push_str(
-            "<div class=\"sidebar-category\"><div class=\"category-title\">Modules</div><ul>",
-        );
+        html.push_str(&category_header("Modules", nav.modules.len()));
         for item in &nav.modules {
             html.push_str(&render_flat_item(item, &nav.root_prefix));
         }
         html.push_str("</ul></div>");
     }
     if !nav.globals.is_empty() {
-        html.push_str(
-            "<div class=\"sidebar-category\"><div class=\"category-title\">Globals</div><ul>",
-        );
+        html.push_str(&category_header("Globals", nav.globals.len()));
         for item in &nav.globals {
             html.push_str(&render_flat_item(item, &nav.root_prefix));
         }
         html.push_str("</ul></div>");
     }
     html
+}
+
+/// Opens a sidebar category section: title plus an item count badge.
+fn category_header(title: &str, count: usize) -> String {
+    format!(
+        "<div class=\"sidebar-category\"><div class=\"category-title\">{title}<span class=\"category-count\">{count}</span></div><ul>"
+    )
+}
+
+/// Single-letter badge rendered next to a type leaf in the sidebar.
+fn kind_badge(kind: &str) -> &'static str {
+    match kind {
+        "class" => "C",
+        "enum" => "E",
+        "alias" => "A",
+        _ => "T",
+    }
 }
 
 fn render_flat_item(item: &NavItem, root_prefix: &str) -> String {
@@ -412,18 +423,20 @@ fn render_tree_html(nodes: &[NavTreeNode], root_prefix: &str) -> String {
         if let Some(href) = &node.href {
             let active_cls = if node.active { " active" } else { "" };
             let data = node.data_name.as_deref().unwrap_or(&node.label);
+            let badge = kind_badge(&node.kind);
             html.push_str(&format!(
-                "<li><a data-name=\"{}\" href=\"{}{}\" class=\"nav-item{active_cls}\"><span class=\"kind-dot kind-{}\"></span>{}</a></li>",
+                "<li><a data-name=\"{}\" href=\"{}{}\" class=\"nav-item{active_cls}\"><span class=\"kind-badge kind-{}\" aria-hidden=\"true\">{}</span><span class=\"nav-label\">{}</span></a></li>",
                 render::html_escape(data),
                 root_prefix,
                 render::html_escape(href),
                 render::html_escape(&node.kind),
+                badge,
                 render::html_escape(&node.label)
             ));
         } else {
             let open = if node.open { " open" } else { "" };
             html.push_str(&format!(
-                "<li><details{open}><summary class=\"group-label\">{}</summary><ul>",
+                "<li><details{open}><summary class=\"group-label\"><span class=\"group-caret\" aria-hidden=\"true\"></span><span class=\"nav-label\">{}</span></summary><ul>",
                 render::html_escape(&node.label)
             ));
             html.push_str(&render_tree_html(&node.children, root_prefix));
