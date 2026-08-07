@@ -2,6 +2,21 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.25.0] - 2026-8-7
+### ✨ Added
+- **emmyLua_doc_cli support export html**: Added support for exporting documentation in HTML format. for an example, I export neovim/runtime/lua as a html document, see: https://cppcxy.github.io/nvim_runtime_lua_doc/
+
+### 🔧 Changed
+- **Remove LuaJIT-Ext**: Now LuaJIT-Ext is merged into LuaJIT, the old LuaJIT syntax rename to LuaJIT2
+- **Remove @schema**: Removed support for `@schema` annotation, which was used to add completion and hover for json-schema-defined APIs. The main reason for removing it is that I don't want to depend on the reqwest library — it takes up a lot of compilation time.
+- **Enhance luafmt check feature**: luafmt --check will output git diff like differents content, and will report check summary
+
+### 🐛 Fixed
+- **Fix some formatting edge cases**: Fixed some formatting edge cases, include
+  1. format will remove `safe-navigation` expr
+  2. format will remove `...` in param annotation
+- **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
+
 ## [0.24.0] - 2026-7-10
 
 ### ✨ Added
