@@ -3,29 +3,61 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="API documentation for {{ site_name | escape }}">
 <title>{% block title %}{{ site_name }}{% endblock title %}</title>
+<link rel="icon" type="image/svg+xml" href="{{ root_prefix }}static/favicon.svg">
+<script>
+  // Restore the saved theme before first paint to avoid a flash.
+  (function () {
+    try {
+      var t = localStorage.getItem('emmylua-doc-theme');
+      if (t === 'dark' || t === 'light') {
+        document.documentElement.setAttribute('data-theme', t);
+      }
+    } catch (e) { }
+  })();
+</script>
 <link rel="stylesheet" href="{{ root_prefix }}static/rustdoc.css">
-<script src="{{ root_prefix }}static/search-index.js" defer></script>
 <script>window.LUAFMT_ROOT = "{{ root_prefix }}";</script>
 <script src="{{ root_prefix }}static/main.js" defer></script>
 </head>
 <body>
 <header class="docbar">
   <div class="docbar-inner">
+    <button id="sidebar-toggle" class="icon-btn" type="button" aria-label="Toggle navigation" aria-controls="sidebar"
+      aria-expanded="false">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path
+          d="M1.75 2.5h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5zm0 5h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5zm0 5h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5z" />
+      </svg>
+    </button>
     <a class="docbar-title" href="{{ root_prefix }}index.html">{{ site_name }}</a>
     <div class="search">
-      <input id="search-input" type="search" placeholder="Search..." autocomplete="off" spellcheck="false">
-      <div id="search-results" class="search-results" hidden></div>
+      <input id="search-input" type="search" placeholder="Search... ( / )" autocomplete="off" spellcheck="false"
+        role="combobox" aria-expanded="false" aria-controls="search-results" aria-keyshortcuts="/ control+k">
+      <div id="search-results" class="search-results" role="listbox" hidden></div>
     </div>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path
+          d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z" />
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path
+          d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-9.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 0-1.5 0v1A.75.75 0 0 0 8 2.5zM2.343 2.343a.75.75 0 0 0 1.06 0l.707-.707a.75.75 0 0 0-1.06-1.06l-.707.707a.75.75 0 0 0 0 1.06zm11.314 0a.75.75 0 0 0-1.06 0l-.707.707a.75.75 0 1 0 1.06 1.06l.707-.707a.75.75 0 0 0 0-1.06zM8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm-6 2.75a.75.75 0 0 0 0-1.5h-1a.75.75 0 0 0 0 1.5h1zm12.5 0a.75.75 0 0 0 0-1.5h-1a.75.75 0 0 0 0 1.5h1zM3.464 12.536a.75.75 0 0 0-1.06 0l-.707.707a.75.75 0 1 0 1.06 1.06l.707-.707a.75.75 0 0 0 0-1.06zm10.133 0a.75.75 0 0 1 1.06 0l.707.707a.75.75 0 0 1-1.06 1.06l-.707-.707a.75.75 0 0 1 0-1.06zM8 13.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-1.5 0v-1A.75.75 0 0 1 8 13.5z" />
+      </svg>
+    </button>
   </div>
 </header>
+<div id="sidebar-backdrop" hidden></div>
 <div class="layout">
-  <nav class="sidebar" id="sidebar">
+  <nav class="sidebar" id="sidebar" aria-label="Site navigation">
     {% block sidebar %}{{ nav.sidebar_html | safe }}{% endblock sidebar %}
   </nav>
   <main class="content">
     {% block content %}{% endblock content %}
   </main>
+  {% block toc %}{% endblock toc %}
 </div>
 </body>
 </html>

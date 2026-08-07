@@ -4,8 +4,29 @@
 <h1 class="item-title">{{ site_name }}</h1>
 <p class="lead">Documentation generated from EmmyLua annotations.</p>
 
+<div class="stat-cards">
+  {% if nav.types | length > 0 %}
+  <a class="stat-card" href="#types">
+    <span class="stat-num">{{ nav.types | length }}</span>
+    <span class="stat-label">Types</span>
+  </a>
+  {% endif %}
+  {% if nav.modules | length > 0 %}
+  <a class="stat-card" href="#modules">
+    <span class="stat-num">{{ nav.modules | length }}</span>
+    <span class="stat-label">Modules</span>
+  </a>
+  {% endif %}
+  {% if nav.globals | length > 0 %}
+  <a class="stat-card" href="#globals">
+    <span class="stat-num">{{ nav.globals | length }}</span>
+    <span class="stat-label">Globals</span>
+  </a>
+  {% endif %}
+</div>
+
 {% if nav.type_groups %}
-<section class="section">
+<section class="section" id="types">
   <h2>Types</h2>
   <div class="index-groups">
     {% for group in nav.type_groups %}
@@ -23,7 +44,7 @@
 {% endif %}
 
 {% if nav.module_groups %}
-<section class="section">
+<section class="section" id="modules">
   <h2>Modules</h2>
   <div class="index-groups">
     {% for group in nav.module_groups %}
@@ -41,7 +62,7 @@
 {% endif %}
 
 {% if nav.global_groups %}
-<section class="section">
+<section class="section" id="globals">
   <h2>Globals</h2>
   <div class="index-groups">
     {% for group in nav.global_groups %}
