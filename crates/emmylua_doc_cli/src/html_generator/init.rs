@@ -34,9 +34,23 @@ pub fn init_html_tl() -> Option<Tera> {
 pub fn write_static_assets(output: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let static_dir = output.join("static");
     std::fs::create_dir_all(&static_dir)?;
-    for file in STATIC_DIR.files() {
-        let name = file.path().file_name().unwrap().to_str().unwrap();
-        std::fs::write(static_dir.join(name), file.contents())?;
+    write_dir_recursive(&STATIC_DIR, &static_dir)?;
+    Ok(())
+}
+
+/// `Dir::files()` is non-recursive, so walk subdirectories (e.g. `fonts/`)
+/// explicitly and mirror the relative path structure under `output`.
+fn write_dir_recursive(dir: &Dir, dest_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    for file in dir.files() {
+        let rel = file.path().to_string_lossy().replace('\\', "/");
+        let dest = dest_root.join(&rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(dest, file.contents())?;
+    }
+    for sub in dir.dirs() {
+        write_dir_recursive(sub, dest_root)?;
     }
     Ok(())
 }
