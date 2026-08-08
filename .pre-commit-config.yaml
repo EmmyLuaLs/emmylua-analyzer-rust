@@ -16,6 +16,14 @@ repos:
         language: system
         files: ^tools/schema_json_gen/src/main\.rs$
         pass_filenames: false
+      - id: prettier
+        name: prettier
+        entry: prettier
+        args: [--write, --ignore-unknown]
+        language: node
+        types: [text]
+        additional_dependencies:
+          - prettier@3.9.6
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

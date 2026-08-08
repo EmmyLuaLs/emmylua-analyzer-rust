@@ -7,7 +7,9 @@
   font-family: 'Fira Sans';
   font-style: normal;
   font-weight: 400;
-  src: local('Fira Sans'), url("fonts/FiraSans-Regular-0fe48ade.woff2") format("woff2");
+  src:
+    local('Fira Sans'),
+    url('fonts/FiraSans-Regular-0fe48ade.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -15,7 +17,9 @@
   font-family: 'Fira Sans';
   font-style: italic;
   font-weight: 400;
-  src: local('Fira Sans Italic'), url("fonts/FiraSans-Italic-81dc35de.woff2") format("woff2");
+  src:
+    local('Fira Sans Italic'),
+    url('fonts/FiraSans-Italic-81dc35de.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -23,7 +27,9 @@
   font-family: 'Fira Sans';
   font-style: normal;
   font-weight: 500;
-  src: local('Fira Sans Medium'), url("fonts/FiraSans-Medium-e1aa3f0a.woff2") format("woff2");
+  src:
+    local('Fira Sans Medium'),
+    url('fonts/FiraSans-Medium-e1aa3f0a.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -31,7 +37,9 @@
   font-family: 'Fira Sans';
   font-style: italic;
   font-weight: 500;
-  src: local('Fira Sans Medium Italic'), url("fonts/FiraSans-MediumItalic-ccf7e434.woff2") format("woff2");
+  src:
+    local('Fira Sans Medium Italic'),
+    url('fonts/FiraSans-MediumItalic-ccf7e434.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -39,7 +47,9 @@
   font-family: 'Source Serif 4';
   font-style: normal;
   font-weight: 400;
-  src: local('Source Serif 4'), url("fonts/SourceSerif4-Regular-6b053e98.ttf.woff2") format("woff2");
+  src:
+    local('Source Serif 4'),
+    url('fonts/SourceSerif4-Regular-6b053e98.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -47,7 +57,9 @@
   font-family: 'Source Serif 4';
   font-style: italic;
   font-weight: 400;
-  src: local('Source Serif 4 Italic'), url("fonts/SourceSerif4-It-ca3b17ed.ttf.woff2") format("woff2");
+  src:
+    local('Source Serif 4 Italic'),
+    url('fonts/SourceSerif4-It-ca3b17ed.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -55,7 +67,9 @@
   font-family: 'Source Serif 4';
   font-style: normal;
   font-weight: 500;
-  src: local('Source Serif 4 Semibold'), url("fonts/SourceSerif4-Semibold-457a13ac.ttf.woff2") format("woff2");
+  src:
+    local('Source Serif 4 Semibold'),
+    url('fonts/SourceSerif4-Semibold-457a13ac.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -63,7 +77,9 @@
   font-family: 'Source Serif 4';
   font-style: normal;
   font-weight: 700;
-  src: local('Source Serif 4 Bold'), url("fonts/SourceSerif4-Bold-6d4fd4c0.ttf.woff2") format("woff2");
+  src:
+    local('Source Serif 4 Bold'),
+    url('fonts/SourceSerif4-Bold-6d4fd4c0.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -71,7 +87,7 @@
   font-family: 'Source Code Pro';
   font-style: normal;
   font-weight: 400;
-  src: url("fonts/SourceCodePro-Regular-8badfe75.ttf.woff2") format("woff2");
+  src: url('fonts/SourceCodePro-Regular-8badfe75.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -79,7 +95,7 @@
   font-family: 'Source Code Pro';
   font-style: italic;
   font-weight: 400;
-  src: url("fonts/SourceCodePro-It-fc8b9304.ttf.woff2") format("woff2");
+  src: url('fonts/SourceCodePro-It-fc8b9304.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -87,21 +103,21 @@
   font-family: 'Source Code Pro';
   font-style: normal;
   font-weight: 600;
-  src: url("fonts/SourceCodePro-Semibold-aa29a496.ttf.woff2") format("woff2");
+  src: url('fonts/SourceCodePro-Semibold-aa29a496.ttf.woff2') format('woff2');
   font-display: swap;
 }
 
 :root {
   /* Serif body text is rustdoc's signature look; UI chrome (sidebar, top
      bar, headings, search) uses sans. */
-  --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-sans: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --font-mono: "Source Code Pro", "SFMono-Regular", Consolas, Menlo, monospace;
+  --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'Source Code Pro', 'SFMono-Regular', Consolas, Menlo, monospace;
 }
 
 /* Begin theme: light (rustdoc defaults) */
 :root,
-:root[data-theme="light"] {
+:root[data-theme='light'] {
   color-scheme: light;
   --bg: #ffffff;
   --bg-elevated: #ffffff;
@@ -120,7 +136,7 @@
   --header-bg: #f5f5f5;
   --header-fg: #000000;
   --signature-bg: #f5f5f5;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .08);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   --radius: 2px;
   /* Syntax highlighting (rustdoc light = Tomorrow) */
   --hl-str: #718c00;
@@ -151,7 +167,7 @@
 /* Dark palette. Kept in sync between the explicit [data-theme="dark"] override
      and the system dark preference (used when no explicit light choice exists). */
 /* Begin theme: dark (rustdoc defaults) */
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   color-scheme: dark;
   --bg: #353535;
   --bg-elevated: #3c3c3c;
@@ -164,13 +180,13 @@
   --border-strong: #999999;
   --accent: #d2991d;
   --accent-strong: #d2991d;
-  --accent-soft: rgba(210, 153, 29, .18);
+  --accent-soft: rgba(210, 153, 29, 0.18);
   --code-bg: #2a2a2a;
   --deprecated: #f85149;
   --header-bg: #505050;
   --header-fg: #dddddd;
   --signature-bg: #2a2a2a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --hl-str: #83a300;
   --hl-num: #83a300;
   --hl-kw: #ab8ac1;
@@ -196,7 +212,7 @@
 /* End theme: dark */
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme='light']) {
     color-scheme: dark;
     --bg: #353535;
     --bg-elevated: #3c3c3c;
@@ -209,13 +225,13 @@
     --border-strong: #999999;
     --accent: #d2991d;
     --accent-strong: #d2991d;
-    --accent-soft: rgba(210, 153, 29, .18);
+    --accent-soft: rgba(210, 153, 29, 0.18);
     --code-bg: #2a2a2a;
     --deprecated: #f85149;
     --header-bg: #505050;
     --header-fg: #dddddd;
     --signature-bg: #2a2a2a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     --hl-str: #83a300;
     --hl-num: #83a300;
     --hl-kw: #ab8ac1;
@@ -259,7 +275,7 @@ body {
   color: var(--fg);
   background: var(--bg);
   line-height: 1.5;
-  font-feature-settings: "kern", "liga";
+  font-feature-settings: 'kern', 'liga';
   -webkit-font-smoothing: antialiased;
 }
 
@@ -296,14 +312,14 @@ a:hover {
   font-family: var(--font-sans);
   font-weight: 500;
   font-size: 15px;
-  letter-spacing: .01em;
+  letter-spacing: 0.01em;
   color: var(--header-fg);
   white-space: nowrap;
 }
 
 .docbar-title:hover {
   text-decoration: none;
-  opacity: .85;
+  opacity: 0.85;
 }
 
 /* The search box is the visual anchor of the top bar: centered, stretched
@@ -326,7 +342,9 @@ a:hover {
   color: var(--fg);
   font-size: 14px;
   outline: none;
-  transition: border-color .15s ease, box-shadow .15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .search input::placeholder {
@@ -366,8 +384,8 @@ a:hover {
   pointer-events: none;
 }
 
-.search input:focus~.search-hint,
-.search input:not(:placeholder-shown)~.search-hint {
+.search input:focus ~ .search-hint,
+.search input:not(:placeholder-shown) ~ .search-hint {
   display: none;
 }
 
@@ -383,7 +401,7 @@ a:hover {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 3px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   padding: 2px;
 }
 
@@ -475,7 +493,7 @@ a:hover {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   color: var(--fg-muted);
   padding: 10px 16px 4px;
 }
@@ -507,7 +525,7 @@ a:hover {
   padding: 2px 18px;
   user-select: none;
   list-style: none;
-  transition: color .12s ease;
+  transition: color 0.12s ease;
 }
 
 .sidebar summary.group-label::-webkit-details-marker {
@@ -526,10 +544,10 @@ a:hover {
   border-left: 4px solid currentColor;
   border-top: 3.5px solid transparent;
   border-bottom: 3.5px solid transparent;
-  transition: transform .15s ease;
+  transition: transform 0.15s ease;
 }
 
-.sidebar details[open]>summary.group-label .group-caret {
+.sidebar details[open] > summary.group-label .group-caret {
   transform: rotate(90deg);
 }
 
@@ -543,13 +561,13 @@ a:hover {
   margin: 0;
 }
 
-.sidebar details>ul {
+.sidebar details > ul {
   padding-left: 12px;
   border-left: 1px solid var(--border);
   margin-left: 21px;
 }
 
-.sidebar details[open]>ul {
+.sidebar details[open] > ul {
   margin-bottom: 2px;
 }
 
@@ -564,7 +582,9 @@ a:hover {
   font-size: 13px;
   color: var(--sidebar-link);
   overflow: hidden;
-  transition: background .12s ease, color .12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .sidebar a.nav-item:hover {
@@ -823,7 +843,7 @@ a:hover {
 
 .member-overloads .member-signature pre.signature {
   margin-top: 4px;
-  opacity: .92;
+  opacity: 0.92;
 }
 
 .docblock blockquote {
@@ -979,7 +999,7 @@ pre.signature a:hover {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   color: var(--fg-muted);
   margin-bottom: 4px;
 }
@@ -1038,7 +1058,7 @@ pre.signature a:hover {
   margin: 0;
 }
 
-.param-row dd p+p {
+.param-row dd p + p {
   margin-top: 4px;
 }
 
@@ -1066,7 +1086,7 @@ pre.signature a:hover {
   margin: 0 0 6px;
   font-size: 34px;
   font-weight: 500;
-  letter-spacing: -.01em;
+  letter-spacing: -0.01em;
 }
 
 .hero-lead {
@@ -1198,7 +1218,9 @@ pre.signature a:hover {
   background: transparent;
   color: var(--header-fg);
   cursor: pointer;
-  transition: background .15s ease, border-color .15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .icon-btn:hover {
@@ -1239,8 +1261,8 @@ pre.signature a:hover {
 }
 
 /* Deprecated emphasis */
-.member.is-deprecated>.member-head .member-signature {
-  opacity: .75;
+.member.is-deprecated > .member-head .member-signature {
+  opacity: 0.75;
 }
 
 /* rustdoc renders stability badges as soft-highlighted "stab" chips rather
@@ -1278,7 +1300,7 @@ pre.signature a:hover {
 }
 
 .breadcrumb .sep {
-  opacity: .6;
+  opacity: 0.6;
 }
 
 .breadcrumb .crumb-current {
@@ -1307,7 +1329,7 @@ pre.signature a:hover {
   background: var(--bg-elevated);
   color: var(--fg);
   font-family: var(--font-sans);
-  transition: border-color .15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .stat-card:hover {
@@ -1325,7 +1347,7 @@ pre.signature a:hover {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .07em;
+  letter-spacing: 0.07em;
   color: var(--fg-muted);
 }
 
@@ -1349,7 +1371,10 @@ pre.signature a:hover {
   color: var(--fg-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity .15s ease, color .15s ease, border-color .15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .code-wrap:hover .copy-btn,
@@ -1394,7 +1419,7 @@ pre.signature a:hover {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   color: var(--fg-muted);
   margin-bottom: 6px;
   padding-left: 12px;
@@ -1458,7 +1483,7 @@ pre.signature a:hover {
   position: fixed;
   inset: 52px 0 0 0;
   z-index: 35;
-  background: rgba(0, 0, 0, .45);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 #sidebar-backdrop[hidden] {
@@ -1494,13 +1519,13 @@ pre.signature a:hover {
     z-index: 40;
     height: auto;
     transform: translateX(-102%);
-    transition: transform .2s ease;
+    transition: transform 0.2s ease;
     background: var(--bg-sidebar);
   }
 
   body.drawer-open .sidebar {
     transform: translateX(0);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
   }
 
   .content {
@@ -1518,7 +1543,6 @@ pre.signature a:hover {
 
 /* ─── Print ───────────────────────────────────────────── */
 @media print {
-
   .docbar,
   .sidebar,
   .toc,
@@ -1540,7 +1564,7 @@ pre.signature a:hover {
     display: block !important;
   }
 
-  .member>.member-head .group-caret {
+  .member > .member-head .group-caret {
     display: none;
   }
 
