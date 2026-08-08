@@ -588,11 +588,12 @@ pre.signature {
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
   padding: 9px 14px;
-  overflow-x: auto;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 13px;
   line-height: 1.55;
   margin: 10px 0;
+  text-wrap: wrap;
+  text-indent: 3em hanging each-line;
 }
 pre.signature code { background: transparent; padding: 0; }
 pre.signature a { color: var(--accent); font-weight: 500; }
