@@ -37,6 +37,11 @@ jobs:
     - name: Run style check
       run: pre-commit run --all --hook-stage manual
 
+    - name: Install Prettier
+      run: npm i -g prettier
+    - name: Check formatting with Prettier
+      run: prettier -c .
+
   clippy:
     name: Clippy Lint Check
     runs-on: ubuntu-latest

@@ -1,0 +1,13 @@
+# Only format in /crates/emmylua_doc_cli/template.
+/*
+!/crates
+/crates/*
+!/crates/emmylua_doc_cli
+/crates/emmylua_doc_cli/*
+!/crates/emmylua_doc_cli/template
+
+*.md
+*.html
+
+# Re-include .prettierrc
+!.prettierrc
