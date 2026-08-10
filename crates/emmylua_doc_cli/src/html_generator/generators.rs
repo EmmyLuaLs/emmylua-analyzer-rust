@@ -4,7 +4,7 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::VisibilityKind;
 
-use crate::html_generator::html_type;
+use crate::html_generator::html_type::{self, TypeLinker};
 use crate::html_generator::types::{HtmlDoc, HtmlMember};
 use crate::markdown_generator::generator::collect_property;
 
@@ -16,7 +16,7 @@ pub struct GenContext<'a> {
     pub db: &'a DbIndex,
     /// Maps a type declaration id to a page href (prefixed relative to the
     /// page being generated).
-    pub linker: &'a super::html_type::TypeLinker<'a>,
+    pub linker: &'a TypeLinker<'a>,
 }
 
 pub fn build_type_doc(ctx: &GenContext, typ: &LuaTypeDecl) -> Option<HtmlDoc> {

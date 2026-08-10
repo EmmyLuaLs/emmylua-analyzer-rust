@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::markdown_generator::markdown_types;
+
 use super::markdown::render_markdown;
 use super::render::html_escape;
 
@@ -135,7 +137,7 @@ pub struct HtmlDoc {
 impl HtmlDoc {
     /// Stores rendered doc fields. Description / see / other are rendered as
     /// markdown HTML; deprecated is escaped plain text.
-    pub fn set_property(&mut self, property: crate::markdown_generator::markdown_types::Property) {
+    pub fn set_property(&mut self, property: markdown_types::Property) {
         self.description = property.description.map(|s| render_markdown(&s));
         self.deprecated = property.deprecated.map(|s| html_escape(&s));
         self.see = property.see.map(|s| render_markdown(&s));
