@@ -160,8 +160,6 @@ function math.rad(x) end
 --- @return integer
 function math.random(m, n) end
 
---- @version 5.1, 5.2, 5.3
----
 --- Sets `x` as the "seed" for the pseudo-random generator: equal seeds
 --- produce equal sequences of numbers.
 --- @param x integer
