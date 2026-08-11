@@ -293,10 +293,10 @@ impl PendingConditionNarrow {
                     LuaType::Array(array_type),
                     LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i),
                 ) if matches!(condition_flow, InferConditionFlow::TrueCondition) => {
-                    let new_array_type = LuaArrayType::new(
-                        array_type.get_base().clone(),
-                        LuaArrayLen::Max(*i + *max_adjustment),
-                    );
+                    // Array bounds are i64, so clamp an exclusive bound above i64::MAX.
+                    let max_len = i.saturating_add(*max_adjustment);
+                    let new_array_type =
+                        LuaArrayType::new(array_type.get_base().clone(), LuaArrayLen::Max(max_len));
                     LuaType::Array(new_array_type.into())
                 }
                 _ => antecedent_type,

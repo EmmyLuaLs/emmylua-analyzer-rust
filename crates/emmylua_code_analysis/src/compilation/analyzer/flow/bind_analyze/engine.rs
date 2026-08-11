@@ -161,7 +161,6 @@ enum Continuation {
         post_if: FlowId,
         current: FlowId,
         else_block: Option<LuaBlock>,
-        has_else_clause: bool,
     },
     /// if statement: finalize after the else block completes
     IfFinal { post_if: FlowId, else_label: FlowId },
@@ -764,7 +763,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
         let then_label = self.binder.create_branch_label();
         let clauses = if_stat.get_else_if_clause_list().collect::<Vec<_>>();
         let else_clause = if_stat.get_else_clause();
-        let has_else_clause = else_clause.is_some();
         let else_block = else_clause.and_then(|clause| clause.get_block());
 
         self.stack.push(Continuation::IfBranchDone {
@@ -774,7 +772,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             post_if: post_if_label,
             current,
             else_block,
-            has_else_clause,
         });
         if let Some(then_block) = if_stat.get_block() {
             self.stack
@@ -1114,7 +1111,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 post_if,
                 current,
                 else_block,
-                has_else_clause,
             } => {
                 self.binder.add_antecedent(post_if, value);
                 if idx >= clauses.len() {
@@ -1128,9 +1124,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                             Step::Task(Task::Block(block, else_label))
                         }
                         None => {
-                            if !has_else_clause {
-                                self.binder.add_antecedent(post_if, else_label);
-                            }
+                            self.binder.add_antecedent(post_if, else_label);
                             Step::Done(finalize_if(self.binder, post_if, else_label))
                         }
                     }
@@ -1146,7 +1140,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                         post_if,
                         current,
                         else_block,
-                        has_else_clause,
                     });
                     if let Some(block) = clause.get_block() {
                         self.stack.push(Continuation::ThenBlock { block });
