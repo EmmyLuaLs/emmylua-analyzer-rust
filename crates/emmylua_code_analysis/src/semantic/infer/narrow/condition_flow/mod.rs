@@ -1107,14 +1107,12 @@ impl CorrelatedSubquery {
 
 pub(super) fn always_literal_equal(left: &LuaType, right: &LuaType) -> bool {
     match (left, right) {
-        (LuaType::Union(union), other) => union
-            .into_vec()
-            .into_iter()
-            .all(|candidate| always_literal_equal(&candidate, other)),
-        (other, LuaType::Union(union)) => union
-            .into_vec()
-            .into_iter()
-            .all(|candidate| always_literal_equal(other, &candidate)),
+        (LuaType::Union(union), other) => {
+            union.all_members(|candidate| always_literal_equal(candidate, other))
+        }
+        (other, LuaType::Union(union)) => {
+            union.all_members(|candidate| always_literal_equal(other, candidate))
+        }
         (
             LuaType::StringConst(l) | LuaType::DocStringConst(l),
             LuaType::StringConst(r) | LuaType::DocStringConst(r),
