@@ -63,7 +63,7 @@ pub fn get_type_at_binary_expr(
             right_expr,
             condition_flow.invert(),
         ),
-        BinaryOperator::OpGt => try_get_at_gt_or_ge_expr(
+        BinaryOperator::OpGt => try_get_at_array_len_expr(
             db,
             cache,
             var_ref_id,
@@ -71,9 +71,9 @@ pub fn get_type_at_binary_expr(
             left_expr,
             right_expr,
             condition_flow,
-            true,
+            1,
         ),
-        BinaryOperator::OpGe => try_get_at_gt_or_ge_expr(
+        BinaryOperator::OpGe => try_get_at_array_len_expr(
             db,
             cache,
             var_ref_id,
@@ -81,7 +81,28 @@ pub fn get_type_at_binary_expr(
             left_expr,
             right_expr,
             condition_flow,
-            false,
+            0,
+        ),
+        // The false branches are equivalent to `>=` and `>` respectively.
+        BinaryOperator::OpLt => try_get_at_array_len_expr(
+            db,
+            cache,
+            var_ref_id,
+            flow_node,
+            left_expr,
+            right_expr,
+            condition_flow.invert(),
+            0,
+        ),
+        BinaryOperator::OpLe => try_get_at_array_len_expr(
+            db,
+            cache,
+            var_ref_id,
+            flow_node,
+            left_expr,
+            right_expr,
+            condition_flow.invert(),
+            1,
         ),
         BinaryOperator::OpNilCoalescing => {
             try_get_at_nil_coalescing(db, cache, var_ref_id, left_expr, condition_flow)
@@ -177,7 +198,7 @@ fn try_get_at_eq_or_neq_expr(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn try_get_at_gt_or_ge_expr(
+fn try_get_at_array_len_expr(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     var_ref_id: &VarRefId,
@@ -185,7 +206,7 @@ fn try_get_at_gt_or_ge_expr(
     left_expr: LuaExpr,
     right_expr: LuaExpr,
     condition_flow: InferConditionFlow,
-    gt: bool,
+    max_adjustment: i64,
 ) -> Result<ConditionFlowAction, InferFailReason> {
     match left_expr {
         LuaExpr::UnaryExpr(unary_expr) => {
@@ -217,7 +238,7 @@ fn try_get_at_gt_or_ge_expr(
                 expr: right_expr,
                 resume: ExprTypeContinuation::ArrayLen {
                     subquery_condition_flow: condition_flow,
-                    max_adjustment: if gt { 1 } else { 0 },
+                    max_adjustment,
                 },
             })
         }

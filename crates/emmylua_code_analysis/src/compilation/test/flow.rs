@@ -3156,6 +3156,57 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_issue_1207_lesser_array_length_guards() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+local a --- @type string[]
+if #a <= 1 then error() end
+
+--- @type string
+_ = a[2]
+
+local b --- @type string[]
+if #b < 2 then error() end
+
+--- @type string
+_ = b[2]
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_issue_1207_array_length_bound_does_not_overflow() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+local a --- @type string[]
+if #a <= 9223372036854775807 then error() end
+
+--- @type string
+_ = a[1]
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_issue_1207_empty_else_preserves_array_length_guard() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+local a --- @type string[]
+if not (#a > 1) then error() else end
+
+--- @type string
+_ = a[2]
+            "#
+        ));
+    }
+
+    #[test]
     fn test_return_cast_with_fallback() {
         let mut ws = VirtualWorkspace::new();
 
