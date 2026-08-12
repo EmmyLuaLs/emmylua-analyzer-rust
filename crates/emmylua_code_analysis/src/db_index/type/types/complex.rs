@@ -413,6 +413,15 @@ impl LuaUnionType {
         }
     }
 
+    // PERF: This is used in hot paths where `into_vec` would clone large inferred unions.
+    pub(crate) fn all_members(&self, mut predicate: impl FnMut(&LuaType) -> bool) -> bool {
+        match self {
+            LuaUnionType::Basic(basic) => basic.iter().all(|ty| predicate(&ty)),
+            LuaUnionType::Nullable(ty) => predicate(ty) && predicate(&LuaType::Nil),
+            LuaUnionType::Multi(types) => types.iter().all(predicate),
+        }
+    }
+
     #[allow(unused, clippy::wrong_self_convention)]
     pub(crate) fn into_set(&self) -> HashSet<LuaType> {
         match self {

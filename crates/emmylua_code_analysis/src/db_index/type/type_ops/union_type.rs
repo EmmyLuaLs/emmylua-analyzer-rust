@@ -48,65 +48,68 @@ pub(crate) fn union_type_shallow(source: LuaType, target: LuaType) -> LuaType {
 /// Return true when `LuaType::from_vec` is enough to match `Union.apply` folding.
 ///
 /// This is a conservative whole-batch check. We can reject early when a member
-/// needs semantic handling (`Ref`, nested union, callable variants), but we cannot
+/// needs semantic handling (`Ref`, callable variants), but we cannot
 /// accept early because most union rules depend on pairs that may appear later:
 /// `number | integer`, `string | "x"`, `true | false`, and `table | table const`.
 fn can_use_structural_union(types: &[LuaType]) -> bool {
-    let mut has_number = false;
-    let mut has_number_variant = false;
-    let mut has_integer = false;
-    let mut has_integer_const = false;
-    let mut has_string = false;
-    let mut has_string_const = false;
-    let mut has_boolean = false;
-    let mut boolean_const_count = 0;
-    let mut has_table = false;
-    let mut has_table_const = false;
+    let mut state = StructuralUnionState::default();
+    types.iter().all(|typ| state.add(typ))
+}
 
-    for typ in types {
+#[derive(Default)]
+struct StructuralUnionState {
+    has_number: bool,
+    has_number_variant: bool,
+    has_integer: bool,
+    has_integer_const: bool,
+    has_string: bool,
+    has_string_const: bool,
+    has_boolean: bool,
+    boolean_const_count: usize,
+    has_table: bool,
+    has_table_const: bool,
+}
+
+impl StructuralUnionState {
+    fn add(&mut self, typ: &LuaType) -> bool {
         match typ {
-            LuaType::Union(_)
-            | LuaType::Ref(_)
+            LuaType::Union(union) => return union.all_members(|typ| self.add(typ)),
+            LuaType::Ref(_)
             | LuaType::MultiLineUnion(_)
             | LuaType::DocFunction(_)
             | LuaType::Signature(_) => return false,
-            LuaType::Number => has_number = true,
+            LuaType::Number => self.has_number = true,
             LuaType::Integer => {
-                has_number_variant = true;
-                has_integer = true;
+                self.has_number_variant = true;
+                self.has_integer = true;
             }
             LuaType::IntegerConst(_) => {
-                has_number_variant = true;
-                has_integer_const = true;
+                self.has_number_variant = true;
+                self.has_integer_const = true;
             }
             LuaType::FloatConst(_) => {
-                has_number_variant = true;
+                self.has_number_variant = true;
             }
             LuaType::DocIntegerConst(_) => {
-                has_number_variant = true;
-                has_integer_const = true;
+                self.has_number_variant = true;
+                self.has_integer_const = true;
             }
-            LuaType::String => has_string = true,
-            LuaType::StringConst(_) | LuaType::DocStringConst(_) => has_string_const = true,
-            LuaType::Boolean => has_boolean = true,
-            LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => boolean_const_count += 1,
-            LuaType::Table => has_table = true,
-            LuaType::TableConst(_) => has_table_const = true,
+            LuaType::String => self.has_string = true,
+            LuaType::StringConst(_) | LuaType::DocStringConst(_) => self.has_string_const = true,
+            LuaType::Boolean => self.has_boolean = true,
+            LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => self.boolean_const_count += 1,
+            LuaType::Table => self.has_table = true,
+            LuaType::TableConst(_) => self.has_table_const = true,
             _ => {}
         }
 
-        if has_number && has_number_variant
-            || has_integer && has_integer_const
-            || has_string && has_string_const
-            || has_boolean && boolean_const_count > 0
-            || boolean_const_count > 1
-            || has_table && has_table_const
-        {
-            return false;
-        }
+        !(self.has_number && self.has_number_variant
+            || self.has_integer && self.has_integer_const
+            || self.has_string && self.has_string_const
+            || self.has_boolean && self.boolean_const_count > 0
+            || self.boolean_const_count > 1
+            || self.has_table && self.has_table_const)
     }
-
-    true
 }
 
 fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> LuaType {

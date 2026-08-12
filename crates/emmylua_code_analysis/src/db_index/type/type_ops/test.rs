@@ -247,6 +247,21 @@ mod tests {
             ws.ty("'a'|'b'")
         );
 
+        let ab = ws.ty("'a'|'b'");
+        let cd = ws.ty("'c'|'d'");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![ab, cd]),
+            ws.ty("'a'|'b'|'c'|'d'")
+        );
+
+        // Nested unions that need pairwise semantics must stay intact until fallback.
+        let number_or_integer = ws.ty("number|integer");
+        let marker = ws.ty("'marker'");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![number_or_integer, marker]),
+            ws.ty("number|integer|'marker'")
+        );
+
         let doc = ws.ty("fun(): boolean");
         let sig = ws.expr_ty("foo");
         let callable = TypeOps::union_all(ws.get_db_mut(), vec![doc.clone(), sig.clone()]);
