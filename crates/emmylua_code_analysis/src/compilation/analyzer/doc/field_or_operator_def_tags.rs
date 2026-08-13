@@ -120,7 +120,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
     analyzer
         .get_db()
         .get_reference_index_mut()
-        .add_index_reference(key, file_id, tag.get_syntax_id());
+        .add_index_reference(key.clone(), file_id, tag.get_syntax_id());
 
     analyzer
         .get_db()
@@ -147,8 +147,16 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
         analyzer.get_db().get_property_index_mut().add_description(
             file_id,
             property_owner.clone(),
-            description,
+            description.clone(),
         );
+        // workaround: 如果是`field`定义的`signature`, 也需要将描述添加到`member`上, 否则在生成文档时无法获取到描述
+        if let LuaSemanticDeclId::Signature(_) = property_owner {
+            analyzer.get_db().get_property_index_mut().add_description(
+                file_id,
+                LuaSemanticDeclId::Member(member_id),
+                description,
+            );
+        }
     }
 
     Some(())
