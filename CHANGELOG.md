@@ -1,141 +1,180 @@
-# 📝 CHANGELOG
+# Changelog
 
-*All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
+All notable changes to the EmmyLua Analyzer Rust project are documented in this file.
 
-## [0.25.0] - 2026-8-7
-### ✨ Added
-- **emmyLua_doc_cli support export html**: Added support for exporting documentation in HTML format. for an example, I export neovim/runtime/lua as a html document, see: https://cppcxy.github.io/nvim_runtime_lua_doc/
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 🔧 Changed
-- **Remove LuaJIT-Ext**: Now LuaJIT-Ext is merged into LuaJIT, the old LuaJIT syntax rename to LuaJIT2
-- **Remove @schema**: Removed support for `@schema` annotation, which was used to add completion and hover for json-schema-defined APIs. The main reason for removing it is that I don't want to depend on the reqwest library — it takes up a lot of compilation time.
-- **Enhance luafmt check feature**: luafmt --check will output git diff like differents content, and will report check summary
+## [Unreleased]
 
-### 🐛 Fixed
-- **Fix some formatting edge cases**: Fixed some formatting edge cases, include
-  1. format will remove `safe-navigation` expr
-  2. format will remove `...` in param annotation
-- **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
+### Changed
 
-## [0.24.0] - 2026-7-10
+- **Performance**: Avoid rebuilding large inferred unions during analysis.
 
-### ✨ Added
+### Fixed
 
-- **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables statement, the continue statement, the underscore number, and the short function syntax.
+- **Flow analysis**: Handle array length guards that compare against smaller lengths.
+- **Member id description**: Fixed an issue with member id description rendering.
 
-- **Support LuaJIT3**: Besides LuaJIT‑Ext syntax, named variadic arguments and integer division are also supported.
+## [0.25.1] - 2026-08-14
+
+### Changed
+
+- **emmylua_doc_cli**: Optimize style
+
+### Fixed
+- **Fix some formatting edge cases**: Fixed some formatting edge cases, including:
+  1. Fix compound assignment alignment formatting.
+- **Fix math.randomseed**: Fixed an issue where `math.randomseed` was not enable for all version
+- **Fix some stuck loading issue**: Fixed some issues that caused the language server to hang while loading a workspace.
+
+
+## [0.25.0] - 2026-08-07
+
+### Added
+
+- **emmylua_doc_cli support export html**: Added support for exporting documentation in HTML format. For example, the `neovim/runtime/lua` directory was exported as an HTML document, see: https://cppcxy.github.io/nvim_runtime_lua_doc/
+
+### Changed
+
+- **Remove LuaJIT-Ext**: Now LuaJIT-Ext is merged into LuaJIT, the old LuaJIT syntax is renamed to LuaJIT2.
+- **Remove @schema**: Removed support for the `@schema` annotation, which was used to add completion and hover for json-schema-defined APIs. The main reason for removing it is to drop the dependency on the reqwest library — it takes up a lot of compilation time.
+- **Enhance luafmt check feature**: `luafmt --check` now outputs git-diff-like differences and reports a check summary.
+
+### Fixed
+
+- **Fix some formatting edge cases**: Fixed some formatting edge cases, including:
+  1. Format would remove `safe-navigation` expressions.
+  2. Format would remove `...` in param annotations.
+- **Fix some stuck loading issue**: Fixed some issues that caused the language server to hang while loading a workspace, and improved the loading performance of large workspaces.
+
+## [0.24.0] - 2026-07-10
+
+### Added
+
+- **Support LuaJIT-Ext**: Added support for LuaJIT-Ext syntax, including compound assignment operators, null-safe navigation, the null-coalescing operator, constant variable statements, the `continue` statement, underscore numbers, and the short function syntax.
+
+- **Support LuaJIT3**: Besides LuaJIT-Ext syntax, named variadic arguments and integer division are also supported.
 
 - **Support const generic parameters**: Added the `const T` syntax for generics, for example `---@generic const T`.
 
 - **emmylua_check severity filter**: Added the `--severity` option to filter diagnostic output by minimum severity.
 
-### ⚠️ Deprecated
+### Deprecated
 
 - **std.ConstTpl**: Marked `std.ConstTpl` as deprecated. Use the new `const T` generic syntax instead.
 
-### 🔧 Changed
+### Changed
 
 - **Rename table field optimization**: `lsp_optimization("skip_table_fields_check")` is now the documented name for skipping table field diagnostics. The old `check_table_field` name remains supported as a compatibility alias.
 - **Refactor hover signature**: Refactored signature rendering in hover.
 
-### 🗑️ Removed
+### Removed
 
 - **`---@attribute` tag**: Removed the `---@attribute` tag. Attribute definitions now use C#-like class definitions:
+
 ```lua
 ---@class NewAttribute: Attribute
 ---@overload fun(args)
 ```
 
-## [0.23.2] - 2026-6-3
+## [0.23.2] - 2026-06-03
 
-- **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
-- **Optimize formatter style**: Optimize some formatter style
+### Changed
 
+- **Optimize formatter style**: Optimized some formatter styles.
 
-## [0.23.1] - 2026-5-14
+### Fixed
 
-- **Fix range format issue**: Built-in formatter now supports range format
-- **Fix some formatting edge cases**: Fixed some formatting edge cases, which are still being continuously improved
-- **Fix some stuck loading issue** Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
+- **Fix some stuck loading issue**: Fixed some issues that caused the language server to hang while loading a workspace, and improved the loading performance of large workspaces.
 
+## [0.23.1] - 2026-05-14
 
-## [0.23.0] - 2026-5-9
+### Fixed
 
-### 🔧 Changed
+- **Fix range format issue**: The built-in formatter now supports range formatting.
+- **Fix some formatting edge cases**: Fixed some formatting edge cases, which are still being continuously improved.
+- **Fix some stuck loading issue**: Fixed some issues that caused the language server to hang while loading a workspace, and improved the loading performance of large workspaces.
 
-- **New Formatter**: The new formatter(emmylua_formatter) is now the default formatter for the language server. For more information, please refer to [EmmyLua Formatter Documentation Index](docs/emmylua_formatter/README_EN.md).
+## [0.23.0] - 2026-05-09
+
+### Changed
+
+- **New Formatter**: The new formatter (emmylua_formatter) is now the default formatter for the language server. For more information, please refer to [EmmyLua Formatter Documentation Index](docs/emmylua_formatter/README_EN.md).
 
 - **Enhance generic type inference**: Improved the generic type inference algorithm to better handle complex scenarios, such as nested generics and recursive types.
 
-- **Update dependencies**: Updated various dependencies to their latest versions, update luars to 0.19.0.
+- **Update dependencies**: Updated various dependencies to their latest versions; updated luars to 0.19.0.
 
-- **Optimize performance**: Made several optimizations to improve the overall performance of the language server, including flow analyzis
+- **Optimize performance**: Made several optimizations to improve the overall performance of the language server, including flow analysis.
 
-### 🐛 Fixed
+### Fixed
 
-- Fix luajit complex number parsing issue
-- Fix local function semantic token
-- Fix compact luals type grammar fun(...):...
+- Fix luajit complex number parsing issue.
+- Fix local function semantic token.
+- Fix compact luals type grammar `fun(...):...`.
 
-## [0.22.0] - 2026-4-1
+## [0.22.0] - 2026-04-01
 
-### ✨ Added
+### Added
 
-- **Support for `@return_overload` annotation**: Added support for `@return_overload` , which allow you define function return like pcall
+- **Support `@return_overload` annotation**: Added support for `@return_overload`, which lets you define function returns like `pcall`:
+
 ```lua
 ---@return_overload true, string
 ---@return_overload false, integer
 local function func()
 end
 ```
-then the two variables in `local ok, res = func()` will be correctly inferred as `ok: true, res: string` and `ok: false, res: integer` respectively.
 
-- **Ready for New Formatter**: The language server plans to introduce a new formatter in version 0.23.0. This formatter can currently be experienced in CLI mode. You can download the latest formatter `luafmt` from the release page. For related documentation, please refer to [EmmyLua Formatter Documentation Index](docs/emmylua_formatter/README_EN.md). This formatting tool draws inspiration from Prettier while maintaining more style options from EmmyLua CodeStyle. After replacing the original formatter, emmylua_ls will no longer depend on high-version C++ compilers, and formatting results will be more stable. However, there are still some edge cases with suboptimal formatting, which will be continuously fixed in subsequent versions.
+The two variables in `local ok, res = func()` will now be correctly inferred as `ok: true, res: string` and `ok: false, res: integer` respectively.
 
-### 🔧 Changed
+- **Ready for New Formatter**: The language server plans to introduce a new formatter in version 0.23.0. This formatter can currently be experienced in CLI mode — download the latest formatter `luafmt` from the release page. For related documentation, please refer to [EmmyLua Formatter Documentation Index](docs/emmylua_formatter/README_EN.md). This formatting tool draws inspiration from Prettier while maintaining more style options from EmmyLua CodeStyle. After replacing the original formatter, emmylua_ls will no longer depend on high-version C++ compilers, and formatting results will be more stable. However, there are still some edge cases with suboptimal formatting, which will be continuously fixed in subsequent versions.
+
+### Changed
 
 - **Update luars to 0.17.0**: Updated the `luars` dependency to version 0.17.0.
-- **Improve performance**: Properly improved performance through a series of measures
+- **Improve performance**: Properly improved performance through a series of measures.
 
-### 🐛 Fixed
+### Fixed
 
-Fix some bugs
+- Fix some bugs.
 
-## [0.21.0] - 2026-3-6
+## [0.21.0] - 2026-03-06
 
-### ✨ Added
+### Added
 
-- **Support @schema url annotation**: Added support for `@schema` annotation,
-which can be use to add completion and hover for json-schema-defined APIs. For example:
+- **Support `@schema` url annotation**: Added support for the `@schema` annotation, which can be used to add completion and hover for json-schema-defined APIs. For example:
+
 ```lua
 ---@schema https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json
 local c = {
   -- will suggest `diagnostics` and more
 }
-
 ```
 
-### 🔧 Changed
+### Changed
 
 - **Update luars to 0.14.2**: Updated the `luars` dependency to version 0.14.2, which includes various bug fixes and improvements to Lua parsing and execution.
 
-### 🐛 Fixed
+### Fixed
 
-- fix package.searchpath returns nil+error if none succeeds
-- fix module recursive
-- fix shebang support
-- fix global declaration support
-- fix select(n, func()) correctly narrows type when func returns multiple values
-- fix resolve alias-call returns and simplify flow assignments
-- fix the next returned by pairs should accept 2 arguments
-- fix enforce segment-boundary fuzzy require matching
-- fix stabilize fuzzy require resolution across duplicate suffix matches
-- fix package.searchpath returns nil+error if none succeeds
-- fix lua5.5 named vararg support: donot report syntax-error
+- Fix `package.searchpath` returns `nil + error` if none succeeds.
+- Fix module recursive.
+- Fix shebang support.
+- Fix global declaration support.
+- Fix `select(n, func())` correctly narrowing type when func returns multiple values.
+- Fix resolving alias-call returns and simplify flow assignments.
+- Fix the `next` returned by `pairs` should accept 2 arguments.
+- Fix enforce segment-boundary fuzzy require matching.
+- Fix stabilize fuzzy require resolution across duplicate suffix matches.
+- Fix Lua 5.5 named vararg support: do not report a syntax error.
 
-## [0.20.0] - 2026-1-30
-### ✨ Added
-- **Support .emmyrc.lua configuration file**: The language server and emmylua_check now support loading configuration from `.emmyrc.lua` in addition to `.emmyrc.json` and `.luarc.json`. Lua configuration is parsed using the [luars](https://github.com/CppCXY/lua-rs) library. A basic config looks like:
+## [0.20.0] - 2026-01-30
+
+### Added
+
+- **Support `.emmyrc.lua` configuration file**: The language server and emmylua_check now support loading configuration from `.emmyrc.lua` in addition to `.emmyrc.json` and `.luarc.json`. Lua configuration is parsed using the [luars](https://github.com/CppCXY/lua-rs) library. A basic config looks like:
+
 ```lua
 local diagnostics = {
   disable = { "undefined-global" },
@@ -145,50 +184,58 @@ return {
   diagnostics = diagnostics,
 }
 ```
-You can use standard libraries such as os, table, utf8, string to write more complex configuration logic. `print` can be used for debugging; its output is redirected to the language server log.
 
-Note: The current `.emmyrc.lua` does not have dedicated code completions; this will be added in a future release.
-Note2: The `luars` project was developed by me with AI assistance. It is an almost-complete Lua 5.5 implementation but is still experimental and contains many bugs. Use with caution.
+You can use standard libraries such as `os`, `table`, `utf8`, `string` to write more complex configuration logic. `print` can be used for debugging; its output is redirected to the language server log.
 
-### 🔧 Changed
+> Note: The current `.emmyrc.lua` does not have dedicated code completions; this will be added in a future release.
+>
+> Note2: The `luars` project was developed by me with AI assistance. It is an almost-complete Lua 5.5 implementation but is still experimental and contains many bugs. Use with caution.
+
+### Changed
+
 - **Enhance workspace.library**: `workspace.library` now supports per-entry ignore configuration, for example:
+
 ```json
 {
   "workspace": {
-  "library": [
-    {
-    "path": "/path/to/lib1",
-    "ignoreGlobs": [ "**/test/**" ],
-    "ignoreDir": ["docs"]
-    }
-  ]
+    "library": [
+      {
+        "path": "/path/to/lib1",
+        "ignoreGlobs": [ "**/test/**" ],
+        "ignoreDir": ["docs"]
+      }
+    ]
   }
 }
 ```
+
 Additionally, `workspace.library` can now point directly to a single file instead of a directory:
+
 ```json
 {
   "workspace": {
-  "library": [
-    "/path/to/single/file.lua"
-  ]
+    "library": [
+      "/path/to/single/file.lua"
+    ]
   }
 }
 ```
 
 - **Improve type narrowing for 'and'/'or'**: Improved type narrowing for the `and` and `or` operators when used with nullable types and table/literal expressions.
 
-### 🐛 Fixed
-- Fixed preferred_local_alias diagnostic
-- Fixed some type checking issues
-- Fixed recursive behavior in reference computation
-- Optimized generic-related computations
+### Fixed
 
+- Fixed `preferred_local_alias` diagnostic.
+- Fixed some type checking issues.
+- Fixed recursive behavior in reference computation.
+- Optimized generic-related computations.
 
 ## [0.19.0] - 2025-12-25
 
-### ✨ Added
-- **Support Lua5.5**: Added support for Lua 5.5 syntax and features, including global declarations, table.create, and named vararg. For example:
+### Added
+
+- **Support Lua5.5**: Added support for Lua 5.5 syntax and features, including global declarations, `table.create`, and named vararg. For example:
+
 ```lua
 global *
 global <const> a, b, c
@@ -203,22 +250,23 @@ end
 - **Support call argument snippet completion**: When `"completion.callSnippet": true` is enabled, provide snippet completions for function arguments during function calls.
 - **Support param/@return completion**: Typing `---@` above a function will show `param/@return` completion suggestions; accepting a suggestion will automatically fill parameter names and types.
 
-### 🔧 Changed
+### Changed
 
 - **Workspace variable search optimization**: Optimized workspace-wide variable search to decide whether to use case-sensitive or case-insensitive matching based on the input's casing.
 
-### 🐛 Fixed
+### Fixed
 
 - **Fix integer literal parsing issue**: Integers exceeding int64 are now recognized as floats instead of being treated as 0.
 - **Fix typecheck**: Fixed several type checking issues.
 
-## [0.18.0] - 2025-12-5
+## [0.18.0] - 2025-12-05
 
 An experimental Lua 5.4 interpreter implemented in Rust: https://github.com/CppCXY/lua-rs
 
-### ✨ Added
+### Added
 
 - **Type narrowing with union types using field checks**: Changed the behavior when using a field of a union type in an `if` statement for type narrowing. Now, if the field exists in some types of the union but not in others, the types without that field will be excluded from the narrowed type. For example:
+
 ```lua
 local a --- @type string|{foo:boolean, bar:string}
 
@@ -226,7 +274,9 @@ if a.foo then
   local _ = a.bar -- a will be narrowed to {foo:boolean, bar:string}
 end
 ```
-- **Support generic in @field**: You can now use declaration generic type in `@field` annotations. For example:
+
+- **Support generic in @field**: You can now use declaration generic types in `@field` annotations. For example:
+
 ```lua
 ---@class GetType
 ---@field get_type fun<T>(name:`T`): T
@@ -235,16 +285,16 @@ local MyClass = {}
 local d = MyClass.get_type("Car") -- d: "Car"
 ```
 
-### 🔧 Changed
+### Changed
 
 - **Refactor Document Symbols**: Refactored the `textDocument/documentSymbol` request to improve performance and accuracy. The new implementation provides better handling of nested symbols and improves the overall structure of the returned symbol tree.
 
+### Fixed
 
-### 🐛 Fixed
-- **Fix Lazyvim.dev integration issue**: Fixed an issue where Lazyvim.dev integration did not work correctly due to ignore `workspace/didConfiguration` changes.
-- **Fix Completion**: Fixed an issue where certain completions were not being suggested, like:
-`Partial<Type>`
+- **Fix Lazyvim.dev integration issue**: Fixed an issue where Lazyvim.dev integration did not work correctly due to ignoring `workspace/didConfiguration` changes.
+- **Fix Completion**: Fixed an issue where certain completions were not being suggested, like `Partial<Type>`.
 - **Fix nil propagation in consecutive field access**: Fixed an issue where, during consecutive field access, if a previous field could be nil, subsequent fields would incorrectly propagate the nil type. For example:
+
 ```lua
 local a --- @type { foo? : { bar: { baz: number } } }
 
@@ -253,19 +303,12 @@ local b = a.foo.bar -- a.foo may be nil (correct)
 local _ = b.baz -- b is number
 ```
 
+## [0.17.0] - 2025-11-07
 
+### Added
 
----
-## [0.17.0] - 2025-11-7
-### 🔧 Changed
-- **Refactor IndexAliasName**: Removed the original index alias implementation (`-- [IndexAliasName]`), now use `---@[index_alias("name")]`.
-- **Refactor ClassDefaultCall**: Removed the configuration item `runtime.class_default_call`, now use `---@[constructor("<constructor_method_name>")]`.
-- **Rename ParamTypeNotMatch to ParamTypeMismatch**: Renamed the diagnostic `ParamTypeNotMatch` to `ParamTypeMismatch` for better clarity.
-- **Optimize comment parsing logic**: Comments now preserve leading spaces at the start of each line, maintaining the original formatting as much as possible when returned to the LSP client.
-
-
-### ✨ Added
 - **Attribute**: Introduced the new feature `---@attribute` for defining additional metadata, with several built-in attributes:
+
 ```lua
 --- Deprecated. Accepts an optional message parameter.
 ---@attribute deprecated(message: string?)
@@ -304,6 +347,7 @@ local _ = b.baz -- b is number
 ```
 
 The syntax is `---@[attribute_name_1(arg...), attribute_name_2(arg...), ...]`, and multiple attributes can be used simultaneously. Example:
+
 ```lua
 ---@class A
 ---@[deprecated] # If the attribute can omit parameters, `()` can be omitted
@@ -311,7 +355,9 @@ The syntax is `---@[attribute_name_1(arg...), attribute_name_2(arg...), ...]`, a
 ---@[index_alias("b")]
 ---@field [1] string # This will be shown as `b` in hints and completion
 ```
-- **More Generic Type**: support generic like:
+
+- **More Generic Type**: Support generic gymnastics like:
+
 ```lua
 --- Get the parameters of a function as a tuple
 ---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
@@ -325,24 +371,35 @@ The syntax is `---@[attribute_name_1(arg...), attribute_name_2(arg...), ...]`, a
 
 - **Support gutter request for intellij**: Added support for gutter requests in IntelliJ, allowing for better integration with the IDE's features.
 
-### 🐛 Fixed
+### Changed
+
+- **Refactor IndexAliasName**: Removed the original index alias implementation (`-- [IndexAliasName]`), now use `---@[index_alias("name")]`.
+- **Refactor ClassDefaultCall**: Removed the configuration item `runtime.class_default_call`, now use `---@[constructor("<constructor_method_name>")]`.
+- **Rename ParamTypeNotMatch to ParamTypeMismatch**: Renamed the diagnostic `ParamTypeNotMatch` to `ParamTypeMismatch` for better clarity.
+- **Optimize comment parsing logic**: Comments now preserve leading spaces at the start of each line, maintaining the original formatting as much as possible when returned to the LSP client.
+
+### Fixed
+
 - **Fix completion**: Fixed an issue where certain completions were not being suggested, like:
+
 ```lua
 if not self:<|>
 ```
+
 - **Fix '~' Replace error in config**: Fixed an issue where using '~' in configuration paths did not correctly expand to the user's home directory.
 - **Fix enum completion issue**: Fixed an issue where enum members were not being suggested in completions.
-- **Fix workspace load status bar**: Fixed an issue where the workspace load status bar always display in empty lua workspace.
+- **Fix workspace load status bar**: Fixed an issue where the workspace load status bar always displayed in empty Lua workspaces.
 - **Fix some condition narrow**: Fixed some issues with condition-based type narrowing not working as expected.
 
-
 ## [0.16.0] - 2025-10-17
-### ✨ Added
+
+### Added
+
 - **Support `workspace/diagnostic`**: Added support for the `workspace/diagnostic` request, allowing clients to fetch diagnostics for the entire workspace.
 - **Support global function overload**: You can now define overloads for global functions in `@meta` files. For example:
+
 ```lua
 ---@meta
-
 
 function overload(a: integer): integer
 end
@@ -351,72 +408,86 @@ function overload(a: string): string
 end
 ```
 
-### 🔧 Changed
+### Changed
+
 - **Update lsp-server dependency**: Updated the `lsp-server` dependency to version 0.7.9 to leverage the latest features and improvements.
 - **Migrate `lsp-types` to `emmy-lsp-types`**: Migrated from using the `lsp-types` crate to the `emmy-lsp-types` crate, which is a fork tailored for EmmyLua Analyzer Rust. This change allows for better customization and alignment with the project's specific needs.
 
-### 🐛 Fixed
+### Fixed
+
 - **Fix deadlock issue**: Resolved a deadlock issue that could occur during certain operations, improving the stability of the language server.
-- **Fix diagnostic reporting**: Fixed an issue where some diagnostics never cleaned up after files were change information.
+- **Fix diagnostic reporting**: Fixed an issue where some diagnostics never got cleaned up after files were changed.
 - **Fix overload description issue**: Fixed an issue where descriptions for overloaded functions were not displayed correctly in completion and hover tooltips.
 
 ## [0.15.0] - 2025-10-10
 
-### ✨ Added
-- **Use Clippy as linter**: core codebase now uses Clippy as the linter, improving code quality and consistency.
+### Added
+
+- **Use Clippy as linter**: The core codebase now uses Clippy as the linter, improving code quality and consistency.
 - **Support `textdocument/diagnostic`**: Added support for the `textDocument/diagnostic` request, allowing clients to fetch diagnostics for a specific document.
 - **Support annotation `@readonly`**: You can now use the `@readonly` annotation to mark fields as read-only. For example:
+
 ```lua
 ---@readonly
 local myVar = 42
 ```
+
 - **Add check for `global in non module`**: Added a new diagnostic to check for global variable declarations in non-module scope. This helps detect unintended global variable declarations.
 
-### 🔧 Changed
+### Changed
+
 - **Optimize semantic token**: Optimized semantic token handling for delimiter symbols.
 
-### 🐛 Fixed
+### Fixed
+
 - **Fix generic pattern matching issue**: Fixed an issue where generic pattern matching aliases could lead to incorrect type inference.
 
-## [0.14.0] - 2025-9-19
+## [0.14.0] - 2025-09-19
 
-### 🔧 Changed
+### Added
 
-- **Parser Optimization**: The parser now reports syntax errors more accurately and has improved error recovery.
-- **@type Support for Return Statements**: You can now use `@type` above a return statement to specify the return value type, for example:
-```lua
----@return vim.lsp.Config
-return {}
-```
-- **Type Checking Optimization**: Improved type checking algorithms for better performance.
-
-### ✨ Added
 - **SARIF Format for emmyLua_check**: `emmyLua_check` now supports SARIF format output, enabled via the `--format sarif` command line option.
 - **Generic List Supports T... Syntax**: Generic lists now support the `T...` syntax, for example:
+
 ```lua
 ---@alias MyTuple<T...> [T...]
 ```
 
-### 🐛 Fixed
+### Changed
+
+- **Parser Optimization**: The parser now reports syntax errors more accurately and has improved error recovery.
+- **@type Support for Return Statements**: You can now use `@type` above a return statement to specify the return value type, for example:
+
+```lua
+---@return vim.lsp.Config
+return {}
+```
+
+- **Type Checking Optimization**: Improved type checking algorithms for better performance.
+
+### Fixed
+
 - **Fix create progress**: Fixed an issue with the `window/workDoneProgress/create` protocol; it must be sent as a request, not a notification.
 - **Fix Function Overload Algorithm**: Rewrote the function overload algorithm to better handle variadic function parameters.
 
+## [0.13.0] - 2025-09-09
 
-## [0.13.0] - 2025-9-9
+### Added
 
-### 🐛 Fixed
-- **LSP Handler Order**: Fixed an issue where LSP request donot handle during initialization.it will be handle after initialization complete.
-
-### ✨ Added
 - **Support @link in comment**: You can now use `@link` in comments to create clickable links. For example:
+
 ```lua
 --- This is a link to {@link string.format}
 ```
+
 - **Support `--editor` directive**: You can now use the `--editor` directive to specify the editor type. For example:
+
 ```shell
 emmylua_ls --editor intellij
 ```
-- **Support range foramt for external tool**: You can now use the `rangeFormat` request to format a specific range of code using an external tool. This feature can be enabled with the following configuration:
+
+- **Support range format for external tool**: You can now use the `rangeFormat` request to format a specific range of code using an external tool. This feature can be enabled with the following configuration:
+
 ```json
 {
   "format": {
@@ -437,56 +508,63 @@ emmylua_ls --editor intellij
   }
 }
 ```
-for more information, please refer to [External Formatter Options](docs/external_format/external_formatter_options_EN.md).
+
+For more information, please refer to [External Formatter Options](docs/external_format/external_formatter_options_EN.md).
+
 - **Add Basic EmmyLua Annotation Documentation**: Added more documentation for EmmyLua annotations, please refer to [EmmyLua Annotation Documentation](docs/emmylua_doc/annotations_EN/README.md).
 
+### Changed
 
-### 🔧 Changed
-- **Refactor LSP Handler**: Refactored LSP handler to improve performance and maintainability.
-- **Refactor Folding Range**: Refactored folding range to support `Intellij`
+- **Refactor LSP Handler**: Refactored the LSP handler to improve performance and maintainability.
+- **Refactor Folding Range**: Refactored folding range to support IntelliJ.
 - **Add More Semantic Token**: Added more semantic tokens to improve syntax highlighting.
 
-## [0.12.0] - 2025-8-22
+### Fixed
 
-### 🐛 Fixed
+- **LSP Handler Order**: Fixed an issue where LSP requests were not handled during initialization; they are now handled after initialization completes.
+
+## [0.12.0] - 2025-08-22
+
+### Added
+
+- **Markdown syntax highlighting enabled by default**: Markdown syntax highlighting in comments is now enabled by default, including partial syntax highlighting for code blocks within comments.
+- **Support for `@language`**: Added support for using `@language` in comments to specify the language of code blocks, for example:
+
+```lua
+---@language lua
+local d = [[
+  print("Hello, world!")
+]]
+```
+
+This enables syntax highlighting for Lua code.
+
+- **Support for `Language<T>` generic type**: You can now use `Language<T: string>` in parameter comments to specify the language of a parameter, for example:
+
+```lua
+---@param lang Language<"vim">
+function vim_run(lang)
+end
+
+vim_run [[set ft=lua]]
+```
+
+Supported injected languages: lua, vim, sql, json, shell, protobuf.
+
+- **Support for `keyof type`**: When a function parameter is `keyof type`, corresponding code completion is provided.
+
+### Fixed
+
 - **Crash issue fixed**: Fixed a crash caused by parsing Unicode characters in comments.
 - **Large table performance issue fixed**: Fixed a performance issue where parsing large array tables in projects caused severe slowdowns.
 - **Generic type matching fixed**: Fixed an issue with incorrect matching of `constTpl<T>` types affecting generic type hints.
 
-### ✨ Added
-- **Markdown syntax highlighting enabled by default**: Markdown syntax highlighting in comments is now enabled by default, including partial syntax highlighting for code blocks within comments.
-- **Support for `@language`**: Added support for using `@language` in comments to specify the language of code blocks, for example:
-  ```lua
-  ---@language lua
-  local d = [[
-    print("Hello, world!")
-  ]]
-  ```
-  This enables syntax highlighting for Lua code.
+## [0.11.0] - 2025-08-08
 
-- **Support for `Language<T>` generic type**: You can now use `Language<T: string>` in parameter comments to specify the language of a parameter, for example:
-  ```lua
-  ---@param lang Language<"vim">
-  function vim_run(lang)
-  end
+### Added
 
-  vim_run [[set ft=lua]]
-  ```
-  Supported injected languages: lua, vim, sql, json, shell, protobuf.
+- **Support for Markdown/MarkdownRst**: Added support for Markdown and reStructuredText (RST) formats highlighted in documentation comments. This feature is disabled by default and can be enabled with the following configuration:
 
-- **Support for `keyof type`**: When a function parameter is `keyof type`, corresponding code completion is provided.
-
-## [0.11.0] - 2025-8-8
-
-### 🐛 Fixed
-- **Fixed a stack overflow crash**: Resolved an issue that caused the language server to crash due to excessive recursion.
-- **Fixed a deadlock issue**: Resolved an issue that caused the language server to hang indefinitely in Neovim.
-- **Fixed workspace libraries**: Resolved an issue where libraries in subdirectories were incorrectly added to the main workspace.
-- **Fixed error reporting**: Resolved an issue where error reports were not being generated correctly for table fields.
-
-### ✨ Added
-- **Support for Markdown/MarkdownRst**: Added support for Markdown and reStructuredText (RST) formats highlighted in documentation comments.
-This feature is disabled by default and can be enabled with the following configuration:
 ```json
 {
   "semanticTokens": {
@@ -499,6 +577,7 @@ This feature is disabled by default and can be enabled with the following config
 ```
 
 - **Support for external formatting tools**: Added support for external formatting tools. You can now configure an external formatter to format your Lua code. This feature can be enabled with the following configuration:
+
 ```json
 {
   "format": {
@@ -516,7 +595,8 @@ This feature is disabled by default and can be enabled with the following config
   }
 }
 ```
-Note: The built-in formatter is not stylua, but emmyluacodestyle. This feature simply provides an extension point, allowing users to use their preferred formatting tool. In terms of performance, using this extension may be faster than using other plugins.
+
+> Note: The built-in formatter is not stylua, but emmyluacodestyle. This feature simply provides an extension point, allowing users to use their preferred formatting tool. In terms of performance, using this extension may be faster than using other plugins.
 
 - **Support for non-standard symbols**: Added support for non-standard symbols in Lua.
 
@@ -548,18 +628,43 @@ Note: The built-in formatter is not stylua, but emmyluacodestyle. This feature s
 }
 ```
 
+### Fixed
 
+- **Fixed a stack overflow crash**: Resolved an issue that caused the language server to crash due to excessive recursion.
+- **Fixed a deadlock issue**: Resolved an issue that caused the language server to hang indefinitely in Neovim.
+- **Fixed workspace libraries**: Resolved an issue where libraries in subdirectories were incorrectly added to the main workspace.
+- **Fixed error reporting**: Resolved an issue where error reports were not being generated correctly for table fields.
 
-## [0.10.0] - 2025-7-27
-### 🐛 Fixed
-- **Fix create an empty directory**:  Fixed an issue where the language server would create an empty directory.
-### 🔧 Changed
+## [0.10.0] - 2025-07-27
+
+### Changed
+
 - **Rust Edition 2024**: The language server is now built with Rust Edition 2024, which brings various performance and stability improvements.
 
+### Fixed
 
-## [0.9.1] - 2025-7-25
-### 🔧 Changed
+- **Fix create an empty directory**: Fixed an issue where the language server would create an empty directory.
+
+## [0.9.1] - 2025-07-25
+
+### Added
+
+- **Use Mimalloc**: Mimalloc is now the default memory allocator, improving performance and memory management. Startup performance is increased by about 50%.
+- **Lua 5.5 Syntax Support**: More complete support for Lua 5.5 syntax, including `global` declarations, `table.create`, and the new attribute syntax. For example:
+
+```lua
+local <const> a, b, c = 1, 2, 3
+global <const> d, e, f
+```
+
+Also supports immutability checks for iterator variables in for loop statements.
+
+- **Doc Cli Modification**: Improved the documentation CLI to better handle various edge cases and provide more accurate suggestions.
+
+### Changed
+
 - **Refactor generic function inference**: Lambda function parameters now use deferred matching, allowing generic types to be inferred from other parameters first. For example:
+
 ```lua
 ---@generic T
 ---@param f1 fun(...: T...): any
@@ -575,575 +680,586 @@ end, 1, 2, 3)
 
 - **Generic Type Decay**: Now, generic types that match constants of integer, string, float, or boolean will be directly converted to their corresponding general types.
 
-### ✨ Added
-- **Use Mimalloc**: Mimalloc is now the default memory allocator, improving performance and memory management. Startup performance is increased by about 50%.
-- **Lua 5.5 Syntax Support**: More complete support for Lua 5.5 syntax, including `global` declarations, `table.create`, and the new attribute syntax. For example:
-```lua
-local <const> a, b, c = 1, 2, 3
-global <const> d, e, f
-```
-Also supports immutability checks for iterator variables in for loop statements.
-
-
-- **Doc Cli Modification**: Improved the documentation CLI to better handle various edge cases and provide more accurate suggestions.
-
-### 🐛 Fixed
+### Fixed
 
 - **Fix load order**: Fixed an issue where the order of loading files could lead to incorrect type inference.
-- **Fix Unpack infer**: Fixed an issue where unpacking a table in a table.
+- **Fix Unpack infer**: Fixed an issue where unpacking a table inside a table.
 - **Fix rename in @param**: Fixed an issue where renaming a parameter in a function param.
 
-## [0.9.0] - 2025-7-11
-### 🔧 Changed
+## [0.9.0] - 2025-07-11
 
-- **Flow Inference Refactor**: Refactored flow analysis algorithm, now uses a TypeScript-like flow analysis approach for better handling of complex scenarios.
-- **Doc CLI**: Changed export format, now supports multiple `@see` and other tag flags.
-
-### ✨ Added
+### Added
 
 - **TypeGuard Now Supports Generics**: You can now use generic parameters in TypeGuard, e.g. `TypeGuard<T>`.
 - **Type Narrowing by Constant Fields**: Supports type narrowing using constant fields.
 - **Basic Range Checking**: Array type indexing is now less frequently nullable.
 
-### 🐛 Fixed
+### Changed
+
+- **Flow Inference Refactor**: Refactored the flow analysis algorithm; now uses a TypeScript-like flow analysis approach for better handling of complex scenarios.
+- **Doc CLI**: Changed export format; now supports multiple `@see` and other tag flags.
+
+### Fixed
 
 - **Bug Fixes**: Fixed various bugs.
 
-## [0.8.2] - 2025-6-27
-### ✨ Added
+## [0.8.2] - 2025-06-27
+
+### Added
+
 - **Support for Descriptions Above and After Tags**: You can now add descriptions both above a tag (as a preceding comment) and after a tag (inline). The description will be associated with the corresponding tag.
-  ```lua
-  ---@class A
-  --- Description below (applies to the @field a)
-  ---@field a integer inline-description
-  ---@field b integer # description after hash
-  --- Description above (applies to the @field b)
-  ---@field c integer inline-description
-  local a = {}
-  ```
-- **Add call `__call` hint**: Add call `__call` hint, enable by `hint.metaCallHint`
-  ```lua
-  ---@class A
-  ---@overload fun(a: integer): integer
-  local A
-  A(1) -- There will be a lightning prompt between `A` and `(` or a `new` prompt before `A`
-  ```
 
-- **Support syntax`--[[@cast -?]]`**: When `@cast` is followed by an operator instead of a name, it will convert the type of the previous expression, but currently only works for function calls!
+```lua
+---@class A
+--- Description below (applies to the @field a)
+---@field a integer inline-description
+---@field b integer # description after hash
+--- Description above (applies to the @field b)
+---@field c integer inline-description
+local a = {}
+```
 
-- **Quick Fix for Nil Removal**: Added quick fix action for `NeedCheckNil` diagnostic that suggests using `@cast` to remove nil type
-  ```lua
-  ---@Class Cast1
-  ---@field get fun(self: self, a: number): Cast1?
-  local A
+- **Add call `__call` hint**: Add call `__call` hint, enable by `hint.metaCallHint`:
 
-  local _a = A:get(1) --[[@cast -?]]:get(2):get(3) -- Quick fix will prompt whether to automatically add `--[[@cast -?]]`
-  ```
-- **Base Function Name Completion**: Added `completion.baseFunctionIncludesName` configuration to control whether function names are included in base function completions
-  ```json
-  {
-    "completion": {
-      "baseFunctionIncludesName": true
-    }
+```lua
+---@class A
+---@overload fun(a: integer): integer
+local A
+A(1) -- There will be a lightning prompt between `A` and `(` or a `new` prompt before `A`
+```
+
+- **Support syntax `--[[@cast -?]]`**: When `@cast` is followed by an operator instead of a name, it will convert the type of the previous expression, but currently only works for function calls.
+- **Quick Fix for Nil Removal**: Added a quick fix action for the `NeedCheckNil` diagnostic that suggests using `@cast` to remove the nil type:
+
+```lua
+---@Class Cast1
+---@field get fun(self: self, a: number): Cast1?
+local A
+
+local _a = A:get(1) --[[@cast -?]]:get(2):get(3) -- Quick fix will prompt whether to automatically add `--[[@cast -?]]`
+```
+
+- **Base Function Name Completion**: Added the `completion.baseFunctionIncludesName` configuration to control whether function names are included in base function completions:
+
+```json
+{
+  "completion": {
+    "baseFunctionIncludesName": true
   }
-  ```
-  When enabled, function completions will include the function name: `function name() end` instead of `function () end`
+}
+```
 
-- **Cast Type Mismatch Diagnostic**: Added new diagnostic `CastTypeMismatch` to detect type mismatches in cast operations
-  ```lua
-  ---@type string
-  local a = "hello"
-  --[[@cast a int]] -- Warning
-  ```
+When enabled, function completions will include the function name: `function name() end` instead of `function () end`.
 
-- **Auto Require Naming Convention Configuration**: Added `completion.autoRequireNamingConvention.keep-class` configuration option. When importing modules, if the return value is a class definition, the class name will be used; otherwise, the file name will be used
-  ```json
-  {
-    "completion": {
-      "autoRequireNamingConvention": "keep-class"
-    }
+- **Cast Type Mismatch Diagnostic**: Added the new diagnostic `CastTypeMismatch` to detect type mismatches in cast operations:
+
+```lua
+---@type string
+local a = "hello"
+--[[@cast a int]] -- Warning
+```
+
+- **Auto Require Naming Convention Configuration**: Added the `completion.autoRequireNamingConvention.keep-class` configuration option. When importing modules, if the return value is a class definition, the class name will be used; otherwise, the file name will be used:
+
+```json
+{
+  "completion": {
+    "autoRequireNamingConvention": "keep-class"
   }
-  ```
+}
+```
 
-- **File rename prompts whether to update `require` paths**: Added prompt when renaming files to ask whether to update corresponding import statements
+- **File rename prompts whether to update `require` paths**: Added a prompt when renaming files to ask whether to update corresponding import statements.
 
+### Changed
 
-### 🔧 Changed
-- **Class Method Completion**: When a function call jumps, if there are multiple declarations, It will then attempt to return the most matching definition along with all actual code declarations, rather than returning all definitions.
-
+- **Class Method Completion**: When jumping from a function call, if there are multiple declarations, the language server will now attempt to return the most matching definition along with all actual code declarations, rather than returning all definitions.
 - **Definition Jump Enhancement**: When jumping to definition from function calls, if the target is located in a return statement, the language server will now attempt to find the original definition. For example:
-  ```lua
-  -- test.lua
-  local function test()
-  end
-  return {
-      test = test,
-  }
-  ```
-  ```lua
-  local t = require("test")
-  local test = t.test -- Previously jumped to: test = test,
-  test() -- Now jumps to: local function test()
-  ```
 
-### 🐛 Fixed
-- **Enum Variable Parameter Issue**: Fixed a crash issue when checking enum variable as parameter
-- **Circle Doc Class Issue**: Fixed a bug that caused the language server to hang when
+```lua
+-- test.lua
+local function test()
+end
+return {
+    test = test,
+}
+```
 
+```lua
+local t = require("test")
+local test = t.test -- Previously jumped to: test = test,
+test() -- Now jumps to: local function test()
+```
 
-## [0.8.1] - 2025-6-14
+### Fixed
 
-### 🔧 Changed
-- **Generic constraint improvements**: Generic constraint (StrTplRef) removes the protection for string
-  ```lua
-  ---@generic T: string -- need to remove `: string`
-  ---@param a `T`
-  ---@return T
-  local function class(a)
-  end
+- **Enum Variable Parameter Issue**: Fixed a crash issue when checking an enum variable as a parameter.
+- **Circle Doc Class Issue**: Fixed a bug that caused the language server to hang when dealing with circular doc classes.
 
-  ---@class A
-  local A = class("A") -- error
-  ```
+## [0.8.1] - 2025-06-14
 
-### ✨ Added
-- **Immutable Tuples**: Explicitly declared `Tuple` are now immutable
-  ```lua
-  ---@type [1, 2]
-  local a = {1, 2}
-  a[1] = 3 -- error
-  ```
+### Added
 
-- **Class Default Call Configuration**: Added `classDefaultCall` configuration item
-  ```json
-  {
-    "runtime": {
-      "classDefaultCall": {
-        "functionName": "__init",
-        "forceNonColon": true,
-        "forceReturnSelf": true
-      }
+- **Immutable Tuples**: Explicitly declared tuples are now immutable:
+
+```lua
+---@type [1, 2]
+local a = {1, 2}
+a[1] = 3 -- error
+```
+
+- **Class Default Call Configuration**: Added the `classDefaultCall` configuration item:
+
+```json
+{
+  "runtime": {
+    "classDefaultCall": {
+      "functionName": "__init",
+      "forceNonColon": true,
+      "forceReturnSelf": true
     }
   }
-  ```
+}
+```
 
-- **Base Type Matching**: Added `docBaseConstMatchBaseType` configuration item
-  ```json
-  {
-    "strict": {
-      "docBaseConstMatchBaseType": true
-    }
+- **Base Type Matching**: Added the `docBaseConstMatchBaseType` configuration item:
+
+```json
+{
+  "strict": {
+    "docBaseConstMatchBaseType": true
   }
-  ```
+}
+```
 
-- **Enhanced Inlay Hints**: Params hint can now jump to the actual type definition
-- **Improved File Management**: When closing files not in workspace/library, their impact is removed
-- **Enhanced Ignore Functionality**: Ignored files won't be parsed when opened
+- **Enhanced Inlay Hints**: Params hint can now jump to the actual type definition.
+- **Improved File Management**: When closing files not in the workspace/library, their impact is removed.
+- **Enhanced Ignore Functionality**: Ignored files won't be parsed when opened.
 
-### 🐛 Fixed
-- **Function Hover**: Function hover now shows corresponding doc comments
-- **Go to Definition**: Fixed crash when using "go to definition" of member
-- **Enum Parameters**: Fixed enum usage as function parameters
-- **Function Completion**: Fixed function completion for table fields expecting functions
+### Changed
 
----
+- **Generic constraint improvements**: Generic constraint (StrTplRef) removes the protection for string:
 
-## [0.8.0] - 2025-5-30
+```lua
+---@generic T: string -- need to remove `: string`
+---@param a `T`
+---@return T
+local function class(a)
+end
 
-### ✨ Added
+---@class A
+local A = class("A") -- error
+```
+
+### Fixed
+
+- **Function Hover**: Function hover now shows corresponding doc comments.
+- **Go to Definition**: Fixed a crash when using "go to definition" of a member.
+- **Enum Parameters**: Fixed enum usage as function parameters.
+- **Function Completion**: Fixed function completion for table fields expecting functions.
+
+## [0.8.0] - 2025-05-30
+
+### Added
+
 - **New Standard Types**:
-  - `std.Unpack` type for better `unpack` function inference
-  - `std.Rawget` type for better `rawget` function inference
-- **Generator Support**: Implementation similar to `luals`
-- **Enhanced Generic Inference**: Improved generic parameter inference for lambda functions
-- **Type Checking**: Added type checking for intersection types
-- **Generic Constraints**: Support for generic constraint checking and string template parameters
-- **Documentation Hints**: Added in code completion for modules and types
+  - `std.Unpack` type for better `unpack` function inference.
+  - `std.Rawget` type for better `rawget` function inference.
+- **Generator Support**: Implementation similar to `luals`.
+- **Enhanced Generic Inference**: Improved generic parameter inference for lambda functions.
+- **Type Checking**: Added type checking for intersection types.
+- **Generic Constraints**: Support for generic constraint checking and string template parameters.
+- **Documentation Hints**: Added in-code completion for modules and types.
 
-### 🔧 Changed
-- **Math Library**: Changed `math.huge` to number type
-- **Type Hints**: Optimized rendering of certain type hints
+### Changed
 
-### 🐛 Fixed
-- **Type Narrowing**: Fixed issue where type narrowing is lost in nested closures
-- **Variadic Returns**: Optimized inference of variadic generic return values
-- **Performance**: Fixed performance issue with large Lua tables causing unresponsiveness
+- **Math Library**: Changed `math.huge` to the number type.
+- **Type Hints**: Optimized rendering of certain type hints.
 
----
+### Fixed
 
-## [0.7.3]
+- **Type Narrowing**: Fixed an issue where type narrowing is lost in nested closures.
+- **Variadic Returns**: Optimized inference of variadic generic return values.
+- **Performance**: Fixed a performance issue with large Lua tables causing unresponsiveness.
 
-### ✨ Added
+## [0.7.3] - 2025-05-20
+
+### Added
+
 - **@return_cast Support**: Support `@return_cast` for functions. When a function's return value is boolean (must be annotated as boolean), you can add an additional annotation `---@return_cast <param> <cast op>`, indicating that when the function returns true, the parameter `<param>` will be transformed to the corresponding type according to the cast. For example:
-  ```lua
-  ---@return boolean
-  ---@return_cast n integer
-  local function isInteger(n)
-      return n == math.floor(n)
-  end
 
-  local a ---@type integer | string
+```lua
+---@return boolean
+---@return_cast n integer
+local function isInteger(n)
+    return n == math.floor(n)
+end
 
-  if isInteger(a) then
-      print(a) -- a: integer
-  else
-      print(a) -- a: string
-  end
-  ```
+local a ---@type integer | string
 
-  `@return_cast` support self param. For example:
-  ```lua
-  ---@class My2
+if isInteger(a) then
+    print(a) -- a: integer
+else
+    print(a) -- a: string
+end
+```
 
-  ---@class My1
+`@return_cast` supports the self param. For example:
 
-  ---@class My3:My2,My1
-  local m = {}
+```lua
+---@class My2
 
+---@class My1
 
-  ---@return boolean
-  ---@return_cast self My1
-  function m:isMy1()
-  end
+---@class My3:My2,My1
+local m = {}
 
-  ---@return boolean
-  ---@return_cast self My2
-  function m:isMy2()
-  end
+---@return boolean
+---@return_cast self My1
+function m:isMy1()
+end
 
-  if m:isMy1() then
-      print(m) -- m: My1
-  elseif m:isMy2() then
-      print(m) -- m: My2
-  end
-  ```
+---@return boolean
+---@return_cast self My2
+function m:isMy2()
+end
 
-### 🔧 Changed
-- **Diagnostic Changes**: Remove diagnostic `lua-syntax-error`, it merges into `syntax-error`, add `doc-syntax-error` for doc syntax error
-- **Format Changes**: Fix format issue, Now When exist `syntax-error`, the format never return value
+if m:isMy1() then
+    print(m) -- m: My1
+elseif m:isMy2() then
+    print(m) -- m: My2
+end
+```
 
-### 🐛 Fixed
-- **Performance Fixes**: Fix a performance issue: prevent large union types when functions return tables
-- **Require Function Changes**: When an object returned by require function is a class/enum, defining new members on it is prohibited, while tables are not restricted
-- **Lua 5.5 Support**: Support `Lua 5.5` global decl grammar
-- **TypeGuard Support**: Support `TypeGuard<T>` as return type. For example:
-  ```lua
+- **Lua 5.5 Support**: Support the Lua 5.5 global declaration grammar.
+- **TypeGuard Support**: Support `TypeGuard<T>` as a return type. For example:
 
-  ---@return TypeGuard<string>
-  local function is_string(value)
-      return type(value) == "string"
-  end
+```lua
+---@return TypeGuard<string>
+local function is_string(value)
+    return type(value) == "string"
+end
 
-  local a
+local a
 
-  if is_string(a) then
-      print(a:sub(1, 1))
-  else
-      print("a is not a string")
-  end
-  ```
+if is_string(a) then
+    print(a:sub(1, 1))
+else
+    print("a is not a string")
+end
+```
 
----
+### Changed
 
-## [0.7.2]
+- **Diagnostic Changes**: Removed the `lua-syntax-error` diagnostic; it merges into `syntax-error`. Added `doc-syntax-error` for doc syntax errors.
+- **Format Changes**: Fixed a format issue. Now when a `syntax-error` exists, the formatter never returns a value.
 
-### ✨ Added
-- **Call Hierarchy Support**: Support `Call hierarchy` but only support incomming call
-- **@internal Tag**: Support new tag `@internal` for members or declarations. When a member or declaration is marked as `@internal`, it is only visible within its current library. This means that if you use `@internal` in one library, you cannot access this member or declaration from other libraries or workspace.
-- **Go to Implementation**: Support `Go to implementation`
-- **@nodiscard with Reason**: Support `@nodiscard` with reason
+### Fixed
 
-### 🐛 Fixed
-- **Performance Fixes**: Fix Some performance issue
+- **Performance Fixes**: Fixed a performance issue preventing large union types when functions return tables.
+- **Require Function Changes**: When an object returned by a require function is a class/enum, defining new members on it is prohibited, while tables are not restricted.
 
----
+## [0.7.2] - 2025-05-09
 
-## [0.7.1]
+### Added
 
-### ✨ Added
-- **Global Configuration Support**: Now language server configuration might be provided globally via the `<os-specific home dir>/.emmyrc.json`, `<os-specific config dir>/emmylua_ls/.emmyrc.json`, or by setting a variable `EMMYLUALS_CONFIG` with a path to the json configuration.
-Global configuration have less priority than the local one
+- **Call Hierarchy Support**: Support call hierarchy, but only incoming calls.
+- **@internal Tag**: Support the new tag `@internal` for members or declarations. When a member or declaration is marked as `@internal`, it is only visible within its current library. This means that if you use `@internal` in one library, you cannot access this member or declaration from other libraries or the workspace.
+- **Go to Implementation**: Support "go to implementation".
+- **@nodiscard with Reason**: Support `@nodiscard` with a reason.
+
+### Fixed
+
+- **Performance Fixes**: Fixed some performance issues.
+
+## [0.7.1] - 2025-04-18
+
+### Added
+
+- **Global Configuration Support**: The language server configuration might now be provided globally via `<os-specific home dir>/.emmyrc.json`, `<os-specific config dir>/emmylua_ls/.emmyrc.json`, or by setting a variable `EMMYLUALS_CONFIG` with a path to the JSON configuration. Global configuration has lower priority than the local one.
 - **Class Inference from Generic Types**: Classes might now infer from generic types and provide corresponding completions.
 
-### 🔧 Changed
-- **Flow Analyze Algorithm**: Refactor flow analyze algorithm
+### Changed
 
-### 🐛 Fixed
-- **Self Inference**: Fix some self infer issue
-- **Diagnostic Action**: Fix some diagnostic action issue
-- **Type Check and Completion**: Optimize some type check and completion
+- **Flow Analyze Algorithm**: Refactored the flow analyze algorithm.
 
----
+### Fixed
 
-## [0.7.0]
+- **Self Inference**: Fixed some self inference issues.
+- **Diagnostic Action**: Fixed some diagnostic action issues.
+- **Type Check and Completion**: Optimized some type checks and completions.
 
-### 🔧 Changed
-- **Type Infer Refactor**: Refactor `type infer`
-- **Member Infer Refactor**: Refactor `member infer`
-- **Tuple Type Check**: Optimize and Fix tuple type check
-- **Math Library**: Changed `math.huge` to number type
+## [0.7.0] - 2025-04-04
 
-### ✨ Added
-- **Variadic Type Support in Tuple**: Support Varidic type use in tuple, eg: `[string, integer...]`
-- **Pcall Infer Optimization**: Optimize pcall infer, now can match the self and alias
-- **Range Iter Var Optimization**: for range iter var now will remove nil type
-- **Setmetatable Infer Support**: Support infer from setmetatable
-- **emmylua_doc_cli Export**: emmylua_doc_cli will export more information
-- **Subclass and Super Class Rule Optimization**: Optimize type check rule for subclass and super class
-- **Description Support for Union Type**: Add description to type
-- **Multi Union Description Support**: Support description without '#' on multi union
-- **Standard Library Translation**: Add standard library translation
-- **Parameter Inlay Hint Optimization**: Optimize inlay hint for parameter, if the parameter name is the same as the variable name, the parameter name will not be displayed
+### Added
 
----
+- **Variadic Type Support in Tuple**: Support variadic types in tuples, e.g. `[string, integer...]`.
+- **Pcall Infer Optimization**: Optimized pcall inference; now can match self and alias.
+- **Range Iter Var Optimization**: For range iteration variables, the nil type is now removed.
+- **Setmetatable Infer Support**: Support inference from `setmetatable`.
+- **emmylua_doc_cli Export**: emmylua_doc_cli will export more information.
+- **Subclass and Super Class Rule Optimization**: Optimized type check rules for subclasses and super classes.
+- **Description Support for Union Type**: Added descriptions to types.
+- **Multi Union Description Support**: Support descriptions without '#' on multi unions.
+- **Standard Library Translation**: Added standard library translation.
+- **Parameter Inlay Hint Optimization**: Optimized inlay hints for parameters; if the parameter name is the same as the variable name, the parameter name will not be displayed.
 
-## [0.6.0]
+### Changed
 
-### ✨ Added
-- **Re-index Control**: Disable re-index in default, need to enable by `workspace.enableReindex`
-- **New Diagnostics**: Add New Diagnostics `inject_field`, `missing_fields`, `redefined_local`, `undefined_field`, `inject-field`, `missing-global-doc`,
-`incomplete-signature-doc`, `circle-doc-class`, `assign-type-mismatch`, `unbalanced_assignments`, `check_return_count`, `duplicate_require`, `circle_doc_class`, `incomplete_signature_doc`, `unnecessary_assert`
-- **Boolean Type Support**: Support `true` and `false` as type
-- **Compact Fun Return Syntax**: Compact luals fun return syntax like: `(name: string, age: number)`
-- **Iterator Function Aliases**: Aliases and overloads of iterator functions (i.e `fun(v: any): (K, V)` where `K` is the key type and `V` is the value type) are now used to infer types in `for` loops
-- **Compact String Template Syntax**: Compact luals string template syntax like: xxx`T`, `T`, `T`XXX, usage:
-  ```lua
+- **Type Infer Refactor**: Refactored `type infer`.
+- **Member Infer Refactor**: Refactored `member infer`.
+- **Tuple Type Check**: Optimized and fixed tuple type checking.
+- **Math Library**: Changed `math.huge` to the number type.
 
-  ---@generic T
-  ---@class aaa.`T`.bbb
-  ---@return T
-  function get_type(a)
-  end
+## [0.6.0] - 2025-03-21
 
-  local d = get_type('xxx') --- aaa.xxx.bbb
-  ```
-- **@see Support**: Support `@see` any thing
-- **Module Documentation Export Enhancement**: Enhance module documentation export
-- **@module Support**: Support `@module` usage: `---@module "module path"`
+### Added
 
-### 🔧 Changed
-- **Generic Dots Params Type Check**: Fix generic dots params type check
+- **Re-index Control**: Disabled re-index by default; needs to be enabled by `workspace.enableReindex`.
+- **New Diagnostics**: Added new diagnostics: `inject_field`, `missing_fields`, `redefined_local`, `undefined_field`, `inject-field`, `missing-global-doc`, `incomplete-signature-doc`, `circle-doc-class`, `assign-type-mismatch`, `unbalanced_assignments`, `check_return_count`, `duplicate_require`, `circle_doc_class`, `incomplete_signature_doc`, `unnecessary_assert`.
+- **Boolean Type Support**: Support `true` and `false` as types.
+- **Compact Fun Return Syntax**: Compact luals fun return syntax like `(name: string, age: number)`.
+- **Iterator Function Aliases**: Aliases and overloads of iterator functions (i.e. `fun(v: any): (K, V)` where `K` is the key type and `V` is the value type) are now used to infer types in `for` loops.
+- **Compact String Template Syntax**: Compact luals string template syntax like `` xxx`T` ``, `` `T` ``, `` `T`XXX ``:
 
----
+```lua
+---@generic T
+---@class aaa.`T`.bbb
+---@return T
+function get_type(a)
+end
 
-## [0.5.4]
+local d = get_type('xxx') --- aaa.xxx.bbb
+```
 
-### 🐛 Fixed
-- **Generic Table Infer Issue**: Fix generic table infer issue
-- **Tuple Infer Issue**: Fix tuple infer issue
+- **@see Support**: Support `@see` for anything.
+- **Module Documentation Export Enhancement**: Enhanced module documentation export.
+- **@module Support**: Support `@module` usage: `---@module "module path"`.
 
-### ✨ Added
-- **Env Variable Support**: Compact luals env variable start with `$`
-- **Humanize Type Refactor**: Refactor `humanize type` for stack overflow issue
-- **Documentation CLI Tool Render Enhancement**: Fix a documentation cli tool render issue
-- **Diagnostic Progress Issue Fix**: Fix diagnostic progress issue
+### Changed
 
----
+- **Generic Dots Params Type Check**: Fixed generic dots params type check.
 
-## [0.5.3]
+## [0.5.4] - 2025-03-07
 
-### ✨ Added
-- **Negative Integer Type Support**: Support negative integer as type
-- **TypeScript-like Type Gymnastics**: Support TypeScript-like type gymnastics
-- **Reference Search Improvement**: Improve reference search
-- **Type Check Refactor**: Refactor type check
-- **Hover Optimization**: Optimize hover
-- **Completion Optimization**: Optimize completion
-- **Pcall Return Type Support**: Support `pcall` return type and check
+### Added
 
-### 🐛 Fixed
-- **Infinite Recursion Issue in Alias Generics**: Fix infinite recursion issue in alias generics.
+- **Env Variable Support**: Compact luals env variable starting with `$`.
+- **Humanize Type Refactor**: Refactored `humanize type` to fix a stack overflow issue.
+- **Documentation CLI Tool Render Enhancement**: Fixed a documentation CLI tool render issue.
+- **Diagnostic Progress Issue Fix**: Fixed a diagnostic progress issue.
 
----
+### Fixed
 
-## [0.5.2]
+- **Generic Table Infer Issue**: Fixed a generic table inference issue.
+- **Tuple Infer Issue**: Fixed a tuple inference issue.
 
-### ✨ Added
-- **Fold Range Refactor**: Refactor `folding range`
-- **Super Class Completion Support**: Fix super class completion issue
-- **Function Overload Support in @field**: Support `@field` function overload like:
-  ```lua
-  ---@class AAA
-  ---@field event fun(s:string):string
-  ---@field event fun(s:number):number
-  ```
-- **Enum Type Check Fix**: Fix enum type check
-- **Custom Operator Infer Fix**: Fix custom operator infer
-- **Select Function Fix and Std.Select Type Addition**: Fix select function and add std.Select type
-- **Union Type Refactor**: Refactor Union type
-- **Description Support for Type**: Add description to type
-- **Multi Union Description Support**: Support description without '#' on multi union
-- **Standard Library Translation**: Add standard library translation
-- **Parameter Inlay Hint Optimization**: Optimize inlay hint for parameter, if the parameter name is the same as the variable name, the parameter name will not be displayed
+## [0.5.3] - 2025-03-07
 
----
+### Added
 
-## [0.5.1]
+- **Negative Integer Type Support**: Support negative integers as types.
+- **TypeScript-like Type Gymnastics**: Support TypeScript-like type gymnastics.
+- **Reference Search Improvement**: Improved reference search.
+- **Type Check Refactor**: Refactored type checking.
+- **Hover Optimization**: Optimized hover.
+- **Completion Optimization**: Optimized completion.
+- **Pcall Return Type Support**: Support `pcall` return type and check.
 
-### 🐛 Fixed
-- **Unix Issue Fix**: Fix issue `emmylua_ls` might not exit in unix.
+### Fixed
 
-### ✨ Added
-- **TypeScript-like Type Gymnastics**: Support TypeScript-like type gymnastics
-- **Reference Search Improvement**: Improve reference search
-- **Type Check Refactor**: Refactor type check
-- **Hover Optimization**: Optimize hover
-- **Completion Optimization**: Optimize completion
-- **Pcall Return Type Support**: Support `pcall` return type and check
+- **Infinite Recursion Issue in Alias Generics**: Fixed an infinite recursion issue in alias generics.
 
----
+## [0.5.2] - 2025-02-28
 
-## [0.5.0]
+### Added
 
-### ✨ Added
-- **Tuple to Array Casting Type-check**: Support type-check when casting tuples to arrays.
+- **Fold Range Refactor**: Refactored `folding range`.
+- **Super Class Completion Support**: Fixed super class completion issues.
+- **Function Overload Support in @field**: Support `@field` function overloads like:
+
+```lua
+---@class AAA
+---@field event fun(s:string):string
+---@field event fun(s:number):number
+```
+
+- **Enum Type Check Fix**: Fixed enum type checking.
+- **Custom Operator Infer Fix**: Fixed custom operator inference.
+- **Select Function Fix and Std.Select Type Addition**: Fixed the select function and added the `std.Select` type.
+- **Union Type Refactor**: Refactored the union type.
+- **Description Support for Type**: Added descriptions to types.
+- **Multi Union Description Support**: Support descriptions without '#' on multi unions.
+- **Standard Library Translation**: Added standard library translation.
+- **Parameter Inlay Hint Optimization**: Optimized inlay hints for parameters; if the parameter name is the same as the variable name, the parameter name will not be displayed.
+
+## [0.5.1] - 2025-02-20
+
+### Added
+
+- **TypeScript-like Type Gymnastics**: Support TypeScript-like type gymnastics.
+- **Reference Search Improvement**: Improved reference search.
+- **Type Check Refactor**: Refactored type checking.
+- **Hover Optimization**: Optimized hover.
+- **Completion Optimization**: Optimized completion.
+- **Pcall Return Type Support**: Support `pcall` return type and check.
+
+### Fixed
+
+- **Unix Issue Fix**: Fixed an issue where `emmylua_ls` might not exit in Unix.
+
+## [0.5.0] - 2025-02-11
+
+### Added
+
+- **Tuple to Array Casting Type-check**: Support type-checking when casting tuples to arrays.
 - **Function Overloads Autocompletion**: Now autocompletion suggests function overloads.
 - **Improved Completion for Integer Member Keys**: Improved completion for integer member keys.
-- **Value Inference by Reassign**: Infer value by reassign
-- **Base Control Flow Analyze Improvement**: Improved analyze base control flow
-- **Class Hover Enhancement**: Improved hover for class
-- **Semantic Token Optimization**: Optimized semantic token
-- **Tuple Inference for Table Array**: Infer Some table array as tuple
-- **Array Inference for `{ ... }`**: Infer `{ ... }` as array
-- **Immutable Semantic Model**: Semantic Model now is immutable
+- **Value Inference by Reassign**: Infer value by reassign.
+- **Base Control Flow Analyze Improvement**: Improved base control flow analysis.
+- **Class Hover Enhancement**: Improved hover for classes.
+- **Semantic Token Optimization**: Optimized semantic tokens.
+- **Tuple Inference for Table Array**: Infer some table arrays as tuples.
+- **Array Inference for `{ ... }`**: Infer `{ ... }` as an array.
+- **Immutable Semantic Model**: The semantic model is now immutable.
 
-### 🐛 Fixed
-- **Iteration Order Issue**: Fix inference issue by resolving iteration order problem.
-- **Type Check Improvement**: Improve type check
+### Fixed
 
----
+- **Iteration Order Issue**: Fixed an inference issue by resolving the iteration order problem.
+- **Type Check Improvement**: Improved type checking.
 
-## [0.4.6]
+## [0.4.6] - 2025-02-07
 
-### 🐛 Fixed
-- **Executable File Directory Hierarchy Issue**: Fix issue with executable file directory hierarchy being too deep.
+### Fixed
 
----
+- **Executable File Directory Hierarchy Issue**: Fixed an issue with the executable file directory hierarchy being too deep.
 
-## [0.4.5]
+## [0.4.5] - 2025-02-07
 
-### 🐛 Fixed
-- **Generic Table Infer Issue**: Fix generic table infer issue
-- **Tuple Infer Issue**: Fix tuple infer issue
+### Added
 
-### ✨ Added
-- **Env Variable Support**: Compact luals env variable start with `$`
-- **Humanize Type Refactor**: Refactor `humanize type` for stack overflow issue
-- **Documentation CLI Tool Render Enhancement**: Fix a documentation cli tool render issue
-- **Diagnostic Progress Issue Fix**: Fix diagnostic progress issue
+- **Env Variable Support**: Compact luals env variable starting with `$`.
+- **Humanize Type Refactor**: Refactored `humanize type` to fix a stack overflow issue.
+- **Documentation CLI Tool Render Enhancement**: Fixed a documentation CLI tool render issue.
+- **Diagnostic Progress Issue Fix**: Fixed a diagnostic progress issue.
 
----
+### Fixed
 
-## [0.4.4]
+- **Generic Table Infer Issue**: Fixed a generic table inference issue.
+- **Tuple Infer Issue**: Fixed a tuple inference issue.
 
-### ✨ Added
-- **Generic Alias Fold Support**: Support generic alias fold
-- **Code Style Check**: Support `code style check`, which powered by `emmyluacodestyle`
-- **Basic Table Declaration Field Names Autocompletion**: Basic table declaration field names autocompletion.
+## [0.4.4] - 2025-02-04
 
-### 🐛 Fixed
-- **Integer Overflow Panic Issue**: Fix possible panic due to integer overflow when calculating pows.
+### Added
 
----
+- **Generic Alias Fold Support**: Support generic alias fold.
+- **Code Style Check**: Support `code style check`, powered by `emmyluacodestyle`.
+- **Basic Table Declaration Field Names Autocompletion**: Basic table declaration field name autocompletion.
 
-## [0.4.3]
+### Fixed
 
-### 🐛 Fixed
-- **Std Resource Loaded for CLI Tools**: Fix std resource loaded for cli tools
+- **Integer Overflow Panic Issue**: Fixed a possible panic due to integer overflow when calculating pows.
 
----
+## [0.4.3] - 2025-02-04
 
-## [0.4.2]
+### Fixed
 
-### 🐛 Fixed
-- **Self Parameter Regard as Unuseful Issue**: Fix `self` parameter regard as unuseful issue
+- **Std Resource Loaded for CLI Tools**: Fixed std resource loading for CLI tools.
 
-### ✨ Added
-- **emmylua_check CLI Tool**: Add `emmylua_check` cli tool, you can use it to check lua code. you can install it by `cargo install emmylua_check`
+## [0.4.2] - 2025-02-04
 
----
+### Added
 
-## [0.4.1]
+- **emmylua_check CLI Tool**: Add the `emmylua_check` CLI tool; you can use it to check Lua code. Install it with `cargo install emmylua_check`.
 
-### ✨ Added
-- **Global Crates Release**: all the crates release to crates.io. now you can get `emmylua_parser`, `emmylua_code_analysis`, `emmylua_ls`, `emmylua_doc_cli` from crates.io.
-  ```shell
-  cargo install emmylua_ls
-  cargo install emmylua_doc_cli
-  ```
+### Fixed
 
----
+- **Self Parameter Regard as Unuseful Issue**: Fixed the `self` parameter being regarded as useless.
+
+## [0.4.1] - 2025-02-03
+
+### Added
+
+- **Global Crates Release**: All crates released to crates.io. Now you can get `emmylua_parser`, `emmylua_code_analysis`, `emmylua_ls`, `emmylua_doc_cli` from crates.io.
+
+```shell
+cargo install emmylua_ls
+cargo install emmylua_doc_cli
+```
 
 ## [0.4.0]
 
-### 🔧 Changed
-- **Template System Refactor**: refactor `template system`, optimize the generic infer
-- **Configuration Loading in NeoVim**: now configurations are loaded properly in NeoVim in cases when no extra LSP configuration parameters are provided
-- **Humanization of Small Constant Table Types**: extended humanization of small constant table types
+### Added
 
-### ✨ Added
-- **Module Name Mapping Configuration**: Add configuration option `workspace.moduleMap` to map old module names to new ones. The `moduleMap` is a list of mappings, for example:
+- **Module Name Mapping Configuration**: Add the configuration option `workspace.moduleMap` to map old module names to new ones. The `moduleMap` is a list of mappings, for example:
 
-  ```json
-  {
-      "workspace": {
-          "moduleMap": [
-              {
-                  "pattern": "^lib(.*)$",
-                  "replace": "script$1"
-              }
-          ]
-      }
-  }
-  ```
+```json
+{
+    "workspace": {
+        "moduleMap": [
+            {
+                "pattern": "^lib(.*)$",
+                "replace": "script$1"
+            }
+        ]
+    }
+}
+```
 
-  This feature ensures that `require` works correctly. If you need to translate module names starting with `lib` to use `script`, add the appropriate mapping here.
+This feature ensures that `require` works correctly. If you need to translate module names starting with `lib` to use `script`, add the appropriate mapping here.
 
-- **Project Structure Refactor**: Refactor project structure, move all resources into executable binary
+- **Project Structure Refactor**: Refactored the project structure, moving all resources into the executable binary.
 
----
+### Changed
 
-## [0.3.3]
+- **Template System Refactor**: Refactored the `template system`, optimizing generic inference.
+- **Configuration Loading in NeoVim**: Now configurations are loaded properly in NeoVim when no extra LSP configuration parameters are provided.
+- **Humanization of Small Constant Table Types**: Extended humanization of small constant table types.
 
-### ✨ Added
-- **Develop Guide**: Add Develop Guide
-- **workspace/didChangeConfiguration Notification Support**: support `workspace/didChangeConfiguration` notification for neovim
-- **Semantic Token Refactor**: refactor `semantic token`
-- **Simple Generic Type Instantiation Support**: support simple generic type instantiation based on the passed functions
-- **Find Generic Class Template Parameter Issue Fix**: Fix find generic class template parameter issue
+## [0.3.3] - 2025-01-31
 
----
+### Added
 
-## [0.3.2]
+- **Develop Guide**: Added a develop guide.
+- **workspace/didChangeConfiguration Notification Support**: Support the `workspace/didChangeConfiguration` notification for Neovim.
+- **Semantic Token Refactor**: Refactored `semantic token`.
+- **Simple Generic Type Instantiation Support**: Support simple generic type instantiation based on the passed functions.
 
-### 🐛 Fixed
-- **Multiple Return Value Inference Errors**: Fixed some multiple return value inference errors
-- **Redundant @return in Hover**: Removed redundant `@return` in hover
+### Fixed
 
-### ✨ Added
-- **Resource File Location Support**: Language server supports locating resource files through the `$EMMYLUA_LS_RESOURCES` variable
+- **Find Generic Class Template Parameter Issue Fix**: Fixed an issue finding the generic class template parameter.
 
----
+## [0.3.2] - 2025-01-23
 
-## [0.3.1]
+### Added
 
-### 🐛 Fixed
-- **Indexing Completion Issue**: Fixed a potential issue where indexing could not be completed
-- **Type Checking with Subclass Parameters**: Fixed an issue where type checking failed when passing subclass parameters to a parent class
+- **Resource File Location Support**: The language server supports locating resource files through the `$EMMYLUA_LS_RESOURCES` variable.
 
----
+### Fixed
 
-## [0.3.0]
+- **Multiple Return Value Inference Errors**: Fixed some multiple return value inference errors.
+- **Redundant @return in Hover**: Removed redundant `@return` in hover.
 
-### ✨ Added
-- **Progress Notifications for Non-VSCode Platforms**: Add progress notifications for non-VSCode platforms
-- **Nix Flake Installation Support**: Add nix flake for installation by nix users, refer to PR#4
-- **Parameter and Return Descriptions in Hover**: Support displaying parameter and return descriptions in hover
-- **Consecutive Require Statements as Import Blocks**: Support viewing consecutive require statements as import blocks, automatically folded by VSCode if the file only contains require statements
+## [0.3.1] - 2025-01-21
 
-### 🐛 Fixed
-- **Spelling Error**: Fix spelling error `interger` -> `integer`
-- **URL Parsing Issue**: Fix URL parsing issue when the first directory under a drive letter is in Chinese
-- **Table Type Checking Issues**: Fix type checking issues related to tables
-- **Document Color Implementation**: Modify the implementation of document color, requiring continuous words, and provide an option to disable the document color feature
-- **Type Inference Issue with Self as Parameter**: Fix type inference issue when `self` is used as an explicit function parameter
+### Fixed
+
+- **Indexing Completion Issue**: Fixed a potential issue where indexing could not be completed.
+- **Type Checking with Subclass Parameters**: Fixed an issue where type checking failed when passing subclass parameters to a parent class.
+
+## [0.3.0] - 2025-01-21
+
+### Added
+
+- **Progress Notifications for Non-VSCode Platforms**: Add progress notifications for non-VSCode platforms.
+- **Nix Flake Installation Support**: Add a nix flake for installation by nix users, refer to PR#4.
+- **Parameter and Return Descriptions in Hover**: Support displaying parameter and return descriptions in hover.
+- **Consecutive Require Statements as Import Blocks**: Support viewing consecutive require statements as import blocks; automatically folded by VSCode if the file only contains require statements.
+
+### Fixed
+
+- **Spelling Error**: Fixed the spelling error `interger` -> `integer`.
+- **URL Parsing Issue**: Fixed a URL parsing issue when the first directory under a drive letter is in Chinese.
+- **Table Type Checking Issues**: Fixed type checking issues related to tables.
+- **Document Color Implementation**: Modified the implementation of document color, requiring continuous words, and provided an option to disable the document color feature.
+- **Type Inference Issue with Self as Parameter**: Fixed a type inference issue when `self` is used as an explicit function parameter.
