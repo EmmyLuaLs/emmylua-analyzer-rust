@@ -127,4 +127,21 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_nonnli_with_nil() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for(
+            DiagnosticCode::UnnecessaryAssert,
+            r#"
+            assert("abc" ~= nil)
+            "#
+        ));
+        assert!(!ws.check_code_for(
+            DiagnosticCode::UnnecessaryAssert,
+            r#"
+            assert(1 == nil)
+            "#
+        ));
+    }
 }
