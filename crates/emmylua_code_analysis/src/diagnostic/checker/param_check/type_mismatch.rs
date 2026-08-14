@@ -6,7 +6,7 @@ use rowan::TextRange;
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel,
     TypeMismatch,
-    diagnostic::checker::assign_type_mismatch::check_table_expr,
+    diagnostic::checker::table::check_table_expr,
     humanize_type, render_type_mismatch,
     semantic::{RelationOutcome, get_func_param_type, probe_assignable},
 };
@@ -73,9 +73,13 @@ pub(super) fn check_param_types(
         if failed_arg.typ.is_table()
             && let Some(arg_expr_idx) = failed_arg.expr_index
             && let Some(arg_expr) = facts.arg_exprs.get(arg_expr_idx)
-            && let Some(add_diagnostic) =
-                check_table_expr(context, semantic_model, arg_expr, Some(&param_type))
-            && add_diagnostic
+            && check_table_expr(
+                context,
+                semantic_model,
+                arg_expr,
+                failed_arg.typ,
+                &param_type,
+            )
         {
             return Some(());
         }

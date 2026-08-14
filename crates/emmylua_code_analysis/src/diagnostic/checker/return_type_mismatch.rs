@@ -6,7 +6,7 @@ use rowan::{NodeOrToken, TextRange};
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
     SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
-    diagnostic::checker::{assign_type_mismatch::check_table_expr, humanize_lint_type},
+    diagnostic::checker::{humanize_lint_type, table::check_table_expr},
     render_type_mismatch,
 };
 
@@ -93,7 +93,13 @@ fn check_return_stat(
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
                     {
-                        check_table_expr(context, semantic_model, return_expr, Some(check_type));
+                        check_table_expr(
+                            context,
+                            semantic_model,
+                            return_expr,
+                            return_expr_type,
+                            check_type,
+                        );
                     }
 
                     add_type_check_diagnostic(
@@ -119,20 +125,22 @@ fn check_return_stat(
             }
             let return_expr_type = &return_expr_types[0];
             let return_expr_range = return_expr_ranges[0];
+            if return_expr_type.is_table()
+                && let Some(return_expr) = return_exprs.first()
+                && check_table_expr(
+                    context,
+                    semantic_model,
+                    return_expr,
+                    return_expr_type,
+                    return_type,
+                )
+            {
+                return Some(());
+            }
+
             if let AssignabilityResult::NotAssignable(mismatch) =
                 semantic_model.check_assignable(return_expr_type, check_type)
             {
-                if return_expr_type.is_table()
-                    && let Some(return_expr) = return_exprs.first()
-                {
-                    // 表字段已经报错了, 则不添加返回值不匹配的诊断避免干扰
-                    if let Some(add_diagnostic) =
-                        check_table_expr(context, semantic_model, return_expr, Some(return_type))
-                        && add_diagnostic
-                    {
-                        return Some(());
-                    }
-                }
                 add_type_check_diagnostic(
                     context,
                     semantic_model,
