@@ -124,7 +124,7 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          name: emmylua_ls
+          name: ${{ github.ref_name }}
           draft: false
           generate_release_notes: true
           files: |
