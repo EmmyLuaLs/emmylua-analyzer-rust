@@ -25,6 +25,7 @@ mod redundant_parameter_test;
 mod require_module_visibility_test;
 mod return_type_mismatch_test;
 mod syntax_error_test;
+mod table;
 mod type_access_modifier;
 mod unbalanced_assignments_test;
 mod undefined_doc_param_test;

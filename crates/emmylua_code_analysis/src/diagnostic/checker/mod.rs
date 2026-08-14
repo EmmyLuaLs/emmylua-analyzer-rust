@@ -29,6 +29,7 @@ mod redefined_local;
 mod require_module_visibility;
 mod return_type_mismatch;
 mod syntax_error;
+mod table;
 mod type_access_modifier;
 mod unbalanced_assignments;
 mod undefined_doc_param;
@@ -39,9 +40,8 @@ mod unnecessary_if;
 mod unused;
 
 use emmylua_parser::{
-    LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxId, LuaSyntaxKind,
+    LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,
 };
-use hashbrown::HashMap;
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
 use std::sync::Arc;
@@ -87,6 +87,10 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<discard_returns::DiscardReturnsChecker>(context, semantic_model);
     run_check::<await_in_sync::AwaitInSyncChecker>(context, semantic_model);
     run_check::<call_non_callable::CallNonCallableChecker>(context, semantic_model);
+    run_check::<table::table_field_type_mismatch::TableFieldTypeMismatchChecker>(
+        context,
+        semantic_model,
+    );
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<param_check::ParamCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
@@ -136,7 +140,6 @@ pub struct DiagnosticContext<'a> {
     file_id: FileId,
     db: &'a DbIndex,
     diagnostics: Vec<Diagnostic>,
-    table_expr_check_cache: HashMap<(LuaSyntaxId, LuaType), bool>,
     pub config: Arc<LuaDiagnosticConfig>,
 }
 
@@ -146,7 +149,6 @@ impl<'a> DiagnosticContext<'a> {
             file_id,
             db,
             diagnostics: Vec::new(),
-            table_expr_check_cache: HashMap::new(),
             config,
         }
     }
@@ -195,22 +197,6 @@ impl<'a> DiagnosticContext<'a> {
         };
 
         self.diagnostics.push(diagnostic);
-    }
-
-    pub(crate) fn get_table_expr_check_result(
-        &self,
-        cache_key: &(LuaSyntaxId, LuaType),
-    ) -> Option<bool> {
-        self.table_expr_check_cache.get(cache_key).copied()
-    }
-
-    pub(crate) fn set_table_expr_check_result(
-        &mut self,
-        cache_key: (LuaSyntaxId, LuaType),
-        has_diagnostic: bool,
-    ) {
-        self.table_expr_check_cache
-            .insert(cache_key, has_diagnostic);
     }
 
     fn should_report_diagnostic(&self, code: &DiagnosticCode, range: &TextRange) -> bool {

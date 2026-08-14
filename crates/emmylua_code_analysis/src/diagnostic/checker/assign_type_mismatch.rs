@@ -2,14 +2,14 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat,
-    LuaNameExpr, LuaTableExpr, LuaVarExpr,
+    LuaNameExpr, LuaTableExpr, LuaTableField, LuaVarExpr,
 };
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    AssignabilityResult, DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey,
-    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, TypeMismatch, VariadicType,
-    get_real_type, infer_index_expr, render_type_mismatch,
+    AssignabilityResult, DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberId,
+    LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeCache, SemanticDeclLevel, SemanticModel,
+    TypeMismatch, VariadicType, get_real_type, infer_index_expr, render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -108,16 +108,19 @@ fn check_name_expr(
         semantic_model
             .apply_assignment_target_casts(LuaExpr::NameExpr(name_expr.clone()), source_type)
     });
-    check_assign_type_mismatch(
-        context,
-        semantic_model,
-        name_expr.get_range(),
-        source_type.as_ref(),
-        &value_type,
-        false,
-    );
-    if let Some(expr) = expr {
-        check_table_expr(context, semantic_model, &expr, source_type.as_ref());
+    let table_has_diagnostic = expr
+        .as_ref()
+        .and_then(|expr| check_table_expr(context, semantic_model, expr, source_type.as_ref()))
+        .unwrap_or(false);
+    if !table_has_diagnostic {
+        check_assign_type_mismatch(
+            context,
+            semantic_model,
+            name_expr.get_range(),
+            source_type.as_ref(),
+            &value_type,
+            false,
+        );
     }
 
     Some(())
@@ -142,16 +145,19 @@ fn check_index_expr(
             .apply_assignment_target_casts(LuaExpr::IndexExpr(index_expr.clone()), source_type)
     });
 
-    check_assign_type_mismatch(
-        context,
-        semantic_model,
-        index_expr.get_range(),
-        source_type.as_ref(),
-        &value_type,
-        true,
-    );
-    if let Some(expr) = expr {
-        check_table_expr(context, semantic_model, &expr, source_type.as_ref());
+    let table_has_diagnostic = expr
+        .as_ref()
+        .and_then(|expr| check_table_expr(context, semantic_model, expr, source_type.as_ref()))
+        .unwrap_or(false);
+    if !table_has_diagnostic {
+        check_assign_type_mismatch(
+            context,
+            semantic_model,
+            index_expr.get_range(),
+            source_type.as_ref(),
+            &value_type,
+            true,
+        );
     }
     Some(())
 }
@@ -179,16 +185,19 @@ fn check_local_stat(
             .get_type_cache(&decl_id.into())
             .map(|cache| cache.as_type().clone())?;
         let value_type = value_types.get(idx)?.0.clone();
-        check_assign_type_mismatch(
-            context,
-            semantic_model,
-            range,
-            Some(&var_type),
-            &value_type,
-            false,
-        );
-        if let Some(expr) = value_exprs.get(idx) {
-            check_table_expr(context, semantic_model, expr, Some(&var_type));
+        let table_has_diagnostic = value_exprs
+            .get(idx)
+            .and_then(|expr| check_table_expr(context, semantic_model, expr, Some(&var_type)))
+            .unwrap_or(false);
+        if !table_has_diagnostic {
+            check_assign_type_mismatch(
+                context,
+                semantic_model,
+                range,
+                Some(&var_type),
+                &value_type,
+                false,
+            );
         }
     }
     Some(())
@@ -206,15 +215,7 @@ pub fn check_table_expr(
         return Some(false);
     };
 
-    let cache_key = (table_expr.get_syntax_id(), table_type.clone());
-    if let Some(has_diagnostic) = context.get_table_expr_check_result(&cache_key) {
-        return Some(has_diagnostic);
-    }
-
-    let has_diagnostic =
-        check_table_expr_content(context, semantic_model, table_type, &table_expr)?;
-    context.set_table_expr_check_result(cache_key, has_diagnostic);
-    Some(has_diagnostic)
+    check_table_expr_content(context, semantic_model, table_type, &table_expr)
 }
 
 // 处理 value_expr 是 TableExpr 的情况, 但不会处理 `local a = { x = 1 }, local v = a`
@@ -242,6 +243,17 @@ fn check_table_expr_content(
         let expr_type = semantic_model
             .infer_expr(value_expr.clone())
             .unwrap_or(LuaType::Any);
+
+        if let Some(annotated_type) = get_table_field_doc_type(semantic_model, field) {
+            if !expr_type.is_unknown() && !expr_type.is_any() {
+                if let AssignabilityResult::NotAssignable(_) =
+                    semantic_model.check_assignable(&expr_type, annotated_type)
+                {
+                    has_diagnostic = true;
+                    continue;
+                }
+            }
+        }
 
         // 位于的最后的 TableFieldValue 允许接受函数调用返回的多值, 而且返回的值必然会从下标 1 开始覆盖掉所有索引字段.
         if field.is_value_field()
@@ -419,4 +431,19 @@ fn add_type_check_diagnostic(
 
 fn get_real_type_or_self<'a>(db: &'a DbIndex, ty: &'a LuaType) -> &'a LuaType {
     get_real_type(db, ty).unwrap_or(ty)
+}
+
+fn get_table_field_doc_type<'a>(
+    semantic_model: &'a SemanticModel,
+    field: &LuaTableField,
+) -> Option<&'a LuaType> {
+    let member_id = LuaMemberId::new(field.get_syntax_id(), semantic_model.get_file_id());
+    let type_cache = semantic_model
+        .get_db()
+        .get_type_index()
+        .get_type_cache(&member_id.into())?;
+    match type_cache {
+        LuaTypeCache::DocType(annotated_type) => Some(annotated_type),
+        _ => None,
+    }
 }

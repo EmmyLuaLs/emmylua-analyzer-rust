@@ -292,3 +292,8 @@ Cannot use `...` outside a vararg function.:
   en: "The target requires at least %{count} element(s) but source may have fewer."
   zh_CN: "目标最少需要 %{count} 个元素，但源可能更少。"
   zh_HK: "目標最少需要 %{count} 個元素，但源可能更少。"
+
+'Cannot assign `%{actual}` to the `@type %{annotated}` annotation. %{reason}':
+  en: 'Cannot assign `%{actual}` to the `@type %{annotated}` annotation. %{reason}'
+  zh_CN: '不能将 `%{actual}` 赋值给 `@type %{annotated}` 注解。%{reason}'
+  zh_HK: '不能將 `%{actual}` 賦值給 `@type %{annotated}` 註釋。%{reason}'
