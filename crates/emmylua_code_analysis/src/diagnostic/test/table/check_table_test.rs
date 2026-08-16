@@ -81,35 +81,17 @@ local target = {
     }
 
     #[test]
-    fn nested_table_depth_limit_reports_current_field() {
+    fn nullable_array_element_reports_incompatible_non_nil_branch() {
         let mut ws = VirtualWorkspace::new();
-        let mut source = String::new();
-        for depth in 0..33 {
-            source.push_str(&format!(
-                "---@class NestedDepth{depth}\n---@field next NestedDepth{}\n",
-                depth + 1
-            ));
-        }
-        source.push_str(
-            "---@class NestedDepth33\n---@field value integer\n---@type NestedDepth0\nlocal target = {\n",
-        );
+        let source = r#"---@type string?
+local value
 
-        let mut expected_line = 0;
-        for depth in 0..33 {
-            if depth == 32 {
-                expected_line = source.lines().count() as u32;
-            }
-            source.push_str(&format!("{}next = {{\n", "    ".repeat(depth + 1)));
-        }
-        source.push_str(&format!("{}value = \"invalid\",\n", "    ".repeat(34)));
-        for depth in (0..=33).rev() {
-            source.push_str(&format!("{}}},\n", "    ".repeat(depth)));
-        }
+---@type boolean[]
+local target = {
+    value,
+}"#;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, &source);
-
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
     }
 
     #[test]

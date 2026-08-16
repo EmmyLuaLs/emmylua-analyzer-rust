@@ -2,18 +2,11 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaTableExpr};
 use rowan::TextRange;
 
 use crate::{
-    AssignabilityResult, LuaMemberKey, LuaType, LuaUnionType, SemanticModel, VariadicType,
+    AssignabilityResult, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, SemanticModel,
+    VariadicType, get_real_type, render_type_mismatch,
 };
 
-use super::super::{
-    DiagnosticContext,
-    assign_type_mismatch::{
-        add_type_check_diagnostic, check_assign_type_mismatch, get_real_type_or_self,
-    },
-};
-
-const MAX_FIELD_CHECK_COUNT: usize = 500;
-const MAX_RECURSION_DEPTH: usize = 32;
+use super::super::{DiagnosticContext, humanize_lint_type};
 
 struct TableCheckState {
     remaining_fields: usize,
@@ -21,31 +14,38 @@ struct TableCheckState {
 }
 
 impl TableCheckState {
+    const MAX_FIELD_CHECK_COUNT: usize = 500;
+
     fn new() -> Self {
         Self {
-            remaining_fields: MAX_FIELD_CHECK_COUNT,
+            remaining_fields: TableCheckState::MAX_FIELD_CHECK_COUNT,
             budget_exhausted: false,
         }
     }
 
     fn enter_field(&mut self) -> bool {
-        if self.remaining_fields == 0 {
-            self.budget_exhausted = true;
+        if self.check_field_budget() {
             return false;
         }
         self.remaining_fields -= 1;
         true
     }
+
+    fn check_field_budget(&mut self) -> bool {
+        if self.remaining_fields == 0 {
+            self.budget_exhausted = true;
+        }
+        self.budget_exhausted
+    }
 }
 
-/// 检查表字面量字段. 返回 `true` 表示调用方不应再添加外层类型诊断.
 pub(crate) fn check_table_expr(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     table_expr: &LuaExpr,
     actual_type: &LuaType,
     expected_type: &LuaType,
-) -> bool {
+) -> bool /* 是否在字面量表内添加了诊断 */ {
     let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) else {
         return false;
     };
@@ -61,7 +61,6 @@ pub(crate) fn check_table_expr(
         semantic_model,
         expected_type,
         &table_expr,
-        0,
         &mut state,
     )
 }
@@ -71,7 +70,6 @@ fn check_table_expr_content(
     semantic_model: &SemanticModel,
     expected_type: &LuaType,
     table_expr: &LuaTableExpr,
-    depth: usize,
     state: &mut TableCheckState,
 ) -> bool {
     let mut has_diagnostic = false;
@@ -120,8 +118,8 @@ fn check_table_expr_content(
         }
 
         // 此时不匹配, 如果右侧仍然是表字面量, 则需要递归检查其字段.
-        let real_expected_type =
-            get_real_type_or_self(semantic_model.get_db(), &field_expected_type);
+        let real_expected_type = get_real_type(semantic_model.get_db(), &field_expected_type)
+            .unwrap_or(&field_expected_type);
 
         // 期望类型可能是可空 union(如 `Foo?`), 此时若真实值是表字面量仍需递归检查字段.
         let nested_expected_type = match real_expected_type {
@@ -140,61 +138,51 @@ fn check_table_expr_content(
         if let Some(nested_expected_type) = nested_expected_type
             && let Some(child_table) = LuaTableExpr::cast(value_expr.syntax().clone())
         {
-            let field_has_diagnostic =
-                if depth >= MAX_RECURSION_DEPTH || state.remaining_fields == 0 {
-                    if state.remaining_fields == 0 {
-                        state.budget_exhausted = true;
-                    }
-                    add_forced_type_mismatch(
-                        context,
-                        semantic_model,
-                        field.get_range(),
-                        &field_expected_type,
-                        &actual_type,
-                    )
-                } else {
-                    let child_has_diagnostic = check_table_expr_content(
-                        context,
-                        semantic_model,
-                        nested_expected_type,
-                        &child_table,
-                        depth + 1,
-                        state,
-                    );
-                    child_has_diagnostic
-                        || state.budget_exhausted
-                            && add_forced_type_mismatch(
-                                context,
-                                semantic_model,
-                                field.get_range(),
-                                &field_expected_type,
-                                &actual_type,
-                            )
-                };
+            let field_has_diagnostic = if state.check_field_budget() {
+                add_table_type_mismatch(
+                    context,
+                    semantic_model,
+                    field.get_range(),
+                    &field_expected_type,
+                    &actual_type,
+                )
+            } else {
+                let child_has_diagnostic = check_table_expr_content(
+                    context,
+                    semantic_model,
+                    nested_expected_type,
+                    &child_table,
+                    state,
+                );
+                child_has_diagnostic
+                    || state.check_field_budget()
+                        && add_table_type_mismatch(
+                            context,
+                            semantic_model,
+                            field.get_range(),
+                            &field_expected_type,
+                            &actual_type,
+                        )
+            };
             has_diagnostic |= field_has_diagnostic;
             continue;
         }
 
-        if state.remaining_fields == 0 {
-            state.budget_exhausted = true;
-        }
+        state.check_field_budget();
 
-        let allow_nil = matches!(expected_type, LuaType::Array(_));
-        has_diagnostic |= check_assign_type_mismatch(
+        has_diagnostic |= add_table_type_mismatch(
             context,
             semantic_model,
             field.get_range(),
-            Some(&field_expected_type),
+            &field_expected_type,
             &actual_type,
-            allow_nil,
-        )
-        .unwrap_or(false);
+        );
     }
 
     has_diagnostic
 }
 
-fn add_forced_type_mismatch(
+fn add_table_type_mismatch(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
@@ -206,13 +194,18 @@ fn add_forced_type_mismatch(
     else {
         return false;
     };
-    add_type_check_diagnostic(
-        context,
-        semantic_model,
+    let db = semantic_model.get_db();
+    context.add_diagnostic(
+        DiagnosticCode::AssignTypeMismatch,
         range,
-        expected_type,
-        actual_type,
-        &mismatch,
+        t!(
+            "Cannot assign `%{value}` to `%{source}`. %{reason}",
+            value = humanize_lint_type(db, actual_type),
+            source = humanize_lint_type(db, expected_type),
+            reason = render_type_mismatch(db, &mismatch)
+        )
+        .to_string(),
+        None,
     );
     true
 }
@@ -225,8 +218,10 @@ fn check_table_last_variadic_type(
     actual_variadic: &VariadicType,
     range: TextRange,
 ) -> bool {
-    for offset in 0..10 {
-        let member_key = LuaMemberKey::Integer(start_index + offset as i64);
+    let db = semantic_model.get_db();
+    for offset in 0..16 {
+        let index = start_index + offset as i64;
+        let member_key = LuaMemberKey::Integer(index);
         let Ok(field_expected_type) = semantic_model.infer_member_type(expected_type, &member_key)
         else {
             break;
@@ -243,22 +238,30 @@ fn check_table_last_variadic_type(
                 actual_type.clone()
             }
         };
-        if semantic_model.is_assignable(&actual_type, &field_expected_type) {
+        let AssignabilityResult::NotAssignable(mismatch) =
+            semantic_model.check_assignable(&actual_type, &field_expected_type)
+        else {
             if matches!(field_expected_type, LuaType::Variadic(_)) {
                 break;
             }
             continue;
-        }
+        };
 
-        return check_assign_type_mismatch(
-            context,
-            semantic_model,
+        context.add_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
             range,
-            Some(&field_expected_type),
-            &actual_type,
-            false,
-        )
-        .unwrap_or(false);
+            t!(
+                "Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}",
+                index = offset + 1,
+                source_index = index,
+                value = humanize_lint_type(db, &actual_type),
+                source = humanize_lint_type(db, &field_expected_type),
+                reason = render_type_mismatch(db, &mismatch)
+            )
+            .to_string(),
+            None,
+        );
+        return true;
     }
 
     false

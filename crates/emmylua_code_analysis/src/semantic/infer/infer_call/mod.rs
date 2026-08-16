@@ -553,26 +553,19 @@ fn is_need_wrap_instance(
 }
 
 fn is_last_call_expr(call_expr: &LuaCallExpr) -> bool {
-    let mut opt_parent = call_expr.syntax().parent();
-    while let Some(parent) = &opt_parent {
-        match parent.kind().into() {
-            LuaSyntaxKind::AssignStat
-            | LuaSyntaxKind::LocalStat
-            | LuaSyntaxKind::ReturnStat
-            | LuaSyntaxKind::TableArrayExpr
-            | LuaSyntaxKind::CallArgList => {
-                let next_expr = call_expr.syntax().next_sibling();
-                return next_expr.is_none();
-            }
-            LuaSyntaxKind::TableFieldValue => {
-                opt_parent = parent.parent();
-            }
-            LuaSyntaxKind::ForRangeStat => return true,
-            _ => return false,
-        }
-    }
+    let Some(parent) = call_expr.syntax().parent() else {
+        return false;
+    };
 
-    false
+    match parent.kind().into() {
+        LuaSyntaxKind::AssignStat
+        | LuaSyntaxKind::LocalStat
+        | LuaSyntaxKind::ReturnStat
+        | LuaSyntaxKind::CallArgList => call_expr.syntax().next_sibling().is_none(),
+        LuaSyntaxKind::TableFieldValue => parent.next_sibling().is_none(),
+        LuaSyntaxKind::ForRangeStat => true,
+        _ => false,
+    }
 }
 
 pub fn infer_call_expr(

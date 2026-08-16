@@ -205,7 +205,7 @@ fn check_local_stat(
     Some(())
 }
 
-pub(crate) fn check_assign_type_mismatch(
+fn check_assign_type_mismatch(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
@@ -258,7 +258,7 @@ pub(crate) fn check_assign_type_mismatch(
     Some(false)
 }
 
-pub(crate) fn add_type_check_diagnostic(
+fn add_type_check_diagnostic(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
@@ -281,6 +281,6 @@ pub(crate) fn add_type_check_diagnostic(
     );
 }
 
-pub(crate) fn get_real_type_or_self<'a>(db: &'a DbIndex, ty: &'a LuaType) -> &'a LuaType {
+fn get_real_type_or_self<'a>(db: &'a DbIndex, ty: &'a LuaType) -> &'a LuaType {
     get_real_type(db, ty).unwrap_or(ty)
 }

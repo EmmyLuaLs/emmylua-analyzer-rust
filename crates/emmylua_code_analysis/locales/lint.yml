@@ -169,6 +169,10 @@ Cannot use `...` outside a vararg function.:
   en: 'Cannot assign `%{value}` to `%{source}`. %{reason}'
   zh_CN: '不能将 `%{value}` 赋值给 `%{source}`。%{reason}'
   zh_HK: '不能將 `%{value}` 賦值給 `%{source}`。%{reason}'
+'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}':
+  en: 'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}'
+  zh_CN: '不能将可变值中的第 `%{index}` 个值 `%{value}` 赋值给下标 `%{source_index}` 处的 `%{source}`。%{reason}'
+  zh_HK: '不能將可變值中的第 `%{index}` 個值 `%{value}` 賦值給下標 `%{source_index}` 處的 `%{source}`。%{reason}'
 'The same file is required multiple times.':
   en: 'The same file is required multiple times.'
   zh_CN: '同一个文件被重复 require。'
