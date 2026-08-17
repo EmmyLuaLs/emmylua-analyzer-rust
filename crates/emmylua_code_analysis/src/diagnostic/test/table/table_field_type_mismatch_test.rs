@@ -65,23 +65,23 @@ mod tests {
         assert!(diagnostics[0].message.contains("@type integer"));
     }
 
-    // #[test]
-    // fn test_annotated_table_field_reports_once_with_object_target() {
-    //     let mut ws = VirtualWorkspace::new();
-    //     let diagnostics = assign_type_diagnostics(
-    //         &mut ws,
-    //         r#"
-    //         ---@type { value: string }
-    //         local target = {
-    //             ---@type integer
-    //             value = "",
-    //         }
-    //         "#,
-    //     );
+    #[test]
+    fn test_annotated_table_field_reports_once_with_object_target() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = assign_type_diagnostics(
+            &mut ws,
+            r#"
+            ---@type { value: string }
+            local target = {
+                ---@type integer
+                value = "",
+            }
+            "#,
+        );
 
-    //     assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-    //     assert!(diagnostics[0].message.contains("@type integer"));
-    // }
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert!(diagnostics[0].message.contains("@type integer"));
+    }
 
     #[test]
     fn test_matching_annotated_table_field_value() {

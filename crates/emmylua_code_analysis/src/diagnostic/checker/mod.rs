@@ -92,16 +92,13 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         semantic_model,
     );
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
-    run_check::<param_check::ParamCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
-    run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);
     run_check::<check_export::CheckExportChecker>(context, semantic_model);
     run_check::<check_field::CheckFieldChecker>(context, semantic_model);
     run_check::<circle_doc_class::CircleDocClassChecker>(context, semantic_model);
     run_check::<incomplete_signature_doc::IncompleteSignatureDocChecker>(context, semantic_model);
-    run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, semantic_model);
     run_check::<duplicate_require::DuplicateRequireChecker>(context, semantic_model);
     run_check::<duplicate_type::DuplicateTypeChecker>(context, semantic_model);
     run_check::<check_return_count::CheckReturnCount>(context, semantic_model);
@@ -133,6 +130,10 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<code_style::invert_if::InvertIfChecker>(context, semantic_model);
     run_check::<readonly_check::ReadOnlyChecker>(context, semantic_model);
     run_check::<global_non_module::GlobalInNonModuleChecker>(context, semantic_model);
+    // 部分诊断需要靠后以获得更好的诊断性能
+    run_check::<param_check::ParamCheckChecker>(context, semantic_model);
+    run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
+    run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, semantic_model);
     Some(())
 }
 
@@ -140,6 +141,7 @@ pub struct DiagnosticContext<'a> {
     file_id: FileId,
     db: &'a DbIndex,
     diagnostics: Vec<Diagnostic>,
+    diagnostic_ranges: Vec<(TextRange, DiagnosticCode)>,
     pub config: Arc<LuaDiagnosticConfig>,
 }
 
@@ -149,6 +151,7 @@ impl<'a> DiagnosticContext<'a> {
             file_id,
             db,
             diagnostics: Vec::new(),
+            diagnostic_ranges: Vec::new(),
             config,
         }
     }
@@ -197,6 +200,26 @@ impl<'a> DiagnosticContext<'a> {
         };
 
         self.diagnostics.push(diagnostic);
+        self.diagnostic_ranges.push((range, code));
+    }
+
+    #[allow(unused)]
+    pub fn has_diagnostic_in_range(&self, range: TextRange) -> bool {
+        self.diagnostic_ranges
+            .iter()
+            .any(|(diagnostic_range, _)| range.contains_range(*diagnostic_range))
+    }
+
+    pub fn has_diagnostic_codes_in_range(
+        &self,
+        range: TextRange,
+        codes: &[DiagnosticCode],
+    ) -> bool {
+        self.diagnostic_ranges
+            .iter()
+            .any(|(diagnostic_range, code)| {
+                range.contains_range(*diagnostic_range) && codes.contains(code)
+            })
     }
 
     fn should_report_diagnostic(&self, code: &DiagnosticCode, range: &TextRange) -> bool {

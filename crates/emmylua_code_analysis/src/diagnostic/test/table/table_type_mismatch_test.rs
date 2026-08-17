@@ -117,6 +117,27 @@ local target = {
         assert_eq!(diagnostics[0].range.start.line, expected_line);
     }
 
+    #[test]
+    fn tail_variadic_ignores_trailing_comment() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@return string, number
+local function pair() end
+
+---@type string[]
+local target = {
+    pair(), -- tail
+}"#;
+        let expected_line = source
+            .lines()
+            .position(|line| line.contains("pair(),"))
+            .unwrap() as u32;
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].range.start.line, expected_line);
+    }
+
     // #[test]
     // fn test_last_variadic() {
     //     let mut ws = VirtualWorkspace::new();

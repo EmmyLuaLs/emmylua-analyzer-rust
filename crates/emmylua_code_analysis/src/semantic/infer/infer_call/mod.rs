@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind, LuaTableExpr};
 use rowan::TextRange;
 
 use super::{
@@ -562,7 +562,11 @@ fn is_last_call_expr(call_expr: &LuaCallExpr) -> bool {
         | LuaSyntaxKind::LocalStat
         | LuaSyntaxKind::ReturnStat
         | LuaSyntaxKind::CallArgList => call_expr.syntax().next_sibling().is_none(),
-        LuaSyntaxKind::TableFieldValue => parent.next_sibling().is_none(),
+        LuaSyntaxKind::TableFieldValue => parent
+            .parent()
+            .and_then(LuaTableExpr::cast)
+            .and_then(|table_expr| table_expr.get_fields().last())
+            .is_some_and(|field| field.syntax() == &parent),
         LuaSyntaxKind::ForRangeStat => true,
         _ => false,
     }

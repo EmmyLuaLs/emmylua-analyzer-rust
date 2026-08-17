@@ -1,4 +1,4 @@
-use emmylua_parser::{LuaAstNode, LuaExpr, LuaTableExpr};
+use emmylua_parser::{LuaAstNode, LuaTableExpr};
 use rowan::TextRange;
 
 use crate::{
@@ -39,33 +39,36 @@ impl TableCheckState {
     }
 }
 
-pub(crate) fn check_table_expr(
+pub(super) fn check_table_type_mismatch(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    table_expr: &LuaExpr,
+    table_expr: &LuaTableExpr,
     actual_type: &LuaType,
     expected_type: &LuaType,
-) -> bool /* 是否在字面量表内添加了诊断 */ {
-    let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) else {
-        return false;
-    };
-
+) -> bool /* 是否已处理该表字面量的类型不匹配 */ {
     // 整表兼容时不访问任何字段 AST. 无法完成的类型关系同样按保守兼容处理.
     if semantic_model.is_assignable(actual_type, expected_type) {
         return true;
     }
 
     let mut state = TableCheckState::new();
-    check_table_expr_content(
+    if check_table_fields(
         context,
         semantic_model,
         expected_type,
-        &table_expr,
+        table_expr,
         &mut state,
+    ) {
+        return true;
+    }
+
+    context.has_diagnostic_codes_in_range(
+        table_expr.get_range(),
+        &[DiagnosticCode::AssignTypeMismatch],
     )
 }
 
-fn check_table_expr_content(
+fn check_table_fields(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     expected_type: &LuaType,
@@ -147,7 +150,7 @@ fn check_table_expr_content(
                     &actual_type,
                 )
             } else {
-                let child_has_diagnostic = check_table_expr_content(
+                let child_has_diagnostic = check_table_fields(
                     context,
                     semantic_model,
                     nested_expected_type,

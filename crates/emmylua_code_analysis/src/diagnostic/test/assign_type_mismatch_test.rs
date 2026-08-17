@@ -382,7 +382,7 @@ mod tests {
     fn test_valid_cases() {
         let mut ws = VirtualWorkspace::new();
 
-        // Test cases that should pass (no type mismatch)
+        // 推断出的数组成员允许使用空表初始化.
         assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -392,7 +392,8 @@ m.ints = {}
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        // class 类型字段不能使用缺少必填字段的空表初始化.
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -405,7 +406,7 @@ t.x = {}
             "#
         ));
 
-        // Test cases that should fail (type mismatch)
+        // 以下用例应报告类型不匹配.
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -624,18 +625,6 @@ local x = 'aaa'
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
----@class X
-
----@class A
-local mt = G
-
----@type X
-mt._x = nil
-            "#
-        ));
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -659,7 +648,7 @@ local b = setmetatable({}, a)
             "#
         ));
 
-        // Continue with more test cases as needed
+        // 索引赋值允许包含 nil 的源类型.
         assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -1593,6 +1582,253 @@ return t
             ---@type keyof B["test"]
             local tmp = "test"
             "#
+        ));
+    }
+
+    #[test]
+    fn test_inferred_nil_reassignment_is_distinguished_from_declared_nil() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local value = nil
+            value = 1
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local value ---@type nil
+            value = 1
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@param value nil
+            local function update(value)
+                value = 1
+            end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_inferred_nil_reassignment_applies_explicit_target_casts() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local value = nil
+            ---@cast value + string
+            value = 1
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local value = nil
+            ---@cast value + string
+            value = "ok"
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_index_assignment_allows_nil() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@alias BooleanList boolean[]
+            local list ---@type BooleanList
+            list[1] = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local map ---@type table<string, boolean>
+            map["key"] = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local tuple = { true }
+            tuple[1] = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local record = { enabled = true }
+            record.enabled = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local initially_nil = { nil }
+            initially_nil[1] = true
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_index_assignment_allows_nil_for_declared_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class RequiredField
+            ---@field value boolean
+            local required ---@type RequiredField
+            required.value = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local object ---@type { value: boolean }
+            object.value = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local tuple ---@type [boolean]
+            tuple[1] = nil
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class OptionalField
+            ---@field value boolean?
+            local optional ---@type OptionalField
+            optional.value = nil
+
+            local object ---@type { value: boolean? }
+            object.value = nil
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_index_assignment_checks_non_nil_union_members() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local list ---@type boolean[]
+            local value ---@type boolean?
+            list[1] = value
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local list ---@type boolean[]
+            local value ---@type string?
+            list[1] = value
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_table_const_variables_use_structural_assignment_checks() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Target
+            ---@field value number
+            ---@type Target
+            local target = {}
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Target
+            ---@field value number
+            local source = { value = "bad" }
+            local target ---@type Target
+            target = source
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local source = { [1] = "bad" }
+            local target ---@type [number]
+            target = source
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Box<T>
+            ---@field value T
+            local source = { value = "bad" }
+            local target ---@type Box<number>
+            target = source
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_def_initialization_uses_narrow_compatibility_rules() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            local mt = G
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local source = { value = 1 }
+            ---@class A
+            ---@field value number
+            local instance = source
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            local instance = 1
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local source = { value = "bad" }
+            ---@class A
+            ---@field value number
+            local instance = source
+            "#,
         ));
     }
 }

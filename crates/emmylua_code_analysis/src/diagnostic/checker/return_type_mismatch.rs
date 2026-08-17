@@ -6,7 +6,7 @@ use rowan::{NodeOrToken, TextRange};
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
     SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
-    diagnostic::checker::{humanize_lint_type, table::check_table_expr},
+    diagnostic::checker::{humanize_lint_type, table::check_table_assignment_diagnostics},
     render_type_mismatch,
 };
 
@@ -93,7 +93,7 @@ fn check_return_stat(
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
                     {
-                        check_table_expr(
+                        check_table_assignment_diagnostics(
                             context,
                             semantic_model,
                             return_expr,
@@ -127,7 +127,7 @@ fn check_return_stat(
             let return_expr_range = return_expr_ranges[0];
             if return_expr_type.is_table()
                 && let Some(return_expr) = return_exprs.first()
-                && check_table_expr(
+                && check_table_assignment_diagnostics(
                     context,
                     semantic_model,
                     return_expr,
