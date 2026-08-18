@@ -117,6 +117,7 @@ fn check_name_expr(
 
     let table_handled = expr.is_some_and(|expr| {
         check_table_assignment_diagnostics(context, semantic_model, expr, source_type, &target_type)
+            .is_handled()
     });
     if !table_handled && !is_allowed_def_assignment(semantic_model, source_type, &target_type, expr)
     {
@@ -151,6 +152,7 @@ fn check_index_expr(
 
     let table_handled = expr.is_some_and(|expr| {
         check_table_assignment_diagnostics(context, semantic_model, expr, source_type, &target_type)
+            .is_handled()
     });
     if !table_handled && !source_type.is_nil() && !target_type.is_nil() {
         let nullable_target = (source_type.is_nullable() && !target_type.is_nullable())
@@ -207,6 +209,7 @@ fn check_local_stat(
                 source_type,
                 target_type,
             )
+            .is_handled()
         });
         if !table_handled
             && !is_allowed_def_assignment(semantic_model, source_type, target_type, value_expr)

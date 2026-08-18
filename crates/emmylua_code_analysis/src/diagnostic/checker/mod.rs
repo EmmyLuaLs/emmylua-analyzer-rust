@@ -170,13 +170,13 @@ impl<'a> DiagnosticContext<'a> {
         range: TextRange,
         message: String,
         data: Option<serde_json::Value>,
-    ) {
+    ) -> bool {
         if !self.is_checker_enable_by_code(&code) {
-            return;
+            return false;
         }
 
         if !self.should_report_diagnostic(&code, &range) {
-            return;
+            return false;
         }
 
         let diagnostic = Diagnostic {
@@ -201,6 +201,7 @@ impl<'a> DiagnosticContext<'a> {
 
         self.diagnostics.push(diagnostic);
         self.diagnostic_ranges.push((range, code));
+        true
     }
 
     #[allow(unused)]

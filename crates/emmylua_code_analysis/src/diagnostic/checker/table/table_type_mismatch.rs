@@ -6,7 +6,10 @@ use crate::{
     VariadicType, get_real_type, render_type_mismatch,
 };
 
-use super::super::{DiagnosticContext, humanize_lint_type};
+use super::{
+    super::{DiagnosticContext, humanize_lint_type},
+    TableAssignmentOutcome,
+};
 
 struct TableCheckState {
     remaining_fields: usize,
@@ -45,10 +48,10 @@ pub(super) fn check_table_type_mismatch(
     table_expr: &LuaTableExpr,
     actual_type: &LuaType,
     expected_type: &LuaType,
-) -> bool /* 是否已处理该表字面量的类型不匹配 */ {
+) -> TableAssignmentOutcome {
     // 整表兼容时不访问任何字段 AST. 无法完成的类型关系同样按保守兼容处理.
     if semantic_model.is_assignable(actual_type, expected_type) {
-        return true;
+        return TableAssignmentOutcome::Assignable;
     }
 
     let mut state = TableCheckState::new();
@@ -59,13 +62,17 @@ pub(super) fn check_table_type_mismatch(
         table_expr,
         &mut state,
     ) {
-        return true;
+        return TableAssignmentOutcome::Reported;
     }
 
-    context.has_diagnostic_codes_in_range(
+    if context.has_diagnostic_codes_in_range(
         table_expr.get_range(),
         &[DiagnosticCode::AssignTypeMismatch],
-    )
+    ) {
+        TableAssignmentOutcome::Reported
+    } else {
+        TableAssignmentOutcome::NoDiagnostic
+    }
 }
 
 fn check_table_fields(
@@ -209,8 +216,7 @@ fn add_table_type_mismatch(
         )
         .to_string(),
         None,
-    );
-    true
+    )
 }
 
 fn check_table_last_variadic_type(
@@ -250,7 +256,7 @@ fn check_table_last_variadic_type(
             continue;
         };
 
-        context.add_diagnostic(
+        return context.add_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             range,
             t!(
@@ -264,7 +270,6 @@ fn check_table_last_variadic_type(
             .to_string(),
             None,
         );
-        return true;
     }
 
     false

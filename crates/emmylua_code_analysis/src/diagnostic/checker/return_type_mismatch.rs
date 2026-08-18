@@ -134,6 +134,7 @@ fn check_return_stat(
                     return_expr_type,
                     return_type,
                 )
+                .is_handled()
             {
                 return Some(());
             }

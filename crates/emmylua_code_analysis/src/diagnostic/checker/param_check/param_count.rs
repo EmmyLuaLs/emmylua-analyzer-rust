@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaGeneralToken, LuaLiteralToken,
@@ -9,45 +9,87 @@ use crate::{
     semantic::is_func_last_param_variadic,
 };
 
-use super::super::DiagnosticContext;
-use super::{ParamCountDiagnosticRanges, call_facts::CallFacts};
+use super::{super::DiagnosticContext, call_analysis::CallAnalysis};
 
-pub(super) fn check_call_param_count(
-    context: &mut DiagnosticContext,
+pub(super) struct ArityAnalysis {
+    // 调用侧参数数量是否可确定. 出现无法展开的 `...` 时为 false.
+    pub(super) count_is_known: bool,
+    // 参数数量兼容的候选索引.
+    pub(super) compatible_candidates: Vec<usize>,
+    best_missing: Option<ArityDiagnosticCandidate>,
+    best_redundant: Option<ArityDiagnosticCandidate>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArityDiagnosticKind {
+    Missing,
+    Redundant,
+}
+
+#[derive(Clone, Copy)]
+struct ArityDiagnosticCandidate {
+    kind: ArityDiagnosticKind,
+    candidate_index: usize,
+    mismatch: usize,
+    expected_count: usize,
+    found_count: usize,
+}
+
+impl ArityDiagnosticCandidate {
+    fn is_better_than(&self, other: &Self) -> bool {
+        match self.mismatch.cmp(&other.mismatch) {
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Greater => false,
+            std::cmp::Ordering::Equal => match (self.kind, other.kind) {
+                (ArityDiagnosticKind::Missing, ArityDiagnosticKind::Missing) => {
+                    self.expected_count < other.expected_count
+                }
+                (ArityDiagnosticKind::Redundant, ArityDiagnosticKind::Redundant) => {
+                    self.expected_count > other.expected_count
+                }
+                (ArityDiagnosticKind::Missing, ArityDiagnosticKind::Redundant) => true,
+                (ArityDiagnosticKind::Redundant, ArityDiagnosticKind::Missing) => false,
+            },
+        }
+    }
+}
+
+pub(super) fn analyze_call_arity(
     semantic_model: &SemanticModel,
-    facts: &CallFacts,
-    param_count_diagnostic_ranges: &mut ParamCountDiagnosticRanges,
-) -> Vec<Arc<LuaFunctionType>> {
-    let Some(base_call_count) = get_base_call_arg_count_range(semantic_model, &facts.arg_exprs)
+    call: &CallAnalysis,
+) -> ArityAnalysis {
+    let Some(base_call_count) = get_base_call_arg_count_range(semantic_model, &call.arg_exprs)
     else {
-        // `...` 无法精确给出数量范围, 类型检查仍然需要保留所有候选.
-        return facts
-            .callables()
-            .iter()
-            .map(|callable| callable.func.clone())
-            .collect();
+        // `...` 无法给出确定数量范围, 类型检查必须保留全部候选.
+        return ArityAnalysis {
+            count_is_known: false,
+            compatible_candidates: Vec::new(),
+            best_missing: None,
+            best_redundant: None,
+        };
     };
 
     let db = semantic_model.get_db();
-    let mut count_compatible_funcs = Vec::new();
-    let mut best_candidate = None;
-    for callable in facts.callables() {
-        let func = &callable.func;
-        let origin_func = &callable.origin_func;
+    let mut analysis = ArityAnalysis {
+        count_is_known: true,
+        compatible_candidates: Vec::with_capacity(call.candidates().len()),
+        best_missing: None,
+        best_redundant: None,
+    };
+    for (candidate_index, candidate) in call.candidates().iter().enumerate() {
+        let func = &candidate.instantiated;
         let mut call_count = base_call_count;
-        if facts.call_expr.is_colon_call() && !func.is_colon_define() {
-            // 冒号调用普通函数时, `obj:foo(x)` 等价于 `obj.foo(obj, x)`.
-            // 这里要把 receiver 计入调用侧的实参槽位.
+        if call.call_expr.is_colon_call() && !func.is_colon_define() {
+            // 冒号调用普通函数时, receiver 会占用一个实参槽位.
             call_count.min += 1;
             call_count.max = call_count.max.map(|max| max + 1);
         }
 
-        let param_count = get_param_count_range(db, func, origin_func, &facts.call_expr);
+        let param_count = get_param_count_range(db, func, &candidate.original, &call.call_expr);
         let enough_args = call_count.max.is_none_or(|max| max >= param_count.min);
         let not_too_many_args = param_count.max.is_none_or(|max| call_count.min <= max);
-
         if enough_args && not_too_many_args {
-            count_compatible_funcs.push(func.clone());
+            analysis.compatible_candidates.push(candidate_index);
             continue;
         }
 
@@ -55,13 +97,13 @@ pub(super) fn check_call_param_count(
             && max_call_count < param_count.min
         {
             update_best_candidate(
-                &mut best_candidate,
-                CountDiagnosticCandidate::Missing {
+                &mut analysis.best_missing,
+                ArityDiagnosticCandidate {
+                    kind: ArityDiagnosticKind::Missing,
+                    candidate_index,
                     mismatch: param_count.min - max_call_count,
                     expected_count: param_count.min,
                     found_count: max_call_count,
-                    func,
-                    origin_func,
                 },
             );
             continue;
@@ -71,82 +113,24 @@ pub(super) fn check_call_param_count(
             && call_count.min > max_param_count
         {
             update_best_candidate(
-                &mut best_candidate,
-                CountDiagnosticCandidate::Redundant {
+                &mut analysis.best_redundant,
+                ArityDiagnosticCandidate {
+                    kind: ArityDiagnosticKind::Redundant,
+                    candidate_index,
                     mismatch: call_count.min - max_param_count,
                     expected_count: max_param_count,
                     found_count: call_count.min,
-                    func,
                 },
             );
         }
     }
 
-    if !count_compatible_funcs.is_empty() {
-        return count_compatible_funcs;
-    }
-
-    let Some(candidate) = best_candidate else {
-        return count_compatible_funcs;
-    };
-
-    match candidate {
-        CountDiagnosticCandidate::Missing {
-            expected_count,
-            found_count,
-            func,
-            origin_func,
-            ..
-        } => emit_missing_parameter(
-            context,
-            db,
-            &facts.call_expr,
-            expected_count,
-            found_count,
-            func,
-            origin_func,
-            param_count_diagnostic_ranges,
-        ),
-        CountDiagnosticCandidate::Redundant {
-            expected_count,
-            found_count,
-            func,
-            ..
-        } => {
-            emit_redundant_parameter(
-                context,
-                &facts.call_expr,
-                &facts.arg_exprs,
-                expected_count,
-                found_count,
-                func,
-                param_count_diagnostic_ranges,
-            );
-        }
-    }
-
-    count_compatible_funcs
+    analysis
 }
 
-enum CountDiagnosticCandidate<'a> {
-    Missing {
-        mismatch: usize,
-        expected_count: usize,
-        found_count: usize,
-        func: &'a Arc<LuaFunctionType>,
-        origin_func: &'a Arc<LuaFunctionType>,
-    },
-    Redundant {
-        mismatch: usize,
-        expected_count: usize,
-        found_count: usize,
-        func: &'a Arc<LuaFunctionType>,
-    },
-}
-
-fn update_best_candidate<'a>(
-    best_candidate: &mut Option<CountDiagnosticCandidate<'a>>,
-    candidate: CountDiagnosticCandidate<'a>,
+fn update_best_candidate(
+    best_candidate: &mut Option<ArityDiagnosticCandidate>,
+    candidate: ArityDiagnosticCandidate,
 ) {
     if best_candidate
         .as_ref()
@@ -156,124 +140,116 @@ fn update_best_candidate<'a>(
     }
 }
 
-impl CountDiagnosticCandidate<'_> {
-    fn is_better_than(&self, other: &Self) -> bool {
-        match self.mismatch().cmp(&other.mismatch()) {
-            std::cmp::Ordering::Less => true,
-            std::cmp::Ordering::Greater => false,
-            std::cmp::Ordering::Equal => self.is_better_tie_than(other),
+pub(super) fn add_call_arity_diagnostic(
+    context: &mut DiagnosticContext,
+    semantic_model: &SemanticModel,
+    call: &CallAnalysis,
+    analysis: &ArityAnalysis,
+    missing_enabled: bool,
+    redundant_enabled: bool,
+) -> bool {
+    let missing = analysis.best_missing.filter(|_| missing_enabled);
+    let redundant = analysis.best_redundant.filter(|_| redundant_enabled);
+    let candidate = match (missing, redundant) {
+        (Some(missing), Some(redundant)) => {
+            if missing.is_better_than(&redundant) {
+                missing
+            } else {
+                redundant
+            }
         }
-    }
+        (Some(candidate), None) | (None, Some(candidate)) => candidate,
+        (None, None) => return false,
+    };
+    let Some(call_candidate) = call.candidates().get(candidate.candidate_index) else {
+        return false;
+    };
 
-    fn mismatch(&self) -> usize {
-        match self {
-            CountDiagnosticCandidate::Missing { mismatch, .. }
-            | CountDiagnosticCandidate::Redundant { mismatch, .. } => *mismatch,
-        }
-    }
-
-    fn is_better_tie_than(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                CountDiagnosticCandidate::Missing {
-                    expected_count: left,
-                    ..
-                },
-                CountDiagnosticCandidate::Missing {
-                    expected_count: right,
-                    ..
-                },
-            ) => left < right,
-            (
-                CountDiagnosticCandidate::Redundant {
-                    expected_count: left,
-                    ..
-                },
-                CountDiagnosticCandidate::Redundant {
-                    expected_count: right,
-                    ..
-                },
-            ) => left > right,
-            (
-                CountDiagnosticCandidate::Missing { .. },
-                CountDiagnosticCandidate::Redundant { .. },
-            ) => true,
-            (
-                CountDiagnosticCandidate::Redundant { .. },
-                CountDiagnosticCandidate::Missing { .. },
-            ) => false,
-        }
+    match candidate.kind {
+        ArityDiagnosticKind::Missing => add_missing_parameter_diagnostic(
+            context,
+            semantic_model.get_db(),
+            &call.call_expr,
+            candidate.expected_count,
+            candidate.found_count,
+            &call_candidate.instantiated,
+            &call_candidate.original,
+        ),
+        ArityDiagnosticKind::Redundant => add_redundant_parameter_diagnostic(
+            context,
+            &call.call_expr,
+            &call.arg_exprs,
+            candidate.expected_count,
+            candidate.found_count,
+            &call_candidate.instantiated,
+        ),
     }
 }
 
-fn emit_missing_parameter(
+fn add_missing_parameter_diagnostic(
     context: &mut DiagnosticContext,
     db: &DbIndex,
     call_expr: &LuaCallExpr,
     expected_count: usize,
     found_count: usize,
-    func: &Arc<LuaFunctionType>,
-    origin_func: &Arc<LuaFunctionType>,
-    param_count_diagnostic_ranges: &mut ParamCountDiagnosticRanges,
-) {
-    let mut miss_parameter_info = Vec::new();
+    func: &LuaFunctionType,
+    original_func: &LuaFunctionType,
+) -> bool {
+    let mut missing_parameter_info = Vec::new();
 
     for param_index in found_count..expected_count {
         add_missing_parameter_info(
             db,
             call_expr,
             func,
-            origin_func,
+            original_func,
             param_index,
-            &mut miss_parameter_info,
+            &mut missing_parameter_info,
         );
     }
 
-    if !miss_parameter_info.is_empty() {
-        let Some(args_list) = call_expr.get_args_list() else {
-            return;
-        };
-        let Some(right_paren) = args_list.tokens::<LuaGeneralToken>().last() else {
-            return;
-        };
-        let range = right_paren.get_range();
-        param_count_diagnostic_ranges.insert(range);
-        context.add_diagnostic(
-            DiagnosticCode::MissingParameter,
-            range,
-            t!(
-                "expected %{num} parameters but found %{found_num}. %{infos}",
-                num = expected_count,
-                found_num = found_count,
-                infos = miss_parameter_info.join(" \n ")
-            )
-            .to_string(),
-            None,
-        );
+    if missing_parameter_info.is_empty() {
+        return false;
     }
+    let Some(args_list) = call_expr.get_args_list() else {
+        return false;
+    };
+    let Some(right_paren) = args_list.tokens::<LuaGeneralToken>().last() else {
+        return false;
+    };
+    context.add_diagnostic(
+        DiagnosticCode::MissingParameter,
+        right_paren.get_range(),
+        t!(
+            "expected %{num} parameters but found %{found_num}. %{infos}",
+            num = expected_count,
+            found_num = found_count,
+            infos = missing_parameter_info.join(" \n ")
+        )
+        .to_string(),
+        None,
+    )
 }
 
-fn emit_redundant_parameter(
+fn add_redundant_parameter_diagnostic(
     context: &mut DiagnosticContext,
     call_expr: &LuaCallExpr,
     call_args: &[LuaExpr],
     expected_count: usize,
     found_count: usize,
-    func: &Arc<LuaFunctionType>,
-    param_count_diagnostic_ranges: &mut ParamCountDiagnosticRanges,
-) {
+    func: &LuaFunctionType,
+) -> bool {
     let implicit_receiver_offset =
         usize::from(call_expr.is_colon_call() && !func.is_colon_define());
-    for (i, arg) in call_args.iter().enumerate() {
-        if i + implicit_receiver_offset < expected_count {
+    let mut diagnostic_reported = false;
+    for (index, arg) in call_args.iter().enumerate() {
+        if index + implicit_receiver_offset < expected_count {
             continue;
         }
 
-        let range = arg.get_range();
-        param_count_diagnostic_ranges.insert(range);
-        context.add_diagnostic(
+        diagnostic_reported |= context.add_diagnostic(
             DiagnosticCode::RedundantParameter,
-            range,
+            arg.get_range(),
             t!(
                 "expected %{num} parameters but found %{found_num}",
                 num = expected_count,
@@ -283,20 +259,21 @@ fn emit_redundant_parameter(
             None,
         );
     }
+    diagnostic_reported
 }
 
 fn add_missing_parameter_info(
     db: &DbIndex,
     call_expr: &LuaCallExpr,
     func: &LuaFunctionType,
-    origin_func: &LuaFunctionType,
+    original_func: &LuaFunctionType,
     adjusted_index: usize,
-    miss_parameter_info: &mut Vec<String>,
+    missing_parameter_info: &mut Vec<String>,
 ) {
     if !call_expr.is_colon_call() && func.is_colon_define() {
         if adjusted_index == 0 {
             if !is_nullable(db, &LuaType::SelfInfer, None) {
-                miss_parameter_info
+                missing_parameter_info
                     .push(t!("missing parameter: %{name}", name = "self",).to_string());
             }
             return;
@@ -304,14 +281,14 @@ fn add_missing_parameter_info(
         let Some((name, typ)) = func.get_params().get(adjusted_index - 1) else {
             return;
         };
-        let origin_typ = origin_func
+        let original_typ = original_func
             .get_params()
             .get(adjusted_index - 1)
             .and_then(|(_, typ)| typ.as_ref());
         if let Some(typ) = typ
-            && !is_nullable(db, typ, origin_typ)
+            && !is_nullable(db, typ, original_typ)
         {
-            miss_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
+            missing_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
         }
         return;
     }
@@ -319,22 +296,22 @@ fn add_missing_parameter_info(
     let Some((name, typ)) = func.get_params().get(adjusted_index) else {
         return;
     };
-    let origin_typ = origin_func
+    let original_typ = original_func
         .get_params()
         .get(adjusted_index)
         .and_then(|(_, typ)| typ.as_ref());
     if let Some(typ) = typ
-        && !is_nullable(db, typ, origin_typ)
+        && !is_nullable(db, typ, original_typ)
     {
-        miss_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
+        missing_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
     }
 }
 
 #[derive(Clone, Copy)]
 struct CountRange {
-    // 数量下界: 调用侧至少会提供多少, 或函数侧至少要求多少.
+    // 数量下界: 调用侧至少提供多少, 或函数侧至少要求多少.
     min: usize,
-    // 数量上界: 调用侧最多会提供多少, 或函数侧最多接受多少; None 表示无上限.
+    // 数量上界: 调用侧最多提供多少, 或函数侧最多接受多少; None 表示无上限.
     max: Option<usize>,
 }
 
@@ -369,65 +346,73 @@ fn get_base_call_arg_count_range(
     Some(count)
 }
 
-// 计算当前候选函数签名能接受多少个形参槽位.
+// 计算当前候选签名能够接受的形参槽位范围.
 fn get_param_count_range(
     db: &DbIndex,
     func: &LuaFunctionType,
-    origin_func: &LuaFunctionType,
+    original_func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
 ) -> CountRange {
     let params = func.get_params();
-    let origin_params = origin_func.get_params();
-    // 如果以点调用但函数是冒号定义, 则表示需要传入 self 参数.
+    let original_params = original_func.get_params();
     let self_offset = usize::from(!call_expr.is_colon_call() && func.is_colon_define());
 
     let mut min = self_offset;
-    // 最小数量取最后一个必填形参, 因为前面的可选参数可以省略.
-    for (idx, (name, typ)) in params.iter().enumerate() {
+    for (index, (name, typ)) in params.iter().enumerate() {
         if name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic()) {
             break;
         }
 
-        let origin_typ = origin_params.get(idx).and_then(|(_, typ)| typ.as_ref());
+        let original_typ = original_params.get(index).and_then(|(_, typ)| typ.as_ref());
         if typ
             .as_ref()
-            .is_some_and(|typ| !is_nullable(db, typ, origin_typ))
+            .is_some_and(|typ| !is_nullable(db, typ, original_typ))
         {
-            min = idx + self_offset + 1;
+            min = index + self_offset + 1;
         }
     }
 
-    let adjusted_len = params.len() + self_offset;
-    let max = if func.is_variadic()
-        || is_func_last_param_variadic(func)
-        || params
-            .last()
-            .is_some_and(|(_, typ)| typ.as_ref().is_some_and(|typ| typ.is_variadic()))
-    {
+    let max = if func.is_variadic() || is_func_last_param_variadic(func) {
         None
     } else {
-        Some(adjusted_len)
+        get_params_len(params).map(|len| len + self_offset)
     };
 
     CountRange { min, max }
 }
 
-fn is_nullable(db: &DbIndex, typ: &LuaType, origin_typ: Option<&LuaType>) -> bool {
-    let mut stack: Vec<LuaType> = Vec::new();
-    stack.push(typ.clone());
+fn is_nullable(db: &DbIndex, typ: &LuaType, original_typ: Option<&LuaType>) -> bool {
+    match typ {
+        LuaType::Any | LuaType::Nil => true,
+        LuaType::Unknown => {
+            if let Some(original_typ) = original_typ
+                && original_typ.contain_tpl()
+            {
+                return is_nullable(db, original_typ, None);
+            }
+            true
+        }
+        LuaType::Ref(_) | LuaType::Union(_) | LuaType::MultiLineUnion(_) => {
+            is_composite_nullable(db, typ, original_typ)
+        }
+        _ => false,
+    }
+}
+
+fn is_composite_nullable(db: &DbIndex, typ: &LuaType, original_typ: Option<&LuaType>) -> bool {
+    let mut stack = vec![typ.clone()];
     let mut visited = HashSet::new();
     while let Some(typ) = stack.pop() {
-        if visited.contains(&typ) {
+        if !visited.insert(typ.clone()) {
             continue;
         }
-        visited.insert(typ.clone());
         match typ {
             LuaType::Any | LuaType::Nil => return true,
             LuaType::Unknown => {
-                if let Some(origin_typ) = origin_typ
-                    && origin_typ.contain_tpl()
+                if let Some(original_typ) = original_typ
+                    && original_typ.contain_tpl()
                 {
-                    return is_nullable(db, origin_typ, None);
+                    return is_nullable(db, original_typ, None);
                 }
                 return true;
             }
@@ -439,15 +424,9 @@ fn is_nullable(db: &DbIndex, typ: &LuaType, origin_typ: Option<&LuaType>) -> boo
                     stack.push(alias_origin.clone());
                 }
             }
-            LuaType::Union(u) => {
-                for t in u.into_vec() {
-                    stack.push(t);
-                }
-            }
-            LuaType::MultiLineUnion(m) => {
-                for (t, _) in m.get_unions() {
-                    stack.push(t.clone());
-                }
+            LuaType::Union(union) => stack.extend(union.into_vec()),
+            LuaType::MultiLineUnion(union) => {
+                stack.extend(union.get_unions().iter().map(|(typ, _)| typ.clone()));
             }
             _ => {}
         }
@@ -456,11 +435,10 @@ fn is_nullable(db: &DbIndex, typ: &LuaType, origin_typ: Option<&LuaType>) -> boo
 }
 
 fn get_params_len(params: &[(String, Option<LuaType>)]) -> Option<usize> {
-    if let Some((name, typ)) = params.last() {
-        // 如果最后一个参数是可变参数, 则直接返回, 不需要检查.
-        if name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic()) {
-            return None;
-        }
+    if let Some((name, typ)) = params.last()
+        && (name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic()))
+    {
+        return None;
     }
     Some(params.len())
 }
@@ -500,7 +478,7 @@ pub(super) fn check_closure_param_count(
         return;
     };
 
-    // 只检查右值参数多于左值参数的情况, 右值参数少于左值参数的情况是能够接受的.
+    // 只检查右值参数多于左值参数的情况, 右值参数较少时可以接受.
     if source_params_len > current_signature.params.len() {
         return;
     }
@@ -510,7 +488,7 @@ pub(super) fn check_closure_param_count(
     };
     let params = params_list.get_params().collect::<Vec<_>>();
 
-    for param in params[source_params_len..].iter() {
+    for param in &params[source_params_len..] {
         context.add_diagnostic(
             DiagnosticCode::RedundantParameter,
             param.get_range(),
