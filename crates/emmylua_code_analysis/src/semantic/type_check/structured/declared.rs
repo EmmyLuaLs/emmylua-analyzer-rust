@@ -435,27 +435,60 @@ fn relate_class_source_to_simple_target(
 }
 
 pub(super) fn declared_type_has_members(db: &DbIndex, typ: &LuaType) -> bool {
-    let mut pending = vec![typ.clone()];
     let mut visited = HashSet::new();
-    while let Some(current) = pending.pop() {
-        let type_id = match &current {
-            LuaType::Ref(type_id) | LuaType::Def(type_id) => type_id.clone(),
-            LuaType::Generic(generic) => generic.get_base_type_id(),
-            _ => continue,
-        };
-        if !visited.insert(type_id.clone()) {
-            continue;
+    declared_type_has_members_inner(db, typ, &mut visited)
+}
+
+fn declared_type_has_members_inner(
+    db: &DbIndex,
+    typ: &LuaType,
+    visited: &mut HashSet<LuaTypeDeclId>,
+) -> bool {
+    let (type_id, generic_args) = match typ {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => (type_id.clone(), None),
+        LuaType::Generic(generic) => (generic.get_base_type_id(), Some(generic.get_params())),
+        LuaType::Object(object) => {
+            return !object.get_fields().is_empty() || !object.get_index_access().is_empty();
         }
-        if db
-            .get_member_index()
-            .get_member_len(&LuaMemberOwner::Type(type_id))
-            > 0
-        {
-            return true;
-        }
-        pending.extend(declared_super_types(db, &current));
+        LuaType::TableGeneric(params) => return params.len() == 2,
+        LuaType::Tuple(tuple) => return !tuple.get_types().is_empty(),
+        LuaType::Array(_) => return true,
+        _ => return false,
+    };
+
+    let owner = LuaMemberOwner::Type(type_id.clone());
+    if db.get_member_index().get_member_len(&owner) > 0 {
+        return true;
     }
-    false
+    if !visited.insert(type_id.clone()) {
+        return false;
+    }
+
+    if let Some(super_types) = db.get_type_index().get_super_types_iter(&type_id) {
+        let substitutor =
+            generic_args.map(|generic_args| TypeSubstitutor::from_type_array(generic_args.clone()));
+        for super_type in super_types {
+            let instantiated_super = substitutor
+                .as_ref()
+                .map(|substitutor| instantiate_type_generic(db, super_type, substitutor))
+                .unwrap_or_else(|| super_type.clone());
+            if declared_type_has_members_inner(db, &instantiated_super, visited) {
+                return true;
+            }
+        }
+    }
+
+    let Some(type_decl) = db.get_type_index().get_type_decl(&type_id) else {
+        return false;
+    };
+    if !type_decl.is_alias() {
+        return false;
+    }
+    let alias_substitutor = generic_args
+        .map(|generic_args| TypeSubstitutor::from_alias(generic_args.to_vec(), type_id));
+    type_decl
+        .get_alias_origin(db, alias_substitutor.as_ref())
+        .is_some_and(|origin| declared_type_has_members_inner(db, &origin, visited))
 }
 
 pub(super) fn declared_super_types(db: &DbIndex, typ: &LuaType) -> Vec<LuaType> {

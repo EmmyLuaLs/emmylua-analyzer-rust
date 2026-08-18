@@ -625,6 +625,58 @@ mod test {
     }
 
     #[test]
+    fn test_declared_targets_use_effective_inherited_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class StructuralTarget: { required: string }
+
+            ---@class GenericTargetBase<T>
+            ---@field value T
+
+            ---@class GenericTarget: GenericTargetBase<string>
+            "#,
+        );
+
+        let empty = ws.ty("{}");
+        let structural_source = ws.ty("{ required: string }");
+        let structural_target = ws.ty("StructuralTarget");
+        assert!(!ws.check_type(&empty, &structural_target));
+        assert!(ws.check_type(&structural_source, &structural_target));
+
+        let matching_generic_source = ws.ty("{ value: string }");
+        let mismatch_generic_source = ws.ty("{ value: number }");
+        let generic_target = ws.ty("GenericTarget");
+        assert!(ws.check_type(&matching_generic_source, &generic_target));
+        assert!(!ws.check_type(&mismatch_generic_source, &generic_target));
+    }
+
+    #[test]
+    fn test_declared_targets_instantiate_effective_index_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class GenericIndexBase<T>
+            ---@field [T] string
+
+            ---@class GenericIndexTarget: GenericIndexBase<integer>
+
+            ---@class StructuralIndexTarget<T>: table<integer, T>
+            "#,
+        );
+
+        let integer_string_table = ws.ty("table<integer, string>");
+        let integer_number_table = ws.ty("table<integer, number>");
+        let generic_index_target = ws.ty("GenericIndexTarget");
+        let structural_index_target = ws.ty("StructuralIndexTarget<string>");
+
+        assert!(ws.check_type(&integer_string_table, &generic_index_target));
+        assert!(!ws.check_type(&integer_number_table, &generic_index_target));
+        assert!(ws.check_type(&integer_string_table, &structural_index_target));
+        assert!(!ws.check_type(&integer_number_table, &structural_index_target));
+    }
+
+    #[test]
     fn test_array_types() {
         let mut ws = VirtualWorkspace::new();
 
