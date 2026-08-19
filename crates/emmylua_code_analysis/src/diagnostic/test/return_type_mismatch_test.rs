@@ -3,6 +3,26 @@ mod tests {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
+    fn test_issue_1226() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@return boolean
+            local function test1()
+                return true ---@as true | false
+            end
+
+            ---@return true | false
+            local function test2()
+                return true ---@as boolean
+            end
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_issue_242() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.has_no_diagnostic_in_namespace(
