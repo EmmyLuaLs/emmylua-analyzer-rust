@@ -3,11 +3,11 @@ use rowan::TextRange;
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, SemanticModel,
-    VariadicType, get_real_type, render_type_mismatch,
+    VariadicType, get_real_type, render_type_mismatch_reason,
 };
 
 use super::{
-    super::{DiagnosticContext, humanize_lint_type},
+    super::{DiagnosticContext, DiagnosticMessage, humanize_lint_type},
     TableAssignmentOutcome,
 };
 
@@ -208,13 +208,15 @@ fn add_table_type_mismatch(
     context.add_diagnostic(
         DiagnosticCode::AssignTypeMismatch,
         range,
-        t!(
-            "Cannot assign `%{value}` to `%{source}`. %{reason}",
-            value = humanize_lint_type(db, actual_type),
-            source = humanize_lint_type(db, expected_type),
-            reason = render_type_mismatch(db, &mismatch)
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "Cannot assign `%{value}` to `%{source}`.",
+                value = humanize_lint_type(db, actual_type),
+                source = humanize_lint_type(db, expected_type),
+            )
+            .to_string(),
+            render_type_mismatch_reason(db, &mismatch),
+        ),
         None,
     )
 }
@@ -259,15 +261,17 @@ fn check_table_last_variadic_type(
         return context.add_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             range,
-            t!(
-                "Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}",
-                index = offset + 1,
-                source_index = index,
-                value = humanize_lint_type(db, &actual_type),
-                source = humanize_lint_type(db, &field_expected_type),
-                reason = render_type_mismatch(db, &mismatch)
-            )
-            .to_string(),
+            DiagnosticMessage::with_detail(
+                t!(
+                    "Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`.",
+                    index = offset + 1,
+                    source_index = index,
+                    value = humanize_lint_type(db, &actual_type),
+                    source = humanize_lint_type(db, &field_expected_type),
+                )
+                .to_string(),
+                render_type_mismatch_reason(db, &mismatch),
+            ),
             None,
         );
     }

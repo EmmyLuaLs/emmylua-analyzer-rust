@@ -1,14 +1,14 @@
 use crate::{
     AssignabilityResult, DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
     diagnostic::checker::humanize_lint_type, get_attribute_constructor_params, infer_doc_type,
-    is_attribute_class, render_type_mismatch,
+    is_attribute_class, render_type_mismatch_reason,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
 };
 use rowan::TextRange;
 
-use super::{Checker, DiagnosticContext};
+use super::{Checker, DiagnosticContext, DiagnosticMessage};
 
 pub struct AttributeCheckChecker;
 
@@ -191,13 +191,15 @@ fn add_type_check_diagnostic(
     context.add_diagnostic(
         DiagnosticCode::AttributeParamTypeMismatch,
         range,
-        t!(
-            "expected `%{source}` but found `%{found}`. %{reason}",
-            source = humanize_lint_type(db, param_type),
-            found = humanize_lint_type(db, expr_type),
-            reason = render_type_mismatch(db, mismatch)
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "expected `%{source}` but found `%{found}`.",
+                source = humanize_lint_type(db, param_type),
+                found = humanize_lint_type(db, expr_type),
+            )
+            .to_string(),
+            render_type_mismatch_reason(db, mismatch),
+        ),
         None,
     );
 }

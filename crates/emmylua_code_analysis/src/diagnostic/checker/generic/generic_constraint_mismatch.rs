@@ -9,13 +9,16 @@ use super::call_constraint::{
     CallConstraintArg, CallConstraintContext, build_call_constraint_context,
     normalize_constraint_type,
 };
-use crate::diagnostic::{checker::Checker, lua_diagnostic::DiagnosticContext};
+use crate::diagnostic::{
+    checker::{Checker, DiagnosticMessage},
+    lua_diagnostic::DiagnosticContext,
+};
 use crate::{
     AssignabilityResult, DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode,
     GenericTplId, LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
     LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
     TypeMismatch, TypeSubstitutor, VariadicType, humanize_type, infer_doc_type,
-    instantiate_type_generic_full, render_type_mismatch,
+    instantiate_type_generic_full, render_type_mismatch_reason,
 };
 
 type ConstraintCheckResult = Result<(), ConstraintCheckFailure>;
@@ -824,23 +827,24 @@ fn add_type_check_diagnostic(
     match result {
         Ok(_) => (),
         Err(reason) => {
-            let reason_message = match reason {
+            let detail = match reason {
                 ConstraintCheckFailure::Mismatch(mismatch) => mismatch
                     .as_ref()
-                    .map(|mismatch| render_type_mismatch(db, mismatch))
-                    .unwrap_or_default(),
-                ConstraintCheckFailure::Recursion => "type recursion".to_string(),
+                    .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+                ConstraintCheckFailure::Recursion => Some("type recursion".to_string()),
             };
             context.add_diagnostic(
                 DiagnosticCode::GenericConstraintMismatch,
                 range,
-                t!(
-                    "type `%{found}` does not satisfy the constraint `%{source}`. %{reason}",
-                    source = humanize_type(db, extend_type, RenderLevel::Simple),
-                    found = humanize_type(db, expr_type, RenderLevel::Simple),
-                    reason = reason_message
-                )
-                .to_string(),
+                DiagnosticMessage::with_detail(
+                    t!(
+                        "type `%{found}` does not satisfy the constraint `%{source}`.",
+                        source = humanize_type(db, extend_type, RenderLevel::Simple),
+                        found = humanize_type(db, expr_type, RenderLevel::Simple),
+                    )
+                    .to_string(),
+                    detail,
+                ),
                 None,
             );
         }

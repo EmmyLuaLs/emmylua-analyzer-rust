@@ -6,11 +6,12 @@ use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaSemanticDeclId, LuaType,
-    LuaUnionType, SemanticDeclLevel, SemanticModel, infer_index_expr, render_type_mismatch,
+    LuaUnionType, SemanticDeclLevel, SemanticModel, infer_index_expr, render_type_mismatch_reason,
 };
 
 use super::{
-    Checker, DiagnosticContext, humanize_lint_type, table::check_table_assignment_diagnostics,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type,
+    table::check_table_assignment_diagnostics,
 };
 
 pub struct AssignTypeMismatchChecker;
@@ -257,13 +258,15 @@ fn check_assign_type_mismatch(
     context.add_diagnostic(
         DiagnosticCode::AssignTypeMismatch,
         range,
-        t!(
-            "Cannot assign `%{value}` to `%{source}`. %{reason}",
-            value = humanize_lint_type(db, source_type),
-            source = humanize_lint_type(db, target_type),
-            reason = render_type_mismatch(db, &mismatch)
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "Cannot assign `%{value}` to `%{source}`.",
+                value = humanize_lint_type(db, source_type),
+                source = humanize_lint_type(db, target_type),
+            )
+            .to_string(),
+            render_type_mismatch_reason(db, &mismatch),
+        ),
         None,
     );
 }

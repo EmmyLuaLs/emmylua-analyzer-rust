@@ -1,29 +1,36 @@
-use super::mismatch::TypePathSegment;
+use super::mismatch::{TypeMismatch, TypePathSegment};
 use crate::{LuaMemberKey, LuaType};
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexKey, LuaTableExpr};
 use rowan::TextRange;
 
-pub fn locate_mismatch_range(source_expr: &LuaExpr, frames: &[TypePathSegment]) -> TextRange {
+pub fn locate_mismatch_range(source_expr: &LuaExpr, mismatch: &TypeMismatch) -> TextRange {
     let mut current = Some(source_expr.clone());
     let mut range = source_expr.syntax().text_range();
-    for frame in frames.iter().rev() {
+
+    for step in mismatch.steps().iter().rev() {
+        let Some(segment) = step.segment.as_ref() else {
+            continue;
+        };
         if matches!(
-            frame,
+            segment,
             TypePathSegment::SourceUnionMember(_)
                 | TypePathSegment::TargetUnionCandidate(_)
                 | TypePathSegment::IntersectionMember(_)
                 | TypePathSegment::GenericArgument(_)
+                | TypePathSegment::FunctionParameter(_)
+                | TypePathSegment::FunctionReturn(_)
         ) {
             continue;
         }
+
         let Some(expr) = current.as_ref() else {
             break;
         };
         let Some(table) = LuaTableExpr::cast(expr.syntax().clone()) else {
             break;
         };
-        let key = match frame {
-            TypePathSegment::Member(k) => Some(k.clone()),
+        let key = match segment {
+            TypePathSegment::Member(key) => Some(key.clone()),
             TypePathSegment::Index(index) => match index {
                 LuaType::StringConst(value) | LuaType::DocStringConst(value) => {
                     Some(LuaMemberKey::Name((**value).clone()))
@@ -33,37 +40,43 @@ pub fn locate_mismatch_range(source_expr: &LuaExpr, frames: &[TypePathSegment]) 
                 }
                 _ => break,
             },
-            TypePathSegment::TupleElement(i) => Some(LuaMemberKey::Integer(*i as i64 + 1)),
+            TypePathSegment::TupleElement(index) => Some(LuaMemberKey::Integer(*index as i64 + 1)),
             TypePathSegment::ArrayElement => None,
-            _ => break,
+            _ => continue,
         };
-        let found = table.get_fields_with_keys().find(|(field, k)| {
+        let found = table.get_fields_with_keys().find(|(_, field_key)| {
             if let Some(expected) = &key {
-                key_matches(k, expected)
+                key_matches(field_key, expected)
             } else {
-                matches!(k, LuaIndexKey::Idx(_)) && field.get_value_expr().is_some()
+                matches!(field_key, LuaIndexKey::Idx(_))
             }
         });
         let Some((field, _)) = found else {
             break;
         };
+
         current = field.get_value_expr();
         range = current
             .as_ref()
-            .map(|v| v.syntax().text_range())
+            .map(|value| value.syntax().text_range())
             .unwrap_or_else(|| field.get_range());
     }
+
     range
 }
 
 fn key_matches(key: &LuaIndexKey, expected: &LuaMemberKey) -> bool {
     match (key, expected) {
-        (LuaIndexKey::Name(a), LuaMemberKey::Name(b)) => a.get_name_text() == b.as_str(),
-        (LuaIndexKey::String(a), LuaMemberKey::Name(b)) => a.get_value() == b.as_str(),
-        (LuaIndexKey::Integer(a), LuaMemberKey::Integer(b)) => {
-            a.get_number_value().as_integer() == Some(*b)
+        (LuaIndexKey::Name(actual), LuaMemberKey::Name(expected)) => {
+            actual.get_name_text() == expected.as_str()
         }
-        (LuaIndexKey::Idx(a), LuaMemberKey::Integer(b)) => *a as i64 == *b,
+        (LuaIndexKey::String(actual), LuaMemberKey::Name(expected)) => {
+            actual.get_value() == expected.as_str()
+        }
+        (LuaIndexKey::Integer(actual), LuaMemberKey::Integer(expected)) => {
+            actual.get_number_value().as_integer() == Some(*expected)
+        }
+        (LuaIndexKey::Idx(actual), LuaMemberKey::Integer(expected)) => *actual as i64 == *expected,
         _ => false,
     }
 }
@@ -88,13 +101,16 @@ mod tests {
             .expect("field value")
             .syntax()
             .text_range();
-        let mismatch_range = locate_mismatch_range(
-            &source_expr,
-            &[TypePathSegment::Index(LuaType::StringConst(
-                SmolStr::new("foo").into(),
-            ))],
+        let mismatch = TypeMismatch::incompatible(&LuaType::String, &LuaType::Integer).at(
+            TypePathSegment::Index(LuaType::StringConst(SmolStr::new("foo").into())),
+            &LuaType::Table,
+            &LuaType::Table,
         );
-        assert_eq!(mismatch_range, expected_range);
+
+        assert_eq!(
+            locate_mismatch_range(&source_expr, &mismatch),
+            expected_range
+        );
     }
 
     #[test]
@@ -110,11 +126,16 @@ mod tests {
             .expect("field value")
             .syntax()
             .text_range();
-        let mismatch_range = locate_mismatch_range(
-            &source_expr,
-            &[TypePathSegment::Index(LuaType::IntegerConst(1))],
+        let mismatch = TypeMismatch::incompatible(&LuaType::String, &LuaType::Integer).at(
+            TypePathSegment::Index(LuaType::IntegerConst(1)),
+            &LuaType::Table,
+            &LuaType::Table,
         );
-        assert_eq!(mismatch_range, expected_range);
+
+        assert_eq!(
+            locate_mismatch_range(&source_expr, &mismatch),
+            expected_range
+        );
     }
 
     #[test]
@@ -123,8 +144,14 @@ mod tests {
         let file_id = workspace.def("local value = { foo = 'oops' }");
         let stat = workspace.get_node::<LuaLocalStat>(file_id);
         let source_expr = stat.get_value_exprs().next().expect("initializer");
-        let mismatch_range =
-            locate_mismatch_range(&source_expr, &[TypePathSegment::Index(LuaType::String)]);
-        assert_eq!(mismatch_range, source_expr.syntax().text_range());
+        let broad_index = TypeMismatch::incompatible(&LuaType::String, &LuaType::Integer).at(
+            TypePathSegment::Index(LuaType::String),
+            &LuaType::Table,
+            &LuaType::Table,
+        );
+        assert_eq!(
+            locate_mismatch_range(&source_expr, &broad_index),
+            source_expr.syntax().text_range()
+        );
     }
 }

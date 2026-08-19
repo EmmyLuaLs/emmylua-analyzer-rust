@@ -2,10 +2,12 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaComment, LuaDocTagType};
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaMemberId, LuaTypeCache, RenderLevel, SemanticModel,
-    humanize_type, render_type_mismatch,
+    humanize_type, render_type_mismatch_reason,
 };
 
-use crate::diagnostic::checker::{Checker, DiagnosticContext, humanize_lint_type};
+use crate::diagnostic::checker::{
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type,
+};
 
 pub struct TableFieldTypeMismatchChecker;
 
@@ -51,13 +53,16 @@ fn check_type_tag(
     context.add_diagnostic(
         DiagnosticCode::AssignTypeMismatch,
         value_expr.get_range(),
-        t!(
-            "Cannot assign `%{actual}` to the `@type %{annotated}` annotation. %{reason}",
-            annotated = humanize_type(semantic_model.get_db(), annotated_type, RenderLevel::Simple),
-            actual = humanize_lint_type(semantic_model.get_db(), &actual_type),
-            reason = render_type_mismatch(semantic_model.get_db(), &mismatch)
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "Cannot assign `%{actual}` to the `@type %{annotated}` annotation.",
+                annotated =
+                    humanize_type(semantic_model.get_db(), annotated_type, RenderLevel::Simple),
+                actual = humanize_lint_type(semantic_model.get_db(), &actual_type),
+            )
+            .to_string(),
+            render_type_mismatch_reason(semantic_model.get_db(), &mismatch),
+        ),
         None,
     );
 

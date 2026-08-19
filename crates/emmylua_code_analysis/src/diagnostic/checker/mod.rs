@@ -167,7 +167,7 @@ impl<'a> DiagnosticContext<'a> {
         &mut self,
         code: DiagnosticCode,
         range: TextRange,
-        message: String,
+        message: impl Into<DiagnosticMessage>,
         data: Option<serde_json::Value>,
     ) -> bool {
         if !self.is_checker_enable_by_code(&code) {
@@ -179,7 +179,7 @@ impl<'a> DiagnosticContext<'a> {
         }
 
         let diagnostic = Diagnostic {
-            message,
+            message: message.into().into_string(),
             range: self.translate_range(range).unwrap_or(lsp_types::Range {
                 start: lsp_types::Position {
                     line: 0,
@@ -299,6 +299,40 @@ impl<'a> DiagnosticContext<'a> {
 
         // default setting
         is_code_default_enable(code, self.config.level)
+    }
+}
+
+pub struct DiagnosticMessage {
+    message: String,
+    detail: Option<String>,
+}
+
+impl DiagnosticMessage {
+    pub fn with_detail(message: String, detail: Option<String>) -> Self {
+        Self { message, detail }
+    }
+
+    fn into_string(self) -> String {
+        let mut message = self.message.trim_end().to_string();
+        if let Some(detail) = self.detail {
+            let detail = detail.trim_end();
+            if !detail.is_empty() {
+                if !message.is_empty() {
+                    message.push('\n');
+                }
+                message.push_str(detail);
+            }
+        }
+        message
+    }
+}
+
+impl From<String> for DiagnosticMessage {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            detail: None,
+        }
     }
 }
 

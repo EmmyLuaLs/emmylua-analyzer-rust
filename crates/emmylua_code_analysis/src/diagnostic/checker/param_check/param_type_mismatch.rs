@@ -5,11 +5,14 @@ use crate::{
     AssignabilityResult, DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel,
     TypeMismatch,
     diagnostic::checker::table::check_table_assignment_diagnostics,
-    humanize_type, render_type_mismatch,
+    humanize_type, render_type_mismatch_reason,
     semantic::{RelationOutcome, get_func_param_type, probe_assignable},
 };
 
-use super::{super::DiagnosticContext, call_analysis::CallAnalysis};
+use super::{
+    super::{DiagnosticContext, DiagnosticMessage},
+    call_analysis::CallAnalysis,
+};
 
 pub(super) fn check_param_type_mismatch(
     context: &mut DiagnosticContext,
@@ -282,15 +285,15 @@ fn add_param_type_diagnostic(
     context.add_diagnostic(
         DiagnosticCode::ParamTypeMismatch,
         range,
-        t!(
-            "expected `%{source}` but found `%{found}`. %{reason}",
-            source = humanize_type(db, param_type, RenderLevel::Simple),
-            found = humanize_type(db, expr_type, RenderLevel::Simple),
-            reason = mismatch
-                .map(|mismatch| render_type_mismatch(db, mismatch))
-                .unwrap_or_default()
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "expected `%{source}` but found `%{found}`.",
+                source = humanize_type(db, param_type, RenderLevel::Simple),
+                found = humanize_type(db, expr_type, RenderLevel::Simple),
+            )
+            .to_string(),
+            mismatch.and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+        ),
         None,
     );
 }

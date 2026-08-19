@@ -189,6 +189,9 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         intersection_state: IntersectionState,
     ) -> RelationResult {
         self.relate_with::<false>(source, target, intersection_state, false)
+            .map_err(|failure| {
+                failure.map_mismatch(|mismatch| mismatch.with_outer_relation(source, target))
+            })
     }
 
     pub(super) fn relate_with_directional_policy(
@@ -547,6 +550,11 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         intersection_state: IntersectionState,
     ) -> RelationResult {
         self.relate_with::<true>(source_member, target_member, intersection_state, false)
+            .map_err(|failure| {
+                failure.map_mismatch(|mismatch| {
+                    mismatch.with_outer_relation(source_member, target_member)
+                })
+            })
     }
 
     /// 创建完整的活动关系作用域, 用于处理复杂类型.

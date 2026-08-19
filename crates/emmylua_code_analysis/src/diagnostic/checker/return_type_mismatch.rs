@@ -7,10 +7,10 @@ use crate::{
     AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
     SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
     diagnostic::checker::{humanize_lint_type, table::check_table_assignment_diagnostics},
-    render_type_mismatch,
+    render_type_mismatch_reason,
 };
 
-use super::{Checker, DiagnosticContext, get_return_stats};
+use super::{Checker, DiagnosticContext, DiagnosticMessage, get_return_stats};
 
 pub struct ReturnTypeMismatch;
 
@@ -171,14 +171,16 @@ fn add_type_check_diagnostic(
     context.add_diagnostic(
         DiagnosticCode::ReturnTypeMismatch,
         range,
-        t!(
-            "Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead. %{reason}",
-            index = index + 1,
-            source = humanize_lint_type(db, param_type),
-            found = humanize_lint_type(db, expr_type),
-            reason = render_type_mismatch(db, mismatch)
-        )
-        .to_string(),
+        DiagnosticMessage::with_detail(
+            t!(
+                "Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.",
+                index = index + 1,
+                source = humanize_lint_type(db, param_type),
+                found = humanize_lint_type(db, expr_type),
+            )
+            .to_string(),
+            render_type_mismatch_reason(db, mismatch),
+        ),
         None,
     );
 }

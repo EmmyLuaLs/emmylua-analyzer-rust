@@ -12,7 +12,7 @@ mod test;
 mod union;
 
 pub use mismatch::{
-    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, render_type_mismatch,
+    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, render_type_mismatch_reason,
 };
 pub(crate) use relation::RelationOutcome;
 use relation::RelationSession;

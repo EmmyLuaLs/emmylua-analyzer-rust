@@ -4,10 +4,10 @@ use rowan::TextRange;
 
 use crate::{
     AssignabilityResult, DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType,
-    SemanticModel, TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch,
+    SemanticModel, TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch_reason,
 };
 
-use super::{Checker, DiagnosticContext, humanize_lint_type};
+use super::{Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type};
 
 pub struct CastTypeMismatchChecker;
 
@@ -114,24 +114,25 @@ fn add_cast_type_mismatch_diagnostic(
     match result {
         Ok(_) => (),
         Err(reason) => {
-            let reason_message = match reason {
+            let detail = match reason {
                 CastCheckFailure::Mismatch(mismatch) => mismatch
                     .as_ref()
-                    .map(|mismatch| render_type_mismatch(db, mismatch))
-                    .unwrap_or_default(),
-                CastCheckFailure::Recursion => t!("type recursion").to_string(),
+                    .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+                CastCheckFailure::Recursion => Some(t!("type recursion").to_string()),
             };
 
             context.add_diagnostic(
                 DiagnosticCode::CastTypeMismatch,
                 range,
-                t!(
-                    "Cannot cast `%{original}` to `%{target}`. %{reason}",
-                    original = humanize_lint_type(db, origin_type),
-                    target = humanize_lint_type(db, target_type),
-                    reason = reason_message
-                )
-                .to_string(),
+                DiagnosticMessage::with_detail(
+                    t!(
+                        "Cannot cast `%{original}` to `%{target}`.",
+                        original = humanize_lint_type(db, origin_type),
+                        target = humanize_lint_type(db, target_type),
+                    )
+                    .to_string(),
+                    detail,
+                ),
                 None,
             );
         }

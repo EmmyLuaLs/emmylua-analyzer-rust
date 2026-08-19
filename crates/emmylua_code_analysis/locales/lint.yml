@@ -68,10 +68,10 @@ Should not reassign to iter variable:
   zh_CN: '不应重新赋值给迭代变量'
   zh_HK: '不應重新指定迭代變數'
 
-expected `%{source}` but found `%{found}`. %{reason}:
-  en: expected `%{source}` but found `%{found}`. %{reason}
-  zh_CN: '预期 `%{source}`，但得到 `%{found}`。 %{reason}'
-  zh_HK: '期望 `%{source}`，但得到 `%{found}`。 %{reason}'
+expected `%{source}` but found `%{found}`.:
+  en: expected `%{source}` but found `%{found}`.
+  zh_CN: '预期 `%{source}`，但得到 `%{found}`。'
+  zh_HK: '期望 `%{source}`，但得到 `%{found}`。'
 function %{name} may be nil:
   en: function %{name} may be nil
   zh_CN: '函数 %{name} 可能为 nil'
@@ -101,10 +101,10 @@ tuple member %{idx} not match, expect %{typ}, but got %{got}:
   zh_CN: '元组成员 %{idx} 不匹配，期望 %{typ}，但得到 %{got}'
   zh_HK: '元組成員 %{idx} 不匹配，期望 %{typ}，但得到 %{got}'
 
-Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead. %{reason}:
-  en: Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead. %{reason}
-  zh_CN: '第 %{index} 个返回值的类型为 `%{source}`，但实际返回类型为 `%{found}`。 %{reason}'
-  zh_HK: '第 %{index} 個回傳值的類型為 `%{source}` ，但實際回傳的是 `%{found}`。 %{reason}'
+Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.:
+  en: Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.
+  zh_CN: '第 %{index} 个返回值的类型为 `%{source}`，但实际返回类型为 `%{found}`。'
+  zh_HK: '第 %{index} 個回傳值的類型為 `%{source}` ，但實際回傳的是 `%{found}`。'
 Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.:
   en: 'Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.'
   zh_CN: '最多只有 %{max} 个返回值，但此处返回了 %{rmax} 个'
@@ -165,14 +165,14 @@ Cannot use `...` outside a vararg function.:
   en: 'Incomplete signature. Missing @return annotation at index `%{index}`.'
   zh_CN: '不完整的签名。第 `%{index}` 个返回值缺少 @return 注解。'
   zh_HK: '不完整的簽名。第 `%{index}` 個回傳值缺少 @return 註釋。'
-'Cannot assign `%{value}` to `%{source}`. %{reason}':
-  en: 'Cannot assign `%{value}` to `%{source}`. %{reason}'
-  zh_CN: '不能将 `%{value}` 赋值给 `%{source}`。%{reason}'
-  zh_HK: '不能將 `%{value}` 賦值給 `%{source}`。%{reason}'
-'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}':
-  en: 'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`. %{reason}'
-  zh_CN: '不能将可变值中的第 `%{index}` 个值 `%{value}` 赋值给下标 `%{source_index}` 处的 `%{source}`。%{reason}'
-  zh_HK: '不能將可變值中的第 `%{index}` 個值 `%{value}` 賦值給下標 `%{source_index}` 處的 `%{source}`。%{reason}'
+'Cannot assign `%{value}` to `%{source}`.':
+  en: 'Cannot assign `%{value}` to `%{source}`.'
+  zh_CN: '不能将 `%{value}` 赋值给 `%{source}`。'
+  zh_HK: '不能將 `%{value}` 賦值給 `%{source}`。'
+'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`.':
+  en: 'Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`.'
+  zh_CN: '不能将可变值中的第 `%{index}` 个值 `%{value}` 赋值给下标 `%{source_index}` 处的 `%{source}`。'
+  zh_HK: '不能將可變值中的第 `%{index}` 個值 `%{value}` 賦值給下標 `%{source_index}` 處的 `%{source}`。'
 'The same file is required multiple times.':
   en: 'The same file is required multiple times.'
   zh_CN: '同一个文件被重复 require。'
@@ -245,10 +245,10 @@ Cannot use `...` outside a vararg function.:
   en: "Duplicate index `%{name}`."
   zh_CN: "重复定义的索引 `%{name}`."
   zh_HK: "重複定義的索引 `%{name}`."
-"type `%{found}` does not satisfy the constraint `%{source}`. %{reason}":
-  en: "type `%{found}` does not satisfy the constraint `%{source}`. %{reason}"
-  zh_CN: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`. %{reason}"
-  zh_HK: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`. %{reason}"
+"type `%{found}` does not satisfy the constraint `%{source}`.":
+  en: "type `%{found}` does not satisfy the constraint `%{source}`."
+  zh_CN: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`."
+  zh_HK: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`."
 "Generic type '%{name}' requires %{count} type argument(s)":
   en: "Generic type '%{name}' requires %{count} type argument(s)"
   zh_CN: "泛型类型“%{name}”需要 %{count} 个类型参数"
@@ -261,10 +261,10 @@ Cannot use `...` outside a vararg function.:
   en: "the string template type must be a string constant"
   zh_CN: "字符串模板类型必须是字符串常量"
   zh_HK: "字串模板類型必須是字串常量"
-"Cannot cast `%{original}` to `%{target}`. %{reason}":
-  en: "Cannot cast `%{original}` to `%{target}`. %{reason}"
-  zh_CN: "不能将 `%{original}` 转换为 `%{target}`。%{reason}"
-  zh_HK: "不能將 `%{original}` 轉換為 `%{target}`。%{reason}"
+"Cannot cast `%{original}` to `%{target}`.":
+  en: "Cannot cast `%{original}` to `%{target}`."
+  zh_CN: "不能将 `%{original}` 转换为 `%{target}`。"
+  zh_HK: "不能將 `%{original}` 轉換為 `%{target}`。"
 "type recursion":
   en: "type recursion"
   zh_CN: "类型递归"
@@ -297,7 +297,7 @@ Cannot use `...` outside a vararg function.:
   zh_CN: "目标最少需要 %{count} 个元素，但源可能更少。"
   zh_HK: "目標最少需要 %{count} 個元素，但源可能更少。"
 
-'Cannot assign `%{actual}` to the `@type %{annotated}` annotation. %{reason}':
-  en: 'Cannot assign `%{actual}` to the `@type %{annotated}` annotation. %{reason}'
-  zh_CN: '不能将 `%{actual}` 赋值给 `@type %{annotated}` 注解。%{reason}'
-  zh_HK: '不能將 `%{actual}` 賦值給 `@type %{annotated}` 註釋。%{reason}'
+'Cannot assign `%{actual}` to the `@type %{annotated}` annotation.':
+  en: 'Cannot assign `%{actual}` to the `@type %{annotated}` annotation.'
+  zh_CN: '不能将 `%{actual}` 赋值给 `@type %{annotated}` 注解。'
+  zh_HK: '不能將 `%{actual}` 賦值給 `@type %{annotated}` 註釋。'
