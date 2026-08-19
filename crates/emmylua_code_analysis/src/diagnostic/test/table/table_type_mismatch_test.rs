@@ -81,6 +81,135 @@ local target = {
     }
 
     #[test]
+    fn nullable_root_table_reports_deepest_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@class Icon
+---@field icon string
+
+---@class IconList
+---@field one Icon
+
+---@class A
+---@field icon_list? IconList
+
+---@type A
+local tmp
+
+---@type string?
+local a
+
+tmp.icon_list = {
+    one = {
+        icon = a
+    }
+}"#;
+        let expected_line = source
+            .lines()
+            .position(|line| line.contains("icon = a"))
+            .unwrap() as u32;
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("Cannot assign `string?` to `string`.")
+        );
+    }
+
+    #[test]
+    fn generic_table_targets_report_deepest_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@class Box<T>
+---@field value T
+
+---@class Root
+---@field child Box<string>
+---@field optional_child Box<string>?
+
+---@type Root
+local root = {
+    child = {
+        value = 1,
+    },
+    optional_child = {
+        value = 2,
+    },
+}
+
+local direct ---@type Box<string>?
+direct = {
+    value = 3,
+}"#;
+        let expected_lines = source
+            .lines()
+            .enumerate()
+            .filter_map(|(line, text)| text.contains("value =").then_some(line as u32))
+            .collect::<Vec<_>>();
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 3, "{diagnostics:#?}");
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.range.start.line)
+                .collect::<Vec<_>>(),
+            expected_lines
+        );
+        assert!(diagnostics.iter().all(|diagnostic| {
+            diagnostic
+                .message
+                .contains("Cannot assign `integer` to `string`.")
+        }));
+    }
+
+    #[test]
+    fn nullable_scalar_table_keeps_outer_mismatch() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let source = r#"---@type "x"?
+local target
+
+target = {
+    len = 1,
+}"#;
+        let expected_line = source
+            .lines()
+            .position(|line| line.contains("target ="))
+            .unwrap() as u32;
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert!(diagnostics[0].message.contains("to `\"x\"?`"));
+    }
+
+    #[test]
+    fn nullable_scalar_generic_alias_keeps_outer_mismatch() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let source = r#"---@alias Identity<T> T
+
+---@type Identity<"x">?
+local target
+
+target = {
+    len = 1,
+}"#;
+        let expected_line = source
+            .lines()
+            .position(|line| line.contains("target ="))
+            .unwrap() as u32;
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].range.start.line, expected_line);
+    }
+
+    #[test]
     fn nullable_array_element_reports_incompatible_non_nil_branch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@type string?

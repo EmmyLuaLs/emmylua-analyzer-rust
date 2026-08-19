@@ -2,8 +2,8 @@ use emmylua_parser::{LuaAstNode, LuaTableExpr};
 use rowan::TextRange;
 
 use crate::{
-    AssignabilityResult, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, SemanticModel,
-    VariadicType, get_real_type, render_type_mismatch_reason,
+    AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType,
+    SemanticModel, VariadicType, get_real_type, render_type_mismatch_reason,
 };
 
 use super::{
@@ -42,26 +42,54 @@ impl TableCheckState {
     }
 }
 
+fn get_table_field_target<'a>(db: &'a DbIndex, typ: &'a LuaType) -> Option<&'a LuaType> {
+    // 此处只做宽泛结构判断, 泛型 alias 回退到整表诊断.
+    let typ = get_real_type(db, typ).unwrap_or(typ);
+    let typ = match typ {
+        LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Nullable(inner) => get_real_type(db, inner).unwrap_or(inner),
+            _ => return None,
+        },
+        _ => typ,
+    };
+
+    if typ.is_table() || matches!(typ, LuaType::Object(_)) {
+        return Some(typ);
+    }
+
+    let type_id = match typ {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => type_id,
+        LuaType::Generic(generic) => generic.get_base_type_id_ref(),
+        _ => return None,
+    };
+    db.get_type_index()
+        .get_type_decl(type_id)
+        .is_some_and(|type_decl| type_decl.is_class())
+        .then_some(typ)
+}
+
 pub(super) fn check_table_type_mismatch(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     table_expr: &LuaTableExpr,
-    actual_type: &LuaType,
-    expected_type: &LuaType,
+    source: &LuaType,
+    target: &LuaType,
 ) -> TableAssignmentOutcome {
     // 整表兼容时不访问任何字段 AST. 无法完成的类型关系同样按保守兼容处理.
-    if semantic_model.is_assignable(actual_type, expected_type) {
+    if semantic_model.is_assignable(source, target) {
         return TableAssignmentOutcome::Assignable;
     }
 
     let mut state = TableCheckState::new();
-    if check_table_fields(
-        context,
-        semantic_model,
-        expected_type,
-        table_expr,
-        &mut state,
-    ) {
+    if let Some(table_target) = get_table_field_target(semantic_model.get_db(), target)
+        && check_table_fields(
+            context,
+            semantic_model,
+            table_target,
+            table_expr,
+            &mut state,
+        )
+    {
         return TableAssignmentOutcome::Reported;
     }
 
@@ -78,11 +106,12 @@ pub(super) fn check_table_type_mismatch(
 fn check_table_fields(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    expected_type: &LuaType,
+    target: &LuaType,
     table_expr: &LuaTableExpr,
     state: &mut TableCheckState,
 ) -> bool {
     let mut has_diagnostic = false;
+
     let mut fields = table_expr.get_fields_with_keys().peekable();
 
     while let Some((field, field_key)) = fields.next() {
@@ -93,7 +122,7 @@ fn check_table_fields(
         let Some(value_expr) = field.get_value_expr() else {
             continue;
         };
-        let actual_type = semantic_model
+        let value_expr_type = semantic_model
             .infer_expr(value_expr.clone())
             .unwrap_or(LuaType::Any);
 
@@ -101,8 +130,7 @@ fn check_table_fields(
             continue;
         };
 
-        let Ok(field_expected_type) = semantic_model.infer_member_type(expected_type, &member_key)
-        else {
+        let Ok(field_target) = semantic_model.infer_member_type(target, &member_key) else {
             continue;
         };
 
@@ -110,12 +138,12 @@ fn check_table_fields(
         if field.is_value_field()
             && fields.peek().is_none()
             && let LuaMemberKey::Integer(start_index) = &member_key
-            && let LuaType::Variadic(variadic) = &actual_type
+            && let LuaType::Variadic(variadic) = &value_expr_type
         {
             has_diagnostic |= check_table_last_variadic_type(
                 context,
                 semantic_model,
-                expected_type,
+                target,
                 *start_index,
                 variadic,
                 field.get_range(),
@@ -123,27 +151,13 @@ fn check_table_fields(
             continue;
         }
 
-        if semantic_model.is_assignable(&actual_type, &field_expected_type) {
+        if semantic_model.is_assignable(&value_expr_type, &field_target) {
             continue;
         }
 
         // 此时不匹配, 如果右侧仍然是表字面量, 则需要递归检查其字段.
-        let real_expected_type = get_real_type(semantic_model.get_db(), &field_expected_type)
-            .unwrap_or(&field_expected_type);
-
         // 期望类型可能是可空 union(如 `Foo?`), 此时若真实值是表字面量仍需递归检查字段.
-        let nested_expected_type = match real_expected_type {
-            LuaType::Union(union) => match union.as_ref() {
-                LuaUnionType::Nullable(inner) if inner.is_table() || inner.is_custom_type() => {
-                    Some(inner)
-                }
-                _ => None,
-            },
-            _ if real_expected_type.is_table() || real_expected_type.is_custom_type() => {
-                Some(&field_expected_type)
-            }
-            _ => None,
-        };
+        let nested_expected_type = get_table_field_target(semantic_model.get_db(), &field_target);
 
         if let Some(nested_expected_type) = nested_expected_type
             && let Some(child_table) = LuaTableExpr::cast(value_expr.syntax().clone())
@@ -153,8 +167,8 @@ fn check_table_fields(
                     context,
                     semantic_model,
                     field.get_range(),
-                    &field_expected_type,
-                    &actual_type,
+                    &field_target,
+                    &value_expr_type,
                 )
             } else {
                 let child_has_diagnostic = check_table_fields(
@@ -170,8 +184,8 @@ fn check_table_fields(
                             context,
                             semantic_model,
                             field.get_range(),
-                            &field_expected_type,
-                            &actual_type,
+                            &field_target,
+                            &value_expr_type,
                         )
             };
             has_diagnostic |= field_has_diagnostic;
@@ -184,8 +198,8 @@ fn check_table_fields(
             context,
             semantic_model,
             field.get_range(),
-            &field_expected_type,
-            &actual_type,
+            &field_target,
+            &value_expr_type,
         );
     }
 
