@@ -81,7 +81,21 @@ pub fn check_complex_type_compact(
                     check_guard.next_level()?,
                 );
             }
-            for sub_type in union_type.into_vec() {
+
+            let sub_types = union_type.into_vec();
+            if matches!(compact_type, LuaType::Boolean) {
+                let contains_literal = |value| {
+                    sub_types.contains(&LuaType::BooleanConst(value))
+                        || sub_types.contains(&LuaType::DocBooleanConst(value))
+                };
+
+                // A boolean has only two possible values, so both literals cover it.
+                if contains_literal(true) && contains_literal(false) {
+                    return Ok(());
+                }
+            }
+
+            for sub_type in sub_types {
                 match check_general_type_compact(
                     context,
                     &sub_type,

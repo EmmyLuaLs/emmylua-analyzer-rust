@@ -323,27 +323,9 @@ fn infer_binary_type(ctx: DocTypeInferContext<'_>, binary_type: &LuaDocBinaryTyp
         let right_type = infer_doc_type(ctx, &right);
         if let Some(op) = binary_type.get_op_token() {
             match op.get_op() {
-                LuaTypeBinaryOperator::Union => match (left_type, right_type) {
-                    (LuaType::Union(left_type_union), LuaType::Union(right_type_union)) => {
-                        let mut left_types = left_type_union.into_vec();
-                        let right_types = right_type_union.into_vec();
-                        left_types.extend(right_types);
-                        return LuaType::from_vec(left_types);
-                    }
-                    (LuaType::Union(left_type_union), right) => {
-                        let mut left_types = left_type_union.into_vec();
-                        left_types.push(right);
-                        return LuaType::from_vec(left_types);
-                    }
-                    (left, LuaType::Union(right_type_union)) => {
-                        let mut right_types = right_type_union.into_vec();
-                        right_types.push(left);
-                        return LuaType::from_vec(right_types);
-                    }
-                    (left, right) => {
-                        return LuaType::from_vec(vec![left, right]);
-                    }
-                },
+                LuaTypeBinaryOperator::Union => {
+                    return LuaType::from_vec(vec![left_type, right_type]);
+                }
                 LuaTypeBinaryOperator::Intersection => match (left_type, right_type) {
                     (
                         LuaType::Intersection(left_type_union),
