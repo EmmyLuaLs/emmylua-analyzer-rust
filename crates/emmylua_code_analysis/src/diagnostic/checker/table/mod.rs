@@ -4,6 +4,7 @@ use crate::{DiagnosticCode, LuaType, SemanticModel};
 
 use super::DiagnosticContext;
 
+pub mod missing_fields;
 pub mod table_field_type_mismatch;
 pub mod table_type_mismatch;
 
@@ -31,6 +32,7 @@ pub(crate) fn check_table_assignment_diagnostics(
     let LuaExpr::TableExpr(table_expr) = value_expr else {
         return TableAssignmentOutcome::NotTable;
     };
+
     if context
         .has_diagnostic_codes_in_range(table_expr.get_range(), &[DiagnosticCode::MissingFields])
     {

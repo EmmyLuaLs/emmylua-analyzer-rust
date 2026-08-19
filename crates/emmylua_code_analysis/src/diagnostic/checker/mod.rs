@@ -21,7 +21,6 @@ mod generic;
 mod global_non_module;
 mod incomplete_signature_doc;
 mod local_const_reassign;
-mod missing_fields;
 mod need_check_nil;
 mod param_check;
 mod readonly_check;
@@ -91,7 +90,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         context,
         semantic_model,
     );
-    run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
+    run_check::<table::missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);

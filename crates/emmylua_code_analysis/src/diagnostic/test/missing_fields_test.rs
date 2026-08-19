@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+
     use lsp_types::NumberOrString;
     use tokio_util::sync::CancellationToken;
 
@@ -133,6 +134,26 @@ mod tests {
             local test = {
             }
         "#
+        ));
+    }
+
+    #[test]
+    fn test_nested_tables_are_checked_from_outermost_table() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsNestedInner
+            ---@field required string
+
+            ---@class MissingFieldsNestedOuter
+            ---@field child MissingFieldsNestedInner
+
+            ---@param value MissingFieldsNestedOuter
+            local function consume(value) end
+
+            consume({ child = {} })
+            "#,
         ));
     }
 
@@ -319,6 +340,68 @@ foo({})
     }
 
     #[test]
+    fn test_union_alias_does_not_report_other_branch_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsAliasA
+            ---@field a string
+
+            ---@class MissingFieldsAliasB
+            ---@field b string
+
+            ---@alias MissingFieldsAliasUnion MissingFieldsAliasA | MissingFieldsAliasB
+
+            ---@type MissingFieldsAliasUnion
+            local value = { a = "a" }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_union_alias_does_not_report_other_branch_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsGenericAliasA<T>
+            ---@field a T
+
+            ---@class MissingFieldsGenericAliasB<T>
+            ---@field b T
+
+            ---@alias MissingFieldsGenericAliasUnion<T> MissingFieldsGenericAliasA<T> | MissingFieldsGenericAliasB<T>
+
+            ---@type MissingFieldsGenericAliasUnion<string>
+            local value = { a = "a" }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_multiline_union_alias_does_not_report_other_branch_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsMultilineAliasA
+            ---@field a string
+
+            ---@class MissingFieldsMultilineAliasB
+            ---@field b string
+
+            ---@alias MissingFieldsMultilineAliasUnion
+            ---| MissingFieldsMultilineAliasA
+            ---| MissingFieldsMultilineAliasB
+
+            ---@type MissingFieldsMultilineAliasUnion
+            local value = { a = "a" }
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_multiline_union_nil_field_is_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
@@ -335,6 +418,124 @@ foo({})
             ---@type Person
             local person = { name = "123" }
         "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_inherited_fields_are_instantiated() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class MissingFieldsBase<T>
+            ---@field value T
+
+            ---@class MissingFieldsChild<T>: MissingFieldsBase<T>
+            ---@field own T
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@type MissingFieldsChild<string>
+            local value = {}
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@type MissingFieldsChild<string>
+            local value = {
+                value = "value",
+                own = "own",
+            }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_intersection_required_field_wins_over_optional() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsOptional
+            ---@field value? string
+
+            ---@class MissingFieldsRequired
+            ---@field value string
+
+            ---@param value MissingFieldsOptional & MissingFieldsRequired
+            local function consume(value) end
+
+            consume({})
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_most_specific_optional_field_overrides_required_parent() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsRequiredParent
+            ---@field value string
+
+            ---@class MissingFieldsOptionalChild: MissingFieldsRequiredParent
+            ---@field value? string
+
+            ---@type MissingFieldsOptionalChild
+            local value = {}
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_alias_nil_field_is_optional() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@alias MissingFieldsMaybe<T> T | nil
+
+            ---@class MissingFieldsBox<T>
+            ---@field value MissingFieldsMaybe<T>
+
+            ---@type MissingFieldsBox<string>
+            local value = {}
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_index_only_type_does_not_report_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsIndexOnly
+            ---@field [string] number
+
+            ---@type MissingFieldsIndexOnly
+            local value = {}
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_cyclic_inheritance_does_not_overflow_missing_fields_walk() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class MissingFieldsCycleA: MissingFieldsCycleB
+            ---@class MissingFieldsCycleB: MissingFieldsCycleA
+
+            ---@type MissingFieldsCycleA
+            local value = {}
+            "#,
         ));
     }
 
