@@ -118,9 +118,8 @@ impl TypeMismatch {
 
 pub fn render_type_mismatch_reason(db: &DbIndex, mismatch: &TypeMismatch) -> Option<String> {
     let mut lines = Vec::new();
-    let mut depth = 0;
+    let mut depth = 1;
     let mut parent_source = mismatch.source();
-    let mut parent_target = mismatch.target();
 
     for step in mismatch.steps.iter().rev() {
         if let Some(segment) = &step.segment {
@@ -130,7 +129,7 @@ pub fn render_type_mismatch_reason(db: &DbIndex, mismatch: &TypeMismatch) -> Opt
             }
         }
 
-        if &step.source != parent_source || &step.target != parent_target {
+        if &step.source != parent_source {
             lines.push(format!(
                 "{}{}",
                 "  ".repeat(depth),
@@ -140,7 +139,6 @@ pub fn render_type_mismatch_reason(db: &DbIndex, mismatch: &TypeMismatch) -> Opt
         }
 
         parent_source = &step.source;
-        parent_target = &step.target;
     }
 
     let terminal_reason = match mismatch.reason() {

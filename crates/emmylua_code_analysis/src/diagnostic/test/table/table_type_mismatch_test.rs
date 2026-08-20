@@ -224,6 +224,22 @@ local target = {
     }
 
     #[test]
+    fn nullable_union_mismatch_does_not_render_nil_branch() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"local target ---@type boolean?
+local source ---@type string?
+target = source"#;
+
+        let diagnostics = assign_type_diagnostics(&mut ws, source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(
+            diagnostics[0].message,
+            "Cannot assign `string?` to `boolean?`.\n  Type 'string' is not assignable to type 'boolean?'."
+        );
+    }
+
+    #[test]
     fn tail_variadic_uses_sequence_index_after_named_fields() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@return number, string

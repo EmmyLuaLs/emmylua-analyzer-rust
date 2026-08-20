@@ -118,7 +118,7 @@ fn add_cast_type_mismatch_diagnostic(
                 CastCheckFailure::Mismatch(mismatch) => mismatch
                     .as_ref()
                     .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
-                CastCheckFailure::Recursion => Some(t!("type recursion").to_string()),
+                CastCheckFailure::Recursion => Some(format!("  {}", t!("type recursion"))),
             };
 
             context.add_diagnostic(

@@ -831,7 +831,7 @@ fn add_type_check_diagnostic(
                 ConstraintCheckFailure::Mismatch(mismatch) => mismatch
                     .as_ref()
                     .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
-                ConstraintCheckFailure::Recursion => Some("type recursion".to_string()),
+                ConstraintCheckFailure::Recursion => Some("  type recursion".to_string()),
             };
             context.add_diagnostic(
                 DiagnosticCode::GenericConstraintMismatch,
