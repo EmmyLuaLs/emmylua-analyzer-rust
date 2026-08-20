@@ -13,34 +13,76 @@ pub(crate) fn relate_union(
 ) -> Option<RelationResult> {
     // source union 必须先分派, target union 只在普通 source 下作为候选义务.
     if let LuaType::Union(source_union) = source {
-        return Some(relate_source_union(
-            relater,
-            source,
-            source_union,
-            target,
-            intersection_state,
-        ));
+        let result = match source_union.as_ref() {
+            LuaUnionType::Multi(members) => {
+                relate_source_union_members(relater, source, members, target, intersection_state)
+            }
+            _ => {
+                let members = source_union.into_vec();
+                relate_source_union_members(relater, source, &members, target, intersection_state)
+            }
+        };
+        return Some(result);
     }
     if let LuaType::Union(target_union) = target {
-        return Some(relate_to_target_union(
-            relater,
-            source,
-            target,
-            target_union,
-            intersection_state,
-        ));
+        let result = match target_union.as_ref() {
+            LuaUnionType::Nullable(non_nil_target) => {
+                relate_to_nullable_target(relater, source, non_nil_target, intersection_state)
+            }
+            LuaUnionType::Multi(candidates) => relate_to_target_union_candidates(
+                relater,
+                source,
+                target,
+                candidates,
+                intersection_state,
+            ),
+            _ => {
+                let candidates = target_union.into_vec();
+                relate_to_target_union_candidates(
+                    relater,
+                    source,
+                    target,
+                    &candidates,
+                    intersection_state,
+                )
+            }
+        };
+        return Some(result);
     }
     None
 }
 
-fn relate_source_union(
+#[inline(always)]
+pub(super) fn relate_to_nullable_target(
     relater: &mut Relater,
     source: &LuaType,
-    source_union: &LuaUnionType,
+    non_nil_target: &LuaType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    let non_nil_failure = match relater.relate(source, non_nil_target, intersection_state) {
+        Ok(()) => return Ok(()),
+        Err(failure) => failure,
+    };
+    let nil_outcome = relater
+        .probe_relation(source, &LuaType::Nil, intersection_state)
+        .0;
+    match (non_nil_failure, nil_outcome) {
+        (_, RelationOutcome::Related) => Ok(()),
+        (RelationFailure::Indeterminate(kind), _) => Err(RelationFailure::Indeterminate(kind)),
+        (RelationFailure::Unrelated(_), RelationOutcome::Indeterminate(kind)) => {
+            Err(RelationFailure::Indeterminate(kind))
+        }
+        (failure @ RelationFailure::Unrelated(_), RelationOutcome::Unrelated) => Err(failure),
+    }
+}
+
+fn relate_source_union_members(
+    relater: &mut Relater,
+    source: &LuaType,
+    members: &[LuaType],
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    let members = source_union.into_vec();
     let conditional_extends = false;
     let mut first_indeterminate = None;
     for (index, member) in members.iter().enumerate() {
@@ -77,14 +119,13 @@ fn relate_source_union(
     }
 }
 
-fn relate_to_target_union(
+fn relate_to_target_union_candidates(
     relater: &mut Relater,
     source: &LuaType,
     target: &LuaType,
-    target_union: &LuaUnionType,
+    candidates: &[LuaType],
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    let candidates = target_union.into_vec();
     let mut best = None;
     let mut indeterminate = None;
     for (index, candidate) in candidates.iter().enumerate() {

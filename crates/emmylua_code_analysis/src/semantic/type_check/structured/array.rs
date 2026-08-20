@@ -1,5 +1,6 @@
 use crate::{
-    LuaArrayLen, LuaArrayType, LuaMemberKey, LuaTupleType, LuaType, TypeOps, find_members_with_key,
+    LuaArrayLen, LuaArrayType, LuaMemberKey, LuaTupleType, LuaType, LuaUnionType,
+    find_members_with_key,
 };
 
 use super::super::{
@@ -92,10 +93,10 @@ pub(in crate::semantic::type_check) fn relate_array_to_array(
 }
 
 pub(super) fn effective_array_base(relater: &Relater, base: &LuaType) -> LuaType {
-    if relater.db().get_emmyrc().strict.array_index {
-        TypeOps::Union.apply(relater.db(), base, &LuaType::Nil)
-    } else {
+    if !relater.db().get_emmyrc().strict.array_index || base.is_optional() {
         base.clone()
+    } else {
+        LuaUnionType::Nullable(base.clone()).into()
     }
 }
 

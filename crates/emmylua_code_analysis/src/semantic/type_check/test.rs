@@ -3,7 +3,7 @@ mod test {
     use crate::{
         DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
         LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaObjectType, LuaType,
-        LuaTypeDeclId, VirtualWorkspace, is_assignable,
+        LuaTypeDeclId, LuaUnionType, VirtualWorkspace, is_assignable,
         semantic::type_check::{
             AssignabilityResult, RelationOutcome, check_assignable, probe_assignable,
         },
@@ -1054,5 +1054,24 @@ mod test {
             take({ flag = true })
             "#,
         ));
+    }
+
+    #[test]
+    fn test_nullable_target_relates_non_nil_and_nil_branches() {
+        let db = DbIndex::new();
+        let target = LuaUnionType::Nullable(LuaType::String).into();
+
+        assert_eq!(
+            probe_assignable(&db, &LuaType::String, &target),
+            RelationOutcome::Related
+        );
+        assert_eq!(
+            probe_assignable(&db, &LuaType::Nil, &target),
+            RelationOutcome::Related
+        );
+        assert_eq!(
+            probe_assignable(&db, &LuaType::Number, &target),
+            RelationOutcome::Unrelated
+        );
     }
 }
