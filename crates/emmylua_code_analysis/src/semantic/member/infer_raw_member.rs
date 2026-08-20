@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
-    DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
-    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, is_assignable,
+    DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaIntersectionType,
+    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId,
+    LuaUnionType, TypeOps, is_assignable,
     semantic::generic::{TypeSubstitutor, instantiate_type_generic},
 };
 
-use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id};
+use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id, intersect_member_types};
 
 pub fn infer_raw_member_type(
     db: &DbIndex,
@@ -54,9 +55,95 @@ fn infer_raw_member_type_guard(
         LuaType::Generic(generic_type) => {
             infer_generic_raw_member_type(db, generic_type, member_key, infer_guard)
         }
+        LuaType::Union(union_type) => {
+            infer_union_raw_member_type(db, union_type, member_key, infer_guard)
+        }
+        LuaType::MultiLineUnion(multi_union) => {
+            if let LuaType::Union(union_type) = multi_union.to_union() {
+                infer_union_raw_member_type(db, &union_type, member_key, infer_guard)
+            } else {
+                Err(InferFailReason::FieldNotFound)
+            }
+        }
+        LuaType::Intersection(intersection_type) => {
+            infer_intersection_raw_member_type(db, intersection_type, member_key, infer_guard)
+        }
+        LuaType::Instance(inst) => {
+            infer_raw_member_type_guard(db, &inst.get_base(), member_key, infer_guard)
+        }
+        LuaType::TplRef(tpl) => {
+            let extend_type = tpl.get_constraint().cloned().ok_or(InferFailReason::None)?;
+            infer_raw_member_type_guard(db, &extend_type, member_key, infer_guard)
+        }
         // other do not support now
         _ => Err(InferFailReason::None),
     }
+}
+
+fn infer_union_raw_member_type(
+    db: &DbIndex,
+    union_type: &LuaUnionType,
+    member_key: &LuaMemberKey,
+    infer_guard: &InferGuardRef,
+) -> RawGetMemberTypeResult {
+    let mut member_types = Vec::new();
+    let mut has_missing_member = false;
+    let mut meet_string = false;
+
+    for sub_type in union_type.into_vec() {
+        if sub_type.is_string() {
+            if meet_string {
+                continue;
+            }
+            meet_string = true;
+        }
+        let result = infer_raw_member_type_guard(db, &sub_type, member_key, &infer_guard.fork());
+        match result {
+            Ok(typ) => {
+                member_types.push(typ);
+            }
+            Err(_) => {
+                has_missing_member = true;
+            }
+        }
+    }
+
+    if member_types.is_empty() {
+        return Err(InferFailReason::FieldNotFound);
+    }
+
+    if has_missing_member {
+        member_types.push(LuaType::Nil);
+    }
+
+    Ok(TypeOps::union_all(db, member_types))
+}
+
+fn infer_intersection_raw_member_type(
+    db: &DbIndex,
+    intersection_type: &LuaIntersectionType,
+    member_key: &LuaMemberKey,
+    infer_guard: &InferGuardRef,
+) -> RawGetMemberTypeResult {
+    let mut result: Option<LuaType> = None;
+    for member in intersection_type.get_types() {
+        match infer_raw_member_type_guard(db, member, member_key, &infer_guard.fork()) {
+            Ok(ty) => {
+                result = Some(match result {
+                    Some(prev) => intersect_member_types(db, prev, ty),
+                    None => ty,
+                });
+
+                if matches!(result, Some(LuaType::Never)) {
+                    break;
+                }
+            }
+            Err(InferFailReason::FieldNotFound) => continue,
+            Err(reason) => return Err(reason),
+        }
+    }
+
+    result.ok_or(InferFailReason::FieldNotFound)
 }
 
 fn infer_owner_raw_member_type(

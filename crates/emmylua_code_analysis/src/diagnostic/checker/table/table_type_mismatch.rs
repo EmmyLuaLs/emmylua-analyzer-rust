@@ -2,12 +2,12 @@ use emmylua_parser::{LuaAstNode, LuaTableExpr};
 use rowan::TextRange;
 
 use crate::{
-    AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType,
-    SemanticModel, VariadicType, get_real_type, render_type_mismatch_reason,
+    AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, RenderLevel,
+    SemanticModel, VariadicType, get_real_type, humanize_type, render_type_mismatch_reason,
 };
 
 use super::{
-    super::{DiagnosticContext, DiagnosticMessage, humanize_lint_type},
+    super::{DiagnosticContext, DiagnosticMessage},
     TableAssignmentOutcome,
 };
 
@@ -17,7 +17,7 @@ struct TableCheckState {
 }
 
 impl TableCheckState {
-    const MAX_FIELD_CHECK_COUNT: usize = 500;
+    const MAX_FIELD_CHECK_COUNT: usize = 512;
 
     fn new() -> Self {
         Self {
@@ -40,32 +40,6 @@ impl TableCheckState {
         }
         self.budget_exhausted
     }
-}
-
-fn get_table_field_target<'a>(db: &'a DbIndex, typ: &'a LuaType) -> Option<&'a LuaType> {
-    // 此处只做宽泛结构判断, 泛型 alias 回退到整表诊断.
-    let typ = get_real_type(db, typ).unwrap_or(typ);
-    let typ = match typ {
-        LuaType::Union(union) => match union.as_ref() {
-            LuaUnionType::Nullable(inner) => get_real_type(db, inner).unwrap_or(inner),
-            _ => return None,
-        },
-        _ => typ,
-    };
-
-    if typ.is_table() || matches!(typ, LuaType::Object(_)) {
-        return Some(typ);
-    }
-
-    let type_id = match typ {
-        LuaType::Ref(type_id) | LuaType::Def(type_id) => type_id,
-        LuaType::Generic(generic) => generic.get_base_type_id_ref(),
-        _ => return None,
-    };
-    db.get_type_index()
-        .get_type_decl(type_id)
-        .is_some_and(|type_decl| type_decl.is_class())
-        .then_some(typ)
 }
 
 pub(super) fn check_table_type_mismatch(
@@ -225,8 +199,8 @@ fn add_table_type_mismatch(
         DiagnosticMessage::with_detail(
             t!(
                 "Cannot assign `%{value}` to `%{source}`.",
-                value = humanize_lint_type(db, actual_type),
-                source = humanize_lint_type(db, expected_type),
+                value = humanize_type(db, actual_type, RenderLevel::Simple),
+                source = humanize_type(db, expected_type, RenderLevel::Simple),
             )
             .to_string(),
             render_type_mismatch_reason(db, &mismatch),
@@ -280,8 +254,8 @@ fn check_table_last_variadic_type(
                     "Cannot assign `%{value}` (the %{index}-th value of the variable-length value) to `%{source}` at index `%{source_index}`.",
                     index = offset + 1,
                     source_index = index,
-                    value = humanize_lint_type(db, &actual_type),
-                    source = humanize_lint_type(db, &field_expected_type),
+                    value = humanize_type(db, &actual_type, RenderLevel::Simple),
+                    source = humanize_type(db, &field_expected_type, RenderLevel::Simple),
                 )
                 .to_string(),
                 render_type_mismatch_reason(db, &mismatch),
@@ -291,4 +265,50 @@ fn check_table_last_variadic_type(
     }
 
     false
+}
+
+fn get_table_field_target<'a>(db: &'a DbIndex, typ: &'a LuaType) -> Option<&'a LuaType> {
+    // 此处只做宽泛结构判断, 泛型 alias 回退到整表诊断.
+    let typ = get_real_type(db, typ).unwrap_or(typ);
+    let typ = match typ {
+        LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Nullable(inner) => get_real_type(db, inner).unwrap_or(inner),
+            _ => typ,
+        },
+        _ => typ,
+    };
+    if is_table_field_target(db, typ) {
+        Some(typ)
+    } else {
+        None
+    }
+}
+
+fn is_table_field_target(db: &DbIndex, typ: &LuaType) -> bool {
+    let typ = get_real_type(db, typ).unwrap_or(typ);
+    if typ.is_table() || matches!(typ, LuaType::Object(_)) {
+        return true;
+    }
+
+    match typ {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => db
+            .get_type_index()
+            .get_type_decl(type_id)
+            .is_some_and(|type_decl| type_decl.is_class()),
+        LuaType::Generic(generic) => {
+            let type_id = generic.get_base_type_id_ref();
+            db.get_type_index()
+                .get_type_decl(type_id)
+                .is_some_and(|type_decl| type_decl.is_class())
+        }
+        LuaType::Union(union) => {
+            let non_nil: Vec<_> = union
+                .into_vec()
+                .into_iter()
+                .filter(|t| !t.is_nil())
+                .collect();
+            !non_nil.is_empty() && non_nil.iter().all(|t| is_table_field_target(db, t))
+        }
+        _ => false,
+    }
 }

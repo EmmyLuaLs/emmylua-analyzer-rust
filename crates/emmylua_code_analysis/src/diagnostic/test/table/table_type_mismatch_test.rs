@@ -21,6 +21,14 @@ mod tests {
             .collect()
     }
 
+    fn first_assign_diagnostic_message(ws: &mut VirtualWorkspace, source: &str) -> String {
+        assign_type_diagnostics(ws, source)
+            .into_iter()
+            .next()
+            .map(|diagnostic| diagnostic.message)
+            .unwrap_or_default()
+    }
+
     #[test]
     fn nested_table_fields_report_each_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new();
@@ -159,10 +167,10 @@ direct = {
                 .collect::<Vec<_>>(),
             expected_lines
         );
-        assert!(diagnostics.iter().all(|diagnostic| {
+        assert!(diagnostics.iter().enumerate().all(|(i, diagnostic)| {
             diagnostic
                 .message
-                .contains("Cannot assign `integer` to `string`.")
+                .contains(&format!("Cannot assign `{}` to `string`.", i + 1))
         }));
     }
 
@@ -283,30 +291,21 @@ local target = {
         assert_eq!(diagnostics[0].range.start.line, expected_line);
     }
 
-    // #[test]
-    // fn test_last_variadic() {
-    //     let mut ws = VirtualWorkspace::new();
+    #[test]
+    fn union_table_mismatch_reports_deepest_field_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@class C
+---@field type "one"
 
-    //     let source = r#"            local function values()
-    //         return 1, "a", true
-    //         end
+---@class D
+---@field type "two"
 
-    //         ---@type [integer, string, string]
-    //         local t = { values() }
-    //         "#;
+---@param cd C | D
+local function cd(cd) end
 
-    //     let diagnostics = assign_type_diagnostics(&mut ws, source);
-    //     dbg!(&diagnostics);
-    //     // assert!(!ws.has_no_diagnostic(
-    //     //     DiagnosticCode::AssignTypeMismatch,
-    //     //     r#"
-    //     //     local function values()
-    //     //     return 1, "a", true
-    //     //     end
+cd({ type = "test" })"#;
 
-    //     //     ---@type [integer, string, string]
-    //     //     local t = { values() }
-    //     // "#
-    //     // ));
-    // }
+        let message = first_assign_diagnostic_message(&mut ws, source);
+        assert_eq!(message, "Cannot assign `\"test\"` to `(\"one\"|\"two\")`.");
+    }
 }
