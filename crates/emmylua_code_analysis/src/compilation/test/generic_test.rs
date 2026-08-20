@@ -1672,6 +1672,24 @@ mod test {
     }
 
     #[test]
+    fn test_generic_variadic_return_after_fixed_return_keeps_deep_slots() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return integer, T...
+            local function some_func(value)
+            end
+
+            First, Second, Third = some_func("")
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("Third"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_nested_function_keeps_unresolved_variadic_return_generic() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
