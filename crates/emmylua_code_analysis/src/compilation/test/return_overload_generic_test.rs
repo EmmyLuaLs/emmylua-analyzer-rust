@@ -61,6 +61,24 @@ mod test {
     }
 
     #[test]
+    fn test_generic_variadic_return_overload_after_fixed_return_keeps_deep_slots() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return_overload integer, T...
+            local function some_func(value)
+            end
+
+            First, Second, Third, Fourth = some_func("")
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("Fourth"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_return_overload_variadic_tpl_tail_pads_missing_slots_with_nil() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

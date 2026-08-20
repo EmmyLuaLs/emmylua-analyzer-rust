@@ -665,7 +665,8 @@ fn instantiate_variadic_type(
                     match t {
                         LuaType::Never => {}
                         LuaType::Variadic(variadic) => match variadic.deref() {
-                            VariadicType::Base(base) => new_types.push(base.clone()),
+                            // A base variadic is unbounded; unwrapping it turns `T...` into one `T`.
+                            VariadicType::Base(_) => new_types.push(LuaType::Variadic(variadic)),
                             VariadicType::Multi(multi) => {
                                 for mt in multi {
                                     new_types.push(mt.clone());
