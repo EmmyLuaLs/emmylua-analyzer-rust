@@ -27,9 +27,7 @@ pub(crate) fn relate_callable(
             if let LuaType::DocFunction(target_func) = target {
                 return Some(relate_function(
                     relater,
-                    source,
                     source_func,
-                    target,
                     target_func,
                     intersection_state,
                 ));
@@ -130,21 +128,11 @@ fn relate_to_callable_targets(
         let Some((source_index, target_index, _)) = best else {
             return relater.unrelated(|| TypeMismatch::incompatible(source, target));
         };
-        return relater
-            .relate(
-                &source_candidates[source_index],
-                &target_candidates[target_index],
-                intersection_state,
-            )
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(
-                        TypePathSegment::TargetUnionCandidate(target_index),
-                        source,
-                        target,
-                    )
-                })
-            });
+        return relater.relate(
+            &source_candidates[source_index],
+            &target_candidates[target_index],
+            intersection_state,
+        );
     }
     if let Some(kind) = indeterminate {
         return Err(RelationFailure::Indeterminate(kind));
@@ -154,9 +142,7 @@ fn relate_to_callable_targets(
 
 fn relate_function(
     relater: &mut Relater,
-    source: &LuaType,
     source_func: &LuaFunctionType,
-    target: &LuaType,
     target_func: &LuaFunctionType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
@@ -203,11 +189,7 @@ fn relate_function(
                             )
                             .map_err(|failure| {
                                 failure.map_mismatch(|mismatch| {
-                                    mismatch.at(
-                                        TypePathSegment::FunctionParameter(remaining),
-                                        source,
-                                        target,
-                                    )
+                                    mismatch.at(TypePathSegment::FunctionParameter(remaining))
                                 })
                             })?;
                     }
@@ -228,7 +210,7 @@ fn relate_function(
                 .relate_with_directional_policy(target_type, source_type, intersection_state)
                 .map_err(|failure| {
                     failure.map_mismatch(|mismatch| {
-                        mismatch.at(TypePathSegment::FunctionParameter(index), source, target)
+                        mismatch.at(TypePathSegment::FunctionParameter(index))
                     })
                 })?;
             relater.note_progress();

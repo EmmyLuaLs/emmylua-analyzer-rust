@@ -1,15 +1,19 @@
 use crate::{
-    LuaArrayLen, LuaArrayType, LuaMemberKey, LuaTupleType, LuaType, LuaUnionType,
+    LuaArrayLen, LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, LuaUnionType,
     find_members_with_key,
+    semantic::type_check::{
+        relation::RelationFailure,
+        structured::{
+            declared::resolve_declared_target_alias_or_enum,
+            object_type::{relate_index_obligation, visit_declared_members},
+            relate_to_table_const_target,
+        },
+    },
 };
 
 use super::super::{
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationResult},
-};
-use super::{
-    declared::relate_structural_source_to_declared_target, object_type::relate_object_members,
-    table_const::relate_to_table_const_target,
 };
 
 pub(super) fn relate_array_source(
@@ -26,16 +30,12 @@ pub(super) fn relate_array_source(
         }
         LuaType::Array(target_array) => Some(relate_array_to_array(
             relater,
-            source,
-            target,
             source_array,
             target_array,
             intersection_state,
         )),
         LuaType::Tuple(target_tuple) => Some(relate_array_to_tuple(
             relater,
-            source,
-            target,
             source_array,
             target_tuple,
             intersection_state,
@@ -48,10 +48,11 @@ pub(super) fn relate_array_source(
             target_params,
             intersection_state,
         )),
-        LuaType::Object(target_object) => Some(relate_object_members(
+        LuaType::Object(target_object) => Some(relate_array_to_object(
             relater,
             source,
             target,
+            source_array,
             target_object,
             intersection_state,
         )),
@@ -63,10 +64,11 @@ pub(super) fn relate_array_source(
             intersection_state,
         )),
         LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => {
-            Some(relate_structural_source_to_declared_target(
+            Some(relate_array_to_declared_target(
                 relater,
                 source,
                 target,
+                source_array,
                 intersection_state,
             ))
         }
@@ -77,8 +79,6 @@ pub(super) fn relate_array_source(
 #[inline(always)]
 pub(in crate::semantic::type_check) fn relate_array_to_array(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     source_array: &LuaArrayType,
     target_array: &LuaArrayType,
     intersection_state: IntersectionState,
@@ -87,8 +87,7 @@ pub(in crate::semantic::type_check) fn relate_array_to_array(
     relater
         .relate(source_array.get_base(), &target_base, intersection_state)
         .map_err(|failure| {
-            failure
-                .map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement, source, target))
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
         })
 }
 
@@ -102,8 +101,6 @@ pub(super) fn effective_array_base(relater: &Relater, base: &LuaType) -> LuaType
 
 pub(super) fn relate_array_to_tuple(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     source_array: &LuaArrayType,
     target_tuple: &LuaTupleType,
     intersection_state: IntersectionState,
@@ -128,17 +125,13 @@ pub(super) fn relate_array_to_tuple(
     };
     if source_min_len < target_required_len {
         return relater.unrelated(|| {
-            TypeMismatch::new(
-                source,
-                target,
-                TypeMismatchKind::Message(
-                    t!(
-                        "The target requires at least %{count} element(s) but source may have fewer.",
-                        count = target_required_len
-                    )
-                    .to_string(),
-                ),
-            )
+            TypeMismatch::new(TypeMismatchKind::Message(
+                t!(
+                    "The target requires at least %{count} element(s) but source may have fewer.",
+                    count = target_required_len
+                )
+                .to_string(),
+            ))
         });
     }
 
@@ -166,9 +159,7 @@ pub(super) fn relate_array_to_tuple(
         relater
             .relate(source_array.get_base(), target_type, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
@@ -190,9 +181,7 @@ pub(super) fn relate_array_to_table_generic(
     relater
         .relate(&LuaType::Integer, &target_params[0], intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(TypePathSegment::GenericArgument(0), source, target)
-            })
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
         })?;
     relater.note_progress();
     relater
@@ -202,9 +191,7 @@ pub(super) fn relate_array_to_table_generic(
             intersection_state,
         )
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(TypePathSegment::GenericArgument(1), source, target)
-            })
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(1)))
         })?;
     relater.note_progress();
     Ok(())
@@ -233,9 +220,143 @@ pub(super) fn relate_keyed_source_to_array(
     relater
         .relate(&source_type, &target_base, intersection_state)
         .map_err(|failure| {
-            failure
-                .map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement, source, target))
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
         })?;
     relater.note_progress();
     Ok(())
+}
+
+fn relate_array_to_object(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    source_array: &LuaArrayType,
+    target_object: &LuaObjectType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    // 如果目标含有必需的命名字段, 数组没有命名形状, 直接不兼容
+    for (key, member_type) in target_object.get_fields() {
+        match key {
+            LuaMemberKey::Integer(index) if *index > 0 => {
+                // 已知长度覆盖该索引时成员必然存在, 否则保留数组越界产生的 nil.
+                let source_member_type = if matches!(source_array.get_len(), LuaArrayLen::Max(max_len) if index <= max_len)
+                {
+                    source_array.get_base().clone()
+                } else {
+                    effective_array_base(relater, source_array.get_base())
+                };
+                relater.consume_relation_budget()?;
+                relater
+                    .relate(&source_member_type, member_type, intersection_state)
+                    .map_err(|failure| {
+                        failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+                    })?;
+                relater.note_progress();
+            }
+            _ => {
+                if !member_type.is_optional() {
+                    return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+                }
+            }
+        }
+    }
+
+    if !intersection_state.contains(IntersectionState::TARGET) {
+        for (target_key_type, target_value_type) in target_object.get_index_access() {
+            relater.consume_relation_budget()?;
+            relater
+                .relate(&LuaType::Integer, target_key_type, intersection_state)
+                .map_err(|failure| {
+                    failure.map_mismatch(|mismatch| {
+                        mismatch.at(TypePathSegment::Index(LuaType::Integer))
+                    })
+                })?;
+            relater
+                .relate(
+                    source_array.get_base(),
+                    target_value_type,
+                    intersection_state,
+                )
+                .map_err(|failure| {
+                    failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+                })?;
+            relater.note_progress();
+        }
+    }
+
+    Ok(())
+}
+
+fn relate_array_to_declared_target(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    source_array: &LuaArrayType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    if let Some(result) =
+        resolve_declared_target_alias_or_enum(relater, source, target, intersection_state)
+    {
+        return result;
+    }
+
+    // 检查是否有整数索引或索引访问, 如果没有, 则不兼容
+    let mut has_integer_or_index = false;
+    let mut mismatch = None;
+    let result =
+        visit_declared_members(
+            relater,
+            target,
+            |relater, key, target_member_type| match key {
+                LuaMemberKey::Integer(idx) if *idx > 0 => {
+                    has_integer_or_index = true;
+                    // 已知长度覆盖该索引时成员必然存在, 否则保留数组越界产生的 nil.
+                    let source_member_type = if matches!(
+                        source_array.get_len(),
+                        LuaArrayLen::Max(max_len) if idx <= max_len
+                    ) {
+                        source_array.get_base().clone()
+                    } else {
+                        effective_array_base(relater, source_array.get_base())
+                    };
+                    relater.consume_relation_budget()?;
+                    relater
+                        .relate(&source_member_type, target_member_type, intersection_state)
+                        .map_err(|failure| {
+                            failure.map_mismatch(|m| m.at(TypePathSegment::ArrayElement))
+                        })?;
+                    relater.note_progress();
+                    Ok(())
+                }
+                LuaMemberKey::TypeKey(target_key_type) => {
+                    has_integer_or_index = true;
+                    if intersection_state.contains(IntersectionState::TARGET) {
+                        return Ok(());
+                    }
+                    relate_index_obligation(
+                        relater,
+                        source,
+                        target,
+                        target_key_type,
+                        target_member_type,
+                        intersection_state,
+                    )
+                }
+                _ => {
+                    if !target_member_type.is_optional() {
+                        mismatch = Some(TypeMismatch::incompatible(source, target));
+                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                    }
+                    Ok(())
+                }
+            },
+        );
+
+    if let Some(m) = mismatch {
+        return relater.unrelated(|| m);
+    }
+    if result.is_ok() && !has_integer_or_index {
+        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    }
+    result
 }

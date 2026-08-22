@@ -5,12 +5,12 @@ use crate::{
     AssignabilityResult, DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel,
     TypeMismatch,
     diagnostic::checker::table::check_table_assignment_diagnostics,
-    humanize_type, render_type_mismatch_reason,
+    humanize_type,
     semantic::{RelationOutcome, get_func_param_type, probe_assignable},
 };
 
 use super::{
-    super::{DiagnosticContext, DiagnosticMessage},
+    super::{DiagnosticContext, DiagnosticMessage, render_diagnostic_detail},
     call_analysis::CallAnalysis,
 };
 
@@ -292,7 +292,8 @@ fn add_param_type_diagnostic(
                 found = humanize_type(db, expr_type, RenderLevel::Simple),
             )
             .to_string(),
-            mismatch.and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+            mismatch
+                .and_then(|mismatch| render_diagnostic_detail(db, mismatch, expr_type, param_type)),
         ),
         None,
     );

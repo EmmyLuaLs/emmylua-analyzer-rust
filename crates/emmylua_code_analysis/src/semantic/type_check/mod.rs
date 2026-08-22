@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 mod callable;
 mod intersection;
-mod locator;
 mod mismatch;
 mod relation;
 mod simple;
@@ -11,9 +10,7 @@ mod sub_type;
 mod test;
 mod union;
 
-pub use mismatch::{
-    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, render_type_mismatch_reason,
-};
+pub use mismatch::{OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment};
 pub(crate) use relation::RelationOutcome;
 use relation::RelationSession;
 pub use sub_type::is_sub_type_of;

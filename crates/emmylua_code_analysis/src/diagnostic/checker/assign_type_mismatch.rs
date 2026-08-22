@@ -6,11 +6,11 @@ use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaSemanticDeclId, LuaType,
-    LuaUnionType, SemanticDeclLevel, SemanticModel, infer_index_expr, render_type_mismatch_reason,
+    LuaUnionType, SemanticDeclLevel, SemanticModel, infer_index_expr,
 };
 
 use super::{
-    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
     table::check_table_assignment_diagnostics,
 };
 
@@ -265,7 +265,7 @@ fn check_assign_type_mismatch(
                 source = humanize_lint_type(db, target_type),
             )
             .to_string(),
-            render_type_mismatch_reason(db, &mismatch),
+            render_diagnostic_detail(db, &mismatch, source_type, target_type),
         ),
         None,
     );

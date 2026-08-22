@@ -10,7 +10,7 @@ use super::call_constraint::{
     normalize_constraint_type,
 };
 use crate::diagnostic::{
-    checker::{Checker, DiagnosticMessage},
+    checker::{Checker, DiagnosticMessage, render_diagnostic_detail},
     lua_diagnostic::DiagnosticContext,
 };
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
     GenericTplId, LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
     LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
     TypeMismatch, TypeSubstitutor, VariadicType, humanize_type, infer_doc_type,
-    instantiate_type_generic_full, render_type_mismatch_reason,
+    instantiate_type_generic_full,
 };
 
 type ConstraintCheckResult = Result<(), ConstraintCheckFailure>;
@@ -828,9 +828,11 @@ fn add_type_check_diagnostic(
         Ok(_) => (),
         Err(reason) => {
             let detail = match reason {
-                ConstraintCheckFailure::Mismatch(mismatch) => mismatch
-                    .as_ref()
-                    .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+                ConstraintCheckFailure::Mismatch(mismatch) => {
+                    mismatch.as_ref().and_then(|mismatch| {
+                        render_diagnostic_detail(db, mismatch, expr_type, extend_type)
+                    })
+                }
                 ConstraintCheckFailure::Recursion => Some("  type recursion".to_string()),
             };
             context.add_diagnostic(

@@ -3,11 +3,11 @@ use rowan::TextRange;
 
 use crate::{
     AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, RenderLevel,
-    SemanticModel, VariadicType, get_real_type, humanize_type, render_type_mismatch_reason,
+    SemanticModel, VariadicType, get_real_type, humanize_type,
 };
 
 use super::{
-    super::{DiagnosticContext, DiagnosticMessage},
+    super::{DiagnosticContext, DiagnosticMessage, render_diagnostic_detail},
     TableAssignmentOutcome,
 };
 
@@ -203,7 +203,7 @@ fn add_table_type_mismatch(
                 source = humanize_type(db, expected_type, RenderLevel::Simple),
             )
             .to_string(),
-            render_type_mismatch_reason(db, &mismatch),
+            render_diagnostic_detail(db, &mismatch, actual_type, expected_type),
         ),
         None,
     )
@@ -258,7 +258,7 @@ fn check_table_last_variadic_type(
                     source = humanize_type(db, &field_expected_type, RenderLevel::Simple),
                 )
                 .to_string(),
-                render_type_mismatch_reason(db, &mismatch),
+                render_diagnostic_detail(db, &mismatch, &actual_type, &field_expected_type),
             ),
             None,
         );

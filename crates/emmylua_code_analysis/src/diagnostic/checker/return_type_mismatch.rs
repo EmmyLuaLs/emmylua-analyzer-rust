@@ -7,10 +7,11 @@ use crate::{
     AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
     SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
     diagnostic::checker::{humanize_lint_type, table::check_table_assignment_diagnostics},
-    render_type_mismatch_reason,
 };
 
-use super::{Checker, DiagnosticContext, DiagnosticMessage, get_return_stats};
+use super::{
+    Checker, DiagnosticContext, DiagnosticMessage, get_return_stats, render_diagnostic_detail,
+};
 
 pub struct ReturnTypeMismatch;
 
@@ -179,7 +180,7 @@ fn add_type_check_diagnostic(
                 found = humanize_lint_type(db, expr_type),
             )
             .to_string(),
-            render_type_mismatch_reason(db, mismatch),
+            render_diagnostic_detail(db, mismatch, expr_type, param_type),
         ),
         None,
     );

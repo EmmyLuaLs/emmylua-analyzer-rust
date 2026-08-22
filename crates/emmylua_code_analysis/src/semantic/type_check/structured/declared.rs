@@ -107,7 +107,6 @@ fn relate_class_source(
         LuaType::Tuple(target_tuple) => Some(relate_keyed_source_to_tuple(
             relater,
             source,
-            target,
             target_tuple,
             intersection_state,
         )),
@@ -343,6 +342,21 @@ pub(super) fn relate_structural_source_to_declared_target(
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
+    if let Some(result) =
+        resolve_declared_target_alias_or_enum(relater, source, target, intersection_state)
+    {
+        return result;
+    }
+
+    relate_to_declared_target_members(relater, source, target, intersection_state)
+}
+
+pub(super) fn resolve_declared_target_alias_or_enum(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    intersection_state: IntersectionState,
+) -> Option<RelationResult> {
     let (target_id, substitutor) = match target {
         LuaType::Ref(target_id) | LuaType::Def(target_id) => (target_id.clone(), None),
         LuaType::Generic(target_generic) => (
@@ -352,31 +366,31 @@ pub(super) fn relate_structural_source_to_declared_target(
                 target_generic.get_base_type_id(),
             )),
         ),
-        _ => return relater.unrelated(|| TypeMismatch::incompatible(source, target)),
+        _ => return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target))),
     };
     let Some(target_decl) = relater.db().get_type_index().get_type_decl(&target_id) else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
     };
 
     if target_decl.is_alias() {
         let Some(origin_type) = target_decl.get_alias_origin(relater.db(), substitutor.as_ref())
         else {
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
         };
         let origin_contains_source = match &origin_type {
-            LuaType::Union(origin_union) => origin_union.into_vec().contains(&source),
+            LuaType::Union(origin_union) => origin_union.into_vec().contains(source),
             _ => origin_type == *source,
         };
         if origin_contains_source {
             relater.note_progress();
-            return Ok(());
+            return Some(Ok(()));
         }
-        return relater.relate(source, &origin_type, intersection_state);
+        return Some(relater.relate(source, &origin_type, intersection_state));
     }
 
     if target_decl.is_enum() {
         let Some(enum_fields) = target_decl.get_enum_field_type(relater.db()) else {
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
         };
 
         // enum 参与位运算时结果会被推断为 Integer, 但直接写入整数常量仍需匹配 enum 字段.
@@ -388,13 +402,13 @@ pub(super) fn relate_structural_source_to_declared_target(
             && matches!(source, LuaType::Integer)
         {
             relater.note_progress();
-            return Ok(());
+            return Some(Ok(()));
         }
 
-        return relater.relate(source, &enum_fields, intersection_state);
+        return Some(relater.relate(source, &enum_fields, intersection_state));
     }
 
-    relate_to_declared_target_members(relater, source, target, intersection_state)
+    None
 }
 
 fn relate_class_source_to_simple_target(
@@ -531,8 +545,6 @@ pub(super) fn relate_declared_to_table_generic(
     visit_declared_members(relater, source, |relater, key, source_value_type| {
         relate_member_to_table_generic(
             relater,
-            source,
-            target,
             key,
             source_value_type,
             target_params,

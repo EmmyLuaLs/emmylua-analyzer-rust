@@ -1,15 +1,21 @@
 use crate::{
-    LuaArrayType, LuaMemberKey, LuaTupleType, LuaType, VariadicType, find_members_with_key,
+    LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, VariadicType,
+    find_members_with_key,
+    semantic::type_check::{
+        relation::RelationFailure,
+        structured::{
+            declared::resolve_declared_target_alias_or_enum,
+            object_type::{relate_index_obligation, visit_declared_members},
+            relate_to_table_const_target,
+        },
+    },
 };
 
 use super::super::{
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationResult},
 };
-use super::{
-    array::effective_array_base, declared::relate_structural_source_to_declared_target,
-    object_type::relate_object_members, table_const::relate_to_table_const_target,
-};
+use super::array::effective_array_base;
 
 pub(super) fn relate_tuple_source(
     relater: &mut Relater,
@@ -25,16 +31,12 @@ pub(super) fn relate_tuple_source(
         }
         LuaType::Tuple(target_tuple) => Some(relate_tuple_to_tuple(
             relater,
-            source,
-            target,
             source_tuple,
             target_tuple,
             intersection_state,
         )),
         LuaType::Array(target_array) => Some(relate_tuple_to_array(
             relater,
-            source,
-            target,
             source_tuple,
             target_array,
             intersection_state,
@@ -47,10 +49,11 @@ pub(super) fn relate_tuple_source(
             target_params,
             intersection_state,
         )),
-        LuaType::Object(target_object) => Some(relate_object_members(
+        LuaType::Object(target_object) => Some(relate_tuple_to_object(
             relater,
             source,
             target,
+            source_tuple,
             target_object,
             intersection_state,
         )),
@@ -62,10 +65,11 @@ pub(super) fn relate_tuple_source(
             intersection_state,
         )),
         LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => {
-            Some(relate_structural_source_to_declared_target(
+            Some(relate_tuple_to_declared_target(
                 relater,
                 source,
                 target,
+                source_tuple,
                 intersection_state,
             ))
         }
@@ -75,8 +79,6 @@ pub(super) fn relate_tuple_source(
 
 pub(super) fn relate_tuple_to_tuple(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     source_tuple: &LuaTupleType,
     target_tuple: &LuaTupleType,
     intersection_state: IntersectionState,
@@ -126,21 +128,14 @@ pub(super) fn relate_tuple_to_tuple(
             if index >= target_required_len || target_type.is_optional() {
                 continue;
             }
-            return relater.unrelated(|| {
-                TypeMismatch::new(
-                    source,
-                    target,
-                    TypeMismatchKind::MissingTupleElement { index },
-                )
-            });
+            return relater
+                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
         };
 
         relater
             .relate(source_type, target_type, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
@@ -150,8 +145,6 @@ pub(super) fn relate_tuple_to_tuple(
 
 pub(super) fn relate_tuple_to_array(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     source_tuple: &LuaTupleType,
     target_array: &LuaArrayType,
     intersection_state: IntersectionState,
@@ -168,11 +161,7 @@ pub(super) fn relate_tuple_to_array(
                             .relate(source_type, &target_base, intersection_state)
                             .map_err(|failure| {
                                 failure.map_mismatch(|mismatch| {
-                                    mismatch.at(
-                                        TypePathSegment::TupleElement(index + offset),
-                                        source,
-                                        target,
-                                    )
+                                    mismatch.at(TypePathSegment::TupleElement(index + offset))
                                 })
                             })?;
                         relater.note_progress();
@@ -185,9 +174,7 @@ pub(super) fn relate_tuple_to_array(
         relater
             .relate(source_type, &target_base, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
@@ -211,16 +198,12 @@ pub(super) fn relate_tuple_to_table_generic(
         relater
             .relate(key_type, &target_params[0], intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::GenericArgument(0), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
             })?;
         relater
             .relate(source_type, &target_params[1], intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
         Ok(())
@@ -277,7 +260,6 @@ fn visit_variadic_index_entries<E>(
 pub(super) fn relate_keyed_source_to_tuple(
     relater: &mut Relater,
     source: &LuaType,
-    target: &LuaType,
     target_tuple: &LuaTupleType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
@@ -291,22 +273,152 @@ pub(super) fn relate_keyed_source_to_tuple(
             if target_type.is_optional() {
                 continue;
             }
-            return relater.unrelated(|| {
-                TypeMismatch::new(
-                    source,
-                    target,
-                    TypeMismatchKind::MissingTupleElement { index },
-                )
-            });
+            return relater
+                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
         };
         relater
             .relate(&source_type, target_type, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
     Ok(())
+}
+
+fn relate_tuple_to_object(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    source_tuple: &LuaTupleType,
+    target_object: &LuaObjectType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    // 如果目标含有必需的非整数命名字段, 元组没有形状, 直接不兼容
+    for (key, target_member_type) in target_object.get_fields() {
+        if !matches!(key, LuaMemberKey::Integer(idx) if *idx > 0)
+            && !target_member_type.is_optional()
+        {
+            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        }
+    }
+
+    for (key, target_member_type) in target_object.get_fields() {
+        let LuaMemberKey::Integer(idx) = key else {
+            continue;
+        };
+        let index = (*idx - 1) as usize;
+        let Some(source_type) = source_tuple.get_type(index) else {
+            if target_member_type.is_optional() {
+                continue;
+            }
+            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        };
+        relater.consume_relation_budget()?;
+        relater
+            .relate(source_type, target_member_type, intersection_state)
+            .map_err(|failure| {
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
+            })?;
+        relater.note_progress();
+    }
+
+    if !intersection_state.contains(IntersectionState::TARGET) {
+        for (target_key_type, target_value_type) in target_object.get_index_access() {
+            visit_tuple_index_entries(source_tuple, |key_type, source_type, index| {
+                relater.consume_relation_budget()?;
+                relater
+                    .relate(key_type, target_key_type, intersection_state)
+                    .map_err(|failure| {
+                        failure.map_mismatch(|mismatch| {
+                            mismatch.at(TypePathSegment::Index(key_type.clone()))
+                        })
+                    })?;
+                relater
+                    .relate(source_type, target_value_type, intersection_state)
+                    .map_err(|failure| {
+                        failure.map_mismatch(|mismatch| {
+                            mismatch.at(TypePathSegment::TupleElement(index))
+                        })
+                    })?;
+                relater.note_progress();
+                Ok(())
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn relate_tuple_to_declared_target(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    source_tuple: &LuaTupleType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    if let Some(result) =
+        resolve_declared_target_alias_or_enum(relater, source, target, intersection_state)
+    {
+        return result;
+    }
+
+    // 检查是否含有必需的命名字段
+    let mut has_integer_or_index = false;
+    let mut mismatch = None;
+    let result =
+        visit_declared_members(
+            relater,
+            target,
+            |relater, key, target_member_type| match key {
+                LuaMemberKey::Integer(idx) if *idx > 0 => {
+                    has_integer_or_index = true;
+                    let index = (*idx - 1) as usize;
+                    let Some(source_type) = source_tuple.get_type(index) else {
+                        if target_member_type.is_optional() {
+                            return Ok(());
+                        }
+                        mismatch = Some(TypeMismatch::incompatible(source, target));
+                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                    };
+                    relater.consume_relation_budget()?;
+                    relater
+                        .relate(source_type, target_member_type, intersection_state)
+                        .map_err(|failure| {
+                            failure.map_mismatch(|m| m.at(TypePathSegment::TupleElement(index)))
+                        })?;
+                    relater.note_progress();
+                    Ok(())
+                }
+                LuaMemberKey::TypeKey(target_key_type) => {
+                    has_integer_or_index = true;
+                    if intersection_state.contains(IntersectionState::TARGET) {
+                        return Ok(());
+                    }
+                    relate_index_obligation(
+                        relater,
+                        source,
+                        target,
+                        target_key_type,
+                        target_member_type,
+                        intersection_state,
+                    )
+                }
+                _ => {
+                    if !target_member_type.is_optional() {
+                        mismatch = Some(TypeMismatch::incompatible(source, target));
+                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                    }
+                    Ok(())
+                }
+            },
+        );
+
+    if let Some(m) = mismatch {
+        return relater.unrelated(|| m);
+    }
+    if result.is_ok() && !has_integer_or_index {
+        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    }
+    result
 }

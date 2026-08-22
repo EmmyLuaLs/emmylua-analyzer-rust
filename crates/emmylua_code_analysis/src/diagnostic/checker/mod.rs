@@ -25,6 +25,7 @@ mod need_check_nil;
 mod param_check;
 mod readonly_check;
 mod redefined_local;
+mod render_type_mismatch;
 mod require_module_visibility;
 mod return_type_mismatch;
 mod syntax_error;
@@ -37,6 +38,8 @@ mod unknown_doc_tag;
 mod unnecessary_assert;
 mod unnecessary_if;
 mod unused;
+
+pub use render_type_mismatch::render_diagnostic_detail;
 
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,

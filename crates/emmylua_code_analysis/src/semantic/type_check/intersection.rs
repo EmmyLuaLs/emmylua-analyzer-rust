@@ -1,7 +1,7 @@
 use crate::{LuaIntersectionType, LuaType};
 
 use super::{
-    mismatch::{TypeMismatch, TypePathSegment},
+    mismatch::TypeMismatch,
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
     structured::{relate_structured, relate_target_intersection_index_obligations},
 };
@@ -42,7 +42,7 @@ fn relate_to_target_intersection(
     outer_intersection_state: IntersectionState,
 ) -> RelationResult {
     let mut indeterminate = None;
-    for (index, member) in target_intersection.get_types().iter().enumerate() {
+    for member in target_intersection.get_types() {
         match relater.relate(source, member, IntersectionState::TARGET) {
             Ok(()) => {}
             // 遇到 Indeterminate 仅先暂存, 因为可能存在更精确的报错信息.
@@ -50,9 +50,7 @@ fn relate_to_target_intersection(
                 indeterminate.get_or_insert(failure);
             }
             Err(failure @ RelationFailure::Unrelated(_)) => {
-                return Err(failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::IntersectionMember(index), source, target)
-                }));
+                return Err(failure);
             }
         }
     }
@@ -124,19 +122,9 @@ fn relate_source_intersection(
     if !relater.is_explain() {
         return Err(RelationFailure::Unrelated(None));
     }
-    relater
-        .relate(
-            &source_intersection.get_types()[best_index],
-            target,
-            constituent_state,
-        )
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(
-                    TypePathSegment::IntersectionMember(best_index),
-                    source,
-                    target,
-                )
-            })
-        })
+    relater.relate(
+        &source_intersection.get_types()[best_index],
+        target,
+        constituent_state,
+    )
 }

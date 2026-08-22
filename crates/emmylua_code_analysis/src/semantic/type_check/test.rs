@@ -825,6 +825,26 @@ mod test {
     }
 
     #[test]
+    fn test_sequence_requires_target_index_signature() {
+        let mut ws = VirtualWorkspace::new();
+        let array_source = ws.ty("number[]");
+        let tuple_source = ws.ty("[number]");
+        let string_index_target = ws.ty("{ [string]: boolean }");
+
+        assert!(!ws.check_type(&array_source, &string_index_target));
+        assert!(!ws.check_type(&tuple_source, &string_index_target));
+    }
+
+    #[test]
+    fn test_sequence_required_index_keeps_nullable_element_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        let nullable_array = ws.ty("(string?)[]");
+        let required_index_target = ws.ty("{ [1]: string }");
+
+        assert!(!ws.check_type(&nullable_array, &required_index_target));
+    }
+
+    #[test]
     fn test_tuple_types() {
         let mut ws = VirtualWorkspace::new();
 

@@ -218,6 +218,44 @@ target = {
     }
 
     #[test]
+    fn nullable_target_preserves_missing_member_detail() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@class RequiredValue
+---@field value string
+---@type {}
+local source
+---@type RequiredValue?
+local target = source"#;
+
+        let message = first_assign_diagnostic_message(&mut ws, source);
+
+        assert!(
+            message.contains("Property 'value' is missing."),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn nested_array_to_object_alias_reports_inner_array_type() {
+        let mut ws = VirtualWorkspace::new();
+        let message = first_assign_diagnostic_message(
+            &mut ws,
+            r#"
+            ---@alias Item { foo: number }
+            ---@type string[][][]
+            local b
+            ---@type Item[]
+            local a = b
+            "#,
+        );
+
+        assert_eq!(
+            message,
+            "Cannot assign `string[][][]` to `Item[]`.\n  Type 'string[][]' is not assignable to type 'Item?'."
+        );
+    }
+
+    #[test]
     fn nullable_array_element_reports_incompatible_non_nil_branch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@type string?

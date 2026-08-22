@@ -80,17 +80,13 @@ pub(super) fn relate_table_generic_to_table_generic(
     relater
         .relate(&source_params[0], &target_params[0], intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(TypePathSegment::GenericArgument(0), source, target)
-            })
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
         })?;
     relater.note_progress();
     relater
         .relate(&source_params[1], &target_params[1], intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                mismatch.at(TypePathSegment::GenericArgument(1), source, target)
-            })
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(1)))
         })?;
     relater.note_progress();
     Ok(())
@@ -111,7 +107,6 @@ pub(super) fn relate_table_generic_to_array(
     relater
         .relate(&source_params[1], &target_base, intersection_state)
         .map_err(|failure| {
-            failure
-                .map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement, source, target))
+            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
         })
 }

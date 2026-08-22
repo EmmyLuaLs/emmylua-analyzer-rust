@@ -1,14 +1,14 @@
 use crate::{
     AssignabilityResult, DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
     diagnostic::checker::humanize_lint_type, get_attribute_constructor_params, infer_doc_type,
-    is_attribute_class, render_type_mismatch_reason,
+    is_attribute_class,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
 };
 use rowan::TextRange;
 
-use super::{Checker, DiagnosticContext, DiagnosticMessage};
+use super::{Checker, DiagnosticContext, DiagnosticMessage, render_diagnostic_detail};
 
 pub struct AttributeCheckChecker;
 
@@ -198,7 +198,7 @@ fn add_type_check_diagnostic(
                 found = humanize_lint_type(db, expr_type),
             )
             .to_string(),
-            render_type_mismatch_reason(db, mismatch),
+            render_diagnostic_detail(db, mismatch, expr_type, param_type),
         ),
         None,
     );

@@ -99,7 +99,6 @@ pub(super) fn relate_structured(
             LuaType::Tuple(target_tuple) => Some(relate_keyed_source_to_tuple(
                 relater,
                 source,
-                target,
                 target_tuple,
                 intersection_state,
             )),

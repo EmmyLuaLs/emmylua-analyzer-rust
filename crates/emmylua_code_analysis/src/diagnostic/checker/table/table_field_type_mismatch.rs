@@ -2,11 +2,11 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaComment, LuaDocTagType};
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaMemberId, LuaTypeCache, RenderLevel, SemanticModel,
-    humanize_type, render_type_mismatch_reason,
+    humanize_type,
 };
 
 use crate::diagnostic::checker::{
-    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
 };
 
 pub struct TableFieldTypeMismatchChecker;
@@ -61,7 +61,12 @@ fn check_type_tag(
                 actual = humanize_lint_type(semantic_model.get_db(), &actual_type),
             )
             .to_string(),
-            render_type_mismatch_reason(semantic_model.get_db(), &mismatch),
+            render_diagnostic_detail(
+                semantic_model.get_db(),
+                &mismatch,
+                &actual_type,
+                annotated_type,
+            ),
         ),
         None,
     );

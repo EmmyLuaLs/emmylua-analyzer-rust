@@ -4,10 +4,12 @@ use rowan::TextRange;
 
 use crate::{
     AssignabilityResult, DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType,
-    SemanticModel, TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch_reason,
+    SemanticModel, TypeMismatch, get_real_type, infer_doc_type,
 };
 
-use super::{Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type};
+use super::{
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
+};
 
 pub struct CastTypeMismatchChecker;
 
@@ -115,9 +117,9 @@ fn add_cast_type_mismatch_diagnostic(
         Ok(_) => (),
         Err(reason) => {
             let detail = match reason {
-                CastCheckFailure::Mismatch(mismatch) => mismatch
-                    .as_ref()
-                    .and_then(|mismatch| render_type_mismatch_reason(db, mismatch)),
+                CastCheckFailure::Mismatch(mismatch) => mismatch.as_ref().and_then(|mismatch| {
+                    render_diagnostic_detail(db, mismatch, origin_type, target_type)
+                }),
                 CastCheckFailure::Recursion => Some(format!("  {}", t!("type recursion"))),
             };
 

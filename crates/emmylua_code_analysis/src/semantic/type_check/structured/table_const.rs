@@ -41,8 +41,6 @@ pub(super) fn relate_table_const_source(
         )),
         LuaType::Tuple(target_tuple) => Some(relate_table_const_to_tuple(
             relater,
-            source,
-            target,
             source_range,
             target_tuple,
             intersection_state,
@@ -77,8 +75,6 @@ pub(super) fn relate_table_const_source(
 
 pub(super) fn relate_table_const_to_tuple(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     range: &InFiled<rowan::TextRange>,
     target_tuple: &LuaTupleType,
     intersection_state: IntersectionState,
@@ -96,20 +92,13 @@ pub(super) fn relate_table_const_to_tuple(
             if target_type.is_optional() {
                 continue;
             }
-            return relater.unrelated(|| {
-                TypeMismatch::new(
-                    source,
-                    target,
-                    TypeMismatchKind::MissingTupleElement { index },
-                )
-            });
+            return relater
+                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
         };
         relater
             .relate(&source_type, target_type, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
@@ -145,9 +134,7 @@ pub(super) fn relate_table_const_to_array(
         relater
             .relate(&source_type, &target_base, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::TupleElement(index), source, target)
-                })
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
             })?;
         relater.note_progress();
     }
@@ -172,8 +159,6 @@ pub(super) fn relate_table_const_to_table_generic(
         let source_value_type = item.resolve_type(db).unwrap_or(LuaType::Any);
         relate_member_to_table_generic(
             relater,
-            source,
-            target,
             key,
             &source_value_type,
             target_params,
@@ -210,7 +195,6 @@ pub(super) fn relate_to_table_const_target(
         relate_named_member_obligation(
             relater,
             source,
-            target,
             key,
             &target_member_type,
             intersection_state,

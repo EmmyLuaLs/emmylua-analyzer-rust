@@ -1,7 +1,7 @@
-use crate::{LuaType, LuaUnionType};
+use crate::{BasicTypeKind, LuaType, LuaUnionType};
 
 use super::{
-    mismatch::{TypeMismatch, TypePathSegment},
+    mismatch::{TypeMismatch, TypeMismatchKind},
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
 };
 
@@ -15,19 +15,38 @@ pub(crate) fn relate_union(
     if let LuaType::Union(source_union) = source {
         let result = match source_union.as_ref() {
             LuaUnionType::Multi(members) => {
-                relate_source_union_members(relater, source, members, target, intersection_state)
+                relate_source_union_members(relater, members, target, intersection_state)
             }
             _ => {
                 let members = source_union.into_vec();
-                relate_source_union_members(relater, source, &members, target, intersection_state)
+                relate_source_union_members(relater, &members, target, intersection_state)
             }
         };
         return Some(result);
     }
     if let LuaType::Union(target_union) = target {
         let result = match target_union.as_ref() {
-            LuaUnionType::Nullable(non_nil_target) => {
-                relate_to_nullable_target(relater, source, non_nil_target, intersection_state)
+            LuaUnionType::Nullable(non_nil_target) => relate_to_nullable_target(
+                relater,
+                source,
+                target,
+                non_nil_target,
+                intersection_state,
+            ),
+            LuaUnionType::Basic(basic) if basic.contains(BasicTypeKind::Nil) => {
+                let mut non_nil_basic = *basic;
+                non_nil_basic.remove(BasicTypeKind::Nil);
+                if non_nil_basic.is_empty() {
+                    relater.relate(source, &LuaType::Nil, intersection_state)
+                } else {
+                    relate_to_nullable_target(
+                        relater,
+                        source,
+                        target,
+                        &LuaUnionType::Basic(non_nil_basic).into(),
+                        intersection_state,
+                    )
+                }
             }
             LuaUnionType::Multi(candidates) => relate_to_target_union_candidates(
                 relater,
@@ -56,6 +75,7 @@ pub(crate) fn relate_union(
 pub(super) fn relate_to_nullable_target(
     relater: &mut Relater,
     source: &LuaType,
+    target: &LuaType,
     non_nil_target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
@@ -72,51 +92,43 @@ pub(super) fn relate_to_nullable_target(
         (RelationFailure::Unrelated(_), RelationOutcome::Indeterminate(kind)) => {
             Err(RelationFailure::Indeterminate(kind))
         }
-        (failure @ RelationFailure::Unrelated(_), RelationOutcome::Unrelated) => Err(failure),
+        (RelationFailure::Unrelated(mismatch), RelationOutcome::Unrelated) => {
+            if mismatch.as_ref().is_some_and(|m| {
+                !m.path().is_empty() || !matches!(m.reason(), TypeMismatchKind::Incompatible { .. })
+            }) {
+                Err(RelationFailure::Unrelated(mismatch))
+            } else {
+                relater.unrelated(|| TypeMismatch::incompatible(source, target))
+            }
+        }
     }
 }
 
 fn relate_source_union_members(
     relater: &mut Relater,
-    source: &LuaType,
     members: &[LuaType],
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    let conditional_extends = false;
     let mut first_indeterminate = None;
-    for (index, member) in members.iter().enumerate() {
+    for member in members {
         match relater.probe_relation(member, target, intersection_state).0 {
-            RelationOutcome::Related if conditional_extends => return Ok(()),
             RelationOutcome::Related => {}
             RelationOutcome::Indeterminate(kind) => {
                 first_indeterminate.get_or_insert(kind);
             }
-            RelationOutcome::Unrelated if conditional_extends => {}
             RelationOutcome::Unrelated => {
                 if !relater.is_explain() {
                     return Err(RelationFailure::Unrelated(None));
                 }
-                return explain_union_constituent(
-                    relater,
-                    source,
-                    target,
-                    member,
-                    target,
-                    intersection_state,
-                    TypePathSegment::SourceUnionMember(index),
-                );
+                return relater.relate(member, target, intersection_state);
             }
         }
     }
     if let Some(kind) = first_indeterminate {
         return Err(RelationFailure::Indeterminate(kind));
     }
-    if conditional_extends {
-        relater.unrelated(|| TypeMismatch::incompatible(source, target))
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 fn relate_to_target_union_candidates(
@@ -149,33 +161,14 @@ fn relate_to_target_union_candidates(
         return Err(RelationFailure::Indeterminate(kind));
     }
 
-    let Some((best_index, _)) = best else {
+    let Some((best_index, best_progress)) = best else {
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));
     };
     if !relater.is_explain() {
         return Err(RelationFailure::Unrelated(None));
     }
-    explain_union_constituent(
-        relater,
-        source,
-        target,
-        source,
-        &candidates[best_index],
-        intersection_state,
-        TypePathSegment::TargetUnionCandidate(best_index),
-    )
-}
-
-fn explain_union_constituent(
-    relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
-    constituent_source: &LuaType,
-    constituent_target: &LuaType,
-    intersection_state: IntersectionState,
-    path: TypePathSegment,
-) -> RelationResult {
-    relater
-        .relate(constituent_source, constituent_target, intersection_state)
-        .map_err(|failure| failure.map_mismatch(|mismatch| mismatch.at(path, source, target)))
+    if best_progress == 0 {
+        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    }
+    relater.relate(source, &candidates[best_index], intersection_state)
 }

@@ -53,7 +53,6 @@ pub(super) fn relate_generic_source(
         LuaType::Tuple(target_tuple) => Some(relate_keyed_source_to_tuple(
             relater,
             source,
-            target,
             target_tuple,
             intersection_state,
         )),
@@ -154,7 +153,7 @@ fn relate_generic_source_to_generic_target(
         {
             if let Err(failure) = relater.relate(source_param, target_param, intersection_state) {
                 break 'direct Err(failure.map_mismatch(|mismatch| {
-                    mismatch.at(TypePathSegment::GenericArgument(index), source, target)
+                    mismatch.at(TypePathSegment::GenericArgument(index))
                 }));
             }
         }
