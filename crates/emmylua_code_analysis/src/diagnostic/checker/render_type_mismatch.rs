@@ -183,6 +183,30 @@ mod tests {
     }
 
     #[test]
+    fn test_render_same_family_generic_alias_argument_mismatch() {
+        let mut ws: VirtualWorkspace = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Box<T> { value: T }
+            ---@alias DeepBox<T> Box<Box<Box<T>>>
+            "#,
+        );
+
+        let a = ws.ty("DeepBox<number>");
+        let b = ws.ty("DeepBox<string>");
+        let mismatch = check_assignable(ws.get_db_mut(), &b, &a);
+
+        let AssignabilityResult::NotAssignable(m) = mismatch else {
+            panic!("expected not assignable");
+        };
+        assert!(m.path().is_empty());
+        assert_eq!(
+            render_diagnostic_detail(ws.get_db_mut(), &m, &b, &a),
+            Some("  Type 'string' is not assignable to type 'number'.".to_string())
+        );
+    }
+
+    #[test]
     fn test_render_array_to_object_alias() {
         let mut ws: VirtualWorkspace = VirtualWorkspace::new();
         ws.def("---@alias Item { foo: number }");

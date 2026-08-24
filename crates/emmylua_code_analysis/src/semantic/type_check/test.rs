@@ -2,8 +2,9 @@
 mod test {
     use crate::{
         DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
-        LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaObjectType, LuaType,
-        LuaTypeDeclId, LuaUnionType, VirtualWorkspace, is_assignable,
+        LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaMemberKey, LuaObjectType,
+        LuaType, LuaTypeDeclId, LuaUnionType, TypeMismatchKind, TypePathSegment, VirtualWorkspace,
+        is_assignable,
         semantic::type_check::{
             AssignabilityResult, RelationOutcome, check_assignable, probe_assignable,
         },
@@ -420,6 +421,103 @@ mod test {
         let source = ws.ty("GenericMismatchChild<string>");
         let target = ws.ty("GenericMismatchChild<number>");
         assert!(!ws.check_type(&source, &target));
+    }
+
+    #[test]
+    fn test_same_family_generic_alias_direct_argument_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Box<T> { value: T }
+            ---@alias DeepBox<T> Box<Box<Box<T>>>
+            "#,
+        );
+        let source = ws.ty("DeepBox<string>");
+        let target = ws.ty("DeepBox<number>");
+
+        assert!(!ws.check_type(&source, &target));
+
+        // 同族泛型直接比较实参, 不再逐层展开产生嵌套 property 路径.
+        let mismatch = match check_assignable(ws.get_db_mut(), &source, &target) {
+            AssignabilityResult::NotAssignable(mismatch) => mismatch,
+            other => panic!("expected not assignable, got {:?}", other),
+        };
+        assert!(mismatch.path().is_empty());
+        assert_eq!(
+            mismatch.reason(),
+            &TypeMismatchKind::Incompatible {
+                source: LuaType::String,
+                target: LuaType::Number,
+            }
+        );
+    }
+
+    #[test]
+    fn test_same_family_generic_alias_keeps_contravariant_positions() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Handler<T> fun(value: T)
+
+            ---@class HandlerVarianceParent
+            ---@field a string
+
+            ---@class HandlerVarianceChild : HandlerVarianceParent
+            ---@field b number
+            "#,
+        );
+        // fun(parent) 可赋给 fun(child)
+        let broad = ws.ty("Handler<HandlerVarianceParent>");
+        let narrow = ws.ty("Handler<HandlerVarianceChild>");
+        assert!(ws.check_type(&broad, &narrow));
+        // fun(child) 不可赋给 fun(parent)
+        assert!(!ws.check_type(&narrow, &broad));
+    }
+
+    #[test]
+    fn test_same_family_generic_alias_nullable_contravariant_position() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class NullableVarianceBase
+            ---@alias NullableHandler<T> fun(value: T)
+            "#,
+        );
+        // fun(Base) 不可赋给 fun(Base?)
+        let source = ws.ty("NullableHandler<NullableVarianceBase>");
+        let target = ws.ty("NullableHandler<NullableVarianceBase?>");
+        assert!(!ws.check_type(&source, &target));
+
+        // 协变位置上可空联合仍应正常接受.
+        ws.def("---@alias NullableBox<T> { value: T }");
+        let box_source = ws.ty("NullableBox<NullableVarianceBase>");
+        let box_target = ws.ty("NullableBox<NullableVarianceBase?>");
+        assert!(ws.check_type(&box_source, &box_target));
+    }
+
+    #[test]
+    fn test_same_family_multi_param_alias_reports_actual_failure() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def("---@alias MixedVariance<A, B> { set: fun(value: A), value: B }");
+
+        let source = ws.ty("MixedVariance<string | number, string>");
+        let target = ws.ty("MixedVariance<string, number>");
+        let mismatch = match check_assignable(ws.get_db_mut(), &source, &target) {
+            AssignabilityResult::NotAssignable(mismatch) => mismatch,
+            other => panic!("expected not assignable, got {:?}", other),
+        };
+
+        assert_eq!(
+            mismatch.path(),
+            &[TypePathSegment::Member(LuaMemberKey::Name("value".into()))]
+        );
+        assert_eq!(
+            mismatch.reason(),
+            &TypeMismatchKind::Incompatible {
+                source: LuaType::String,
+                target: LuaType::Number,
+            }
+        );
     }
 
     #[test]

@@ -125,20 +125,12 @@ pub fn fast_eq_check(source: &LuaType, target: &LuaType) -> bool {
 }
 
 pub fn normalize_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
+    // 禁止在此对泛型进行展开
     match typ {
         LuaType::TplRef(tpl) if !is_circular_tpl_constraint(tpl) => tpl
             .get_constraint()
             .filter(|constraint| *constraint != typ)
             .cloned(),
-        LuaType::Generic(generic) if !generic.contain_tpl() => {
-            let base_id = generic.get_base_type_id();
-            let decl = db.get_type_index().get_type_decl(&base_id)?;
-            if !decl.is_alias() {
-                return None;
-            }
-            let substitutor = TypeSubstitutor::from_alias(generic.get_params().clone(), base_id);
-            decl.get_alias_origin(db, Some(&substitutor))
-        }
         LuaType::Ref(type_id) => {
             let type_decl = db.get_type_index().get_type_decl(type_id)?;
             if type_decl.is_alias() {
