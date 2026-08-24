@@ -10,7 +10,9 @@ mod sub_type;
 mod test;
 mod union;
 
-pub use mismatch::{OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment};
+pub use mismatch::{
+    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment, TypePathStep,
+};
 pub(crate) use relation::RelationOutcome;
 use relation::RelationSession;
 pub use sub_type::is_sub_type_of;

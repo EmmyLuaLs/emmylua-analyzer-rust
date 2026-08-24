@@ -236,6 +236,93 @@ local target = source"#;
     }
 
     #[test]
+    fn nested_alias_arrays_report_full_diagnostic() {
+        let mut ws = VirtualWorkspace::new();
+        let message = first_assign_diagnostic_message(
+            &mut ws,
+            r#"---@alias LeafTarget { id: number }
+---@alias ContainerTarget { items: LeafTarget[] }
+---@alias RootTarget { containers: ContainerTarget[] }
+
+---@alias LeafSource { id: string }
+---@alias ContainerSource { items: LeafSource[] }
+---@alias RootSource { containers: ContainerSource[] }
+
+---@type RootTarget
+local target
+
+---@type RootSource
+local source
+
+target = source"#,
+        );
+
+        assert_eq!(
+            message,
+            "Cannot assign `RootSource` to `RootTarget`.
+  The types of property 'containers' are incompatible.
+    Type 'ContainerSource[]' is not assignable to type 'ContainerTarget[]'.
+      Type 'ContainerSource' is not assignable to type 'ContainerTarget'.
+        The types of property 'items' are incompatible.
+          Type 'LeafSource[]' is not assignable to type 'LeafTarget[]'.
+            Type 'LeafSource' is not assignable to type 'LeafTarget'.
+              The types of property 'id' are incompatible.
+                Type 'string' is not assignable to type 'number'."
+        );
+    }
+
+    #[test]
+    fn table_generic_to_nested_array_preserves_each_relation() {
+        let mut ws = VirtualWorkspace::new();
+        let message = first_assign_diagnostic_message(
+            &mut ws,
+            r#"---@alias SourceItem {}
+---@alias TargetItem { id: number }
+
+---@type table<integer, SourceItem[]>
+local source
+
+---@type TargetItem[][]
+local target = source"#,
+        );
+
+        assert_eq!(
+            message,
+            "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.
+  Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
+    Type 'SourceItem' is not assignable to type 'TargetItem'.
+      Property 'id' is missing."
+        );
+    }
+
+    #[test]
+    fn keyed_source_to_nested_array_preserves_each_relation() {
+        let mut ws = VirtualWorkspace::new();
+        let message = first_assign_diagnostic_message(
+            &mut ws,
+            r#"---@alias SourceItem {}
+---@alias TargetItem { id: number }
+
+---@class IndexedSource
+---@field [integer] SourceItem[]
+
+---@type IndexedSource
+local source
+
+---@type TargetItem[][]
+local target = source"#,
+        );
+
+        assert_eq!(
+            message,
+            "Cannot assign `IndexedSource` to `TargetItem[][]`.
+  Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
+    Type 'SourceItem' is not assignable to type 'TargetItem'.
+      Property 'id' is missing."
+        );
+    }
+
+    #[test]
     fn nested_array_to_object_alias_reports_inner_array_type() {
         let mut ws = VirtualWorkspace::new();
         let message = first_assign_diagnostic_message(

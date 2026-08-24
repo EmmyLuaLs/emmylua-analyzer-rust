@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::super::{
-    mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
+    mismatch::{TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment},
     relation::{IntersectionState, Relater, RelationResult},
 };
 
@@ -30,6 +30,8 @@ pub(super) fn relate_array_source(
         }
         LuaType::Array(target_array) => Some(relate_array_to_array(
             relater,
+            source,
+            target,
             source_array,
             target_array,
             intersection_state,
@@ -79,6 +81,8 @@ pub(super) fn relate_array_source(
 #[inline(always)]
 pub(in crate::semantic::type_check) fn relate_array_to_array(
     relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
     source_array: &LuaArrayType,
     target_array: &LuaArrayType,
     intersection_state: IntersectionState,
@@ -87,7 +91,15 @@ pub(in crate::semantic::type_check) fn relate_array_to_array(
     relater
         .relate(source_array.get_base(), &target_base, intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+            failure.map_mismatch(|mismatch| {
+                append_array_element_path(
+                    mismatch,
+                    source,
+                    target,
+                    source_array.get_base(),
+                    target_array.get_base(),
+                )
+            })
         })
 }
 
@@ -220,7 +232,15 @@ pub(super) fn relate_keyed_source_to_array(
     relater
         .relate(&source_type, &target_base, intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+            failure.map_mismatch(|mismatch| {
+                append_array_element_path(
+                    mismatch,
+                    source,
+                    target,
+                    &source_type,
+                    target_array.get_base(),
+                )
+            })
         })?;
     relater.note_progress();
     Ok(())
@@ -249,7 +269,15 @@ fn relate_array_to_object(
                 relater
                     .relate(&source_member_type, member_type, intersection_state)
                     .map_err(|failure| {
-                        failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+                        failure.map_mismatch(|mismatch| {
+                            append_array_element_path(
+                                mismatch,
+                                source,
+                                target,
+                                &source_member_type,
+                                member_type,
+                            )
+                        })
                     })?;
                 relater.note_progress();
             }
@@ -278,7 +306,15 @@ fn relate_array_to_object(
                     intersection_state,
                 )
                 .map_err(|failure| {
-                    failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+                    failure.map_mismatch(|mismatch| {
+                        append_array_element_path(
+                            mismatch,
+                            source,
+                            target,
+                            source_array.get_base(),
+                            target_value_type,
+                        )
+                    })
                 })?;
             relater.note_progress();
         }
@@ -323,7 +359,15 @@ fn relate_array_to_declared_target(
                     relater
                         .relate(&source_member_type, target_member_type, intersection_state)
                         .map_err(|failure| {
-                            failure.map_mismatch(|m| m.at(TypePathSegment::ArrayElement))
+                            failure.map_mismatch(|mismatch| {
+                                append_array_element_path(
+                                    mismatch,
+                                    source,
+                                    target,
+                                    &source_member_type,
+                                    target_member_type,
+                                )
+                            })
                         })?;
                     relater.note_progress();
                     Ok(())
@@ -359,4 +403,23 @@ fn relate_array_to_declared_target(
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));
     }
     result
+}
+
+pub(super) fn append_array_element_path(
+    mismatch: TypeMismatch,
+    source: &LuaType,
+    target: &LuaType,
+    source_element: &LuaType,
+    target_element: &LuaType,
+) -> TypeMismatch {
+    let include_element =
+        mismatch.has_path() || !matches!(mismatch.reason(), TypeMismatchKind::Incompatible { .. });
+    let outer_relation = std::iter::once(TypePathInfo::relation(source, target));
+    let element_relation = include_element
+        .then(|| TypePathInfo::relation(source_element, target_element))
+        .into_iter();
+    mismatch.at_with_info(
+        TypePathSegment::ArrayElement,
+        outer_relation.chain(element_relation),
+    )
 }

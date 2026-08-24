@@ -442,7 +442,7 @@ mod test {
             AssignabilityResult::NotAssignable(mismatch) => mismatch,
             other => panic!("expected not assignable, got {:?}", other),
         };
-        assert!(mismatch.path().is_empty());
+        assert!(!mismatch.has_path());
         assert_eq!(
             mismatch.reason(),
             &TypeMismatchKind::Incompatible {
@@ -507,9 +507,11 @@ mod test {
             other => panic!("expected not assignable, got {:?}", other),
         };
 
-        assert_eq!(
-            mismatch.path(),
-            &[TypePathSegment::Member(LuaMemberKey::Name("value".into()))]
+        assert!(
+            mismatch
+                .path()
+                .map(|step| step.segment())
+                .eq([&TypePathSegment::Member(LuaMemberKey::Name("value".into()))])
         );
         assert_eq!(
             mismatch.reason(),

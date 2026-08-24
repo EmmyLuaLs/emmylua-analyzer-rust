@@ -7,8 +7,10 @@ use super::super::{
     relation::{IntersectionState, Relater, RelationResult},
 };
 use super::{
-    array::effective_array_base, declared::relate_structural_source_to_declared_target,
-    object_type::relate_object_members, table_const::relate_to_table_const_target,
+    array::{append_array_element_path, effective_array_base},
+    declared::relate_structural_source_to_declared_target,
+    object_type::relate_object_members,
+    table_const::relate_to_table_const_target,
 };
 
 pub(super) fn relate_table_generic_source(
@@ -107,6 +109,14 @@ pub(super) fn relate_table_generic_to_array(
     relater
         .relate(&source_params[1], &target_base, intersection_state)
         .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::ArrayElement))
+            failure.map_mismatch(|mismatch| {
+                append_array_element_path(
+                    mismatch,
+                    source,
+                    target,
+                    &source_params[1],
+                    target_array.get_base(),
+                )
+            })
         })
 }

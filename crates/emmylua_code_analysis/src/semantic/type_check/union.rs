@@ -94,7 +94,7 @@ pub(super) fn relate_to_nullable_target(
         }
         (RelationFailure::Unrelated(mismatch), RelationOutcome::Unrelated) => {
             if mismatch.as_ref().is_some_and(|m| {
-                !m.path().is_empty() || !matches!(m.reason(), TypeMismatchKind::Incompatible { .. })
+                m.has_path() || !matches!(m.reason(), TypeMismatchKind::Incompatible { .. })
             }) {
                 Err(RelationFailure::Unrelated(mismatch))
             } else {

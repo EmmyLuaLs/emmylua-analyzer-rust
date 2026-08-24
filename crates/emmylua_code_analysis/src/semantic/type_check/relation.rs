@@ -241,6 +241,8 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                     return self.run_fast_path(|relater| {
                         relate_array_to_array(
                             relater,
+                            source,
+                            target,
                             source_array,
                             target_array,
                             intersection_state,
