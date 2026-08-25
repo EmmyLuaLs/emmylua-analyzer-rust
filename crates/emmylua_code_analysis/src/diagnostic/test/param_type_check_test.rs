@@ -1271,14 +1271,14 @@ mod test {
             "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::ParamTypeMismatch,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
                foo({y = "", z = ""})
             "#
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::ParamTypeMismatch,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
                foo({y = 1, z = ""})
             "#
@@ -1345,7 +1345,7 @@ mod test {
             "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::ParamTypeMismatch,
+            DiagnosticCode::MissingFields,
             r#"
                 test({})
             "#

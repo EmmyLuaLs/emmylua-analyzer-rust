@@ -19,6 +19,7 @@ impl Checker for ReturnTypeMismatch {
     const CODES: &[DiagnosticCode] = &[
         DiagnosticCode::ReturnTypeMismatch,
         DiagnosticCode::AssignTypeMismatch,
+        DiagnosticCode::MissingFields,
     ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
@@ -93,14 +94,16 @@ fn check_return_stat(
                 {
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
-                    {
-                        check_table_assignment_diagnostics(
+                        && check_table_assignment_diagnostics(
                             context,
                             semantic_model,
                             return_expr,
                             return_expr_type,
                             check_type,
-                        );
+                        )
+                        .is_handled()
+                    {
+                        continue;
                     }
 
                     add_type_check_diagnostic(

@@ -1,16 +1,16 @@
-use emmylua_parser::{LuaAstNode, LuaExpr};
+use emmylua_parser::LuaExpr;
 
-use crate::{DiagnosticCode, LuaType, SemanticModel};
+use crate::{LuaType, SemanticModel};
 
 use super::DiagnosticContext;
 
-pub mod missing_fields;
 pub mod table_field_type_mismatch;
 pub mod table_type_mismatch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TableAssignmentOutcome {
     NotTable,
+    Fallback,
     Assignable,
     Reported,
     NoDiagnostic,
@@ -18,7 +18,7 @@ pub(crate) enum TableAssignmentOutcome {
 
 impl TableAssignmentOutcome {
     pub(crate) fn is_handled(self) -> bool {
-        matches!(self, Self::Assignable | Self::Reported)
+        matches!(self, Self::Assignable | Self::Reported | Self::NoDiagnostic)
     }
 }
 
@@ -32,12 +32,6 @@ pub(crate) fn check_table_assignment_diagnostics(
     let LuaExpr::TableExpr(table_expr) = value_expr else {
         return TableAssignmentOutcome::NotTable;
     };
-
-    if context
-        .has_diagnostic_codes_in_range(table_expr.get_range(), &[DiagnosticCode::MissingFields])
-    {
-        return TableAssignmentOutcome::Reported;
-    }
 
     table_type_mismatch::check_table_type_mismatch(
         context,

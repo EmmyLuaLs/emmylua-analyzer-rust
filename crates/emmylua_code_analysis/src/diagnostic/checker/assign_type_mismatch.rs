@@ -17,7 +17,10 @@ use super::{
 pub struct AssignTypeMismatchChecker;
 
 impl Checker for AssignTypeMismatchChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::AssignTypeMismatch];
+    const CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::AssignTypeMismatch,
+        DiagnosticCode::MissingFields,
+    ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         for node in semantic_model.get_root().descendants::<LuaAst>() {

@@ -109,6 +109,10 @@ pub(super) fn check_param_type_mismatch(
             )
             .is_handled()
         {
+            if current_candidates.len() == 1 {
+                arg_index += 1;
+                continue;
+            }
             return;
         }
 

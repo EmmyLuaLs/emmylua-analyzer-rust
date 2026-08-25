@@ -44,6 +44,7 @@ pub use render_type_mismatch::render_diagnostic_detail;
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,
 };
+use hashbrown::HashMap;
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
 use std::sync::Arc;
@@ -93,7 +94,6 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         context,
         semantic_model,
     );
-    run_check::<table::missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);
@@ -145,6 +145,8 @@ pub struct DiagnosticContext<'a> {
     diagnostics: Vec<Diagnostic>,
     diagnostic_ranges: Vec<(TextRange, DiagnosticCode)>,
     pub config: Arc<LuaDiagnosticConfig>,
+    /// 必填字段缓存
+    required_fields_cache: HashMap<LuaType, Arc<Vec<String>>>,
 }
 
 impl<'a> DiagnosticContext<'a> {
@@ -155,6 +157,7 @@ impl<'a> DiagnosticContext<'a> {
             diagnostics: Vec::new(),
             diagnostic_ranges: Vec::new(),
             config,
+            required_fields_cache: HashMap::new(),
         }
     }
 

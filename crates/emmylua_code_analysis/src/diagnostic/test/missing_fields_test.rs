@@ -157,6 +157,133 @@ mod tests {
         ));
     }
 
+    // 嵌套子表已验证的字段不得满足父层同名字段的缺失判断.
+    #[test]
+    fn test_verified_fields_are_isolated_between_nesting_levels() {
+        let mut ws = VirtualWorkspace::new();
+
+        // 子表提供了 `name`, 但父层的 `name` 仍然缺失.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class IsolatedChild
+            ---@field name string
+
+            ---@class IsolatedParent
+            ---@field name string
+            ---@field child IsolatedChild
+
+            ---@param value IsolatedParent
+            local function consume(value) end
+
+            consume({ child = { name = "n" } })
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class IsolatedChild
+            ---@field name string
+
+            ---@class IsolatedParent
+            ---@field name string
+            ---@field child IsolatedChild
+
+            ---@param value IsolatedParent
+            local function consume(value) end
+
+            consume({ name = "n", child = { name = "n" } })
+            "#,
+        ));
+    }
+
+    // 同层级的兄弟子表之间, 已验证字段同样互不影响.
+    #[test]
+    fn test_verified_fields_are_isolated_between_sibling_tables() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class SiblingItem
+            ---@field name string
+
+            ---@class SiblingHolder
+            ---@field first SiblingItem
+            ---@field second SiblingItem
+
+            ---@param value SiblingHolder
+            local function consume(value) end
+
+            consume({ first = { name = "a" }, second = {} })
+            "#,
+        ));
+    }
+
+    // 变参展开路径验证通过的位置同样应计入已提供字段.
+    #[test]
+    fn test_variadic_expansion_marks_index_fields_verified() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class VariadicTuple
+            ---@field [1] string
+            ---@field [2] string
+
+            ---@return string, string
+            local function two() return "a", "b" end
+
+            ---@type VariadicTuple
+            local value = { two() }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_expr_const_key_matches_canonical_member_name() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class ExprKeyTarget
+            ---@field [16] string
+
+            local KEY = 16
+
+            ---@type ExprKeyTarget
+            local value = { [KEY] = "a" }
+            "#,
+        ));
+    }
+
+    // 泛型别名包裹的类应支持字段级检查与缺失检查.
+    #[test]
+    fn test_generic_alias_to_class_supports_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class AliasBoxTarget<T>
+            ---@field value T
+
+            ---@alias AliasBoxWrap<T> AliasBoxTarget<T>
+
+            ---@type AliasBoxWrap<string>
+            local value = {}
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@type AliasBoxWrap<string>
+            local value = { value = "a" }
+            "#,
+        ));
+    }
+
     #[test]
     fn test_issue_262() {
         let mut ws = VirtualWorkspace::new();
@@ -276,7 +403,7 @@ foo({})
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
-            ---@type LiveList
+            ---@type LiveList<string>
             local LiveList
 
             LiveList.list = {}
@@ -336,6 +463,43 @@ foo({})
 
             use_foo({})
         "#
+        ));
+    }
+
+    #[test]
+    fn test_union_reports_missing_when_no_branch_satisfied() {
+        // 联合目标按分支可满足性判定: 空表不满足任何分支时上报, 满足任一分支则静默.
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class UnionBranchA
+            ---@field x number
+
+            ---@class UnionBranchB
+            ---@field y number
+
+            ---@param value UnionBranchA | UnionBranchB
+            local function consume(value) end
+
+            consume({})
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class UnionBranchA
+            ---@field x number
+
+            ---@class UnionBranchB
+            ---@field y number
+
+            ---@param value UnionBranchA | UnionBranchB
+            local function consume(value) end
+
+            consume({ x = 1 })
+            "#,
         ));
     }
 
