@@ -143,7 +143,6 @@ pub struct DiagnosticContext<'a> {
     file_id: FileId,
     db: &'a DbIndex,
     diagnostics: Vec<Diagnostic>,
-    diagnostic_ranges: Vec<(TextRange, DiagnosticCode)>,
     pub config: Arc<LuaDiagnosticConfig>,
     /// 必填字段缓存
     required_fields_cache: HashMap<LuaType, Arc<Vec<String>>>,
@@ -155,7 +154,6 @@ impl<'a> DiagnosticContext<'a> {
             file_id,
             db,
             diagnostics: Vec::new(),
-            diagnostic_ranges: Vec::new(),
             config,
             required_fields_cache: HashMap::new(),
         }
@@ -205,27 +203,7 @@ impl<'a> DiagnosticContext<'a> {
         };
 
         self.diagnostics.push(diagnostic);
-        self.diagnostic_ranges.push((range, code));
         true
-    }
-
-    #[allow(unused)]
-    pub fn has_diagnostic_in_range(&self, range: TextRange) -> bool {
-        self.diagnostic_ranges
-            .iter()
-            .any(|(diagnostic_range, _)| range.contains_range(*diagnostic_range))
-    }
-
-    pub fn has_diagnostic_codes_in_range(
-        &self,
-        range: TextRange,
-        codes: &[DiagnosticCode],
-    ) -> bool {
-        self.diagnostic_ranges
-            .iter()
-            .any(|(diagnostic_range, code)| {
-                range.contains_range(*diagnostic_range) && codes.contains(code)
-            })
     }
 
     fn should_report_diagnostic(&self, code: &DiagnosticCode, range: &TextRange) -> bool {

@@ -79,7 +79,12 @@ pub(super) fn check_table_type_mismatch(
         return TableAssignmentOutcome::Assignable;
     }
 
-    // 先展开目标中的别名
+    // 泛型条件类型直接放弃细化回退到整体诊断. 因为其复杂度不可控.
+    if is_generic_conditional_type(semantic_model.get_db(), target) {
+        return TableAssignmentOutcome::Fallback;
+    }
+
+    // 展开目标中的别名
     let Some(canonical_target) = expand_field_check_type(semantic_model.get_db(), target) else {
         return TableAssignmentOutcome::Fallback;
     };
@@ -113,17 +118,7 @@ pub(super) fn check_table_type_mismatch(
         return TableAssignmentOutcome::Reported;
     }
 
-    if context.has_diagnostic_codes_in_range(
-        table_expr.get_range(),
-        &[
-            DiagnosticCode::AssignTypeMismatch,
-            DiagnosticCode::MissingFields,
-        ],
-    ) {
-        TableAssignmentOutcome::Reported
-    } else {
-        TableAssignmentOutcome::Fallback
-    }
+    TableAssignmentOutcome::Fallback
 }
 
 fn check_table_fields(
@@ -666,7 +661,7 @@ fn is_table_field_target(db: &DbIndex, typ: &LuaType) -> bool {
 }
 
 fn expand_field_check_type<'a>(db: &DbIndex, typ: &'a LuaType) -> Option<Cow<'a, LuaType>> {
-    const MAX_EXPAND_DEPTH: u32 = 8;
+    const MAX_EXPAND_DEPTH: u32 = 32;
 
     let needs_expand = match typ {
         LuaType::Ref(type_id) => db
@@ -710,4 +705,42 @@ fn expand_field_check_type<'a>(db: &DbIndex, typ: &'a LuaType) -> Option<Cow<'a,
         current = next;
     }
     None
+}
+
+/// 检查类型是否为泛型条件类型(或指向条件类型的别名).
+fn is_generic_conditional_type(db: &DbIndex, typ: &LuaType) -> bool {
+    const MAX_DEPTH: u32 = 32;
+    let mut current = typ;
+    for _ in 0..MAX_DEPTH {
+        match current {
+            LuaType::Conditional(_) => return true,
+            LuaType::Generic(generic) => {
+                let base_type_id = generic.get_base_type_id_ref();
+                let Some(type_decl) = db.get_type_index().get_type_decl(base_type_id) else {
+                    return false;
+                };
+                if !type_decl.is_alias() {
+                    return false;
+                }
+                let Some(origin) = type_decl.get_alias_ref() else {
+                    return false;
+                };
+                current = origin;
+            }
+            LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+                let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
+                    return false;
+                };
+                if !type_decl.is_alias() {
+                    return false;
+                }
+                let Some(origin) = type_decl.get_alias_ref() else {
+                    return false;
+                };
+                current = origin;
+            }
+            _ => return false,
+        }
+    }
+    false
 }

@@ -1831,4 +1831,18 @@ return t
             "#,
         ));
     }
+
+    // 目标为泛型条件类型时放弃细化回退到整体诊断.
+    #[test]
+    fn test_generic_conditional_target_falls_back_to_whole_type_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"
+            ---@alias TargetCond<T> T extends number and { a: string } or { b: number }
+
+            ---@type TargetCond<string>
+            local t = { a = 123 }
+        "#;
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingFields, source));
+    }
 }

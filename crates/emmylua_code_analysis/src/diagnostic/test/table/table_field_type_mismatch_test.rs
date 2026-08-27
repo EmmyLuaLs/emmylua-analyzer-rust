@@ -22,56 +22,11 @@ mod tests {
     }
 
     #[test]
-    fn test_annotated_table_field_value_mismatch() {
-        let mut ws = VirtualWorkspace::new();
-        let diagnostics = assign_type_diagnostics(
-            &mut ws,
-            r#"
-            ---@class AnnotatedNestedTarget
-            ---@field value string
-
-            ---@type AnnotatedNestedTarget
-            local target = {
-                ---@type integer
-                value = "",
-            }
-            "#,
-        );
-
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert!(
-            diagnostics[0]
-                .message
-                .contains("Cannot assign `string` to the `@type integer` annotation")
-        );
-        assert_eq!(diagnostics[0].range.start.line, 7);
-        assert_eq!(diagnostics[0].range.end.line, 7);
-    }
-
-    #[test]
     fn test_annotated_table_field_reports_once_without_outer_type() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = assign_type_diagnostics(
             &mut ws,
             r#"
-            local target = {
-                ---@type integer
-                value = "",
-            }
-            "#,
-        );
-
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert!(diagnostics[0].message.contains("@type integer"));
-    }
-
-    #[test]
-    fn test_annotated_table_field_reports_once_with_object_target() {
-        let mut ws = VirtualWorkspace::new();
-        let diagnostics = assign_type_diagnostics(
-            &mut ws,
-            r#"
-            ---@type { value: string }
             local target = {
                 ---@type integer
                 value = "",

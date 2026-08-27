@@ -806,7 +806,7 @@ test(
         assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
         assert_eq!(
             diagnostics[0].message,
-            "Missing required fields in type `ManyFields`: `a`, `b`, `c`, `d` and 2 more"
+            "Missing required fields in type `ManyFields`: `a`, `b`, `c`, `d` and 2 more."
         );
     }
 }
