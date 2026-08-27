@@ -133,6 +133,10 @@ Cannot use `...` outside a vararg function.:
   en: 'Missing required fields in type `%{typ}`: %{fields}'
   zh_CN: '缺少类型 `%{typ}` 的必要字段：%{fields}'
   zh_HK: '缺少類型 `%{typ}` 的必要字段：%{fields}'
+'and %{count} more':
+  en: 'and %{count} more.'
+  zh_CN: '以及其他 %{count} 个。'
+  zh_HK: '以及其他 %{count} 個。'
 'Fields cannot be injected into the reference of `%{class}` for `%{field}`. ':
   en: 'Fields cannot be injected into the reference of `%{class}` for `%{field}`. '
   zh_CN: '不能在 `%{class}` 的引用中注入字段 `%{field}` 。'

@@ -504,6 +504,28 @@ foo({})
     }
 
     #[test]
+    fn test_union_cross_branch_field_conflict_falls_back_to_type_diagnostic() {
+        let mut ws = VirtualWorkspace::new();
+
+        let source = r#"
+            ---@class CrossConflictA
+            ---@field x number
+            ---@field y string
+
+            ---@class CrossConflictB
+            ---@field x string
+            ---@field y number
+
+            ---@param value CrossConflictA | CrossConflictB
+            local function consume(value) end
+
+            consume({ x = "s", y = "s" })
+        "#;
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingFields, source));
+    }
+
+    #[test]
     fn test_union_alias_does_not_report_other_branch_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
@@ -747,5 +769,44 @@ test(
         assert!(diagnostics[1].message.contains("`b`"), "{diagnostics:#?}");
         assert_eq!(diagnostics[2].range.start.line, 16, "{diagnostics:#?}");
         assert!(diagnostics[2].message.contains("`c`"), "{diagnostics:#?}");
+    }
+
+    // 缺失字段超过 4 个时只显示前 4 个属性.
+    #[test]
+    fn test_missing_fields_limits_to_four_properties() {
+        let mut ws = VirtualWorkspace::new();
+        ws.analysis
+            .diagnostic
+            .enable_only(DiagnosticCode::MissingFields);
+        let file_id = ws.def(
+            r#"
+            ---@class ManyFields
+            ---@field a string
+            ---@field b string
+            ---@field c string
+            ---@field d string
+            ---@field e string
+            ---@field f string
+
+            ---@type ManyFields
+            local t = {}
+            "#,
+        );
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::MissingFields.get_name().to_string(),
+        ));
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect::<Vec<_>>();
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(
+            diagnostics[0].message,
+            "Missing required fields in type `ManyFields`: `a`, `b`, `c`, `d` and 2 more"
+        );
     }
 }

@@ -9,16 +9,14 @@ pub mod table_type_mismatch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TableAssignmentOutcome {
-    NotTable,
     Fallback,
     Assignable,
     Reported,
-    NoDiagnostic,
 }
 
 impl TableAssignmentOutcome {
     pub(crate) fn is_handled(self) -> bool {
-        matches!(self, Self::Assignable | Self::Reported | Self::NoDiagnostic)
+        matches!(self, Self::Assignable | Self::Reported)
     }
 }
 
@@ -30,7 +28,7 @@ pub(crate) fn check_table_assignment_diagnostics(
     target_type: &LuaType,
 ) -> TableAssignmentOutcome {
     let LuaExpr::TableExpr(table_expr) = value_expr else {
-        return TableAssignmentOutcome::NotTable;
+        return TableAssignmentOutcome::Fallback;
     };
 
     table_type_mismatch::check_table_type_mismatch(

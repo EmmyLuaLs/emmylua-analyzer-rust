@@ -122,7 +122,7 @@ pub(super) fn check_table_type_mismatch(
     ) {
         TableAssignmentOutcome::Reported
     } else {
-        TableAssignmentOutcome::NoDiagnostic
+        TableAssignmentOutcome::Fallback
     }
 }
 
@@ -414,11 +414,18 @@ fn report_missing_fields(
         return false;
     }
 
-    let missing = missing_fields
+    let total_count = missing_fields.len();
+    let mut missing = missing_fields
         .into_iter()
         .sorted_unstable()
+        .take(4)
         .map(|name| format!("`{name}`"))
         .join(", ");
+
+    if total_count > 4 {
+        let more_count = total_count - 4;
+        missing.push_str(&format!(" {}", t!("and %{count} more", count = more_count)));
+    }
 
     context.add_diagnostic(
         DiagnosticCode::MissingFields,
