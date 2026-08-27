@@ -116,29 +116,36 @@ pub(super) fn relate_table_const_to_array(
     let target_base = effective_array_base(relater, target_array.get_base());
     let owner = LuaMemberOwner::Element(range.clone());
     let member_len = relater.db().get_member_index().get_member_len(&owner);
+    if member_len == 0 {
+        return Ok(());
+    }
     if member_len > relater.remaining_relation_budget() {
         return Err(RelationFailure::Indeterminate(OverflowKind::Budget));
     }
 
-    for index in 0..member_len {
+    let db = relater.db();
+    let mut checked = false;
+    visit_member_items(db, &owner, |key, item| {
+        if !matches!(key, LuaMemberKey::Integer(index) if *index > 0) {
+            return Ok(());
+        }
         relater.consume_relation_budget()?;
-        let key = LuaMemberKey::Integer(index as i64 + 1);
-        let Some(source_type) = relater
-            .db()
-            .get_member_index()
-            .get_member_item(&owner, &key)
-            .map(|item| item.resolve_type(relater.db()).unwrap_or(LuaType::Any))
-        else {
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
-        };
+        let source_type = item.resolve_type(db).unwrap_or(LuaType::Any);
         relater
             .relate(&source_type, &target_base, intersection_state)
             .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
+                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::Member(key.clone())))
             })?;
+        checked = true;
         relater.note_progress();
+        Ok(())
+    })?;
+
+    if checked {
+        Ok(())
+    } else {
+        relater.unrelated(|| TypeMismatch::incompatible(source, target))
     }
-    Ok(())
 }
 
 pub(super) fn relate_table_const_to_table_generic(

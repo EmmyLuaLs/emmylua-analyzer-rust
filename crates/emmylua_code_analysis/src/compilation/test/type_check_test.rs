@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod test {
 
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use smol_str::SmolStr;
+
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     #[test]
     fn test_issue_421() {
@@ -67,6 +69,57 @@ mod test {
 
             subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
             subscriber.flags = 9
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_mixed_table_literal_member_types() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local t = { 10, x = "hello", 30 }
+            v1 = t[1]
+            vx = t.x
+            v2 = t[2]
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("v1"), LuaType::IntegerConst(10));
+        assert_eq!(
+            ws.expr_ty("vx"),
+            LuaType::StringConst(SmolStr::new("hello").into())
+        );
+        assert_eq!(ws.expr_ty("v2"), LuaType::IntegerConst(30));
+    }
+
+    #[test]
+    fn test_mixed_table_literal_assign_to_tuple_or_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class MixedTarget
+            ---@field [1] integer
+            ---@field x string
+            ---@field [2] integer
+
+            ---@type MixedTarget
+            local t = { 10, x = "hello", 30 }
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class MixedTargetMismatch
+            ---@field [1] string
+            ---@field x string
+            ---@field [2] integer
+
+            ---@type MixedTargetMismatch
+            local t = { 10, x = "hello", 30 }
             "#,
         ));
     }

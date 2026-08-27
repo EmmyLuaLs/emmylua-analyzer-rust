@@ -500,7 +500,12 @@ pub fn analyze_local_func_stat(
 /// `pairs` can see them before the unresolved table-field pass runs.
 pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> Option<()> {
     if !field.is_assign_field() {
-        return Some(());
+        if !field
+            .get_parent::<LuaTableExpr>()
+            .is_some_and(|t| t.is_object())
+        {
+            return Some(());
+        }
     }
 
     if let Some(field_key) = field.get_field_key() {
