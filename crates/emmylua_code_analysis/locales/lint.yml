@@ -129,11 +129,15 @@ Cannot use `...` outside a vararg function.:
   en: 'Redefined local variable `%{name}`'
   zh_CN: '重定义局部变量 `%{name}`'
   zh_HK: '重定義局部變量 `%{name}`'
-'Missing required fields in type `%{typ}`: %{fields}':
-  en: 'Missing required fields in type `%{typ}`: %{fields}'
-  zh_CN: '缺少类型 `%{typ}` 的必要字段：%{fields}'
-  zh_HK: '缺少類型 `%{typ}` 的必要字段：%{fields}'
-'and %{count} more':
+'Type `%{source}` is missing the `%{field}` field from type `%{target}`.':
+  en: 'Type `%{source}` is missing the `%{field}` field from type `%{target}`.'
+  zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的 `%{field}` 字段。'
+  zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的 `%{field}` 字段。'
+'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}':
+  en: 'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}'
+  zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的以下字段：%{fields}'
+  zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的以下字段：%{fields}'
+'and %{count} more.':
   en: 'and %{count} more.'
   zh_CN: '以及其他 %{count} 个。'
   zh_HK: '以及其他 %{count} 個。'

@@ -39,12 +39,11 @@ mod unnecessary_assert;
 mod unnecessary_if;
 mod unused;
 
-pub use render_type_mismatch::render_diagnostic_detail;
+pub use render_type_mismatch::{format_missing_fields, render_diagnostic_detail};
 
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,
 };
-use hashbrown::HashMap;
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
 use std::sync::Arc;
@@ -144,8 +143,6 @@ pub struct DiagnosticContext<'a> {
     db: &'a DbIndex,
     diagnostics: Vec<Diagnostic>,
     pub config: Arc<LuaDiagnosticConfig>,
-    /// 必填字段缓存
-    required_fields_cache: HashMap<LuaType, Arc<Vec<String>>>,
 }
 
 impl<'a> DiagnosticContext<'a> {
@@ -155,7 +152,6 @@ impl<'a> DiagnosticContext<'a> {
             db,
             diagnostics: Vec::new(),
             config,
-            required_fields_cache: HashMap::new(),
         }
     }
 

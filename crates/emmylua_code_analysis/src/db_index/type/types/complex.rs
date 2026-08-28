@@ -897,6 +897,22 @@ impl LuaMultiLineUnion {
     pub fn contain_tpl(&self) -> bool {
         self.contain_tpl_children()
     }
+
+    pub fn is_nullable(&self) -> bool {
+        self.unions.iter().any(|(t, _)| t.is_nullable())
+    }
+
+    pub fn is_optional(&self) -> bool {
+        self.unions.iter().any(|(t, _)| t.is_optional())
+    }
+
+    pub fn is_always_truthy(&self) -> bool {
+        self.unions.iter().all(|(t, _)| t.is_always_truthy())
+    }
+
+    pub fn is_always_falsy(&self) -> bool {
+        self.unions.iter().all(|(t, _)| t.is_always_falsy())
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

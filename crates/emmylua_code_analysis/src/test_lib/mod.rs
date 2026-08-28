@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
-use lsp_types::NumberOrString;
+use lsp_types::{Diagnostic, NumberOrString};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -150,26 +150,37 @@ impl VirtualWorkspace {
         self.analysis.diagnostic.update_config(Arc::new(emmyrc));
     }
 
-    /// 只执行对应诊断代码的检查, 必须要在对应的`Checker`中为`const CODES`添加对应的诊断代码
-    pub fn has_no_diagnostic(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
-        // 只启用对应的诊断
+    pub fn get_diagnostics(
+        &mut self,
+        diagnostic_code: DiagnosticCode,
+        block_str: &str,
+    ) -> Vec<Diagnostic> {
         self.analysis.diagnostic.enable_only(diagnostic_code);
         let file_id = self.def(block_str);
-        let result = self
-            .analysis
-            .diagnose_file(file_id, CancellationToken::new());
-        if let Some(diagnostics) = result {
-            let code_string = Some(NumberOrString::String(
-                diagnostic_code.get_name().to_string(),
-            ));
-            for diagnostic in diagnostics {
-                if diagnostic.code == code_string {
-                    return false;
-                }
-            }
-        }
+        let code_string = Some(NumberOrString::String(
+            diagnostic_code.get_name().to_string(),
+        ));
+        self.analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == code_string)
+            .collect()
+    }
 
-        true
+    pub fn get_first_diagnostic(
+        &mut self,
+        diagnostic_code: DiagnosticCode,
+        block_str: &str,
+    ) -> Option<Diagnostic> {
+        self.get_diagnostics(diagnostic_code, block_str)
+            .into_iter()
+            .next()
+    }
+
+    pub fn has_no_diagnostic(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
+        self.get_first_diagnostic(diagnostic_code, block_str)
+            .is_none()
     }
 
     pub fn has_no_diagnostic_in_namespace(

@@ -21,7 +21,9 @@ use declared::{
     relate_structural_source_to_declared_target,
 };
 use generic::relate_generic_source;
-pub(in crate::semantic::type_check) use member::relate_target_intersection_index_members;
+pub(in crate::semantic::type_check) use member::{
+    collect_missing_members, relate_target_intersection_index_members, unrelated_missing_members,
+};
 use object_type::relate_object_source;
 pub(in crate::semantic::type_check) use object_type::relate_to_object_target;
 use table_const::{relate_table_const_source, relate_to_table_const_target};

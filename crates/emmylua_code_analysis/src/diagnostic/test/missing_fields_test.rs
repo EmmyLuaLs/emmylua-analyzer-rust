@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod tests {
 
-    use lsp_types::NumberOrString;
-    use tokio_util::sync::CancellationToken;
-
     use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
 
     #[test]
     fn test_missing_fields() {
@@ -468,11 +466,11 @@ foo({})
 
     #[test]
     fn test_union_reports_missing_when_no_branch_satisfied() {
-        // 联合目标按分支可满足性判定: 空表不满足任何分支时上报, 满足任一分支则静默.
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
+
             ---@class UnionBranchA
             ---@field x number
 
@@ -725,13 +723,11 @@ foo({})
         ));
     }
 
-    #[test]
+    #[gtest]
     fn test_call_argument_comment_does_not_shift_missing_fields_range() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .diagnostic
-            .enable_only(DiagnosticCode::MissingFields);
-        let file_id = ws.def(
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::MissingFields,
             r#"---@class A
 ---@field a 1
 ---@class B
@@ -751,34 +747,75 @@ test(
     {}
 )"#,
         );
-        let code = Some(NumberOrString::String(
-            DiagnosticCode::MissingFields.get_name().to_string(),
-        ));
-        let diagnostics = ws
-            .analysis
-            .diagnose_file(file_id, CancellationToken::new())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|diagnostic| diagnostic.code == code)
-            .collect::<Vec<_>>();
 
-        assert_eq!(diagnostics.len(), 3, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, 14, "{diagnostics:#?}");
-        assert!(diagnostics[0].message.contains("`a`"), "{diagnostics:#?}");
-        assert_eq!(diagnostics[1].range.start.line, 15, "{diagnostics:#?}");
-        assert!(diagnostics[1].message.contains("`b`"), "{diagnostics:#?}");
-        assert_eq!(diagnostics[2].range.start.line, 16, "{diagnostics:#?}");
-        assert!(diagnostics[2].message.contains("`c`"), "{diagnostics:#?}");
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(14));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Type `table` is missing the `a` field from type `A`.")
+        );
+    }
+
+    #[gtest]
+    fn test_union_target_selects_best_matching_branch_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class UnionA
+            ---@field a string
+            ---@field extra_a string
+
+            ---@class UnionB
+            ---@field b string
+            ---@field extra_b string
+
+            ---@type UnionA|UnionB
+            local t = { a = "hello" }
+            "#,
+        );
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Type `{ a = \"hello\" }` is missing the `extra_a` field from type `(UnionA|UnionB)`."
+            )
+        );
+    }
+
+    // 与分支仅共享可选字段时, 仍按该分支上报缺失的必填字段.
+    #[gtest]
+    fn test_union_shared_optional_field_still_reports_missing_required() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class OptSharedA
+            ---@field a string
+            ---@field extra? number
+
+            ---@class OptSharedB
+            ---@field b string
+
+            ---@type OptSharedA|OptSharedB
+            local t = { extra = 1 }
+            "#,
+        );
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Type `{ extra = 1 }` is missing the `a` field from type `(OptSharedA|OptSharedB)`."
+            )
+        );
     }
 
     // 缺失字段超过 4 个时只显示前 4 个属性.
-    #[test]
+    #[gtest]
     fn test_missing_fields_limits_to_four_properties() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .diagnostic
-            .enable_only(DiagnosticCode::MissingFields);
-        let file_id = ws.def(
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::MissingFields,
             r#"
             ---@class ManyFields
             ---@field a string
@@ -792,21 +829,12 @@ test(
             local t = {}
             "#,
         );
-        let code = Some(NumberOrString::String(
-            DiagnosticCode::MissingFields.get_name().to_string(),
-        ));
-        let diagnostics = ws
-            .analysis
-            .diagnose_file(file_id, CancellationToken::new())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|diagnostic| diagnostic.code == code)
-            .collect::<Vec<_>>();
-
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
             diagnostics[0].message,
-            "Missing required fields in type `ManyFields`: `a`, `b`, `c`, `d` and 2 more."
+            eq(
+                "Type `table` is missing the following fields from type `ManyFields`: a, b, c, d and 2 more."
+            )
         );
     }
 }

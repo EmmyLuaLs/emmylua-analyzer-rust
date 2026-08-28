@@ -67,7 +67,7 @@ pub use overload_resolve::{
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{
     AssignabilityResult, OverflowKind, TypeMismatch, TypeMismatchKind, TypePathInfo,
-    TypePathSegment, TypePathStep, check_assignable, is_assignable,
+    TypePathSegment, TypePathStep, check_assignable, is_assignable, is_optional,
 };
 
 pub use generic::get_keyof_members;

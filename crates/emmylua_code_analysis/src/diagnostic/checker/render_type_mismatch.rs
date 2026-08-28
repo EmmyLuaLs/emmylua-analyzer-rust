@@ -1,9 +1,11 @@
 use std::fmt::Write;
 
 use crate::{
-    DbIndex, LuaType, RenderLevel, TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment,
-    humanize_type,
+    DbIndex, LuaMemberKey, LuaType, RenderLevel, TypeMismatch, TypeMismatchKind, TypePathInfo,
+    TypePathSegment, humanize_type,
 };
+
+use super::humanize_lint_type;
 
 pub fn render_diagnostic_detail(
     db: &DbIndex,
@@ -52,9 +54,11 @@ fn render_type_mismatch_reason<'a>(
             &mut last_relation,
         ),
         TypeMismatchKind::Message(message) => push_text_line(&mut output, &mut depth, message),
-        TypeMismatchKind::MissingMember { key } => {
-            start_line(&mut output, depth);
-            let _ = write!(output, "Property '{}' is missing.", key.to_path());
+        TypeMismatchKind::MissingMembers { keys } => {
+            let (source, target) = last_relation.unwrap_or((root_source, root_target));
+            if let Some(text) = format_missing_fields(db, source, target, keys) {
+                push_text_line(&mut output, &mut depth, &text);
+            }
         }
         TypeMismatchKind::MissingTupleElement { index } => {
             start_line(&mut output, depth);
@@ -63,6 +67,61 @@ fn render_type_mismatch_reason<'a>(
     }
 
     (!output.is_empty()).then_some(output)
+}
+
+pub fn format_missing_fields(
+    db: &DbIndex,
+    source: &LuaType,
+    target: &LuaType,
+    keys: &[LuaMemberKey],
+) -> Option<String> {
+    let mut names = keys
+        .iter()
+        .filter_map(member_key_to_field_name)
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    names.dedup();
+    let first = names.first()?;
+
+    if names.len() == 1 {
+        return Some(
+            t!(
+                "Type `%{source}` is missing the `%{field}` field from type `%{target}`.",
+                source = humanize_lint_type(db, source),
+                field = first.clone(),
+                target = humanize_lint_type(db, target),
+            )
+            .to_string(),
+        );
+    }
+
+    let total_count = names.len();
+    let mut fields = names.into_iter().take(4).collect::<Vec<_>>().join(", ");
+    if total_count > 4 {
+        let more_count = total_count - 4;
+        fields.push_str(&format!(
+            " {}",
+            t!("and %{count} more.", count = more_count)
+        ));
+    }
+
+    Some(
+        t!(
+            "Type `%{source}` is missing the following fields from type `%{target}`: %{fields}",
+            source = humanize_lint_type(db, source),
+            target = humanize_lint_type(db, target),
+            fields = fields,
+        )
+        .to_string(),
+    )
+}
+
+fn member_key_to_field_name(key: &LuaMemberKey) -> Option<String> {
+    match key {
+        LuaMemberKey::Name(name) => Some(name.to_string()),
+        LuaMemberKey::Integer(index) => Some(format!("[{}]", index)),
+        LuaMemberKey::None | LuaMemberKey::TypeKey(_) => None,
+    }
 }
 
 fn render_path_title(

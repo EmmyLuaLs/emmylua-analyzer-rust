@@ -4,6 +4,7 @@ use crate::{
 };
 
 use super::super::{
+    is_optional,
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
 };
@@ -30,11 +31,15 @@ pub(super) fn relate_keyed_member(
     relater.consume_relation_budget()?;
     let source_member_type = find_source_member_type(relater, source, key, intersection_state)?;
     let Some(source_member_type) = source_member_type else {
-        if target_member_type.is_optional() {
+        // Explain 模式在此时必然经过了缺失字段判断, 因此可以直接跳过
+        if relater.is_explain() || is_optional(relater.db(), target_member_type) {
             return Ok(());
         }
-        return relater
-            .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingMember { key: key.clone() }));
+        return relater.unrelated(|| {
+            TypeMismatch::new(TypeMismatchKind::MissingMembers {
+                keys: vec![key.clone()],
+            })
+        });
     };
 
     let field_result =
@@ -269,4 +274,78 @@ pub(in crate::semantic::type_check) fn relate_target_intersection_index_members(
         }
     }
     Ok(())
+}
+
+/// 收集 target 中 source 缺失且不可空的 keyed 成员
+pub(in crate::semantic::type_check) fn collect_missing_members(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    intersection_state: IntersectionState,
+) -> Result<(Vec<LuaMemberKey>, bool), RelationFailure> {
+    let mut missing_keys = Vec::new();
+    let mut has_shared_key = false;
+    match target {
+        LuaType::Object(object) => {
+            for (key, member_type) in object.get_fields() {
+                if find_source_member_type(relater, source, key, intersection_state)?.is_some() {
+                    has_shared_key = true;
+                } else if !is_optional(relater.db(), member_type) {
+                    missing_keys.push(key.clone());
+                }
+            }
+        }
+        LuaType::TableConst(range) => {
+            let owner = LuaMemberOwner::Element(range.clone());
+            let db = relater.db();
+            visit_member_items(db, &owner, |key, item| {
+                if matches!(key, LuaMemberKey::TypeKey(_)) {
+                    return Ok(());
+                }
+                if find_source_member_type(relater, source, key, intersection_state)?.is_some() {
+                    has_shared_key = true;
+                } else if !is_optional(db, &item.resolve_type(db).unwrap_or(LuaType::Any)) {
+                    missing_keys.push(key.clone());
+                }
+                Ok(())
+            })?;
+        }
+        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => {
+            visit_declared_members(relater, target, |relater, key, member_type| {
+                if matches!(key, LuaMemberKey::TypeKey(_)) {
+                    return Ok(());
+                }
+                if find_source_member_type(relater, source, key, intersection_state)?.is_some() {
+                    has_shared_key = true;
+                } else if !is_optional(relater.db(), member_type) {
+                    missing_keys.push(key.clone());
+                }
+                Ok(())
+            })?;
+        }
+        _ => {}
+    }
+    Ok((missing_keys, has_shared_key))
+}
+
+/// 探测目标成员在 source 中是否缺失且不可空.
+pub(super) fn probe_missing_member(
+    relater: &mut Relater,
+    source: &LuaType,
+    key: &LuaMemberKey,
+    target_member_type: &LuaType,
+    intersection_state: IntersectionState,
+) -> Result<bool, RelationFailure> {
+    if find_source_member_type(relater, source, key, intersection_state)?.is_some() {
+        return Ok(false);
+    }
+    Ok(!is_optional(relater.db(), target_member_type))
+}
+
+/// 用收集到的全部缺失字段构建整体失败.
+pub(in crate::semantic::type_check) fn unrelated_missing_members(
+    relater: &Relater,
+    keys: Vec<LuaMemberKey>,
+) -> RelationResult {
+    relater.unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingMembers { keys }))
 }

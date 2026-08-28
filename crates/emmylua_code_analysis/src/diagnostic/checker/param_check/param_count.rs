@@ -1,11 +1,9 @@
-use std::collections::HashSet;
-
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaGeneralToken, LuaLiteralToken,
 };
 
 use crate::{
-    DbIndex, DiagnosticCode, LuaFunctionType, LuaSignatureId, LuaType, SemanticModel,
+    DbIndex, DiagnosticCode, LuaFunctionType, LuaSignatureId, LuaType, SemanticModel, is_optional,
     semantic::is_func_last_param_variadic,
 };
 
@@ -382,56 +380,13 @@ fn get_param_count_range(
 }
 
 fn is_nullable(db: &DbIndex, typ: &LuaType, original_typ: Option<&LuaType>) -> bool {
-    match typ {
-        LuaType::Any | LuaType::Nil => true,
-        LuaType::Unknown => {
-            if let Some(original_typ) = original_typ
-                && original_typ.contain_tpl()
-            {
-                return is_nullable(db, original_typ, None);
-            }
-            true
-        }
-        LuaType::Ref(_) | LuaType::Union(_) | LuaType::MultiLineUnion(_) => {
-            is_composite_nullable(db, typ, original_typ)
-        }
-        _ => false,
+    if typ.is_unknown()
+        && let Some(original_typ) = original_typ
+        && original_typ.contain_tpl()
+    {
+        return is_optional(db, original_typ);
     }
-}
-
-fn is_composite_nullable(db: &DbIndex, typ: &LuaType, original_typ: Option<&LuaType>) -> bool {
-    let mut stack = vec![typ.clone()];
-    let mut visited = HashSet::new();
-    while let Some(typ) = stack.pop() {
-        if !visited.insert(typ.clone()) {
-            continue;
-        }
-        match typ {
-            LuaType::Any | LuaType::Nil => return true,
-            LuaType::Unknown => {
-                if let Some(original_typ) = original_typ
-                    && original_typ.contain_tpl()
-                {
-                    return is_nullable(db, original_typ, None);
-                }
-                return true;
-            }
-            LuaType::Ref(decl_id) => {
-                if let Some(decl) = db.get_type_index().get_type_decl(&decl_id)
-                    && decl.is_alias()
-                    && let Some(alias_origin) = decl.get_alias_ref()
-                {
-                    stack.push(alias_origin.clone());
-                }
-            }
-            LuaType::Union(union) => stack.extend(union.into_vec()),
-            LuaType::MultiLineUnion(union) => {
-                stack.extend(union.get_unions().iter().map(|(typ, _)| typ.clone()));
-            }
-            _ => {}
-        }
-    }
-    false
+    is_optional(db, typ)
 }
 
 fn get_params_len(params: &[(String, Option<LuaType>)]) -> Option<usize> {

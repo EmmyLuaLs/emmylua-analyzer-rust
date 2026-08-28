@@ -1,13 +1,17 @@
 use crate::{InFiled, LuaArrayType, LuaMemberKey, LuaMemberOwner, LuaTupleType, LuaType};
 
 use super::super::{
+    is_optional,
     mismatch::{OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
 use super::{
     array::effective_array_base,
     declared::relate_structural_source_to_declared_target,
-    member::{relate_index_member, relate_keyed_member, visit_member_items},
+    member::{
+        collect_missing_members, relate_index_member, relate_keyed_member,
+        unrelated_missing_members, visit_member_items,
+    },
     object_type::{relate_member_to_table_generic, relate_to_object_target},
 };
 
@@ -87,7 +91,7 @@ pub(super) fn relate_table_const_to_tuple(
             .get_member_item(&owner, &key)
             .map(|item| item.resolve_type(relater.db()).unwrap_or(LuaType::Any));
         let Some(source_type) = source_type else {
-            if target_type.is_optional() {
+            if is_optional(relater.db(), target_type) {
                 continue;
             }
             return relater
@@ -181,6 +185,15 @@ pub(super) fn relate_to_table_const_target(
 ) -> RelationResult {
     let owner = LuaMemberOwner::Element(range.clone());
     let db = relater.db();
+
+    if relater.is_explain() {
+        let (missing_keys, _) =
+            collect_missing_members(relater, source, target, intersection_state)?;
+        if !missing_keys.is_empty() {
+            return unrelated_missing_members(relater, missing_keys);
+        }
+    }
+
     visit_member_items(db, &owner, |key, item| {
         let target_member_type = item.resolve_type(db).unwrap_or(LuaType::Any);
         if let LuaMemberKey::TypeKey(target_key_type) = key {

@@ -16,7 +16,10 @@ use super::super::{
 };
 use super::{
     array::relate_keyed_source_to_array,
-    member::{relate_index_member, relate_keyed_member, visit_member_items},
+    member::{
+        collect_missing_members, relate_index_member, relate_keyed_member,
+        unrelated_missing_members, visit_member_items,
+    },
     object_type::{relate_member_to_table_generic, relate_to_object_target},
     table_const::relate_to_table_const_target,
     tuple::relate_keyed_source_to_tuple,
@@ -466,6 +469,14 @@ pub(in crate::semantic::type_check) fn relate_to_declared_target_members(
             .is_none()
     }) {
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    }
+
+    if relater.is_explain() {
+        let (missing_keys, _) =
+            collect_missing_members(relater, source, target, intersection_state)?;
+        if !missing_keys.is_empty() {
+            return unrelated_missing_members(relater, missing_keys);
+        }
     }
 
     visit_declared_members(relater, target, |relater, key, target_member_type| {

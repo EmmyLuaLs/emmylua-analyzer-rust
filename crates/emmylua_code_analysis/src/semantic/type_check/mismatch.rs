@@ -23,7 +23,7 @@ pub enum TypePathSegment {
 pub enum TypeMismatchKind {
     Incompatible { source: LuaType, target: LuaType },
     Message(String),
-    MissingMember { key: LuaMemberKey },
+    MissingMembers { keys: Vec<LuaMemberKey> },
     MissingTupleElement { index: usize },
 }
 

@@ -1,35 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use lsp_types::{Diagnostic, NumberOrString};
-    use tokio_util::sync::CancellationToken;
+    use googletest::prelude::*;
 
     use crate::{DiagnosticCode, VirtualWorkspace};
 
-    fn assign_type_diagnostics(ws: &mut VirtualWorkspace, source: &str) -> Vec<Diagnostic> {
-        ws.analysis
-            .diagnostic
-            .enable_only(DiagnosticCode::AssignTypeMismatch);
-        let file_id = ws.def(source);
-        let code = Some(NumberOrString::String(
-            DiagnosticCode::AssignTypeMismatch.get_name().to_string(),
-        ));
-        ws.analysis
-            .diagnose_file(file_id, CancellationToken::new())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|diagnostic| diagnostic.code == code)
-            .collect()
-    }
-
-    fn first_assign_diagnostic_message(ws: &mut VirtualWorkspace, source: &str) -> String {
-        assign_type_diagnostics(ws, source)
-            .into_iter()
-            .next()
-            .map(|diagnostic| diagnostic.message)
-            .unwrap_or_default()
-    }
-
-    #[test]
+    #[gtest]
     fn nested_table_fields_report_each_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class NestedLeaf
@@ -52,19 +27,19 @@ local target = {
             })
             .collect::<Vec<_>>();
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
-        assert_eq!(
+        assert_that!(diagnostics.len(), eq(2));
+        assert_that!(
             diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.range.start.line)
                 .collect::<Vec<_>>(),
-            expected_lines
+            eq(&expected_lines)
         );
     }
 
-    #[test]
+    #[gtest]
     fn nullable_nested_table_reports_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class NullableNestedLeaf
@@ -82,13 +57,17 @@ local target = {
             .position(|line| line.contains("value ="))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `\"invalid\"` to `integer`.")
+        );
     }
 
-    #[test]
+    #[gtest]
     fn nullable_root_table_reports_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class Icon
@@ -116,18 +95,19 @@ tmp.icon_list = {
             .position(|line| line.contains("icon = a"))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
-        assert!(
-            diagnostics[0]
-                .message
-                .contains("Cannot assign `string?` to `string`.")
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Cannot assign `string?` to `string`.\n  Type 'nil' is not assignable to type 'string'."
+            )
         );
     }
 
-    #[test]
+    #[gtest]
     fn generic_table_targets_report_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class Box<T>
@@ -157,24 +137,22 @@ direct = {
             .filter_map(|(line, text)| text.contains("value =").then_some(line as u32))
             .collect::<Vec<_>>();
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 3, "{diagnostics:#?}");
-        assert_eq!(
+        assert_that!(diagnostics.len(), eq(3));
+        assert_that!(
             diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.range.start.line)
                 .collect::<Vec<_>>(),
-            expected_lines
+            eq(&expected_lines)
         );
-        assert!(diagnostics.iter().enumerate().all(|(i, diagnostic)| {
-            diagnostic
-                .message
-                .contains(&format!("Cannot assign `{}` to `string`.", i + 1))
-        }));
+        assert_that!(diagnostics[0].message, eq("Cannot assign `1` to `string`."));
+        assert_that!(diagnostics[1].message, eq("Cannot assign `2` to `string`."));
+        assert_that!(diagnostics[2].message, eq("Cannot assign `3` to `string`."));
     }
 
-    #[test]
+    #[gtest]
     fn nullable_scalar_table_keeps_outer_mismatch() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let source = r#"---@type "x"?
@@ -188,14 +166,17 @@ target = {
             .position(|line| line.contains("target ="))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
-        assert!(diagnostics[0].message.contains("to `\"x\"?`"));
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `{ len = 1 }` to `\"x\"?`.")
+        );
     }
 
-    #[test]
+    #[gtest]
     fn nullable_scalar_generic_alias_keeps_outer_mismatch() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let source = r#"---@alias Identity<T> T
@@ -211,13 +192,17 @@ target = {
             .position(|line| line.contains("target ="))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `{ len = 1 }` to `Identity<\"x\">?`.")
+        );
     }
 
-    #[test]
+    #[gtest]
     fn nullable_target_preserves_missing_member_detail() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class RequiredValue
@@ -227,19 +212,22 @@ local source
 ---@type RequiredValue?
 local target = source"#;
 
-        let message = first_assign_diagnostic_message(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert!(
-            message.contains("Property 'value' is missing."),
-            "{message}"
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Cannot assign `{  }` to `RequiredValue?`.\n  Type `{  }` is missing the `value` field from type `RequiredValue?`."
+            )
         );
     }
 
-    #[test]
+    #[gtest]
     fn nested_alias_arrays_report_full_diagnostic() {
         let mut ws = VirtualWorkspace::new();
-        let message = first_assign_diagnostic_message(
-            &mut ws,
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::AssignTypeMismatch,
             r#"---@alias LeafTarget { id: number }
 ---@alias ContainerTarget { items: LeafTarget[] }
 ---@alias RootTarget { containers: ContainerTarget[] }
@@ -257,9 +245,10 @@ local source
 target = source"#,
         );
 
-        assert_eq!(
-            message,
-            "Cannot assign `RootSource` to `RootTarget`.
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `RootSource` to `RootTarget`.
   The types of property 'containers' are incompatible.
     Type 'ContainerSource[]' is not assignable to type 'ContainerTarget[]'.
       Type 'ContainerSource' is not assignable to type 'ContainerTarget'.
@@ -267,15 +256,15 @@ target = source"#,
           Type 'LeafSource[]' is not assignable to type 'LeafTarget[]'.
             Type 'LeafSource' is not assignable to type 'LeafTarget'.
               The types of property 'id' are incompatible.
-                Type 'string' is not assignable to type 'number'."
+                Type 'string' is not assignable to type 'number'.")
         );
     }
 
-    #[test]
+    #[gtest]
     fn table_generic_to_nested_array_preserves_each_relation() {
         let mut ws = VirtualWorkspace::new();
-        let message = first_assign_diagnostic_message(
-            &mut ws,
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::AssignTypeMismatch,
             r#"---@alias SourceItem {}
 ---@alias TargetItem { id: number }
 
@@ -286,20 +275,23 @@ local source
 local target = source"#,
         );
 
-        assert_eq!(
-            message,
-            "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.
   Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
     Type 'SourceItem' is not assignable to type 'TargetItem'.
-      Property 'id' is missing."
+      Type `SourceItem` is missing the `id` field from type `TargetItem`."
+            )
         );
     }
 
-    #[test]
+    #[gtest]
     fn keyed_source_to_nested_array_preserves_each_relation() {
         let mut ws = VirtualWorkspace::new();
-        let message = first_assign_diagnostic_message(
-            &mut ws,
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::AssignTypeMismatch,
             r#"---@alias SourceItem {}
 ---@alias TargetItem { id: number }
 
@@ -313,20 +305,21 @@ local source
 local target = source"#,
         );
 
-        assert_eq!(
-            message,
-            "Cannot assign `IndexedSource` to `TargetItem[][]`.
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `IndexedSource` to `TargetItem[][]`.
   Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
     Type 'SourceItem' is not assignable to type 'TargetItem'.
-      Property 'id' is missing."
+      Type `SourceItem` is missing the `id` field from type `TargetItem`.")
         );
     }
 
-    #[test]
+    #[gtest]
     fn nested_array_to_object_alias_reports_inner_array_type() {
         let mut ws = VirtualWorkspace::new();
-        let message = first_assign_diagnostic_message(
-            &mut ws,
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@alias Item { foo: number }
             ---@type string[][][]
@@ -336,13 +329,16 @@ local target = source"#,
             "#,
         );
 
-        assert_eq!(
-            message,
-            "Cannot assign `string[][][]` to `Item[]`.\n  Type 'string[][]' is not assignable to type 'Item?'."
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Cannot assign `string[][][]` to `Item[]`.\n  Type 'string[][]' is not assignable to type 'Item?'."
+            )
         );
     }
 
-    #[test]
+    #[gtest]
     fn nullable_array_element_reports_incompatible_non_nil_branch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@type string?
@@ -353,26 +349,28 @@ local target = {
     value,
 }"#;
 
-        assert!(!ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
+        assert_false!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
     }
 
-    #[test]
+    #[gtest]
     fn nullable_union_mismatch_does_not_render_nil_branch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"local target ---@type boolean?
 local source ---@type string?
 target = source"#;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
             diagnostics[0].message,
-            "Cannot assign `string?` to `boolean?`.\n  Type 'string' is not assignable to type 'boolean?'."
+            eq(
+                "Cannot assign `string?` to `boolean?`.\n  Type 'string' is not assignable to type 'boolean?'."
+            )
         );
     }
 
-    #[test]
+    #[gtest]
     fn tail_variadic_uses_sequence_index_after_named_fields() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@return number, string
@@ -389,13 +387,13 @@ local target = {
             .position(|line| line.contains("pair(),"))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
     }
 
-    #[test]
+    #[gtest]
     fn tail_variadic_ignores_trailing_comment() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@return string, number
@@ -410,13 +408,13 @@ local target = {
             .position(|line| line.contains("pair(),"))
             .unwrap() as u32;
 
-        let diagnostics = assign_type_diagnostics(&mut ws, source);
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
-        assert_eq!(diagnostics[0].range.start.line, expected_line);
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(diagnostics[0].range.start.line, eq(expected_line));
     }
 
-    #[test]
+    #[gtest]
     fn union_table_mismatch_reports_deepest_field_mismatch() {
         let mut ws = VirtualWorkspace::new();
         let source = r#"---@class C
@@ -430,7 +428,11 @@ local function cd(cd) end
 
 cd({ type = "test" })"#;
 
-        let message = first_assign_diagnostic_message(&mut ws, source);
-        assert_eq!(message, "Cannot assign `\"test\"` to `(\"one\"|\"two\")`.");
+        let diagnostics = ws.get_diagnostics(DiagnosticCode::AssignTypeMismatch, source);
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Cannot assign `\"test\"` to `(\"one\"|\"two\")`.")
+        );
     }
 }

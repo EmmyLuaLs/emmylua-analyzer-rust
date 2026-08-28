@@ -1,8 +1,9 @@
-use crate::{BasicTypeKind, LuaType, LuaUnionType};
+use crate::{BasicTypeKind, LuaMemberKey, LuaType, LuaUnionType};
 
 use super::{
     mismatch::{TypeMismatch, TypeMismatchKind},
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
+    structured::{collect_missing_members, unrelated_missing_members},
 };
 
 pub(crate) fn relate_union(
@@ -138,37 +139,53 @@ fn relate_to_target_union_candidates(
     candidates: &[LuaType],
     intersection_state: IntersectionState,
 ) -> RelationResult {
-    let mut best = None;
     let mut indeterminate = None;
-    for (index, candidate) in candidates.iter().enumerate() {
-        let (outcome, progress) = relater.probe_relation(source, candidate, intersection_state);
-        match outcome {
+    for candidate in candidates.iter() {
+        match relater
+            .probe_relation(source, candidate, intersection_state)
+            .0
+        {
             RelationOutcome::Related => return Ok(()),
             RelationOutcome::Indeterminate(kind) => {
                 indeterminate.get_or_insert(kind);
             }
-            RelationOutcome::Unrelated => {
-                if best
-                    .map(|(_, current_progress)| progress > current_progress)
-                    .unwrap_or(true)
-                {
-                    best = Some((index, progress));
-                }
-            }
+            RelationOutcome::Unrelated => {}
         }
     }
     if let Some(kind) = indeterminate {
         return Err(RelationFailure::Indeterminate(kind));
     }
 
-    let Some((best_index, best_progress)) = best else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
-    };
     if !relater.is_explain() {
         return Err(RelationFailure::Unrelated(None));
     }
-    if best_progress == 0 {
+
+    // probe_relation 有早退行为, 因此得到的结果并不一定是最匹配的, 我们必须独立处理缺失字段判别.
+    let mut evidence: Option<(usize, Vec<LuaMemberKey>)> = None;
+    for (index, candidate) in candidates.iter().enumerate() {
+        let (missing_keys, has_shared_key) =
+            collect_missing_members(relater, source, candidate, intersection_state)?;
+        if !has_shared_key {
+            continue;
+        }
+        if missing_keys.is_empty() {
+            // 必填字段全部在场: 失败必然是字段类型不匹配, 重放该分支取路径化证据.
+            evidence = Some((index, missing_keys));
+            break;
+        }
+        if evidence
+            .as_ref()
+            .is_none_or(|(_, best_missing)| missing_keys.len() < best_missing.len())
+        {
+            evidence = Some((index, missing_keys));
+        }
+    }
+
+    let Some((best_index, missing_keys)) = evidence else {
         return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    };
+    if !missing_keys.is_empty() {
+        return unrelated_missing_members(relater, missing_keys);
     }
     relater.relate(source, &candidates[best_index], intersection_state)
 }

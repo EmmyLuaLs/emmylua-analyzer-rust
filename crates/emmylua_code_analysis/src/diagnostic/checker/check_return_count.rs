@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus,
-    compilation::analyze_func_body_missing_return_flags_with,
+    compilation::analyze_func_body_missing_return_flags_with, is_optional,
 };
 
 use super::{Checker, DiagnosticContext, get_return_stats};
@@ -81,9 +81,10 @@ fn check_missing_return(
             let mut real_min_len = min_len;
             // 逆序检查
             if min_len > 0 {
+                let db = semantic_model.get_db();
                 for i in (0..min_len).rev() {
                     if let Some(ty) = variadic.get_type(i) {
-                        if ty.is_optional() {
+                        if is_optional(db, ty) {
                             real_min_len -= 1;
                         } else {
                             break;
@@ -94,7 +95,7 @@ fn check_missing_return(
             real_min_len
         }
         LuaType::Nil | LuaType::Any | LuaType::Unknown => 0,
-        _ if return_type.is_nullable() => 0,
+        _ if is_optional(semantic_model.get_db(), &return_type) => 0,
         _ => 1,
     };
 

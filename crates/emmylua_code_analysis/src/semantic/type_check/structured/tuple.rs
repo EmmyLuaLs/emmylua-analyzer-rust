@@ -4,13 +4,14 @@ use crate::{
 };
 
 use super::super::{
+    is_optional,
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
 use super::{
     array::effective_array_base,
     declared::{resolve_declared_target_alias_or_enum, visit_declared_members},
-    member::relate_index_member,
+    member::{probe_missing_member, relate_index_member, unrelated_missing_members},
     table_const::relate_to_table_const_target,
 };
 
@@ -122,7 +123,7 @@ pub(super) fn relate_tuple_to_tuple(
             }
         });
         let Some(source_type) = source_type else {
-            if index >= target_required_len || target_type.is_optional() {
+            if index >= target_required_len || is_optional(relater.db(), target_type) {
                 continue;
             }
             return relater
@@ -267,7 +268,7 @@ pub(super) fn relate_keyed_source_to_tuple(
             .and_then(|members| members.into_iter().next())
             .map(|member| member.typ);
         let Some(source_type) = source_type else {
-            if target_type.is_optional() {
+            if is_optional(relater.db(), target_type) {
                 continue;
             }
             return relater
@@ -360,6 +361,22 @@ fn relate_tuple_to_declared_target(
         return result;
     }
 
+    if relater.is_explain() {
+        let mut missing_keys = Vec::new();
+        visit_declared_members(relater, target, |relater, key, target_member_type| {
+            if !matches!(key, LuaMemberKey::Name(_) | LuaMemberKey::None) {
+                return Ok(());
+            }
+            if probe_missing_member(relater, source, key, target_member_type, intersection_state)? {
+                missing_keys.push(key.clone());
+            }
+            Ok(())
+        })?;
+        if !missing_keys.is_empty() {
+            return unrelated_missing_members(relater, missing_keys);
+        }
+    }
+
     // 检查是否含有必需的命名字段
     let mut has_integer_or_index = false;
     let mut mismatch = None;
@@ -372,7 +389,7 @@ fn relate_tuple_to_declared_target(
                     has_integer_or_index = true;
                     let index = (*idx - 1) as usize;
                     let Some(source_type) = source_tuple.get_type(index) else {
-                        if target_member_type.is_optional() {
+                        if is_optional(relater.db(), target_member_type) {
                             return Ok(());
                         }
                         mismatch = Some(TypeMismatch::incompatible(source, target));
@@ -402,8 +419,10 @@ fn relate_tuple_to_declared_target(
                     )
                 }
                 _ => {
-                    if !target_member_type.is_optional() {
-                        mismatch = Some(TypeMismatch::incompatible(source, target));
+                    if !is_optional(relater.db(), target_member_type) {
+                        mismatch = Some(TypeMismatch::new(TypeMismatchKind::MissingMembers {
+                            keys: vec![key.clone()],
+                        }));
                         return Err(RelationFailure::Unrelated(mismatch.clone()));
                     }
                     Ok(())

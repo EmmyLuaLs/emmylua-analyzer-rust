@@ -1,7 +1,7 @@
 use crate::{
     AssignabilityResult, DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
     diagnostic::checker::humanize_lint_type, get_attribute_constructor_params, infer_doc_type,
-    is_attribute_class,
+    is_attribute_class, is_optional,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
@@ -84,7 +84,11 @@ fn check_param_count(
             if def_param.0 == "..." {
                 break;
             }
-            if def_param.1.as_ref().is_some_and(LuaType::is_optional) {
+            if def_param
+                .1
+                .as_ref()
+                .is_some_and(|typ| is_optional(context.db, typ))
+            {
                 continue;
             }
             context.add_diagnostic(

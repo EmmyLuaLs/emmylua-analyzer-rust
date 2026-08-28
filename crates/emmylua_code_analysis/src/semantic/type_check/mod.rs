@@ -18,7 +18,7 @@ use relation::RelationSession;
 pub use sub_type::is_sub_type_of;
 
 use crate::{
-    DbIndex, GenericTpl, LuaAliasCallKind, LuaType, LuaUnionType, TypeSubstitutor,
+    BasicTypeKind, DbIndex, GenericTpl, LuaAliasCallKind, LuaType, LuaUnionType, TypeSubstitutor,
     instantiate_type_generic,
 };
 
@@ -166,4 +166,56 @@ pub(super) fn is_circular_tpl_constraint(tpl: &GenericTpl) -> bool {
         Some(LuaType::TplRef(constraint_tpl))
             if constraint_tpl.get_tpl_id() == tpl.get_tpl_id()
     )
+}
+
+/// 快速判断是否可空, 结果为`false`时并不是准确的
+pub fn is_optional(db: &DbIndex, typ: &LuaType) -> bool {
+    is_optional_inner(db, typ, 0)
+}
+
+fn is_optional_inner(db: &DbIndex, typ: &LuaType, depth: usize) -> bool {
+    const MAX_DEPTH: usize = 8;
+    if depth > MAX_DEPTH {
+        return false;
+    }
+
+    match typ {
+        LuaType::Nil | LuaType::Any | LuaType::Unknown | LuaType::Variadic(_) => true,
+        LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Basic(basic) => basic.contains(BasicTypeKind::Nil),
+            LuaUnionType::Nullable(_) => true,
+            LuaUnionType::Multi(types) => types.iter().any(|t| is_optional_inner(db, t, depth + 1)),
+        },
+        LuaType::MultiLineUnion(union) => union
+            .get_unions()
+            .iter()
+            .any(|(t, _)| is_optional_inner(db, t, depth + 1)),
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+            if let Some(type_decl) = db.get_type_index().get_type_decl(type_id) {
+                if let Some(alias_origin) = type_decl.get_alias_ref() {
+                    return is_optional_inner(db, alias_origin, depth + 1);
+                }
+            }
+            false
+        }
+        LuaType::Generic(generic) => {
+            let base_id = generic.get_base_type_id_ref();
+            if let Some(type_decl) = db.get_type_index().get_type_decl(base_id) {
+                if let Some(alias_origin) = type_decl.get_alias_ref() {
+                    return is_optional_inner(db, alias_origin, depth + 1);
+                }
+            }
+            false
+        }
+        LuaType::Instance(instance) => is_optional_inner(db, instance.get_base(), depth + 1),
+        LuaType::TplRef(tpl) => {
+            if let Some(constraint) = tpl.get_constraint() {
+                if constraint != typ {
+                    return is_optional_inner(db, constraint, depth + 1);
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }

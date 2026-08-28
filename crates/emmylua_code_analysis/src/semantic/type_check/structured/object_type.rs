@@ -1,13 +1,17 @@
 use crate::{LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType};
 
 use super::super::{
+    is_optional,
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationResult},
 };
 use super::{
     array::effective_array_base,
     declared::relate_structural_source_to_declared_target,
-    member::{relate_index_member, relate_keyed_member},
+    member::{
+        collect_missing_members, relate_index_member, relate_keyed_member,
+        unrelated_missing_members,
+    },
     table_const::relate_to_table_const_target,
 };
 
@@ -82,7 +86,7 @@ pub(super) fn relate_object_to_tuple(
         relater.consume_relation_budget()?;
         let key = LuaMemberKey::Integer(index as i64 + 1);
         let Some(source_type) = source_object.get_field(&key) else {
-            if target_type.is_optional() {
+            if is_optional(relater.db(), target_type) {
                 continue;
             }
             return relater
@@ -231,6 +235,14 @@ pub(in crate::semantic::type_check) fn relate_to_object_target(
         );
     }
 
+    if relater.is_explain() {
+        let (missing_keys, _) =
+            collect_missing_members(relater, source, target, intersection_state)?;
+        if !missing_keys.is_empty() {
+            return unrelated_missing_members(relater, missing_keys);
+        }
+    }
+
     for (key, target_member_type) in target_object.get_fields() {
         relate_keyed_member(relater, source, key, target_member_type, intersection_state)?;
     }
@@ -260,16 +272,31 @@ pub(super) fn relate_object_to_object(
     target_object: &LuaObjectType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
+    // 对于解释模式, 我们应先做可空判断.
+    if relater.is_explain() {
+        let mut missing_keys = Vec::new();
+        for (target_key, target_member_type) in target_object.get_fields() {
+            if source_object.get_field(target_key).is_none()
+                && !is_optional(relater.db(), target_member_type)
+            {
+                missing_keys.push(target_key.clone());
+            }
+        }
+        if !missing_keys.is_empty() {
+            return unrelated_missing_members(relater, missing_keys);
+        }
+    }
+
     for (target_key, target_member_type) in target_object.get_fields() {
         relater.consume_relation_budget()?;
         let source_member_type = source_object.get_field(target_key);
         let Some(source_member_type) = source_member_type else {
-            if target_member_type.is_optional() {
+            if relater.is_explain() || is_optional(relater.db(), target_member_type) {
                 continue;
             }
             return relater.unrelated(|| {
-                TypeMismatch::new(TypeMismatchKind::MissingMember {
-                    key: target_key.clone(),
+                TypeMismatch::new(TypeMismatchKind::MissingMembers {
+                    keys: vec![target_key.clone()],
                 })
             });
         };

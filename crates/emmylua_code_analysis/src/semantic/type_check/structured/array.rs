@@ -4,6 +4,7 @@ use crate::{
 };
 
 use super::super::{
+    is_optional,
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
@@ -123,7 +124,7 @@ pub(super) fn relate_array_to_tuple(
                     target_required_len = target_required_len.max(index + min_len);
                 }
             }
-            _ if !target_type.is_optional() => target_required_len = index + 1,
+            _ if !is_optional(relater.db(), target_type) => target_required_len = index + 1,
             _ => {}
         }
     }
