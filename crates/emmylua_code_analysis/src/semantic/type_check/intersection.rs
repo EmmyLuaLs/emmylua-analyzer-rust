@@ -3,7 +3,7 @@ use crate::{LuaIntersectionType, LuaType};
 use super::{
     mismatch::TypeMismatch,
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
-    structured::{relate_structured, relate_target_intersection_index_obligations},
+    structured::{relate_structured, relate_target_intersection_index_members},
 };
 
 pub(crate) fn relate_intersection(
@@ -56,12 +56,8 @@ fn relate_to_target_intersection(
     }
 
     if !outer_intersection_state.contains(IntersectionState::TARGET) {
-        match relate_target_intersection_index_obligations(
-            relater,
-            source,
-            target,
-            target_intersection,
-        ) {
+        match relate_target_intersection_index_members(relater, source, target, target_intersection)
+        {
             Ok(()) => {}
             Err(failure @ RelationFailure::Unrelated(_)) => return Err(failure),
             Err(failure @ RelationFailure::Indeterminate(_)) => {

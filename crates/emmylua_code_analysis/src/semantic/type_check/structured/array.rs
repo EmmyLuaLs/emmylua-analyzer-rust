@@ -1,19 +1,16 @@
 use crate::{
     LuaArrayLen, LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, LuaUnionType,
     find_members_with_key,
-    semantic::type_check::{
-        relation::RelationFailure,
-        structured::{
-            declared::resolve_declared_target_alias_or_enum,
-            object_type::{relate_index_obligation, visit_declared_members},
-            relate_to_table_const_target,
-        },
-    },
 };
 
 use super::super::{
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationResult},
+    relation::{IntersectionState, Relater, RelationFailure, RelationResult},
+};
+use super::{
+    declared::{resolve_declared_target_alias_or_enum, visit_declared_members},
+    member::relate_index_member,
+    table_const::relate_to_table_const_target,
 };
 
 pub(super) fn relate_array_source(
@@ -377,7 +374,7 @@ fn relate_array_to_declared_target(
                     if intersection_state.contains(IntersectionState::TARGET) {
                         return Ok(());
                     }
-                    relate_index_obligation(
+                    relate_index_member(
                         relater,
                         source,
                         target,

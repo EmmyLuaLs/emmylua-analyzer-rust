@@ -1,11 +1,9 @@
 use hashbrown::HashSet;
 
 use crate::{
-    DbIndex, LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDecl, LuaTypeDeclId, TypeSubstitutor,
-    complete_type_generic_args_in_type, instantiate_type_generic,
-    semantic::type_check::structured::object_type::{
-        relate_member_to_table_generic, visit_declared_members,
-    },
+    DbIndex, LuaGenericType, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaType,
+    LuaTypeDecl, LuaTypeDeclId, TypeSubstitutor, complete_type_generic_args_in_type,
+    instantiate_type_generic,
 };
 
 use super::super::{
@@ -18,7 +16,8 @@ use super::super::{
 };
 use super::{
     array::relate_keyed_source_to_array,
-    object_type::{relate_object_members, relate_to_declared_target_members},
+    member::{relate_index_member, relate_keyed_member, visit_member_items},
+    object_type::{relate_member_to_table_generic, relate_to_object_target},
     table_const::relate_to_table_const_target,
     tuple::relate_keyed_source_to_tuple,
 };
@@ -124,7 +123,7 @@ fn relate_class_source(
             target_params,
             intersection_state,
         )),
-        LuaType::Object(target_object) => Some(relate_object_members(
+        LuaType::Object(target_object) => Some(relate_to_object_target(
             relater,
             source,
             target,
@@ -446,6 +445,237 @@ fn relate_class_source_to_simple_target(
     }
 
     Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)))
+}
+
+pub(in crate::semantic::type_check) fn relate_to_declared_target_members(
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
+    intersection_state: IntersectionState,
+) -> RelationResult {
+    let target_id = match target {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => Some(type_id),
+        LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
+        _ => None,
+    };
+    if target_id.is_some_and(|type_id| {
+        relater
+            .db()
+            .get_type_index()
+            .get_type_decl(type_id)
+            .is_none()
+    }) {
+        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+    }
+
+    visit_declared_members(relater, target, |relater, key, target_member_type| {
+        if let LuaMemberKey::TypeKey(target_key_type) = key {
+            if intersection_state.contains(IntersectionState::TARGET) {
+                return Ok(());
+            }
+            return relate_index_member(
+                relater,
+                source,
+                target,
+                target_key_type,
+                target_member_type,
+                intersection_state,
+            );
+        }
+
+        relate_keyed_member(relater, source, key, target_member_type, intersection_state)
+    })
+}
+
+pub(super) fn visit_declared_members(
+    relater: &mut Relater,
+    declared_type: &LuaType,
+    mut visitor: impl FnMut(&mut Relater, &LuaMemberKey, &LuaType) -> RelationResult,
+) -> RelationResult {
+    let mut seen_keys = HashSet::new();
+    let mut visited_types = HashSet::new();
+    visit_declared_type_members(
+        relater,
+        declared_type,
+        &mut seen_keys,
+        &mut visited_types,
+        &mut visitor,
+    )
+}
+
+fn visit_declared_type_members(
+    relater: &mut Relater,
+    declared_type: &LuaType,
+    seen_keys: &mut HashSet<LuaMemberKey>,
+    visited_types: &mut HashSet<LuaTypeDeclId>,
+    visitor: &mut impl FnMut(&mut Relater, &LuaMemberKey, &LuaType) -> RelationResult,
+) -> RelationResult {
+    // 用于为实例化后的对象类型提供快速路径
+    match declared_type {
+        LuaType::Object(object) => {
+            for (key, member_type) in object.get_fields() {
+                if !seen_keys.insert(key.clone()) {
+                    continue;
+                }
+                visitor(relater, key, member_type)?;
+            }
+            for (key_type, member_type) in object.get_index_access() {
+                let key = LuaMemberKey::TypeKey(key_type.clone());
+                if !seen_keys.insert(key.clone()) {
+                    continue;
+                }
+                visitor(relater, &key, member_type)?;
+            }
+            return Ok(());
+        }
+        LuaType::TableGeneric(params) if params.len() == 2 => {
+            let key = LuaMemberKey::TypeKey(params[0].clone());
+            if seen_keys.insert(key.clone()) {
+                visitor(relater, &key, &params[1])?;
+            }
+            return Ok(());
+        }
+        LuaType::Tuple(tuple) => {
+            for (index, member_type) in tuple.get_types().iter().enumerate() {
+                let key = LuaMemberKey::Integer(index as i64 + 1);
+                if !seen_keys.insert(key.clone()) {
+                    continue;
+                }
+                visitor(relater, &key, member_type)?;
+            }
+            return Ok(());
+        }
+        LuaType::Array(array) => {
+            let key = LuaMemberKey::TypeKey(LuaType::Integer);
+            if seen_keys.insert(key.clone()) {
+                visitor(relater, &key, array.get_base())?;
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    let (type_id, substitutor, generic_params) = match declared_type {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => (type_id.clone(), None, None),
+        LuaType::Generic(generic) => (
+            generic.get_base_type_id(),
+            Some(TypeSubstitutor::from_type_array(
+                generic.get_params().clone(),
+            )),
+            Some(generic.get_params()),
+        ),
+        _ => return Ok(()),
+    };
+    let db = relater.db();
+    let owner = LuaMemberOwner::Type(type_id.clone());
+    let type_decl = db.get_type_index().get_type_decl(&type_id);
+    let is_alias = type_decl.as_ref().is_some_and(|decl| decl.is_alias());
+    let has_supers = db
+        .get_type_index()
+        .get_super_types_iter(&type_id)
+        .is_some_and(|mut supers| supers.next().is_some());
+
+    // alias 的有效成员位于 origin, 需要落到慢路径的 alias 回退, 不进快路径.
+    if !has_supers && !is_alias && seen_keys.is_empty() {
+        // 非泛型成员直接复用索引键, 避免宽对象关系检查为每个字段复制键.
+        let Some(substitutor) = substitutor.as_ref() else {
+            visit_member_items(db, &owner, |key, item| {
+                let Ok(member_type) = item.resolve_type(db) else {
+                    return Ok(());
+                };
+                visitor(relater, key, &member_type)
+            })?;
+            return Ok(());
+        };
+        visit_member_items(db, &owner, |key, item| {
+            let Some((key, member_type)) = resolve_instantiated_member(db, key, item, substitutor)
+            else {
+                return Ok(());
+            };
+            visitor(relater, &key, &member_type)
+        })?;
+        return Ok(());
+    }
+
+    if !visited_types.insert(type_id.clone()) {
+        return Ok(());
+    }
+
+    if let Some(substitutor) = substitutor.as_ref() {
+        visit_member_items(db, &owner, |key, item| {
+            let Some((key, member_type)) = resolve_instantiated_member(db, key, item, substitutor)
+            else {
+                return Ok(());
+            };
+            if !seen_keys.insert(key.clone()) {
+                return Ok(());
+            }
+            visitor(relater, &key, &member_type)
+        })?;
+    } else {
+        visit_member_items(db, &owner, |key, item| {
+            if !seen_keys.insert(key.clone()) {
+                return Ok(());
+            }
+            let Ok(member_type) = item.resolve_type(db) else {
+                return Ok(());
+            };
+            visitor(relater, key, &member_type)
+        })?;
+    }
+
+    if let Some(super_types) = db.get_type_index().get_super_types_iter(&type_id) {
+        for super_type in super_types {
+            let super_type = substitutor
+                .as_ref()
+                .map(|substitutor| instantiate_type_generic(db, super_type, substitutor))
+                .unwrap_or_else(|| super_type.clone());
+            visit_declared_type_members(relater, &super_type, seen_keys, visited_types, visitor)?;
+        }
+    }
+
+    // 无父类型且无自身成员的 alias: 有效成员位于 alias origin.
+    // alias substitutor 只在此处需要, 确认 is_alias && !has_supers 后再构造.
+    if !has_supers
+        && let Some(type_decl) = type_decl.as_ref()
+        && type_decl.is_alias()
+    {
+        let alias_substitutor = generic_params.map(|generic_params| {
+            TypeSubstitutor::from_alias(generic_params.to_vec(), type_id.clone())
+        });
+        if let Some(origin) = type_decl.get_alias_origin(db, alias_substitutor.as_ref()) {
+            return visit_declared_type_members(
+                relater,
+                &origin,
+                seen_keys,
+                visited_types,
+                visitor,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_instantiated_member(
+    db: &DbIndex,
+    key: &LuaMemberKey,
+    item: &LuaMemberIndexItem,
+    substitutor: &TypeSubstitutor,
+) -> Option<(LuaMemberKey, LuaType)> {
+    let Ok(member_type) = item.resolve_type(db) else {
+        return None;
+    };
+    let member_type = instantiate_type_generic(db, &member_type, substitutor);
+    let mut key = key.clone();
+    // 索引成员的键类型同样需要实例化, 否则泛型父类型的 [T] 无法收敛为实际键.
+    if let LuaMemberKey::TypeKey(key_type) = &key {
+        let instantiated_key = instantiate_type_generic(db, key_type, substitutor);
+        if instantiated_key != *key_type {
+            key = LuaMemberKey::TypeKey(instantiated_key);
+        }
+    }
+    Some((key, member_type))
 }
 
 pub(super) fn declared_type_has_members(db: &DbIndex, typ: &LuaType) -> bool {

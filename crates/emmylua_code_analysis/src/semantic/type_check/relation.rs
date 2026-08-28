@@ -11,7 +11,7 @@ use super::{
     is_circular_tpl_constraint,
     mismatch::{OverflowKind, TypeMismatch},
     simple::relate_simple,
-    structured::{relate_object_members, relate_structured, relate_to_declared_target_members},
+    structured::{relate_structured, relate_to_declared_target_members, relate_to_object_target},
     union::relate_union,
 };
 
@@ -254,7 +254,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             LuaType::TableConst(_) | LuaType::Object(_) => {
                 if let LuaType::Object(target_object) = target {
                     return self.run_fast_path(|relater| {
-                        relate_object_members(
+                        relate_to_object_target(
                             relater,
                             source,
                             target,
@@ -336,7 +336,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         if allow_structured_fast_path {
             if let LuaType::Object(target_object) = target {
                 return self.run_fast_path(|relater| {
-                    relate_object_members(
+                    relate_to_object_target(
                         relater,
                         source,
                         target,

@@ -9,7 +9,7 @@ use super::super::{
 use super::{
     array::{append_array_element_path, effective_array_base},
     declared::relate_structural_source_to_declared_target,
-    object_type::relate_object_members,
+    object_type::relate_to_object_target,
     table_const::relate_to_table_const_target,
 };
 
@@ -41,7 +41,7 @@ pub(super) fn relate_table_generic_source(
             target_array,
             intersection_state,
         )),
-        LuaType::Object(target_object) => Some(relate_object_members(
+        LuaType::Object(target_object) => Some(relate_to_object_target(
             relater,
             source,
             target,

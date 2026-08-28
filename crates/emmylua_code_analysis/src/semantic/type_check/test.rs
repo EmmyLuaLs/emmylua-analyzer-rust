@@ -891,7 +891,7 @@ mod test {
     }
 
     #[test]
-    fn test_structured_member_obligation_keeps_source_direction() {
+    fn test_structured_member_keeps_source_direction() {
         let mut ws = VirtualWorkspace::new();
         let source_with_extra = ws.ty("{ value: string, extra: integer }");
         let target_without_extra = ws.ty("{ value: string }");
@@ -915,7 +915,7 @@ mod test {
     }
 
     #[test]
-    fn test_structured_index_obligation_keeps_source_direction() {
+    fn test_structured_index_member_keeps_source_direction() {
         let mut ws = VirtualWorkspace::new();
         let named_field_source = ws.ty("{ value: integer }");
         let string_index_target = ws.ty("{ [string]: number }");

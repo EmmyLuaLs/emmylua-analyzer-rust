@@ -1,7 +1,4 @@
-use crate::{
-    LuaGenericType, LuaType, TypeSubstitutor,
-    semantic::type_check::structured::declared::relate_declared_to_table_generic,
-};
+use crate::{LuaGenericType, LuaType, TypeSubstitutor};
 
 use super::super::{
     mismatch::{TypeMismatch, TypePathSegment},
@@ -11,10 +8,11 @@ use super::{
     array::relate_keyed_source_to_array,
     declared::{
         DeclaredTypeRelation, classify_declared_type_relation, declared_super_types,
-        declared_type_has_members, relate_nominal_source_to_declared_target,
-        relate_structural_source_to_declared_target,
+        declared_type_has_members, relate_declared_to_table_generic,
+        relate_nominal_source_to_declared_target, relate_structural_source_to_declared_target,
+        relate_to_declared_target_members,
     },
-    object_type::{relate_object_members, relate_to_declared_target_members},
+    object_type::relate_to_object_target,
     table_const::relate_to_table_const_target,
     tuple::relate_keyed_source_to_tuple,
 };
@@ -83,7 +81,7 @@ pub(super) fn relate_generic_source(
                 target_params,
                 intersection_state,
             )),
-            LuaType::Object(target_object) => Some(relate_object_members(
+            LuaType::Object(target_object) => Some(relate_to_object_target(
                 relater,
                 source,
                 target,

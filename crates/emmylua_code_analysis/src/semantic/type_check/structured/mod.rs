@@ -1,6 +1,7 @@
 mod array;
 mod declared;
 mod generic;
+mod member;
 mod object_type;
 mod table_const;
 mod table_generic;
@@ -14,16 +15,15 @@ use super::{
 };
 use array::relate_array_source;
 pub(in crate::semantic::type_check) use array::relate_array_to_array;
+pub(in crate::semantic::type_check) use declared::relate_to_declared_target_members;
 use declared::{
     relate_base_source_to_declared_target, relate_declared_source,
     relate_structural_source_to_declared_target,
 };
 use generic::relate_generic_source;
+pub(in crate::semantic::type_check) use member::relate_target_intersection_index_members;
 use object_type::relate_object_source;
-pub(in crate::semantic::type_check) use object_type::{
-    relate_object_members, relate_target_intersection_index_obligations,
-    relate_to_declared_target_members,
-};
+pub(in crate::semantic::type_check) use object_type::relate_to_object_target;
 use table_const::{relate_table_const_source, relate_to_table_const_target};
 use table_generic::relate_table_generic_source;
 use tuple::{relate_keyed_source_to_tuple, relate_tuple_source};
@@ -102,7 +102,7 @@ pub(super) fn relate_structured(
                 target_tuple,
                 intersection_state,
             )),
-            LuaType::Object(target_object) => Some(relate_object_members(
+            LuaType::Object(target_object) => Some(relate_to_object_target(
                 relater,
                 source,
                 target,

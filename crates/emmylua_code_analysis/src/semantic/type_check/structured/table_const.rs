@@ -7,10 +7,8 @@ use super::super::{
 use super::{
     array::effective_array_base,
     declared::relate_structural_source_to_declared_target,
-    object_type::{
-        relate_index_obligation, relate_member_to_table_generic, relate_named_member_obligation,
-        relate_object_members, visit_member_items,
-    },
+    member::{relate_index_member, relate_keyed_member, visit_member_items},
+    object_type::{relate_member_to_table_generic, relate_to_object_target},
 };
 
 pub(super) fn relate_table_const_source(
@@ -25,7 +23,7 @@ pub(super) fn relate_table_const_source(
             relater.note_progress();
             Some(Ok(()))
         }
-        LuaType::Object(target_object) => Some(relate_object_members(
+        LuaType::Object(target_object) => Some(relate_to_object_target(
             relater,
             source,
             target,
@@ -189,7 +187,7 @@ pub(super) fn relate_to_table_const_target(
             if intersection_state.contains(IntersectionState::TARGET) {
                 return Ok(());
             }
-            return relate_index_obligation(
+            return relate_index_member(
                 relater,
                 source,
                 target,
@@ -199,7 +197,7 @@ pub(super) fn relate_to_table_const_target(
             );
         }
 
-        relate_named_member_obligation(
+        relate_keyed_member(
             relater,
             source,
             key,

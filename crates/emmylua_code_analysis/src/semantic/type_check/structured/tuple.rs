@@ -1,21 +1,18 @@
 use crate::{
     LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, VariadicType,
     find_members_with_key,
-    semantic::type_check::{
-        relation::RelationFailure,
-        structured::{
-            declared::resolve_declared_target_alias_or_enum,
-            object_type::{relate_index_obligation, visit_declared_members},
-            relate_to_table_const_target,
-        },
-    },
 };
 
 use super::super::{
     mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationResult},
+    relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
-use super::array::effective_array_base;
+use super::{
+    array::effective_array_base,
+    declared::{resolve_declared_target_alias_or_enum, visit_declared_members},
+    member::relate_index_member,
+    table_const::relate_to_table_const_target,
+};
 
 pub(super) fn relate_tuple_source(
     relater: &mut Relater,
@@ -395,7 +392,7 @@ fn relate_tuple_to_declared_target(
                     if intersection_state.contains(IntersectionState::TARGET) {
                         return Ok(());
                     }
-                    relate_index_obligation(
+                    relate_index_member(
                         relater,
                         source,
                         target,
