@@ -416,9 +416,9 @@ fn collect_infer_assignments(
             LuaType::Ref(type_decl_id) => {
                 if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
                     && type_decl.is_alias()
-                    && let Some(origin) = type_decl.get_alias_origin(db, None)
+                    && let Some(origin) = type_decl.get_alias_ref()
                 {
-                    return collect_infer_assignments(db, &origin, pattern, assignments, variance);
+                    return collect_infer_assignments(db, origin, pattern, assignments, variance);
                 }
                 false
             }

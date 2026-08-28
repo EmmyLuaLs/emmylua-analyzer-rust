@@ -34,10 +34,10 @@ pub(super) fn relate_declared_source(
     };
 
     if source_decl.is_alias() {
-        let Some(alias_origin) = source_decl.get_alias_origin(relater.db(), None) else {
+        let Some(alias_origin) = source_decl.get_alias_ref() else {
             return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
         };
-        return Some(relater.relate(&alias_origin, target, intersection_state));
+        return Some(relater.relate(alias_origin, target, intersection_state));
     }
 
     if source_decl.is_enum() {
@@ -376,9 +376,9 @@ pub(super) fn resolve_declared_target_alias_or_enum(
         else {
             return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
         };
-        let origin_contains_source = match &origin_type {
+        let origin_contains_source = match &*origin_type {
             LuaType::Union(origin_union) => origin_union.into_vec().contains(source),
-            _ => origin_type == *source,
+            _ => *origin_type == *source,
         };
         if origin_contains_source {
             relater.note_progress();

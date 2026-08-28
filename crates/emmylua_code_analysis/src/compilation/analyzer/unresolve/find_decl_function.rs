@@ -186,11 +186,11 @@ fn find_custom_type_function_member(
         .get_type_decl(&prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) = type_decl.get_alias_ref() {
             return find_function_type_by_member_key(
                 db,
                 cache,
-                &origin_type,
+                origin_type,
                 index_expr,
                 infer_guard,
                 deep_guard,
@@ -592,11 +592,11 @@ fn find_member_by_index_custom_type(
         .get_type_decl(prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) = type_decl.get_alias_ref() {
             return find_function_type_by_operator(
                 db,
                 cache,
-                &origin_type,
+                origin_type,
                 index_expr,
                 infer_guard,
                 deep_guard,

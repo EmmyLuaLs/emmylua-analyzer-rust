@@ -276,8 +276,8 @@ fn generate_alias_type_markdown(
     let type_property_id = LuaSemanticDeclId::TypeDecl(typ_id.clone());
     doc.property = collect_property(db, type_property_id);
 
-    if let Some(origin_typ) = typ.get_alias_origin(db, None) {
-        let origin_type_display = humanize_type(db, &origin_typ, RenderLevel::Detailed);
+    if let Some(origin_typ) = typ.get_alias_ref() {
+        let origin_type_display = humanize_type(db, origin_typ, RenderLevel::Detailed);
         let display = format!(
             "```lua\n(alias) {} = {}\n```\n",
             typ_name, origin_type_display

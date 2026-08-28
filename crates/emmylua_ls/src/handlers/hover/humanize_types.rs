@@ -46,8 +46,7 @@ pub fn hover_humanize_type(
     match ty {
         LuaType::Ref(type_decl_id) => {
             if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
-                && let Some(LuaType::MultiLineUnion(multi_union)) =
-                    type_decl.get_alias_origin(db, None)
+                && let Some(LuaType::MultiLineUnion(multi_union)) = type_decl.get_alias_ref()
             {
                 return hover_multi_line_union_type(
                     builder,
@@ -111,10 +110,10 @@ pub fn resolve_hover_type_usage(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
 
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
             let resolved = type_decl.get_alias_origin(db, Some(&substitutor))?;
-            if resolved == *ty || matches!(resolved, LuaType::Unknown | LuaType::Never) {
+            if *resolved == *ty || matches!(*resolved, LuaType::Unknown | LuaType::Never) {
                 None
             } else {
-                Some(resolved)
+                Some(resolved.into_owned())
             }
         }
         _ => None,

@@ -702,7 +702,7 @@ fn expand_field_check_type<'a>(db: &DbIndex, typ: &'a LuaType) -> Option<Cow<'a,
             }
             _ => return Some(Cow::Owned(current)),
         };
-        current = next;
+        current = next.into_owned();
     }
     None
 }

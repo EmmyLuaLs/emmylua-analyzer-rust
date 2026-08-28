@@ -98,11 +98,9 @@ pub fn infer_for_range_iter_expr_func(
                 .get_type_decl(&type_decl_id)
                 .ok_or(InferFailReason::None)?;
             if type_decl.is_alias() {
-                let alias_origin = type_decl
-                    .get_alias_origin(db, None)
-                    .ok_or(InferFailReason::None)?;
+                let alias_origin = type_decl.get_alias_ref().ok_or(InferFailReason::None)?;
                 match alias_origin {
-                    LuaType::DocFunction(doc_func) => doc_func,
+                    LuaType::DocFunction(doc_func) => doc_func.clone(),
                     _ => return Err(InferFailReason::None),
                 }
             } else if type_decl.is_class() {

@@ -406,8 +406,8 @@ fn infer_custom_type_member(
         .get_type_decl(&prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-            return infer_member_by_lookup(db, cache, &origin_type, lookup, infer_guard);
+        if let Some(origin_type) = type_decl.get_alias_ref() {
+            return infer_member_by_lookup(db, cache, origin_type, lookup, infer_guard);
         } else {
             return Err(InferFailReason::FieldNotFound);
         }
@@ -897,11 +897,11 @@ fn infer_member_by_index_custom_type(
         .get_type_decl(prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) = type_decl.get_alias_ref() {
             return infer_member_by_operator_key_type(
                 db,
                 cache,
-                &origin_type,
+                origin_type,
                 key_type,
                 infer_guard,
             );
@@ -1169,9 +1169,9 @@ fn collect_type_member_keys(db: &DbIndex, key_type: &LuaType, keys: &mut HashSet
             LuaType::Ref(id) => {
                 if let Some(type_decl) = db.get_type_index().get_type_decl(id) {
                     if type_decl.is_alias() {
-                        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-                            if !visited.contains(&origin_type) {
-                                stack.push(origin_type);
+                        if let Some(origin_type) = type_decl.get_alias_ref() {
+                            if !visited.contains(origin_type) {
+                                stack.push(origin_type.clone());
                             }
                             continue;
                         }

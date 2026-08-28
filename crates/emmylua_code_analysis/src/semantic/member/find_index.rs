@@ -121,8 +121,8 @@ fn find_index_custom_type(
     let type_decl = type_index.get_type_decl(prefix_type_id)?;
 
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-            return find_index_operations_guard(db, &origin_type, infer_guard);
+        if let Some(origin_type) = type_decl.get_alias_ref() {
+            return find_index_operations_guard(db, origin_type, infer_guard);
         }
         return None;
     }

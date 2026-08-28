@@ -300,6 +300,7 @@ result = {
                 type_decl
                     .get_alias_origin(&db, Some(&substitutor))
                     .expect("B<A> must expand to its instantiated alias origin")
+                    .into_owned()
             }
             ty => ty,
         };

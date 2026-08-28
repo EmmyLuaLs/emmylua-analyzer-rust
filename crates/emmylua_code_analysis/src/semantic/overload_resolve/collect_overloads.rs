@@ -34,8 +34,8 @@ fn collect_callable_overload_groups_inner(
                 return Ok(());
             }
 
-            let result = if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-                collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_types)
+            let result = if let Some(origin_type) = type_decl.get_alias_ref() {
+                collect_callable_overload_groups_inner(db, origin_type, groups, visiting_types)
             } else {
                 Ok(())
             };

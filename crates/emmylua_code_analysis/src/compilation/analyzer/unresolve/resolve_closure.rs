@@ -342,10 +342,8 @@ fn resolve_closure_member_type(
                             .get_type_decl(&ref_id)
                             .ok_or(InferFailReason::None)?;
 
-                        if let Some(origin) = type_decl.get_alias_origin(db, None)
-                            && let LuaType::DocFunction(f) = origin
-                        {
-                            multi_function_type.push(f);
+                        if let Some(LuaType::DocFunction(f)) = type_decl.get_alias_ref() {
+                            multi_function_type.push(f.clone());
                         }
                     }
                     _ => {}
@@ -438,16 +436,17 @@ fn resolve_closure_member_type(
                 .get_type_decl(ref_id)
                 .ok_or(InferFailReason::None)?;
 
-            if type_decl.is_alias()
-                && let Some(origin) = type_decl.get_alias_origin(db, None)
-            {
-                return resolve_closure_member_type(
-                    db,
-                    closure_params,
-                    &origin,
-                    self_type,
-                    infer_guard,
-                );
+            if type_decl.is_alias() {
+                let origin = type_decl.get_alias_ref().cloned();
+                if let Some(origin) = origin {
+                    return resolve_closure_member_type(
+                        db,
+                        closure_params,
+                        &origin,
+                        self_type,
+                        infer_guard,
+                    );
+                }
             }
             Ok(())
         }
@@ -539,7 +538,7 @@ fn filter_signature_type(db: &DbIndex, typ: &LuaType) -> Option<Vec<Arc<LuaFunct
             LuaType::Ref(type_ref_id) => {
                 guard.check(&type_ref_id).ok()?;
                 let type_decl = db.get_type_index().get_type_decl(&type_ref_id)?;
-                if let Some(func) = type_decl.get_alias_origin(db, None) {
+                if let Some(func) = type_decl.get_alias_ref() {
                     match func {
                         LuaType::DocFunction(f) => {
                             result.push(f.clone());

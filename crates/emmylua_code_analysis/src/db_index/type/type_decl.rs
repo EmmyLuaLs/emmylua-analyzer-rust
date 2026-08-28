@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 use flagset::{FlagSet, flags};
 use internment::ArcIntern;
@@ -124,18 +124,18 @@ impl LuaTypeDecl {
             .map(|idx| &self.id.get_name()[..idx])
     }
 
-    pub fn get_alias_origin(
-        &self,
+    pub fn get_alias_origin<'a>(
+        &'a self,
         db: &DbIndex,
         substitutor: Option<&TypeSubstitutor>,
-    ) -> Option<LuaType> {
+    ) -> Option<Cow<'a, LuaType>> {
         match &self.extra {
             LuaTypeExtra::Alias {
                 origin: Some(origin),
             } => {
                 let substitutor = match substitutor {
                     Some(substitutor) => substitutor,
-                    None => return Some(origin.clone()),
+                    None => return Some(Cow::Borrowed(origin)),
                 };
 
                 let type_decl_id = self.get_id();
@@ -144,10 +144,14 @@ impl LuaTypeDecl {
                     .get_generic_params(&type_decl_id)
                     .is_none()
                 {
-                    return Some(origin.clone());
+                    return Some(Cow::Borrowed(origin));
                 }
 
-                Some(instantiate_type_generic(db, origin, substitutor))
+                Some(Cow::Owned(instantiate_type_generic(
+                    db,
+                    origin,
+                    substitutor,
+                )))
             }
             _ => None,
         }

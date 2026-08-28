@@ -174,8 +174,7 @@ fn add_type_ref_completion(
         .get_type_index()
         .get_type_decl(&type_ref_id)?;
     if type_decl.is_alias() {
-        let db = builder.semantic_model.get_db();
-        if let Some(origin) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin) = type_decl.get_alias_ref() {
             return dispatch_type(builder, origin.clone(), infer_guard);
         }
 

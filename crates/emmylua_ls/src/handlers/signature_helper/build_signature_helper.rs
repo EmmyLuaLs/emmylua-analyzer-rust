@@ -283,7 +283,7 @@ fn build_type_signature_help(
 ) -> Option<SignatureHelp> {
     let db = builder.semantic_model.get_db();
     if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
-        && let Some(LuaType::DocFunction(f)) = type_decl.get_alias_origin(db, None)
+        && let Some(LuaType::DocFunction(f)) = type_decl.get_alias_ref()
     {
         let semantic_id = LuaSemanticDeclId::TypeDecl(type_decl_id.clone());
         let description = db
@@ -566,7 +566,9 @@ fn build_generic_signature_help(
     let type_decl_id = generic.get_base_type_id_ref();
     if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id) {
         let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
-        if let Some(LuaType::DocFunction(f)) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor))
+            && let LuaType::DocFunction(f) = &*origin
+        {
             let semantic_id = LuaSemanticDeclId::TypeDecl(type_decl_id.clone());
             let description = db
                 .get_property_index()

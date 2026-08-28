@@ -329,8 +329,8 @@ fn find_custom_type_members(
     let type_index = db.get_type_index();
     let type_decl = type_index.get_type_decl(type_decl_id)?;
     if type_decl.is_alias() {
-        if let Some(origin) = type_decl.get_alias_origin(db, None) {
-            return find_members_guard(db, &origin, ctx, filter);
+        if let Some(origin) = type_decl.get_alias_ref() {
+            return find_members_guard(db, origin, ctx, filter);
         } else {
             return find_members_guard(db, &LuaType::String, ctx, filter);
         }

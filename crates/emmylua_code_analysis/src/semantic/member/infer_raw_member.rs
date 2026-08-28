@@ -170,8 +170,8 @@ fn infer_custom_type_raw_member_type(
         .get_type_decl(type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-            return infer_raw_member_type_guard(db, &origin_type, member_key, infer_guard);
+        if let Some(origin_type) = type_decl.get_alias_ref() {
+            return infer_raw_member_type_guard(db, origin_type, member_key, infer_guard);
         } else {
             return Err(InferFailReason::None);
         }

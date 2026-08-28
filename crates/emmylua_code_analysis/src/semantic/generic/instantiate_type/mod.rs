@@ -514,7 +514,7 @@ fn instantiate_generic_type(
 
         let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
         if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
-            return origin;
+            return origin.into_owned();
         }
     }
 

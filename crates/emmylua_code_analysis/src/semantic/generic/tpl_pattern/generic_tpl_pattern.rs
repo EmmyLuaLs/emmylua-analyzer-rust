@@ -92,11 +92,11 @@ fn generic_tpl_pattern_match_inner(
                 .get_type_index()
                 .get_type_decl(type_id)
                 .ok_or(InferFailReason::None)?;
-            if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+            if let Some(origin_type) = type_decl.get_alias_ref() {
                 return generic_tpl_pattern_match_inner(
                     context,
                     source_generic,
-                    &origin_type,
+                    origin_type,
                     infer_guard,
                 );
             }

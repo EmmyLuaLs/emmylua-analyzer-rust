@@ -1020,7 +1020,7 @@ fn escape_alias(db: &DbIndex, may_alias: &LuaType) -> LuaType {
     if let LuaType::Ref(type_id) = may_alias
         && let Some(type_decl) = db.get_type_index().get_type_decl(type_id)
         && type_decl.is_alias()
-        && let Some(origin_type) = type_decl.get_alias_origin(db, None)
+        && let Some(origin_type) = type_decl.get_alias_ref()
     {
         return origin_type.clone();
     }

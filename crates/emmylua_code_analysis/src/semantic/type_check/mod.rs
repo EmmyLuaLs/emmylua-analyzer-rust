@@ -136,7 +136,7 @@ pub fn normalize_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         LuaType::Ref(type_id) => {
             let type_decl = db.get_type_index().get_type_decl(type_id)?;
             if type_decl.is_alias() {
-                return type_decl.get_alias_origin(db, None);
+                return type_decl.get_alias_ref().cloned();
             }
             None
         }
