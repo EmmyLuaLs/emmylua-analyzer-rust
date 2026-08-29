@@ -102,7 +102,7 @@ tmp.icon_list = {
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Cannot assign `string?` to `string`.\n  Type 'nil' is not assignable to type 'string'."
+                "Cannot assign `string?` to `string`.\n  Type `nil` is not assignable to type `string`."
             )
         );
     }
@@ -249,14 +249,14 @@ target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq("Cannot assign `RootSource` to `RootTarget`.
-  The types of property 'containers' are incompatible.
-    Type 'ContainerSource[]' is not assignable to type 'ContainerTarget[]'.
-      Type 'ContainerSource' is not assignable to type 'ContainerTarget'.
-        The types of property 'items' are incompatible.
-          Type 'LeafSource[]' is not assignable to type 'LeafTarget[]'.
-            Type 'LeafSource' is not assignable to type 'LeafTarget'.
-              The types of property 'id' are incompatible.
-                Type 'string' is not assignable to type 'number'.")
+  The types of field `containers` are incompatible.
+    Type `ContainerSource[]` is not assignable to type `ContainerTarget[]`.
+      Type `ContainerSource` is not assignable to type `ContainerTarget`.
+        The types of field `items` are incompatible.
+          Type `LeafSource[]` is not assignable to type `LeafTarget[]`.
+            Type `LeafSource` is not assignable to type `LeafTarget`.
+              The types of field `id` are incompatible.
+                Type `string` is not assignable to type `number`.")
         );
     }
 
@@ -280,8 +280,8 @@ local target = source"#,
             diagnostics[0].message,
             eq(
                 "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.
-  Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
-    Type 'SourceItem' is not assignable to type 'TargetItem'.
+  Type `SourceItem[]` is not assignable to type `TargetItem[]`.
+    Type `SourceItem` is not assignable to type `TargetItem`.
       Type `SourceItem` is missing the `id` field from type `TargetItem`."
             )
         );
@@ -309,8 +309,8 @@ local target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq("Cannot assign `IndexedSource` to `TargetItem[][]`.
-  Type 'SourceItem[]' is not assignable to type 'TargetItem[]'.
-    Type 'SourceItem' is not assignable to type 'TargetItem'.
+  Type `SourceItem[]` is not assignable to type `TargetItem[]`.
+    Type `SourceItem` is not assignable to type `TargetItem`.
       Type `SourceItem` is missing the `id` field from type `TargetItem`.")
         );
     }
@@ -333,7 +333,7 @@ local target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Cannot assign `string[][][]` to `Item[]`.\n  Type 'string[][]' is not assignable to type 'Item?'."
+                "Cannot assign `string[][][]` to `Item[]`.\n  Type `string[][]` is not assignable to type `Item?`."
             )
         );
     }
@@ -365,7 +365,7 @@ target = source"#;
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Cannot assign `string?` to `boolean?`.\n  Type 'string' is not assignable to type 'boolean?'."
+                "Cannot assign `string?` to `boolean?`.\n  Type `string` is not assignable to type `boolean?`."
             )
         );
     }

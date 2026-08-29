@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use crate::{
     DbIndex, LuaMemberKey, LuaType, RenderLevel, TypeMismatch, TypeMismatchKind, TypePathInfo,
     TypePathSegment, humanize_type,
@@ -62,7 +60,7 @@ fn render_type_mismatch_reason<'a>(
         }
         TypeMismatchKind::MissingTupleElement { index } => {
             start_line(&mut output, depth);
-            let _ = write!(output, "Tuple element {} is missing.", index + 1);
+            output.push_str(&t!("Tuple element %{index} is missing.", index = index + 1));
         }
     }
 
@@ -141,41 +139,46 @@ fn render_path_title(
     match segment {
         TypePathSegment::Member(key) => {
             start_line(output, *depth);
-            let _ = write!(
-                output,
-                "The types of property '{}' are incompatible.",
-                key.to_path()
-            );
+            output.push_str(&t!(
+                "The types of field `%{name}` are incompatible.",
+                name = key.to_path()
+            ));
         }
         TypePathSegment::Index(index) => {
             start_line(output, *depth);
-            let _ = write!(
-                output,
-                "Index type '{}' is incompatible.",
-                humanize_type(db, index, RenderLevel::Simple)
-            );
+            output.push_str(&t!(
+                "Index type `%{index}` is incompatible.",
+                index = humanize_type(db, index, RenderLevel::Simple)
+            ));
         }
         TypePathSegment::TupleElement(index) => {
             start_line(output, *depth);
-            let _ = write!(
-                output,
-                "Type at position {} in source is not compatible with type at position {} in target.",
-                index + 1,
-                index + 1
-            );
+            output.push_str(&t!(
+                "Type at position %{index} in source is not compatible with type at position %{index} in target.",
+                index = index + 1
+            ));
         }
         TypePathSegment::ArrayElement => return false,
         TypePathSegment::FunctionParameter(index) => {
             start_line(output, *depth);
-            let _ = write!(output, "Function parameter {} is incompatible.", index + 1);
+            output.push_str(&t!(
+                "Function parameter %{index} is incompatible.",
+                index = index + 1
+            ));
         }
         TypePathSegment::FunctionReturn(index) => {
             start_line(output, *depth);
-            let _ = write!(output, "Function return {} is incompatible.", index + 1);
+            output.push_str(&t!(
+                "Function return %{index} is incompatible.",
+                index = index + 1
+            ));
         }
         TypePathSegment::GenericArgument(index) => {
             start_line(output, *depth);
-            let _ = write!(output, "Generic argument {} is incompatible.", index + 1);
+            output.push_str(&t!(
+                "Generic argument %{index} is incompatible.",
+                index = index + 1
+            ));
         }
     }
     *depth += 1;
@@ -197,12 +200,11 @@ fn push_relation<'a>(
     }
 
     start_line(output, *depth);
-    let _ = write!(
-        output,
-        "Type '{}' is not assignable to type '{}'.",
-        humanize_type(db, source, RenderLevel::Simple),
-        humanize_type(db, target, RenderLevel::Simple)
-    );
+    output.push_str(&t!(
+        "Type `%{source}` is not assignable to type `%{target}`.",
+        source = humanize_type(db, source, RenderLevel::Simple),
+        target = humanize_type(db, target, RenderLevel::Simple)
+    ));
     *depth += 1;
     *last_relation = Some((source, target));
 }
@@ -252,7 +254,7 @@ mod tests {
         assert_eq!(
             render_type_mismatch_reason(&db, &mismatch, &LuaType::String, &LuaType::Number),
             Some(
-                "  The types of property 'a' are incompatible.\n    The types of property 'b' are incompatible.\n      Type 'string' is not assignable to type 'number'."
+                "  The types of field `a` are incompatible.\n    The types of field `b` are incompatible.\n      Type `string` is not assignable to type `number`."
                     .to_string()
             )
         );
@@ -289,7 +291,7 @@ mod tests {
                 &target_nested_array,
             ),
             Some(
-                "  The types of property 'data' are incompatible.\n    Type 'string[][]' is not assignable to type 'integer[][]'.\n      Type 'string[]' is not assignable to type 'integer[]'.\n        Type 'string' is not assignable to type 'integer'."
+                "  The types of field `data` are incompatible.\n    Type `string[][]` is not assignable to type `integer[][]`.\n      Type `string[]` is not assignable to type `integer[]`.\n        Type `string` is not assignable to type `integer`."
                     .to_string()
             )
         );
@@ -327,7 +329,7 @@ mod tests {
         assert_eq!(
             render_type_mismatch_reason(&db, &mismatch, &source_root, &target_root),
             Some(
-                "  Type 'string[][]' is not assignable to type 'number[][]'.\n    Type 'string[]' is not assignable to type 'number[]'.\n      Type 'string' is not assignable to type 'number'."
+                "  Type `string[][]` is not assignable to type `number[][]`.\n    Type `string[]` is not assignable to type `number[]`.\n      Type `string` is not assignable to type `number`."
                     .to_string()
             )
         );
@@ -346,7 +348,7 @@ mod tests {
 
         assert_eq!(
             render_type_mismatch_reason(&db, &mismatch, &source, &target),
-            Some("  Type 'string' is not assignable to type 'integer'.".to_string())
+            Some("  Type `string` is not assignable to type `integer`.".to_string())
         );
     }
 
@@ -367,7 +369,7 @@ mod tests {
         assert_eq!(
             render_type_mismatch_reason(&db, &mismatch, &source, &target),
             Some(
-                "  The types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'integer'."
+                "  The types of field `value` are incompatible.\n    Type `string` is not assignable to type `integer`."
                     .to_string()
             )
         );
@@ -382,7 +384,7 @@ mod tests {
         assert_eq!(
             render_type_mismatch_reason(&db, &mismatch, &LuaType::Boolean, &LuaType::String),
             Some(
-                "  Type at position 2 in source is not compatible with type at position 2 in target.\n    Type 'boolean' is not assignable to type 'string'."
+                "  Type at position 2 in source is not compatible with type at position 2 in target.\n    Type `boolean` is not assignable to type `string`."
                     .to_string()
             )
         );
@@ -408,7 +410,7 @@ mod tests {
         assert!(!m.has_path());
         assert_eq!(
             render_diagnostic_detail(ws.get_db_mut(), &m, &b, &a),
-            Some("  Type 'string' is not assignable to type 'number'.".to_string())
+            Some("  Type `string` is not assignable to type `number`.".to_string())
         );
     }
 
@@ -428,7 +430,7 @@ mod tests {
 
         assert_eq!(
             render_diagnostic_detail(ws.get_db_mut(), &m, &b, &a),
-            Some("  Type 'string[][]' is not assignable to type '{ foo: number }'.".to_string())
+            Some("  Type `string[][]` is not assignable to type `{ foo: number }`.".to_string())
         );
     }
 
@@ -451,7 +453,7 @@ mod tests {
         );
         assert_eq!(
             render_diagnostic_detail(ws.get_db_mut(), &m, &b, &a),
-            Some("  Type 'string[][]' is not assignable to type 'Item?'.".to_string())
+            Some("  Type `string[][]` is not assignable to type `Item?`.".to_string())
         );
     }
 }

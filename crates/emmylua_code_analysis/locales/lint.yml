@@ -312,3 +312,27 @@ Argument of type `%{source}` is not assignable to parameter of type `%{target}`.
 'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}, and %{count} more.':
   zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的以下字段：%{fields} 与其他 %{count} 个。'
   zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的以下字段：%{fields} 與其他 %{count} 個。'
+'The types of field `%{name}` are incompatible.':
+  zh_CN: '字段 `%{name}` 的类型不兼容。'
+  zh_HK: '字段 `%{name}` 的類型不兼容。'
+'Index type `%{index}` is incompatible.':
+  zh_CN: '索引类型 `%{index}` 不兼容。'
+  zh_HK: '索引類型 `%{index}` 不兼容。'
+'Type at position %{index} in source is not compatible with type at position %{index} in target.':
+  zh_CN: '源类型中第 %{index} 个位置的类型与目标类型中第 %{index} 个位置的类型不兼容。'
+  zh_HK: '源類型中第 %{index} 個位置的類型與目標類型中第 %{index} 個位置的類型不兼容。'
+'Function parameter %{index} is incompatible.':
+  zh_CN: '函数第 %{index} 个参数不兼容。'
+  zh_HK: '函式第 %{index} 個參數不兼容。'
+'Function return %{index} is incompatible.':
+  zh_CN: '函数第 %{index} 个返回值不兼容。'
+  zh_HK: '函式第 %{index} 個回傳值不兼容。'
+'Generic argument %{index} is incompatible.':
+  zh_CN: '泛型第 %{index} 个类型参数不兼容。'
+  zh_HK: '泛型第 %{index} 個類型參數不兼容。'
+'Type `%{source}` is not assignable to type `%{target}`.':
+  zh_CN: '类型 `%{source}` 不能赋值给类型 `%{target}`。'
+  zh_HK: '類型 `%{source}` 不能賦值給類型 `%{target}`。'
+'Tuple element %{index} is missing.':
+  zh_CN: '元组缺少第 %{index} 个元素。'
+  zh_HK: '元組缺少第 %{index} 個元素。'
