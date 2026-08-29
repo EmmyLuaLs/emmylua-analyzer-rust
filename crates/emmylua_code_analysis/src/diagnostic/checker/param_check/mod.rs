@@ -15,7 +15,6 @@ impl Checker for ParamCheckChecker {
     const CODES: &[DiagnosticCode] = &[
         DiagnosticCode::ParamTypeMismatch,
         DiagnosticCode::AssignTypeMismatch,
-        DiagnosticCode::MissingFields,
         DiagnosticCode::MissingParameter,
         DiagnosticCode::RedundantParameter,
     ];
@@ -25,8 +24,7 @@ impl Checker for ParamCheckChecker {
         let redundant_enabled =
             context.is_checker_enable_by_code(&DiagnosticCode::RedundantParameter);
         let type_enabled = context.is_checker_enable_by_code(&DiagnosticCode::ParamTypeMismatch)
-            || context.is_checker_enable_by_code(&DiagnosticCode::AssignTypeMismatch)
-            || context.is_checker_enable_by_code(&DiagnosticCode::MissingFields);
+            || context.is_checker_enable_by_code(&DiagnosticCode::AssignTypeMismatch);
         let call_check_enabled = missing_enabled || redundant_enabled || type_enabled;
 
         let root = semantic_model.get_root().clone();

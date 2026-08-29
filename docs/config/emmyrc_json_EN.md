@@ -319,7 +319,6 @@ All remaining built-in rules default to `warning`:
 - `redundant-return-value`
 - `undefined-doc-param`
 - `duplicate-doc-field`
-- `missing-fields`
 - `inject-field`
 - `circle-doc-class`
 - `assign-type-mismatch`

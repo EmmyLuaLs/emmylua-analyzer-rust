@@ -133,14 +133,6 @@ Cannot use `...` outside a vararg function.:
   en: 'Type `%{source}` is missing the `%{field}` field from type `%{target}`.'
   zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的 `%{field}` 字段。'
   zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的 `%{field}` 字段。'
-'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}':
-  en: 'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}'
-  zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的以下字段：%{fields}'
-  zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的以下字段：%{fields}'
-'and %{count} more.':
-  en: 'and %{count} more.'
-  zh_CN: '以及其他 %{count} 个。'
-  zh_HK: '以及其他 %{count} 個。'
 'Fields cannot be injected into the reference of `%{class}` for `%{field}`. ':
   en: 'Fields cannot be injected into the reference of `%{class}` for `%{field}`. '
   zh_CN: '不能在 `%{class}` 的引用中注入字段 `%{field}` 。'
@@ -309,3 +301,14 @@ Cannot use `...` outside a vararg function.:
   en: 'Cannot assign `%{actual}` to the `@type %{annotated}` annotation.'
   zh_CN: '不能将 `%{actual}` 赋值给 `@type %{annotated}` 注解。'
   zh_HK: '不能將 `%{actual}` 賦值給 `@type %{annotated}` 註釋。'
+
+Argument of type `%{source}` is not assignable to parameter of type `%{target}`.:
+  zh_CN: 不能将 `%{source}` 赋值给参数 `%{target}`。
+  zh_HK: 不能將 `%{source}` 賦值給參數 `%{target}`。
+
+'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}':
+  zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的以下字段：%{fields}'
+  zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的以下字段：%{fields}'
+'Type `%{source}` is missing the following fields from type `%{target}`: %{fields}, and %{count} more.':
+  zh_CN: '类型 `%{source}` 缺少类型 `%{target}` 的以下字段：%{fields} 与其他 %{count} 个。'
+  zh_HK: '類型 `%{source}` 缺少類型 `%{target}` 的以下字段：%{fields} 與其他 %{count} 個。'

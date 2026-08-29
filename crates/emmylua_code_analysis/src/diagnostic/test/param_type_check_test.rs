@@ -1345,7 +1345,7 @@ mod test {
             "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
                 test({})
             "#

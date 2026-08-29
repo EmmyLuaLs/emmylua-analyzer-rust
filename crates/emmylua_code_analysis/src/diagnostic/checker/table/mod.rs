@@ -11,12 +11,12 @@ pub mod table_type_mismatch;
 pub(crate) enum TableAssignmentOutcome {
     Fallback,
     Assignable,
-    Reported,
+    FieldMismatch,
 }
 
 impl TableAssignmentOutcome {
     pub(crate) fn is_handled(self) -> bool {
-        matches!(self, Self::Assignable | Self::Reported)
+        matches!(self, Self::Assignable | Self::FieldMismatch)
     }
 }
 

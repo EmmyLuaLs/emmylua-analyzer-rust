@@ -95,22 +95,30 @@ pub fn format_missing_fields(
         );
     }
 
-    let total_count = names.len();
-    let mut fields = names.into_iter().take(4).collect::<Vec<_>>().join(", ");
-    if total_count > 4 {
-        let more_count = total_count - 4;
-        fields.push_str(&format!(
-            " {}",
-            t!("and %{count} more.", count = more_count)
-        ));
+    const MAX_DISPLAY_FIELDS: usize = 4;
+
+    let source = humanize_lint_type(db, source);
+    let target = humanize_lint_type(db, target);
+    if names.len() <= MAX_DISPLAY_FIELDS {
+        return Some(
+            t!(
+                "Type `%{source}` is missing the following fields from type `%{target}`: %{fields}",
+                source = source,
+                target = target,
+                fields = names.join(", "),
+            )
+            .to_string(),
+        );
     }
 
+    let fields = names[..MAX_DISPLAY_FIELDS].join(", ");
     Some(
         t!(
-            "Type `%{source}` is missing the following fields from type `%{target}`: %{fields}",
-            source = humanize_lint_type(db, source),
-            target = humanize_lint_type(db, target),
+            "Type `%{source}` is missing the following fields from type `%{target}`: %{fields}, and %{count} more.",
+            source = source,
+            target = target,
             fields = fields,
+            count = names.len() - MAX_DISPLAY_FIELDS,
         )
         .to_string(),
     )

@@ -435,4 +435,21 @@ cd({ type = "test" })"#;
             eq("Cannot assign `\"test\"` to `(\"one\"|\"two\")`.")
         );
     }
+
+    // 字段诊断被行级屏蔽时, 不能回退到整体诊断
+    #[gtest]
+    fn suppressed_leaf_field_silences_whole_assignment_fallback() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"---@class SuppressWholeTarget
+---@field a string
+---@field b string
+---@type SuppressWholeTarget
+local target = {
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    a = 123,
+    b = "ok",
+}"#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
+    }
 }

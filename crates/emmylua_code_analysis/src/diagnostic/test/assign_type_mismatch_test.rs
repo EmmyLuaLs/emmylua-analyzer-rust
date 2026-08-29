@@ -297,7 +297,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic_in_namespace(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class A
             ---@field y integer
@@ -394,7 +394,7 @@ m.ints = {}
 
         // class 类型字段不能使用缺少必填字段的空表初始化.
         assert!(!ws.has_no_diagnostic_in_namespace(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
 ---@field x A
@@ -1324,7 +1324,7 @@ return t
         let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class OptsBase
                 ---@field foo boolean
@@ -1751,7 +1751,7 @@ return t
     fn test_table_const_variables_use_structural_assignment_checks() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class Target
             ---@field value number
@@ -1842,7 +1842,7 @@ return t
             ---@type TargetCond<string>
             local t = { a = 123 }
         "#;
+        // 泛型条件类型不做字段级细化, 直接由整体 AssignTypeMismatch 兜底.
         assert!(!ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
-        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingFields, source));
     }
 }

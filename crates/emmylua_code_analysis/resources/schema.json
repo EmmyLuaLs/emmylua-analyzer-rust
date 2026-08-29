@@ -313,11 +313,6 @@
           "const": "unknown-doc-tag"
         },
         {
-          "description": "Missing fields",
-          "type": "string",
-          "const": "missing-fields"
-        },
-        {
           "description": "Inject Field",
           "type": "string",
           "const": "inject-field"

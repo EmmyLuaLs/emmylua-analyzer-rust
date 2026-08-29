@@ -39,7 +39,7 @@ mod unnecessary_assert;
 mod unnecessary_if;
 mod unused;
 
-pub use render_type_mismatch::{format_missing_fields, render_diagnostic_detail};
+pub use render_type_mismatch::render_diagnostic_detail;
 
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,

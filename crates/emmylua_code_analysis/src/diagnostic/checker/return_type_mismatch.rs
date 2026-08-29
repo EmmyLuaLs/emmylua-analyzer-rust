@@ -19,7 +19,6 @@ impl Checker for ReturnTypeMismatch {
     const CODES: &[DiagnosticCode] = &[
         DiagnosticCode::ReturnTypeMismatch,
         DiagnosticCode::AssignTypeMismatch,
-        DiagnosticCode::MissingFields,
     ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {

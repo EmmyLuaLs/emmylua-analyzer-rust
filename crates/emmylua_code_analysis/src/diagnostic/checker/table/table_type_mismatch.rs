@@ -4,15 +4,11 @@ use std::borrow::Cow;
 
 use crate::{
     AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, RenderLevel,
-    SemanticModel, TypeMismatchKind, TypeSubstitutor, VariadicType, get_real_type, humanize_type,
+    SemanticModel, TypeMismatch, TypeSubstitutor, VariadicType, get_real_type, humanize_type,
 };
 
-use super::{
-    super::{
-        DiagnosticContext, DiagnosticMessage, format_missing_fields, render_diagnostic_detail,
-    },
-    TableAssignmentOutcome,
-};
+use super::super::{DiagnosticContext, DiagnosticMessage, render_diagnostic_detail};
+use super::TableAssignmentOutcome;
 
 struct TableCheckState {
     remaining_fields: usize,
@@ -78,18 +74,7 @@ pub(super) fn check_table_type_mismatch(
         table_expr,
         &mut state,
     ) {
-        return TableAssignmentOutcome::Reported;
-    }
-
-    // 回退检查是否缺失必填字段.
-    if check_table_missing_fields(
-        context,
-        semantic_model,
-        source,
-        &table_target,
-        table_expr.get_range(),
-    ) {
-        return TableAssignmentOutcome::Reported;
+        return TableAssignmentOutcome::FieldMismatch;
     }
 
     TableAssignmentOutcome::Fallback
@@ -102,7 +87,7 @@ fn check_table_fields(
     table_expr: &LuaTableExpr,
     state: &mut TableCheckState,
 ) -> bool {
-    let mut has_diagnostic = false;
+    let mut has_mismatch = false;
 
     let mut fields = table_expr.get_fields_with_keys().peekable();
 
@@ -132,7 +117,7 @@ fn check_table_fields(
             && let LuaMemberKey::Integer(start_index) = &member_key
             && let LuaType::Variadic(variadic) = &value_expr_type
         {
-            has_diagnostic |= check_table_last_variadic_type(
+            has_mismatch |= check_table_last_variadic_type(
                 context,
                 semantic_model,
                 target,
@@ -146,6 +131,7 @@ fn check_table_fields(
         if semantic_model.is_assignable(&value_expr_type, &field_target) {
             continue;
         }
+        has_mismatch = true;
 
         // 先展开别名
         let canonical_target = expand_field_check_type(semantic_model.get_db(), &field_target);
@@ -154,102 +140,34 @@ fn check_table_fields(
             && let Some(nested_expected_type) = canonical_target.as_deref().and_then(|canonical| {
                 get_table_field_target(semantic_model.get_db(), &child_table, canonical)
             })
+            && !state.is_exhausted()
+            && check_table_fields(
+                context,
+                semantic_model,
+                &nested_expected_type,
+                &child_table,
+                state,
+            )
         {
-            let deep_check = !state.is_exhausted();
-            let mut child_has_err = false;
-            if deep_check {
-                child_has_err = check_table_fields(
-                    context,
-                    semantic_model,
-                    &nested_expected_type,
-                    &child_table,
-                    state,
-                );
-                if !child_has_err {
-                    child_has_err = check_table_missing_fields(
-                        context,
-                        semantic_model,
-                        &value_expr_type,
-                        &nested_expected_type,
-                        child_table.get_range(),
-                    );
-                }
-            }
-
-            if child_has_err {
-                has_diagnostic = true;
-            } else if !deep_check || state.is_exhausted() {
-                // 回退整字段粗粒度诊断确保不静默.
-                has_diagnostic |= add_table_type_mismatch(
-                    context,
-                    semantic_model,
-                    field.get_range(),
-                    &field_target,
-                    &value_expr_type,
-                );
-            }
             continue;
         }
 
-        has_diagnostic |= add_table_type_mismatch(
-            context,
-            semantic_model,
-            field.get_range(),
-            &field_target,
-            &value_expr_type,
-        );
+        // 回退到整字段诊断
+        if let AssignabilityResult::NotAssignable(mismatch) =
+            semantic_model.check_assignable(&value_expr_type, &field_target)
+        {
+            report_table_type_mismatch(
+                context,
+                semantic_model.get_db(),
+                field.get_range(),
+                &value_expr_type,
+                &field_target,
+                &mismatch,
+            );
+        }
     }
 
-    has_diagnostic
-}
-
-/// 缺失必填字段检查: 委托类型检查层收集全部缺失字段, 仅在其结果为缺失字段时上报.
-fn check_table_missing_fields(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    source: &LuaType,
-    target: &LuaType,
-    range: TextRange,
-) -> bool {
-    let db = semantic_model.get_db();
-    // Def 目标(类定义表, 其字段由后续赋值填充)与不可枚举成员的目标不做缺失检查;
-    // 联合目标交由类型检查层按分支可满足性处理.
-    let real_target = get_real_type(db, target).unwrap_or(target);
-    if !matches!(real_target, LuaType::Union(_)) && !can_check_missing_fields(db, target) {
-        return false;
-    }
-
-    // 无法完成的类型关系按保守处理, 不上报缺失字段.
-    let AssignabilityResult::NotAssignable(mismatch) =
-        semantic_model.check_assignable(source, target)
-    else {
-        return false;
-    };
-    let TypeMismatchKind::MissingMembers { keys } = mismatch.reason() else {
-        return false;
-    };
-    report_missing_fields(
-        context,
-        semantic_model.get_db(),
-        range,
-        source,
-        target,
-        keys,
-    )
-}
-
-fn report_missing_fields(
-    context: &mut DiagnosticContext,
-    db: &DbIndex,
-    range: TextRange,
-    source: &LuaType,
-    target: &LuaType,
-    keys: &[LuaMemberKey],
-) -> bool {
-    let Some(message) = format_missing_fields(db, source, target, keys) else {
-        return false;
-    };
-    context.add_diagnostic(DiagnosticCode::MissingFields, range, message, None)
+    has_mismatch
 }
 
 /// 该类型是否具有可枚举的声明成员(类/对象/含此类成员的交叉类型), 可对其进行缺失必填字段检查.
@@ -275,33 +193,28 @@ fn can_check_missing_fields(db: &DbIndex, table_type: &LuaType) -> bool {
     }
 }
 
-fn add_table_type_mismatch(
+fn report_table_type_mismatch(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    db: &DbIndex,
     range: TextRange,
-    expected_type: &LuaType,
-    actual_type: &LuaType,
-) -> bool {
-    let AssignabilityResult::NotAssignable(mismatch) =
-        semantic_model.check_assignable(actual_type, expected_type)
-    else {
-        return false;
-    };
-    let db = semantic_model.get_db();
+    source_type: &LuaType,
+    target_type: &LuaType,
+    mismatch: &TypeMismatch,
+) {
     context.add_diagnostic(
         DiagnosticCode::AssignTypeMismatch,
         range,
         DiagnosticMessage::with_detail(
             t!(
                 "Cannot assign `%{value}` to `%{source}`.",
-                value = humanize_type(db, actual_type, RenderLevel::Simple),
-                source = humanize_type(db, expected_type, RenderLevel::Simple),
+                value = humanize_type(db, source_type, RenderLevel::Simple),
+                source = humanize_type(db, target_type, RenderLevel::Simple),
             )
             .to_string(),
-            render_diagnostic_detail(db, &mismatch, actual_type, expected_type),
+            render_diagnostic_detail(db, mismatch, source_type, target_type),
         ),
         None,
-    )
+    );
 }
 
 fn check_table_last_variadic_type(
@@ -341,7 +254,7 @@ fn check_table_last_variadic_type(
             continue;
         };
 
-        return context.add_diagnostic(
+        context.add_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             range,
             DiagnosticMessage::with_detail(
@@ -357,6 +270,7 @@ fn check_table_last_variadic_type(
             ),
             None,
         );
+        return true;
     }
 
     false

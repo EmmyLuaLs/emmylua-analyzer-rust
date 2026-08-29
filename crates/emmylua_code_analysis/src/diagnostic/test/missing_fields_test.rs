@@ -8,7 +8,7 @@ mod tests {
     fn test_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test
             ---@field a number
@@ -19,7 +19,7 @@ mod tests {
         ));
 
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test1
             ---@field a number
@@ -32,7 +32,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test3
             ---@field a number
@@ -49,7 +49,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test5
             ---@field a? number
@@ -65,7 +65,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test7
             ---@field a number
@@ -75,7 +75,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test8
             ---@field a number
@@ -89,7 +89,7 @@ mod tests {
     fn test_override_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test1
             ---@field a? number
@@ -108,7 +108,7 @@ mod tests {
     fn test_generic() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test1<T>
             ---@field a number
@@ -124,7 +124,7 @@ mod tests {
     fn test_object_type() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class test1: { a: number }
 
@@ -139,7 +139,7 @@ mod tests {
     fn test_nested_tables_are_checked_from_outermost_table() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsNestedInner
             ---@field required string
@@ -162,7 +162,7 @@ mod tests {
 
         // 子表提供了 `name`, 但父层的 `name` 仍然缺失.
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class IsolatedChild
             ---@field name string
@@ -179,7 +179,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class IsolatedChild
             ---@field name string
@@ -201,7 +201,7 @@ mod tests {
     fn test_verified_fields_are_isolated_between_sibling_tables() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class SiblingItem
             ---@field name string
@@ -223,7 +223,7 @@ mod tests {
     fn test_variadic_expansion_marks_index_fields_verified() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class VariadicTuple
             ---@field [1] string
@@ -242,7 +242,7 @@ mod tests {
     fn test_expr_const_key_matches_canonical_member_name() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class ExprKeyTarget
             ---@field [16] string
@@ -261,7 +261,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class AliasBoxTarget<T>
             ---@field value T
@@ -274,7 +274,7 @@ mod tests {
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type AliasBoxWrap<string>
             local value = { value = "a" }
@@ -286,7 +286,7 @@ mod tests {
     fn test_issue_262() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
 --- @class D11.Opts
 --- @field field? any
@@ -303,7 +303,7 @@ foo({})
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@type table
                 local a = {}
@@ -342,7 +342,7 @@ foo({})
     fn test_issue_302() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class data
                 data = {}
@@ -368,7 +368,7 @@ foo({})
     fn test_issue_449() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class D31.A
             ---@field public a string
@@ -399,7 +399,7 @@ foo({})
         "#,
         );
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type LiveList<string>
             local LiveList
@@ -413,7 +413,7 @@ foo({})
     fn test_union_enum_array_does_not_report_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@enum NiceEnum
             local GOODGUYS = {
@@ -434,7 +434,7 @@ foo({})
     fn test_union_array_named_table_still_reports_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class Foo
             ---@field name string
@@ -451,7 +451,7 @@ foo({})
     fn test_union_array_empty_table_does_not_report_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class Foo
             ---@field name string
@@ -485,7 +485,7 @@ foo({})
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class UnionBranchA
             ---@field x number
@@ -520,14 +520,14 @@ foo({})
             consume({ x = "s", y = "s" })
         "#;
         assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
-        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingFields, source));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, source));
     }
 
     #[test]
     fn test_union_alias_does_not_report_other_branch_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsAliasA
             ---@field a string
@@ -547,7 +547,7 @@ foo({})
     fn test_generic_union_alias_does_not_report_other_branch_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsGenericAliasA<T>
             ---@field a T
@@ -567,7 +567,7 @@ foo({})
     fn test_multiline_union_alias_does_not_report_other_branch_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsMultilineAliasA
             ---@field a string
@@ -589,7 +589,7 @@ foo({})
     fn test_multiline_union_nil_field_is_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@alias PersonAge
             --- | integer
@@ -619,7 +619,7 @@ foo({})
         );
 
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type MissingFieldsChild<string>
             local value = {}
@@ -627,7 +627,7 @@ foo({})
         ));
 
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type MissingFieldsChild<string>
             local value = {
@@ -642,7 +642,7 @@ foo({})
     fn test_intersection_required_field_wins_over_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class MissingFieldsOptional
             ---@field value? string
@@ -662,7 +662,7 @@ foo({})
     fn test_most_specific_optional_field_overrides_required_parent() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsRequiredParent
             ---@field value string
@@ -680,7 +680,7 @@ foo({})
     fn test_generic_alias_nil_field_is_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@alias MissingFieldsMaybe<T> T | nil
 
@@ -697,7 +697,7 @@ foo({})
     fn test_index_only_type_does_not_report_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsIndexOnly
             ---@field [string] number
@@ -712,7 +712,7 @@ foo({})
     fn test_cyclic_inheritance_does_not_overflow_missing_fields_walk() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class MissingFieldsCycleA: MissingFieldsCycleB
             ---@class MissingFieldsCycleB: MissingFieldsCycleA
@@ -727,7 +727,7 @@ foo({})
     fn test_call_argument_comment_does_not_shift_missing_fields_range() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::ParamTypeMismatch,
             r#"---@class A
 ---@field a 1
 ---@class B
@@ -752,7 +752,9 @@ test(
         assert_that!(diagnostics[0].range.start.line, eq(14));
         assert_that!(
             diagnostics[0].message,
-            eq("Type `table` is missing the `a` field from type `A`.")
+            eq(
+                "Argument of type `table` is not assignable to parameter of type `A`.\n  Type `table` is missing the `a` field from type `A`."
+            )
         );
     }
 
@@ -760,7 +762,7 @@ test(
     fn test_union_target_selects_best_matching_branch_missing_fields() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class UnionA
             ---@field a string
@@ -778,7 +780,7 @@ test(
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Type `{ a = \"hello\" }` is missing the `extra_a` field from type `(UnionA|UnionB)`."
+                "Cannot assign `{ a = \"hello\" }` to `(UnionA|UnionB)`.\n  Type `{ a = \"hello\" }` is missing the `extra_a` field from type `(UnionA|UnionB)`."
             )
         );
     }
@@ -788,7 +790,7 @@ test(
     fn test_union_shared_optional_field_still_reports_missing_required() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class OptSharedA
             ---@field a string
@@ -805,7 +807,7 @@ test(
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Type `{ extra = 1 }` is missing the `a` field from type `(OptSharedA|OptSharedB)`."
+                "Cannot assign `{ extra = 1 }` to `(OptSharedA|OptSharedB)`.\n  Type `{ extra = 1 }` is missing the `a` field from type `(OptSharedA|OptSharedB)`."
             )
         );
     }
@@ -815,7 +817,7 @@ test(
     fn test_missing_fields_limits_to_four_properties() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
-            DiagnosticCode::MissingFields,
+            DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class ManyFields
             ---@field a string
@@ -833,7 +835,7 @@ test(
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Type `table` is missing the following fields from type `ManyFields`: a, b, c, d and 2 more."
+                "Cannot assign `table` to `ManyFields`.\n  Type `table` is missing the following fields from type `ManyFields`: a, b, c, d, and 2 more."
             )
         );
     }

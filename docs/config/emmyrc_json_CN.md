@@ -319,7 +319,6 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 - `redundant-return-value`
 - `undefined-doc-param`
 - `duplicate-doc-field`
-- `missing-fields`
 - `inject-field`
 - `circle-doc-class`
 - `assign-type-mismatch`

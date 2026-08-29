@@ -67,8 +67,6 @@ pub enum DiagnosticCode {
     DuplicateDocField,
     /// Unknown doc annotation
     UnknownDocTag,
-    /// Missing fields
-    MissingFields,
     /// Inject Field
     InjectField,
     /// Circle Doc Class

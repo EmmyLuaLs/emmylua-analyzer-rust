@@ -117,7 +117,7 @@ pub(super) fn check_param_type_mismatch(
             AssignabilityResult::NotAssignable(mismatch) => Some(mismatch),
             AssignabilityResult::Assignable | AssignabilityResult::Indeterminate(_) => None,
         };
-        add_param_type_diagnostic(
+        report_param_type_diagnostic(
             context,
             semantic_model,
             failed_arg.range,
@@ -265,7 +265,7 @@ fn get_diagnostic_arg<'a>(
     })
 }
 
-fn add_param_type_diagnostic(
+fn report_param_type_diagnostic(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
@@ -287,9 +287,9 @@ fn add_param_type_diagnostic(
         range,
         DiagnosticMessage::with_detail(
             t!(
-                "expected `%{source}` but found `%{found}`.",
-                source = humanize_type(db, param_type, RenderLevel::Simple),
-                found = humanize_type(db, expr_type, RenderLevel::Simple),
+                "Argument of type `%{source}` is not assignable to parameter of type `%{target}`.",
+                source = humanize_type(db, expr_type, RenderLevel::Simple),
+                target = humanize_type(db, param_type, RenderLevel::Simple),
             )
             .to_string(),
             mismatch
