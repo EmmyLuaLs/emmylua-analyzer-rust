@@ -1,11 +1,13 @@
 use crate::{
     DbIndex, LuaIntersectionType, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaType,
     semantic::member::find_members_with_key,
+    semantic::type_check::error_chain::{
+        index_message, missing_members_message, not_assignable_message, property_message,
+    },
 };
 
 use super::super::{
     is_optional,
-    mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
 };
 use super::{declared::visit_declared_members, tuple::visit_tuple_index_entries};
@@ -35,25 +37,18 @@ pub(super) fn relate_keyed_member(
         if relater.is_explain() || is_optional(relater.db(), target_member_type) {
             return Ok(());
         }
-        return relater.unrelated(|| {
-            TypeMismatch::new(TypeMismatchKind::MissingMembers {
-                keys: vec![key.clone()],
-            })
+        return relater.fail(|db| {
+            missing_members_message(db, source, target_member_type, std::slice::from_ref(key))
         });
     };
 
     let field_result =
         relater.relate_field_types(&source_member_type, target_member_type, intersection_state);
-    if let Err(failure) = field_result {
-        if relater.is_explain() {
-            return Err(
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::Member(key.clone())))
-            );
-        }
-        return Err(failure);
+    let result = relater.on_unrelated(field_result, |_| property_message(key));
+    if result.is_ok() {
+        relater.note_progress();
     }
-    relater.note_progress();
-    Ok(())
+    result
 }
 
 pub(super) fn find_source_member_type(
@@ -131,19 +126,15 @@ pub(super) fn relate_index_member(
             .0
         {
             RelationOutcome::Related => {
-                relater
-                    .relate(source_value_type, target_value_type, intersection_state)
-                    .map_err(|failure| {
-                        failure.map_mismatch(|mismatch| {
-                            mismatch.at(TypePathSegment::Index(source_key_type.clone()))
-                        })
-                    })?;
+                let result =
+                    relater.relate(source_value_type, target_value_type, intersection_state);
+                relater.on_unrelated(result, |db| index_message(db, source_key_type))?;
                 relater.note_progress();
                 Ok(())
             }
             RelationOutcome::Unrelated if !require_compatible_key => Ok(()),
             RelationOutcome::Unrelated => {
-                relater.unrelated(|| TypeMismatch::incompatible(source, target))
+                relater.fail(|db| not_assignable_message(db, source, target))
             }
             RelationOutcome::Indeterminate(kind) => Err(RelationFailure::Indeterminate(kind)),
         }
@@ -344,8 +335,10 @@ pub(super) fn probe_missing_member(
 
 /// 用收集到的全部缺失字段构建整体失败.
 pub(in crate::semantic::type_check) fn unrelated_missing_members(
-    relater: &Relater,
+    relater: &mut Relater,
+    source: &LuaType,
+    target: &LuaType,
     keys: Vec<LuaMemberKey>,
 ) -> RelationResult {
-    relater.unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingMembers { keys }))
+    relater.fail(|db| missing_members_message(db, source, target, &keys))
 }

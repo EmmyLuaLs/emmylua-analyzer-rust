@@ -1,14 +1,23 @@
 #[cfg(test)]
 mod test {
     use crate::{
-        DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
-        LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaMemberKey, LuaObjectType,
-        LuaType, LuaTypeDeclId, LuaUnionType, TypeMismatchKind, TypePathSegment, VirtualWorkspace,
-        is_assignable,
+        ChainMessage, DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayLen, LuaArrayType,
+        LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaObjectType, LuaType,
+        LuaTypeDeclId, LuaUnionType, VirtualWorkspace, is_assignable,
         semantic::type_check::{
-            AssignabilityResult, RelationOutcome, check_assignable, probe_assignable,
+            AssignabilityResult, ErrorChain, RelationOutcome, check_assignable, probe_assignable,
         },
     };
+
+    fn chain_messages(chain: &ErrorChain) -> Vec<ChainMessage> {
+        let mut result = Vec::new();
+        let mut current = Some(chain);
+        while let Some(node) = current {
+            result.push(node.message().clone());
+            current = node.next();
+        }
+        result
+    }
 
     #[test]
     fn test_string() {
@@ -437,18 +446,24 @@ mod test {
 
         assert!(!ws.check_type(&source, &target));
 
-        // 同族泛型直接比较实参, 不再逐层展开产生嵌套 property 路径.
-        let mismatch = match check_assignable(ws.get_db_mut(), &source, &target) {
-            AssignabilityResult::NotAssignable(mismatch) => mismatch,
+        // 别名逐层展开后折叠为点路径, 最深层失败对收尾.
+        let chain = match check_assignable(ws.get_db_mut(), &source, &target) {
+            AssignabilityResult::NotAssignable(chain) => chain.expect("chain must exist"),
             other => panic!("expected not assignable, got {:?}", other),
         };
-        assert!(!mismatch.has_path());
+
+        let messages = chain_messages(&chain);
         assert_eq!(
-            mismatch.reason(),
-            &TypeMismatchKind::Incompatible {
-                source: LuaType::String,
-                target: LuaType::Number,
-            }
+            messages,
+            vec![
+                ChainMessage::Field {
+                    name: "value.value.value".to_string()
+                },
+                ChainMessage::NotAssignable {
+                    source: "string".to_string(),
+                    target: "number".to_string(),
+                },
+            ]
         );
     }
 
@@ -502,23 +517,24 @@ mod test {
 
         let source = ws.ty("MixedVariance<string | number, string>");
         let target = ws.ty("MixedVariance<string, number>");
-        let mismatch = match check_assignable(ws.get_db_mut(), &source, &target) {
-            AssignabilityResult::NotAssignable(mismatch) => mismatch,
+        let chain = match check_assignable(ws.get_db_mut(), &source, &target) {
+            AssignabilityResult::NotAssignable(chain) => chain.expect("chain must exist"),
             other => panic!("expected not assignable, got {:?}", other),
         };
 
-        assert!(
-            mismatch
-                .path()
-                .map(|step| step.segment())
-                .eq([&TypePathSegment::Member(LuaMemberKey::Name("value".into()))])
-        );
+        let messages = chain_messages(&chain);
+        // 完整流程证据: 字段定位 + 最深层失败对, 快捷实参尝试的方差误报不入链.
         assert_eq!(
-            mismatch.reason(),
-            &TypeMismatchKind::Incompatible {
-                source: LuaType::String,
-                target: LuaType::Number,
-            }
+            messages,
+            vec![
+                ChainMessage::Field {
+                    name: "value".to_string()
+                },
+                ChainMessage::NotAssignable {
+                    source: "string".to_string(),
+                    target: "number".to_string(),
+                },
+            ]
         );
     }
 

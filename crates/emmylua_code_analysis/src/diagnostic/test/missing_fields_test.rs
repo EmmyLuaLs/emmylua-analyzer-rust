@@ -779,9 +779,8 @@ test(
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq(
-                "Cannot assign `{ a = \"hello\" }` to `(UnionA|UnionB)`.\n  Type `{ a = \"hello\" }` is missing the `extra_a` field from type `(UnionA|UnionB)`."
-            )
+            eq("Cannot assign `{ a = \"hello\" }` to `(UnionA|UnionB)`.
+  Type `{ a = \"hello\" }` is missing the `extra_a` field from type `UnionA`.")
         );
     }
 
@@ -799,16 +798,15 @@ test(
             ---@class OptSharedB
             ---@field b string
 
-            ---@type OptSharedA|OptSharedB
+            ---@type OptSharedB|OptSharedA
             local t = { extra = 1 }
             "#,
         );
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq(
-                "Cannot assign `{ extra = 1 }` to `(OptSharedA|OptSharedB)`.\n  Type `{ extra = 1 }` is missing the `a` field from type `(OptSharedA|OptSharedB)`."
-            )
+            eq("Cannot assign `{ extra = 1 }` to `(OptSharedB|OptSharedA)`.
+  Type `{ extra = 1 }` is missing the `a` field from type `OptSharedA`.")
         );
     }
 

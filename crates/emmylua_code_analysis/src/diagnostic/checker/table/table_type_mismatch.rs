@@ -2,12 +2,13 @@ use emmylua_parser::{LuaAstNode, LuaTableExpr};
 use rowan::TextRange;
 use std::borrow::Cow;
 
+use crate::diagnostic::checker::render_error_chain::chain_stands_alone;
 use crate::{
-    AssignabilityResult, DbIndex, DiagnosticCode, LuaMemberKey, LuaType, LuaUnionType, RenderLevel,
-    SemanticModel, TypeMismatch, TypeSubstitutor, VariadicType, get_real_type, humanize_type,
+    AssignabilityResult, DbIndex, DiagnosticCode, ErrorChain, LuaMemberKey, LuaType, LuaUnionType,
+    RenderLevel, SemanticModel, TypeSubstitutor, VariadicType, get_real_type, humanize_type,
 };
 
-use super::super::{DiagnosticContext, DiagnosticMessage, render_diagnostic_detail};
+use super::super::{DiagnosticContext, DiagnosticMessage, render_error_chain};
 use super::TableAssignmentOutcome;
 
 struct TableCheckState {
@@ -153,7 +154,7 @@ fn check_table_fields(
         }
 
         // 回退到整字段诊断
-        if let AssignabilityResult::NotAssignable(mismatch) =
+        if let AssignabilityResult::NotAssignable(chain) =
             semantic_model.check_assignable(&value_expr_type, &field_target)
         {
             report_table_type_mismatch(
@@ -162,7 +163,7 @@ fn check_table_fields(
                 field.get_range(),
                 &value_expr_type,
                 &field_target,
-                &mismatch,
+                chain.as_ref(),
             );
         }
     }
@@ -199,11 +200,13 @@ fn report_table_type_mismatch(
     range: TextRange,
     source_type: &LuaType,
     target_type: &LuaType,
-    mismatch: &TypeMismatch,
+    chain: Option<&ErrorChain>,
 ) {
-    context.add_diagnostic(
-        DiagnosticCode::AssignTypeMismatch,
-        range,
+    let diagnostic_message = if chain_stands_alone(db, chain, source_type)
+        && let Some(rendered) = render_error_chain(chain, false)
+    {
+        DiagnosticMessage::from(rendered)
+    } else {
         DiagnosticMessage::with_detail(
             t!(
                 "Cannot assign `%{value}` to `%{source}`.",
@@ -211,8 +214,13 @@ fn report_table_type_mismatch(
                 source = humanize_type(db, target_type, RenderLevel::Simple),
             )
             .to_string(),
-            render_diagnostic_detail(db, mismatch, source_type, target_type),
-        ),
+            render_error_chain(chain, true),
+        )
+    };
+    context.add_diagnostic(
+        DiagnosticCode::AssignTypeMismatch,
+        range,
+        diagnostic_message,
         None,
     );
 }
@@ -245,7 +253,7 @@ fn check_table_last_variadic_type(
                 actual_type.clone()
             }
         };
-        let AssignabilityResult::NotAssignable(mismatch) =
+        let AssignabilityResult::NotAssignable(chain) =
             semantic_model.check_assignable(&actual_type, &field_expected_type)
         else {
             if matches!(field_expected_type, LuaType::Variadic(_)) {
@@ -266,7 +274,7 @@ fn check_table_last_variadic_type(
                     source = humanize_type(db, &field_expected_type, RenderLevel::Simple),
                 )
                 .to_string(),
-                render_diagnostic_detail(db, &mismatch, &actual_type, &field_expected_type),
+                render_error_chain(chain.as_ref(), true),
             ),
             None,
         );

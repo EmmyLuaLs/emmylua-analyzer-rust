@@ -1,7 +1,9 @@
-use crate::{BasicTypeKind, LuaMemberKey, LuaType, LuaUnionType};
+use crate::{
+    BasicTypeKind, LuaMemberKey, LuaType, LuaUnionType,
+    semantic::type_check::error_chain::not_assignable_message,
+};
 
 use super::{
-    mismatch::{TypeMismatch, TypeMismatchKind},
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
     structured::{collect_missing_members, unrelated_missing_members},
 };
@@ -23,7 +25,7 @@ pub(crate) fn relate_union(
                 relate_source_union_members(relater, &members, target, intersection_state)
             }
         };
-        return Some(result);
+        return Some(relater.on_unrelated(result, |db| not_assignable_message(db, source, target)));
     }
     if let LuaType::Union(target_union) = target {
         let result = match target_union.as_ref() {
@@ -80,6 +82,7 @@ pub(super) fn relate_to_nullable_target(
     non_nil_target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
+    let saved_chain = relater.error_chain_snapshot();
     let non_nil_failure = match relater.relate(source, non_nil_target, intersection_state) {
         Ok(()) => return Ok(()),
         Err(failure) => failure,
@@ -88,18 +91,29 @@ pub(super) fn relate_to_nullable_target(
         .probe_relation(source, &LuaType::Nil, intersection_state)
         .0;
     match (non_nil_failure, nil_outcome) {
-        (_, RelationOutcome::Related) => Ok(()),
+        // 非 nil 分支失败的证据已入链, 当 nil 放行时需要撤销
+        (_, RelationOutcome::Related) => {
+            relater.restore_error_chain(saved_chain);
+            Ok(())
+        }
         (RelationFailure::Indeterminate(kind), _) => Err(RelationFailure::Indeterminate(kind)),
-        (RelationFailure::Unrelated(_), RelationOutcome::Indeterminate(kind)) => {
+        (RelationFailure::Unrelated, RelationOutcome::Indeterminate(kind)) => {
             Err(RelationFailure::Indeterminate(kind))
         }
-        (RelationFailure::Unrelated(mismatch), RelationOutcome::Unrelated) => {
-            if mismatch.as_ref().is_some_and(|m| {
-                m.has_path() || !matches!(m.reason(), TypeMismatchKind::Incompatible { .. })
-            }) {
-                Err(RelationFailure::Unrelated(mismatch))
+        (RelationFailure::Unrelated, RelationOutcome::Unrelated) => {
+            // 仅当源类型确定非空且目标类型非联合类型时, 剥离可空后的错误链才能完整表述失败.
+            let is_definitely_non_nil =
+                !matches!(source, LuaType::Union(_) | LuaType::MultiLineUnion(_))
+                    && !source.is_nullable();
+            let is_single_non_nil_target = !matches!(
+                non_nil_target,
+                LuaType::Union(_) | LuaType::MultiLineUnion(_)
+            );
+            if is_definitely_non_nil && is_single_non_nil_target {
+                Err(RelationFailure::Unrelated)
             } else {
-                relater.unrelated(|| TypeMismatch::incompatible(source, target))
+                relater.restore_error_chain(saved_chain);
+                relater.fail(|db| not_assignable_message(db, source, target))
             }
         }
     }
@@ -120,7 +134,7 @@ fn relate_source_union_members(
             }
             RelationOutcome::Unrelated => {
                 if !relater.is_explain() {
-                    return Err(RelationFailure::Unrelated(None));
+                    return Err(RelationFailure::Unrelated);
                 }
                 return relater.relate(member, target, intersection_state);
             }
@@ -157,7 +171,7 @@ fn relate_to_target_union_candidates(
     }
 
     if !relater.is_explain() {
-        return Err(RelationFailure::Unrelated(None));
+        return Err(RelationFailure::Unrelated);
     }
 
     // probe_relation 有早退行为, 因此得到的结果并不一定是最匹配的, 我们必须独立处理缺失字段判别.
@@ -182,10 +196,10 @@ fn relate_to_target_union_candidates(
     }
 
     let Some((best_index, missing_keys)) = evidence else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
     if !missing_keys.is_empty() {
-        return unrelated_missing_members(relater, missing_keys);
+        return unrelated_missing_members(relater, source, &candidates[best_index], missing_keys);
     }
     relater.relate(source, &candidates[best_index], intersection_state)
 }

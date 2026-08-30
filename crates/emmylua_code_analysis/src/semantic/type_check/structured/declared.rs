@@ -3,11 +3,10 @@ use hashbrown::HashSet;
 use crate::{
     DbIndex, LuaGenericType, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaType,
     LuaTypeDecl, LuaTypeDeclId, TypeSubstitutor, complete_type_generic_args_in_type,
-    instantiate_type_generic,
+    instantiate_type_generic, semantic::type_check::error_chain::not_assignable_message,
 };
 
 use super::super::{
-    mismatch::TypeMismatch,
     relation::{
         DeclaredRelationPolicy, IntersectionState, Relater, RelationFailure, RelationOutcome,
         RelationResult,
@@ -33,12 +32,12 @@ pub(super) fn relate_declared_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     let Some(source_decl) = relater.db().get_type_index().get_type_decl(source_id) else {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     };
 
     if source_decl.is_alias() {
         let Some(alias_origin) = source_decl.get_alias_ref() else {
-            return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+            return Some(relater.fail(|db| not_assignable_message(db, source, target)));
         };
         return Some(relater.relate(alias_origin, target, intersection_state));
     }
@@ -92,7 +91,7 @@ fn relate_enum_source(
     }
 
     let Some(enum_fields) = source_decl.get_enum_field_type(relater.db()) else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
 
     relater.relate(&enum_fields, target, intersection_state)
@@ -179,7 +178,7 @@ pub(super) fn relate_base_source_to_declared_target(
         _ => return None,
     };
     let Some(target_decl) = relater.db().get_type_index().get_type_decl(target_id) else {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     };
     if target_decl.is_alias() || target_decl.is_enum() {
         return Some(relate_structural_source_to_declared_target(
@@ -200,7 +199,7 @@ pub(super) fn relate_base_source_to_declared_target(
         relater.note_progress();
         Some(Ok(()))
     } else {
-        Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)))
+        Some(relater.fail(|db| not_assignable_message(db, source, target)))
     }
 }
 
@@ -238,7 +237,7 @@ pub(super) fn relate_nominal_source_to_declared_target(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let Some(target_decl) = relater.db().get_type_index().get_type_decl(target_id) else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
 
     if target_decl.is_alias() || target_decl.is_enum() {
@@ -261,7 +260,7 @@ pub(super) fn relate_nominal_source_to_declared_target(
         return relate_to_declared_target_members(relater, source, target, intersection_state);
     }
 
-    relater.unrelated(|| TypeMismatch::incompatible(source, target))
+    relater.fail(|db| not_assignable_message(db, source, target))
 }
 
 fn relate_class_source_to_generic_target(
@@ -274,7 +273,7 @@ fn relate_class_source_to_generic_target(
 ) -> RelationResult {
     let target_id = target_generic.get_base_type_id_ref();
     let Some(target_decl) = relater.db().get_type_index().get_type_decl(target_id) else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
 
     if target_decl.is_alias() || target_decl.is_enum() {
@@ -322,7 +321,7 @@ fn relate_class_source_to_generic_target(
             if let Some(kind) = indeterminate {
                 return Err(RelationFailure::Indeterminate(kind));
             }
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return relater.fail(|db| not_assignable_message(db, source, target));
         }
         DeclaredTypeRelation::LegacyReverse if !target_generic.contain_tpl() => {
             relater.note_progress();
@@ -335,7 +334,7 @@ fn relate_class_source_to_generic_target(
         return relate_to_declared_target_members(relater, source, target, intersection_state);
     }
 
-    relater.unrelated(|| TypeMismatch::incompatible(source, target))
+    relater.fail(|db| not_assignable_message(db, source, target))
 }
 
 pub(super) fn relate_structural_source_to_declared_target(
@@ -368,16 +367,16 @@ pub(super) fn resolve_declared_target_alias_or_enum(
                 target_generic.get_base_type_id(),
             )),
         ),
-        _ => return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target))),
+        _ => return Some(relater.fail(|db| not_assignable_message(db, source, target))),
     };
     let Some(target_decl) = relater.db().get_type_index().get_type_decl(&target_id) else {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     };
 
     if target_decl.is_alias() {
         let Some(origin_type) = target_decl.get_alias_origin(relater.db(), substitutor.as_ref())
         else {
-            return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+            return Some(relater.fail(|db| not_assignable_message(db, source, target)));
         };
         let origin_contains_source = match &*origin_type {
             LuaType::Union(origin_union) => origin_union.into_vec().contains(source),
@@ -392,7 +391,7 @@ pub(super) fn resolve_declared_target_alias_or_enum(
 
     if target_decl.is_enum() {
         let Some(enum_fields) = target_decl.get_enum_field_type(relater.db()) else {
-            return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+            return Some(relater.fail(|db| not_assignable_message(db, source, target)));
         };
 
         // enum 参与位运算时结果会被推断为 Integer, 但直接写入整数常量仍需匹配 enum 字段.
@@ -447,7 +446,7 @@ fn relate_class_source_to_simple_target(
         return Some(Ok(()));
     }
 
-    Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)))
+    Some(relater.fail(|db| not_assignable_message(db, source, target)))
 }
 
 pub(in crate::semantic::type_check) fn relate_to_declared_target_members(
@@ -468,14 +467,14 @@ pub(in crate::semantic::type_check) fn relate_to_declared_target_members(
             .get_type_decl(type_id)
             .is_none()
     }) {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
     if relater.is_explain() {
         let (missing_keys, _) =
             collect_missing_members(relater, source, target, intersection_state)?;
         if !missing_keys.is_empty() {
-            return unrelated_missing_members(relater, missing_keys);
+            return unrelated_missing_members(relater, source, target, missing_keys);
         }
     }
 
@@ -780,7 +779,7 @@ pub(super) fn relate_declared_to_table_generic(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if target_params.len() != 2 {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
     visit_declared_members(relater, source, |relater, key, source_value_type| {

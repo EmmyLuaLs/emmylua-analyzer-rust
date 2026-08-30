@@ -6,7 +6,7 @@ use crate::{
 };
 
 use crate::diagnostic::checker::{
-    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_error_chain,
 };
 
 pub struct TableFieldTypeMismatchChecker;
@@ -44,7 +44,7 @@ fn check_type_tag(
         return Some(());
     }
 
-    let AssignabilityResult::NotAssignable(mismatch) =
+    let AssignabilityResult::NotAssignable(chain) =
         semantic_model.check_assignable(&actual_type, annotated_type)
     else {
         return Some(());
@@ -61,12 +61,7 @@ fn check_type_tag(
                 actual = humanize_lint_type(semantic_model.get_db(), &actual_type),
             )
             .to_string(),
-            render_diagnostic_detail(
-                semantic_model.get_db(),
-                &mismatch,
-                &actual_type,
-                annotated_type,
-            ),
+            render_error_chain(chain.as_ref(), true),
         ),
         None,
     );

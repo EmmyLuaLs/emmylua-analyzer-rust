@@ -6,11 +6,12 @@ use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     AssignabilityResult, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaSemanticDeclId, LuaType,
-    LuaUnionType, SemanticDeclLevel, SemanticModel, infer_index_expr,
+    LuaUnionType, SemanticDeclLevel, SemanticModel,
+    diagnostic::checker::render_error_chain::chain_stands_alone, infer_index_expr,
 };
 
 use super::{
-    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_error_chain,
     table::check_table_assignment_diagnostics,
 };
 
@@ -249,15 +250,17 @@ fn check_assign_type_mismatch(
     source_type: &LuaType,
     target_type: &LuaType,
 ) {
-    let AssignabilityResult::NotAssignable(mismatch) =
+    let AssignabilityResult::NotAssignable(chain) =
         semantic_model.check_assignable(source_type, target_type)
     else {
         return;
     };
     let db = semantic_model.get_db();
-    context.add_diagnostic(
-        DiagnosticCode::AssignTypeMismatch,
-        range,
+    let diagnostic_message = if chain_stands_alone(db, chain.as_ref(), source_type)
+        && let Some(rendered) = render_error_chain(chain.as_ref(), false)
+    {
+        DiagnosticMessage::from(rendered)
+    } else {
         DiagnosticMessage::with_detail(
             t!(
                 "Cannot assign `%{value}` to `%{source}`.",
@@ -265,8 +268,13 @@ fn check_assign_type_mismatch(
                 source = humanize_lint_type(db, target_type),
             )
             .to_string(),
-            render_diagnostic_detail(db, &mismatch, source_type, target_type),
-        ),
+            render_error_chain(chain.as_ref(), true),
+        )
+    };
+    context.add_diagnostic(
+        DiagnosticCode::AssignTypeMismatch,
+        range,
+        diagnostic_message,
         None,
     );
 }

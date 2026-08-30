@@ -1,9 +1,6 @@
-use crate::{LuaType, VariadicType};
+use crate::{LuaType, VariadicType, semantic::type_check::error_chain::not_assignable_message};
 
-use super::{
-    mismatch::TypeMismatch,
-    relation::{IntersectionState, Relater, RelationResult},
-};
+use super::relation::{IntersectionState, Relater, RelationResult};
 
 #[inline(always)]
 pub(crate) fn relate_simple<const EARLY: bool>(
@@ -19,7 +16,7 @@ pub(crate) fn relate_simple<const EARLY: bool>(
                 return Some(Ok(()));
             }
             if !EARLY {
-                return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+                return Some(relater.fail(|db| not_assignable_message(db, source, target)));
             }
             (false, false)
         }
@@ -157,7 +154,7 @@ pub(crate) fn relate_simple<const EARLY: bool>(
             | LuaType::DocBooleanConst(_)
             | LuaType::FloatConst(_) => {
                 return if can_reject_simple_target_early || !EARLY {
-                    Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)))
+                    Some(relater.fail(|db| not_assignable_message(db, source, target)))
                 } else {
                     None
                 };
@@ -195,7 +192,7 @@ pub(crate) fn relate_simple<const EARLY: bool>(
         | LuaType::Language(_)
             if can_reject_simple_target_early || !EARLY =>
         {
-            Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)))
+            Some(relater.fail(|db| not_assignable_message(db, source, target)))
         }
         _ => None,
     }
@@ -215,7 +212,7 @@ fn relate_variadic_source(
                     if source_base == target_base {
                         Ok(())
                     } else {
-                        relater.unrelated(|| TypeMismatch::incompatible(source, target))
+                        relater.fail(|db| not_assignable_message(db, source, target))
                     }
                 }
                 VariadicType::Multi(target_types) => {

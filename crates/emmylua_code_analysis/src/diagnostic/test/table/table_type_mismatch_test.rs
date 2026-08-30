@@ -63,7 +63,7 @@ local target = {
         assert_that!(diagnostics[0].range.start.line, eq(expected_line));
         assert_that!(
             diagnostics[0].message,
-            eq("Cannot assign `\"invalid\"` to `integer`.")
+            eq("Type `\"invalid\"` is not assignable to type `integer`.")
         );
     }
 
@@ -101,9 +101,8 @@ tmp.icon_list = {
         assert_that!(diagnostics[0].range.start.line, eq(expected_line));
         assert_that!(
             diagnostics[0].message,
-            eq(
-                "Cannot assign `string?` to `string`.\n  Type `nil` is not assignable to type `string`."
-            )
+            eq("Type `string?` is not assignable to type `string`.
+  Type `nil` is not assignable to type `string`.")
         );
     }
 
@@ -147,14 +146,23 @@ direct = {
                 .collect::<Vec<_>>(),
             eq(&expected_lines)
         );
-        assert_that!(diagnostics[0].message, eq("Cannot assign `1` to `string`."));
-        assert_that!(diagnostics[1].message, eq("Cannot assign `2` to `string`."));
-        assert_that!(diagnostics[2].message, eq("Cannot assign `3` to `string`."));
+        assert_that!(
+            diagnostics[0].message,
+            eq("Type `1` is not assignable to type `string`.")
+        );
+        assert_that!(
+            diagnostics[1].message,
+            eq("Type `2` is not assignable to type `string`.")
+        );
+        assert_that!(
+            diagnostics[2].message,
+            eq("Type `3` is not assignable to type `string`.")
+        );
     }
 
     #[gtest]
-    fn nullable_scalar_table_keeps_outer_mismatch() {
-        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    fn nullable_scalar_table_reports_deepest_mismatch() {
+        let mut ws = VirtualWorkspace::new();
         let source = r#"---@type "x"?
 local target
 
@@ -172,12 +180,12 @@ target = {
         assert_that!(diagnostics[0].range.start.line, eq(expected_line));
         assert_that!(
             diagnostics[0].message,
-            eq("Cannot assign `{ len = 1 }` to `\"x\"?`.")
+            eq("Type `{ len = 1 }` is not assignable to type `\"x\"`.")
         );
     }
 
     #[gtest]
-    fn nullable_scalar_generic_alias_keeps_outer_mismatch() {
+    fn nullable_scalar_generic_alias_reports_deepest_mismatch() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let source = r#"---@alias Identity<T> T
 
@@ -198,7 +206,7 @@ target = {
         assert_that!(diagnostics[0].range.start.line, eq(expected_line));
         assert_that!(
             diagnostics[0].message,
-            eq("Cannot assign `{ len = 1 }` to `Identity<\"x\">?`.")
+            eq("Type `{ len = 1 }` is not assignable to type `\"x\"`.")
         );
     }
 
@@ -217,14 +225,13 @@ local target = source"#;
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq(
-                "Cannot assign `{  }` to `RequiredValue?`.\n  Type `{  }` is missing the `value` field from type `RequiredValue?`."
-            )
+            eq("Cannot assign `{  }` to `RequiredValue?`.
+  Type `{  }` is missing the `value` field from type `RequiredValue`.")
         );
     }
 
     #[gtest]
-    fn nested_alias_arrays_report_full_diagnostic() {
+    fn nested_alias_arrays_fold_to_dotted_path() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
             DiagnosticCode::AssignTypeMismatch,
@@ -249,19 +256,13 @@ target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq("Cannot assign `RootSource` to `RootTarget`.
-  The types of field `containers` are incompatible.
-    Type `ContainerSource[]` is not assignable to type `ContainerTarget[]`.
-      Type `ContainerSource` is not assignable to type `ContainerTarget`.
-        The types of field `items` are incompatible.
-          Type `LeafSource[]` is not assignable to type `LeafTarget[]`.
-            Type `LeafSource` is not assignable to type `LeafTarget`.
-              The types of field `id` are incompatible.
-                Type `string` is not assignable to type `number`.")
+  The types of field `containers.items.id` are incompatible.
+    Type `string` is not assignable to type `number`.")
         );
     }
 
     #[gtest]
-    fn table_generic_to_nested_array_preserves_each_relation() {
+    fn table_generic_to_nested_array_reports_deepest_missing_field() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
             DiagnosticCode::AssignTypeMismatch,
@@ -279,16 +280,13 @@ local target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.
-  Type `SourceItem[]` is not assignable to type `TargetItem[]`.
-    Type `SourceItem` is not assignable to type `TargetItem`.
-      Type `SourceItem` is missing the `id` field from type `TargetItem`."
+                "Cannot assign `table<integer,SourceItem[]>` to `TargetItem[][]`.\n  Type `{  }` is missing the `id` field from type `{ id: number }`."
             )
         );
     }
 
     #[gtest]
-    fn keyed_source_to_nested_array_preserves_each_relation() {
+    fn keyed_source_to_nested_array_reports_deepest_missing_field() {
         let mut ws = VirtualWorkspace::new();
         let diagnostics = ws.get_diagnostics(
             DiagnosticCode::AssignTypeMismatch,
@@ -308,10 +306,9 @@ local target = source"#,
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq("Cannot assign `IndexedSource` to `TargetItem[][]`.
-  Type `SourceItem[]` is not assignable to type `TargetItem[]`.
-    Type `SourceItem` is not assignable to type `TargetItem`.
-      Type `SourceItem` is missing the `id` field from type `TargetItem`.")
+            eq(
+                "Cannot assign `IndexedSource` to `TargetItem[][]`.\n  Type `{  }` is missing the `id` field from type `{ id: number }`."
+            )
         );
     }
 
@@ -333,7 +330,7 @@ local target = source"#,
         assert_that!(
             diagnostics[0].message,
             eq(
-                "Cannot assign `string[][][]` to `Item[]`.\n  Type `string[][]` is not assignable to type `Item?`."
+                "Cannot assign `string[][][]` to `Item[]`.\n  Type `string[][]` is not assignable to type `{ foo: number }`."
             )
         );
     }
@@ -364,9 +361,8 @@ target = source"#;
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq(
-                "Cannot assign `string?` to `boolean?`.\n  Type `string` is not assignable to type `boolean?`."
-            )
+            eq("Type `string?` is not assignable to type `boolean?`.
+  Type `string` is not assignable to type `boolean?`.")
         );
     }
 
@@ -432,7 +428,7 @@ cd({ type = "test" })"#;
         assert_that!(diagnostics.len(), eq(1));
         assert_that!(
             diagnostics[0].message,
-            eq("Cannot assign `\"test\"` to `(\"one\"|\"two\")`.")
+            eq("Type `\"test\"` is not assignable to type `(\"one\"|\"two\")`.")
         );
     }
 

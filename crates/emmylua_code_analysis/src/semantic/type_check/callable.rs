@@ -1,9 +1,13 @@
-use crate::{LuaFunctionType, LuaType, collect_callable_overload_groups};
+use crate::{
+    LuaFunctionType, LuaType, collect_callable_overload_groups,
+    semantic::type_check::{
+        error_chain::{ChainMessage, not_assignable_message},
+        normalize_type,
+    },
+};
 
-use super::{
-    mismatch::{TypeMismatch, TypePathSegment},
-    normalize_type,
-    relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
+use super::relation::{
+    IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult,
 };
 
 pub(crate) fn relate_callable(
@@ -16,7 +20,7 @@ pub(crate) fn relate_callable(
         LuaType::Function => {
             return callable_candidates(relater, target).map(|candidates| {
                 if candidates.is_empty() {
-                    relater.unrelated(|| TypeMismatch::incompatible(source, target))
+                    relater.fail(|db| not_assignable_message(db, source, target))
                 } else {
                     relater.note_progress();
                     Ok(())
@@ -43,7 +47,7 @@ pub(crate) fn relate_callable(
 
     let source_candidates = callable_candidates(relater, source)?;
     if source_candidates.is_empty() {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     }
 
     if matches!(target, LuaType::Function) {
@@ -53,7 +57,7 @@ pub(crate) fn relate_callable(
 
     let target_candidates = callable_candidates(relater, target)?;
     if target_candidates.is_empty() {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     }
 
     Some(relate_to_callable_targets(
@@ -120,13 +124,13 @@ fn relate_to_callable_targets(
             best = Some((source_index, target_index, progress));
         }
         if !relater.is_explain() {
-            return Err(RelationFailure::Unrelated(None));
+            return Err(RelationFailure::Unrelated);
         }
     }
 
     if has_unrelated_target {
         let Some((source_index, target_index, _)) = best else {
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return relater.fail(|db| not_assignable_message(db, source, target));
         };
         return relater.relate(
             &source_candidates[source_index],
@@ -181,17 +185,14 @@ fn relate_function(
                             .as_ref()
                     };
                     if let Some(remaining_target) = remaining_target {
-                        relater
-                            .relate_with_directional_policy(
-                                remaining_target,
-                                source_vararg,
-                                intersection_state,
-                            )
-                            .map_err(|failure| {
-                                failure.map_mismatch(|mismatch| {
-                                    mismatch.at(TypePathSegment::FunctionParameter(remaining))
-                                })
-                            })?;
+                        let result = relater.relate_with_directional_policy(
+                            remaining_target,
+                            source_vararg,
+                            intersection_state,
+                        );
+                        relater.on_unrelated(result, |_| ChainMessage::FunctionParameter {
+                            index: remaining,
+                        })?;
                     }
                 }
             }
@@ -206,13 +207,12 @@ fn relate_function(
                 continue;
             }
             // 函数参数是逆变的.
-            relater
-                .relate_with_directional_policy(target_type, source_type, intersection_state)
-                .map_err(|failure| {
-                    failure.map_mismatch(|mismatch| {
-                        mismatch.at(TypePathSegment::FunctionParameter(index))
-                    })
-                })?;
+            let result = relater.relate_with_directional_policy(
+                target_type,
+                source_type,
+                intersection_state,
+            );
+            relater.on_unrelated(result, |_| ChainMessage::FunctionParameter { index })?;
             relater.note_progress();
         }
     }

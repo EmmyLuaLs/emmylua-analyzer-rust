@@ -1,12 +1,14 @@
 use crate::{
     LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, VariadicType,
     find_members_with_key,
+    semantic::type_check::error_chain::{
+        ChainMessage, index_message, missing_members_message, not_assignable_message,
+    },
 };
 
 use super::super::{
     is_optional,
-    mismatch::{TypeMismatch, TypeMismatchKind, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationFailure, RelationResult},
+    relation::{IntersectionState, Relater, RelationResult},
 };
 use super::{
     array::effective_array_base,
@@ -126,15 +128,11 @@ pub(super) fn relate_tuple_to_tuple(
             if index >= target_required_len || is_optional(relater.db(), target_type) {
                 continue;
             }
-            return relater
-                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
+            return relater.fail(|_| ChainMessage::MissingTupleElement { index });
         };
 
-        relater
-            .relate(source_type, target_type, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(source_type, target_type, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
 
@@ -155,13 +153,10 @@ pub(super) fn relate_tuple_to_array(
                 VariadicType::Base(base) => base,
                 VariadicType::Multi(types) => {
                     for (offset, source_type) in types.iter().enumerate() {
-                        relater
-                            .relate(source_type, &target_base, intersection_state)
-                            .map_err(|failure| {
-                                failure.map_mismatch(|mismatch| {
-                                    mismatch.at(TypePathSegment::TupleElement(index + offset))
-                                })
-                            })?;
+                        let result = relater.relate(source_type, &target_base, intersection_state);
+                        relater.on_unrelated(result, |_| ChainMessage::TupleElement {
+                            index: index + offset,
+                        })?;
                         relater.note_progress();
                     }
                     continue;
@@ -169,11 +164,8 @@ pub(super) fn relate_tuple_to_array(
             },
             source_type => source_type,
         };
-        relater
-            .relate(source_type, &target_base, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(source_type, &target_base, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
     Ok(())
@@ -188,21 +180,15 @@ pub(super) fn relate_tuple_to_table_generic(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if target_params.len() != 2 {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
     visit_tuple_index_entries(source_tuple, |key_type, source_type, index| {
         relater.consume_relation_budget()?;
-        relater
-            .relate(key_type, &target_params[0], intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
-            })?;
-        relater
-            .relate(source_type, &target_params[1], intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let key_result = relater.relate(key_type, &target_params[0], intersection_state);
+        relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
+        let value_result = relater.relate(source_type, &target_params[1], intersection_state);
+        relater.on_unrelated(value_result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
         Ok(())
     })
@@ -271,14 +257,10 @@ pub(super) fn relate_keyed_source_to_tuple(
             if is_optional(relater.db(), target_type) {
                 continue;
             }
-            return relater
-                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
+            return relater.fail(|_| ChainMessage::MissingTupleElement { index });
         };
-        relater
-            .relate(&source_type, target_type, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(&source_type, target_type, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
     Ok(())
@@ -297,7 +279,7 @@ fn relate_tuple_to_object(
         if !matches!(key, LuaMemberKey::Integer(idx) if *idx > 0)
             && !target_member_type.is_optional()
         {
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return relater.fail(|db| not_assignable_message(db, source, target));
         }
     }
 
@@ -310,14 +292,11 @@ fn relate_tuple_to_object(
             if target_member_type.is_optional() {
                 continue;
             }
-            return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            return relater.fail(|db| not_assignable_message(db, source, target));
         };
         relater.consume_relation_budget()?;
-        relater
-            .relate(source_type, target_member_type, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(source_type, target_member_type, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
 
@@ -325,20 +304,11 @@ fn relate_tuple_to_object(
         for (target_key_type, target_value_type) in target_object.get_index_access() {
             visit_tuple_index_entries(source_tuple, |key_type, source_type, index| {
                 relater.consume_relation_budget()?;
-                relater
-                    .relate(key_type, target_key_type, intersection_state)
-                    .map_err(|failure| {
-                        failure.map_mismatch(|mismatch| {
-                            mismatch.at(TypePathSegment::Index(key_type.clone()))
-                        })
-                    })?;
-                relater
-                    .relate(source_type, target_value_type, intersection_state)
-                    .map_err(|failure| {
-                        failure.map_mismatch(|mismatch| {
-                            mismatch.at(TypePathSegment::TupleElement(index))
-                        })
-                    })?;
+                let key_result = relater.relate(key_type, target_key_type, intersection_state);
+                relater.on_unrelated(key_result, |db| index_message(db, key_type))?;
+                let value_result =
+                    relater.relate(source_type, target_value_type, intersection_state);
+                relater.on_unrelated(value_result, |_| ChainMessage::TupleElement { index })?;
                 relater.note_progress();
                 Ok(())
             })?;
@@ -373,13 +343,12 @@ fn relate_tuple_to_declared_target(
             Ok(())
         })?;
         if !missing_keys.is_empty() {
-            return unrelated_missing_members(relater, missing_keys);
+            return unrelated_missing_members(relater, source, target, missing_keys);
         }
     }
 
     // 检查是否含有必需的命名字段
     let mut has_integer_or_index = false;
-    let mut mismatch = None;
     let result =
         visit_declared_members(
             relater,
@@ -392,15 +361,12 @@ fn relate_tuple_to_declared_target(
                         if is_optional(relater.db(), target_member_type) {
                             return Ok(());
                         }
-                        mismatch = Some(TypeMismatch::incompatible(source, target));
-                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                        return relater.fail(|db| not_assignable_message(db, source, target));
                     };
                     relater.consume_relation_budget()?;
-                    relater
-                        .relate(source_type, target_member_type, intersection_state)
-                        .map_err(|failure| {
-                            failure.map_mismatch(|m| m.at(TypePathSegment::TupleElement(index)))
-                        })?;
+                    let result =
+                        relater.relate(source_type, target_member_type, intersection_state);
+                    relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
                     relater.note_progress();
                     Ok(())
                 }
@@ -420,21 +386,17 @@ fn relate_tuple_to_declared_target(
                 }
                 _ => {
                     if !is_optional(relater.db(), target_member_type) {
-                        mismatch = Some(TypeMismatch::new(TypeMismatchKind::MissingMembers {
-                            keys: vec![key.clone()],
-                        }));
-                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                        return relater.fail(|db| {
+                            missing_members_message(db, source, target, std::slice::from_ref(key))
+                        });
                     }
                     Ok(())
                 }
             },
         );
 
-    if let Some(m) = mismatch {
-        return relater.unrelated(|| m);
-    }
     if result.is_ok() && !has_integer_or_index {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
     result
 }

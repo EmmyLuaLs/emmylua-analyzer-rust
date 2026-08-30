@@ -2,15 +2,15 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr};
 use rowan::TextRange;
 
 use crate::{
-    AssignabilityResult, DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel,
-    TypeMismatch,
+    AssignabilityResult, DiagnosticCode, ErrorChain, LuaFunctionType, LuaType, RenderLevel,
+    SemanticModel,
     diagnostic::checker::table::check_table_assignment_diagnostics,
     humanize_type,
     semantic::{RelationOutcome, get_func_param_type, probe_assignable},
 };
 
 use super::{
-    super::{DiagnosticContext, DiagnosticMessage, render_diagnostic_detail},
+    super::{DiagnosticContext, DiagnosticMessage, render_error_chain},
     call_analysis::CallAnalysis,
 };
 
@@ -113,8 +113,8 @@ pub(super) fn check_param_type_mismatch(
         }
 
         // 表检查未处理时, 补充通用可赋值关系和参数类型诊断.
-        let mismatch = match semantic_model.check_assignable(failed_arg.typ, &param_type) {
-            AssignabilityResult::NotAssignable(mismatch) => Some(mismatch),
+        let chain = match semantic_model.check_assignable(failed_arg.typ, &param_type) {
+            AssignabilityResult::NotAssignable(chain) => chain,
             AssignabilityResult::Assignable | AssignabilityResult::Indeterminate(_) => None,
         };
         report_param_type_diagnostic(
@@ -123,7 +123,7 @@ pub(super) fn check_param_type_mismatch(
             failed_arg.range,
             &param_type,
             failed_arg.typ,
-            mismatch.as_ref(),
+            chain.as_ref(),
         );
         return;
     }
@@ -271,7 +271,7 @@ fn report_param_type_diagnostic(
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    mismatch: Option<&TypeMismatch>,
+    chain: Option<&ErrorChain>,
 ) {
     // 整数参数接受整数值的浮点常量, 不报告参数类型错误.
     if let (LuaType::Integer, LuaType::FloatConst(value)) = (param_type, expr_type)
@@ -292,8 +292,7 @@ fn report_param_type_diagnostic(
                 target = humanize_type(db, param_type, RenderLevel::Simple),
             )
             .to_string(),
-            mismatch
-                .and_then(|mismatch| render_diagnostic_detail(db, mismatch, expr_type, param_type)),
+            render_error_chain(chain, true),
         ),
         None,
     );

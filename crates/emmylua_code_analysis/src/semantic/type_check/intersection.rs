@@ -1,7 +1,8 @@
-use crate::{LuaIntersectionType, LuaType};
+use crate::{
+    LuaIntersectionType, LuaType, semantic::type_check::error_chain::not_assignable_message,
+};
 
 use super::{
-    mismatch::TypeMismatch,
     relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
     structured::{relate_structured, relate_target_intersection_index_members},
 };
@@ -49,8 +50,8 @@ fn relate_to_target_intersection(
             Err(failure @ RelationFailure::Indeterminate(_)) => {
                 indeterminate.get_or_insert(failure);
             }
-            Err(failure @ RelationFailure::Unrelated(_)) => {
-                return Err(failure);
+            Err(RelationFailure::Unrelated) => {
+                return Err(RelationFailure::Unrelated);
             }
         }
     }
@@ -59,7 +60,7 @@ fn relate_to_target_intersection(
         match relate_target_intersection_index_members(relater, source, target, target_intersection)
         {
             Ok(()) => {}
-            Err(failure @ RelationFailure::Unrelated(_)) => return Err(failure),
+            Err(RelationFailure::Unrelated) => return Err(RelationFailure::Unrelated),
             Err(failure @ RelationFailure::Indeterminate(_)) => {
                 indeterminate.get_or_insert(failure);
             }
@@ -113,10 +114,10 @@ fn relate_source_intersection(
         return Err(RelationFailure::Indeterminate(kind));
     }
     let Some((best_index, _)) = best else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
     if !relater.is_explain() {
-        return Err(RelationFailure::Unrelated(None));
+        return Err(RelationFailure::Unrelated);
     }
     relater.relate(
         &source_intersection.get_types()[best_index],

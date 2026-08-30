@@ -4,14 +4,12 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    AssignabilityResult, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType,
-    SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeMismatch,
+    AssignabilityResult, DiagnosticCode, ErrorChain, LuaSemanticDeclId, LuaSignatureId, LuaType,
+    SemanticDeclLevel, SemanticModel, SignatureReturnStatus,
     diagnostic::checker::{humanize_lint_type, table::check_table_assignment_diagnostics},
 };
 
-use super::{
-    Checker, DiagnosticContext, DiagnosticMessage, get_return_stats, render_diagnostic_detail,
-};
+use super::{Checker, DiagnosticContext, DiagnosticMessage, get_return_stats, render_error_chain};
 
 pub struct ReturnTypeMismatch;
 
@@ -88,7 +86,7 @@ fn check_return_stat(
                     check_type = self_type;
                 }
 
-                if let AssignabilityResult::NotAssignable(mismatch) =
+                if let AssignabilityResult::NotAssignable(chain) =
                     semantic_model.check_assignable(return_expr_type, check_type)
                 {
                     if return_expr_type.is_table()
@@ -114,7 +112,7 @@ fn check_return_stat(
                             .unwrap_or(&return_stat.get_range()),
                         check_type,
                         return_expr_type,
-                        &mismatch,
+                        chain.as_ref(),
                     );
                 }
             }
@@ -142,7 +140,7 @@ fn check_return_stat(
                 return Some(());
             }
 
-            if let AssignabilityResult::NotAssignable(mismatch) =
+            if let AssignabilityResult::NotAssignable(chain) =
                 semantic_model.check_assignable(return_expr_type, check_type)
             {
                 add_type_check_diagnostic(
@@ -152,7 +150,7 @@ fn check_return_stat(
                     return_expr_range,
                     return_type,
                     return_expr_type,
-                    &mismatch,
+                    chain.as_ref(),
                 );
             }
         }
@@ -168,7 +166,7 @@ fn add_type_check_diagnostic(
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    mismatch: &TypeMismatch,
+    chain: Option<&ErrorChain>,
 ) {
     let db = semantic_model.get_db();
     context.add_diagnostic(
@@ -182,7 +180,7 @@ fn add_type_check_diagnostic(
                 found = humanize_lint_type(db, expr_type),
             )
             .to_string(),
-            render_diagnostic_detail(db, mismatch, expr_type, param_type),
+            render_error_chain(chain, true),
         ),
         None,
     );

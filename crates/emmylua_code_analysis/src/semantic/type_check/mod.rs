@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 mod callable;
+mod error_chain;
 mod intersection;
-mod mismatch;
 mod relation;
 mod simple;
 mod structured;
@@ -10,8 +10,8 @@ mod sub_type;
 mod test;
 mod union;
 
-pub use mismatch::{
-    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment, TypePathStep,
+pub use error_chain::{
+    ChainMessage, ErrorChain, MissingMembersMessage, OverflowKind, chain_node, push_message,
 };
 pub(crate) use relation::RelationOutcome;
 use relation::RelationSession;
@@ -40,11 +40,10 @@ pub fn probe_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> Rel
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssignabilityResult {
     Assignable,
-    NotAssignable(TypeMismatch),
+    NotAssignable(Option<ErrorChain>),
     Indeterminate(OverflowKind),
 }
 
-/// 检查 source 到 target 的赋值关系, 并在最终失败分支保留最小诊断证据.
 pub fn check_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> AssignabilityResult {
     if fast_eq_check(source, target) {
         return AssignabilityResult::Assignable;

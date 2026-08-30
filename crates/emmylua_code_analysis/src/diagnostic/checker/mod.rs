@@ -25,7 +25,7 @@ mod need_check_nil;
 mod param_check;
 mod readonly_check;
 mod redefined_local;
-mod render_type_mismatch;
+mod render_error_chain;
 mod require_module_visibility;
 mod return_type_mismatch;
 mod syntax_error;
@@ -39,7 +39,7 @@ mod unnecessary_assert;
 mod unnecessary_if;
 mod unused;
 
-pub use render_type_mismatch::render_diagnostic_detail;
+pub use render_error_chain::render_error_chain;
 
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind,
@@ -344,12 +344,6 @@ pub fn get_return_stats(closure_expr: &LuaClosureExpr) -> impl Iterator<Item = L
 
 pub fn humanize_lint_type(db: &DbIndex, typ: &LuaType) -> String {
     match typ {
-        // TODO: 应该仅去掉命名空间
-        // LuaType::Ref(type_decl_id) => type_decl_id.get_simple_name().to_string(),
-        // LuaType::Generic(generic_type) => generic_type
-        //     .get_base_type_id()
-        //     .get_simple_name()
-        //     .to_string(),
         LuaType::IntegerConst(_) => "integer".to_string(),
         LuaType::FloatConst(_) => "number".to_string(),
         LuaType::BooleanConst(_) => "boolean".to_string(),

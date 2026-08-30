@@ -2,14 +2,19 @@ use std::sync::Arc;
 
 use crate::{
     DbIndex, LuaType, LuaUnionType,
-    semantic::type_check::{fast_eq_check, normalize_type, structured::relate_array_to_array},
+    semantic::type_check::{
+        error_chain::{
+            ChainMessage, ErrorChain, OverflowKind, not_assignable_message, push_message,
+        },
+        fast_eq_check, normalize_type,
+        structured::relate_array_to_array,
+    },
 };
 
 use super::{
     callable::relate_callable,
     intersection::relate_intersection,
     is_circular_tpl_constraint,
-    mismatch::{OverflowKind, TypeMismatch},
     simple::relate_simple,
     structured::{relate_structured, relate_to_declared_target_members, relate_to_object_target},
     union::relate_union,
@@ -17,19 +22,10 @@ use super::{
 
 pub(crate) type RelationResult = Result<(), RelationFailure>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RelationFailure {
-    Unrelated(Option<TypeMismatch>),
+    Unrelated,
     Indeterminate(OverflowKind),
-}
-
-impl RelationFailure {
-    pub(crate) fn map_mismatch(self, map: impl FnOnce(TypeMismatch) -> TypeMismatch) -> Self {
-        match self {
-            Self::Unrelated(Some(mismatch)) => Self::Unrelated(Some(map(mismatch))),
-            failure => failure,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +84,7 @@ pub(crate) struct RelationSession<'db> {
     relation_budget: u32,
     recursion_depth: u16,
     progress: u32,
+    error_chain: Option<ErrorChain>,
 }
 
 pub(crate) struct Relater<'session, 'active, 'db> {
@@ -104,6 +101,7 @@ impl<'db> RelationSession<'db> {
             relation_budget: 20_000,
             recursion_depth: 0,
             progress: 0,
+            error_chain: None,
         }
     }
 
@@ -125,7 +123,7 @@ impl<'db> RelationSession<'db> {
         let mut session = Self::new(db, EvidenceMode::Silent);
         match session.relate(source, target, IntersectionState::NONE) {
             Ok(()) => RelationOutcome::Related,
-            Err(RelationFailure::Unrelated(_)) => RelationOutcome::Unrelated,
+            Err(RelationFailure::Unrelated) => RelationOutcome::Unrelated,
             Err(RelationFailure::Indeterminate(kind)) => RelationOutcome::Indeterminate(kind),
         }
     }
@@ -138,9 +136,9 @@ impl<'db> RelationSession<'db> {
         let mut session = Self::new(db, EvidenceMode::Explain);
         match session.relate(source, target, IntersectionState::NONE) {
             Ok(()) => super::AssignabilityResult::Assignable,
-            Err(RelationFailure::Unrelated(mismatch)) => super::AssignabilityResult::NotAssignable(
-                mismatch.unwrap_or_else(|| TypeMismatch::incompatible(source, target)),
-            ),
+            Err(RelationFailure::Unrelated) => {
+                super::AssignabilityResult::NotAssignable(session.error_chain)
+            }
             Err(RelationFailure::Indeterminate(kind)) => {
                 super::AssignabilityResult::Indeterminate(kind)
             }
@@ -175,11 +173,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         }
         self.session.relation_budget -= 1;
         Ok(())
-    }
-
-    pub(super) fn unrelated(&self, build: impl FnOnce() -> TypeMismatch) -> RelationResult {
-        let mismatch = self.is_explain().then(build);
-        Err(RelationFailure::Unrelated(mismatch))
     }
 
     pub(crate) fn relate(
@@ -241,8 +234,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                     return self.run_fast_path(|relater| {
                         relate_array_to_array(
                             relater,
-                            source,
-                            target,
                             source_array,
                             target_array,
                             intersection_state,
@@ -493,10 +484,10 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                 self.note_progress();
                 return Ok(());
             }
-            return self.unrelated(|| TypeMismatch::incompatible(source, target));
+            return self.fail(|db| not_assignable_message(db, source, target));
         }
         if matches!(target, LuaType::Never) {
-            return self.unrelated(|| TypeMismatch::incompatible(source, target));
+            return self.fail(|db| not_assignable_message(db, source, target));
         }
 
         // 声明类型和带元表的常量表可能同时具有结构约束和调用能力, 必须先保留结构关系的确定结论.
@@ -522,7 +513,7 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             return result;
         }
 
-        self.unrelated(|| TypeMismatch::incompatible(source, target))
+        self.fail(|db| not_assignable_message(db, source, target))
     }
 
     /// 快速路径, 用在确定无复杂行为的类型检查
@@ -592,10 +583,50 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         self.session.evidence = evidence;
         let outcome = match result {
             Ok(()) => RelationOutcome::Related,
-            Err(RelationFailure::Unrelated(_)) => RelationOutcome::Unrelated,
+            Err(RelationFailure::Unrelated) => RelationOutcome::Unrelated,
             Err(RelationFailure::Indeterminate(kind)) => RelationOutcome::Indeterminate(kind),
         };
         (outcome, candidate_progress)
+    }
+
+    /// 在叶子失败时调用, 用于构建具体的错误
+    pub(crate) fn fail(
+        &mut self,
+        message: impl FnOnce(&DbIndex) -> ChainMessage,
+    ) -> RelationResult {
+        if self.is_explain() {
+            let message = message(self.session.db);
+            self.push_error_message(message);
+        }
+        Err(RelationFailure::Unrelated)
+    }
+
+    /// 在中间层调用, 如果发生错误时将构建错误链
+    pub(crate) fn on_unrelated(
+        &mut self,
+        result: RelationResult,
+        message: impl FnOnce(&DbIndex) -> ChainMessage,
+    ) -> RelationResult {
+        if let Err(RelationFailure::Unrelated) = &result
+            && self.is_explain()
+        {
+            let message = message(self.session.db);
+            self.push_error_message(message);
+        }
+        result
+    }
+
+    fn push_error_message(&mut self, message: ChainMessage) {
+        let head = self.session.error_chain.take();
+        self.session.error_chain = Some(push_message(head, message));
+    }
+
+    pub(super) fn error_chain_snapshot(&self) -> Option<ErrorChain> {
+        self.session.error_chain.clone()
+    }
+
+    pub(super) fn restore_error_chain(&mut self, snapshot: Option<ErrorChain>) {
+        self.session.error_chain = snapshot;
     }
 }
 

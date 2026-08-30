@@ -1,12 +1,12 @@
 use crate::{
     LuaArrayLen, LuaArrayType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType, LuaUnionType,
     find_members_with_key,
+    semantic::type_check::error_chain::{ChainMessage, index_message, not_assignable_message},
 };
 
 use super::super::{
     is_optional,
-    mismatch::{TypeMismatch, TypeMismatchKind, TypePathInfo, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationFailure, RelationResult},
+    relation::{IntersectionState, Relater, RelationResult},
 };
 use super::{
     declared::{resolve_declared_target_alias_or_enum, visit_declared_members},
@@ -28,8 +28,6 @@ pub(super) fn relate_array_source(
         }
         LuaType::Array(target_array) => Some(relate_array_to_array(
             relater,
-            source,
-            target,
             source_array,
             target_array,
             intersection_state,
@@ -79,26 +77,13 @@ pub(super) fn relate_array_source(
 #[inline(always)]
 pub(in crate::semantic::type_check) fn relate_array_to_array(
     relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
     source_array: &LuaArrayType,
     target_array: &LuaArrayType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let target_base = effective_array_base(relater, target_array.get_base());
-    relater
-        .relate(source_array.get_base(), &target_base, intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                append_array_element_path(
-                    mismatch,
-                    source,
-                    target,
-                    source_array.get_base(),
-                    target_array.get_base(),
-                )
-            })
-        })
+    let result = relater.relate(source_array.get_base(), &target_base, intersection_state);
+    relater.on_unrelated(result, |_| ChainMessage::ArrayElement)
 }
 
 pub(super) fn effective_array_base(relater: &Relater, base: &LuaType) -> LuaType {
@@ -134,14 +119,14 @@ pub(super) fn relate_array_to_tuple(
         LuaArrayLen::Max(len) => usize::try_from(*len).unwrap_or(0),
     };
     if source_min_len < target_required_len {
-        return relater.unrelated(|| {
-            TypeMismatch::new(TypeMismatchKind::Message(
+        return relater.fail(|_| {
+            ChainMessage::Text(
                 t!(
                     "The target requires at least %{count} element(s) but source may have fewer.",
                     count = target_required_len
                 )
                 .to_string(),
-            ))
+            )
         });
     }
 
@@ -166,11 +151,8 @@ pub(super) fn relate_array_to_tuple(
         }) else {
             continue;
         };
-        relater
-            .relate(source_array.get_base(), target_type, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(source_array.get_base(), target_type, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
     Ok(())
@@ -185,24 +167,18 @@ pub(super) fn relate_array_to_table_generic(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if target_params.len() != 2 {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
-    relater
-        .relate(&LuaType::Integer, &target_params[0], intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
-        })?;
+    let key_result = relater.relate(&LuaType::Integer, &target_params[0], intersection_state);
+    relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
     relater.note_progress();
-    relater
-        .relate(
-            source_array.get_base(),
-            &target_params[1],
-            intersection_state,
-        )
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(1)))
-        })?;
+    let value_result = relater.relate(
+        source_array.get_base(),
+        &target_params[1],
+        intersection_state,
+    );
+    relater.on_unrelated(value_result, |_| ChainMessage::GenericArgument { index: 1 })?;
     relater.note_progress();
     Ok(())
 }
@@ -225,21 +201,10 @@ pub(super) fn relate_keyed_source_to_array(
     .and_then(|members| members.into_iter().next())
     .map(|member| member.typ);
     let Some(source_type) = source_type else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
-    relater
-        .relate(&source_type, &target_base, intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                append_array_element_path(
-                    mismatch,
-                    source,
-                    target,
-                    &source_type,
-                    target_array.get_base(),
-                )
-            })
-        })?;
+    let result = relater.relate(&source_type, &target_base, intersection_state);
+    relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
     relater.note_progress();
     Ok(())
 }
@@ -264,24 +229,13 @@ fn relate_array_to_object(
                     effective_array_base(relater, source_array.get_base())
                 };
                 relater.consume_relation_budget()?;
-                relater
-                    .relate(&source_member_type, member_type, intersection_state)
-                    .map_err(|failure| {
-                        failure.map_mismatch(|mismatch| {
-                            append_array_element_path(
-                                mismatch,
-                                source,
-                                target,
-                                &source_member_type,
-                                member_type,
-                            )
-                        })
-                    })?;
+                let result = relater.relate(&source_member_type, member_type, intersection_state);
+                relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
                 relater.note_progress();
             }
             _ => {
                 if !member_type.is_optional() {
-                    return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+                    return relater.fail(|db| not_assignable_message(db, source, target));
                 }
             }
         }
@@ -290,30 +244,14 @@ fn relate_array_to_object(
     if !intersection_state.contains(IntersectionState::TARGET) {
         for (target_key_type, target_value_type) in target_object.get_index_access() {
             relater.consume_relation_budget()?;
-            relater
-                .relate(&LuaType::Integer, target_key_type, intersection_state)
-                .map_err(|failure| {
-                    failure.map_mismatch(|mismatch| {
-                        mismatch.at(TypePathSegment::Index(LuaType::Integer))
-                    })
-                })?;
-            relater
-                .relate(
-                    source_array.get_base(),
-                    target_value_type,
-                    intersection_state,
-                )
-                .map_err(|failure| {
-                    failure.map_mismatch(|mismatch| {
-                        append_array_element_path(
-                            mismatch,
-                            source,
-                            target,
-                            source_array.get_base(),
-                            target_value_type,
-                        )
-                    })
-                })?;
+            let key_result = relater.relate(&LuaType::Integer, target_key_type, intersection_state);
+            relater.on_unrelated(key_result, |db| index_message(db, &LuaType::Integer))?;
+            let value_result = relater.relate(
+                source_array.get_base(),
+                target_value_type,
+                intersection_state,
+            );
+            relater.on_unrelated(value_result, |_| ChainMessage::ArrayElement)?;
             relater.note_progress();
         }
     }
@@ -336,7 +274,6 @@ fn relate_array_to_declared_target(
 
     // 检查是否有整数索引或索引访问, 如果没有, 则不兼容
     let mut has_integer_or_index = false;
-    let mut mismatch = None;
     let result =
         visit_declared_members(
             relater,
@@ -354,19 +291,9 @@ fn relate_array_to_declared_target(
                         effective_array_base(relater, source_array.get_base())
                     };
                     relater.consume_relation_budget()?;
-                    relater
-                        .relate(&source_member_type, target_member_type, intersection_state)
-                        .map_err(|failure| {
-                            failure.map_mismatch(|mismatch| {
-                                append_array_element_path(
-                                    mismatch,
-                                    source,
-                                    target,
-                                    &source_member_type,
-                                    target_member_type,
-                                )
-                            })
-                        })?;
+                    let result =
+                        relater.relate(&source_member_type, target_member_type, intersection_state);
+                    relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
                     relater.note_progress();
                     Ok(())
                 }
@@ -386,38 +313,15 @@ fn relate_array_to_declared_target(
                 }
                 _ => {
                     if !target_member_type.is_optional() {
-                        mismatch = Some(TypeMismatch::incompatible(source, target));
-                        return Err(RelationFailure::Unrelated(mismatch.clone()));
+                        return relater.fail(|db| not_assignable_message(db, source, target));
                     }
                     Ok(())
                 }
             },
         );
 
-    if let Some(m) = mismatch {
-        return relater.unrelated(|| m);
-    }
     if result.is_ok() && !has_integer_or_index {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
     result
-}
-
-pub(super) fn append_array_element_path(
-    mismatch: TypeMismatch,
-    source: &LuaType,
-    target: &LuaType,
-    source_element: &LuaType,
-    target_element: &LuaType,
-) -> TypeMismatch {
-    let include_element =
-        mismatch.has_path() || !matches!(mismatch.reason(), TypeMismatchKind::Incompatible { .. });
-    let outer_relation = std::iter::once(TypePathInfo::relation(source, target));
-    let element_relation = include_element
-        .then(|| TypePathInfo::relation(source_element, target_element))
-        .into_iter();
-    mismatch.at_with_info(
-        TypePathSegment::ArrayElement,
-        outer_relation.chain(element_relation),
-    )
 }

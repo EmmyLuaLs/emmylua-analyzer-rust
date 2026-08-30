@@ -1,10 +1,13 @@
-use crate::{InFiled, LuaArrayType, LuaMemberKey, LuaMemberOwner, LuaTupleType, LuaType};
+use crate::{
+    InFiled, LuaArrayType, LuaMemberKey, LuaMemberOwner, LuaTupleType, LuaType,
+    semantic::type_check::error_chain::{ChainMessage, not_assignable_message, property_message},
+};
 
 use super::super::{
     is_optional,
-    mismatch::{OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment},
     relation::{IntersectionState, Relater, RelationFailure, RelationResult},
 };
+
 use super::{
     array::effective_array_base,
     declared::relate_structural_source_to_declared_target,
@@ -14,6 +17,7 @@ use super::{
     },
     object_type::{relate_member_to_table_generic, relate_to_object_target},
 };
+use crate::semantic::type_check::OverflowKind;
 
 pub(super) fn relate_table_const_source(
     relater: &mut Relater,
@@ -94,14 +98,10 @@ pub(super) fn relate_table_const_to_tuple(
             if is_optional(relater.db(), target_type) {
                 continue;
             }
-            return relater
-                .unrelated(|| TypeMismatch::new(TypeMismatchKind::MissingTupleElement { index }));
+            return relater.fail(|_| ChainMessage::MissingTupleElement { index });
         };
-        relater
-            .relate(&source_type, target_type, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::TupleElement(index)))
-            })?;
+        let result = relater.relate(&source_type, target_type, intersection_state);
+        relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
         relater.note_progress();
     }
     Ok(())
@@ -133,11 +133,8 @@ pub(super) fn relate_table_const_to_array(
         }
         relater.consume_relation_budget()?;
         let source_type = item.resolve_type(db).unwrap_or(LuaType::Any);
-        relater
-            .relate(&source_type, &target_base, intersection_state)
-            .map_err(|failure| {
-                failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::Member(key.clone())))
-            })?;
+        let result = relater.relate(&source_type, &target_base, intersection_state);
+        relater.on_unrelated(result, |_| property_message(key))?;
         checked = true;
         relater.note_progress();
         Ok(())
@@ -146,7 +143,7 @@ pub(super) fn relate_table_const_to_array(
     if checked {
         Ok(())
     } else {
-        relater.unrelated(|| TypeMismatch::incompatible(source, target))
+        relater.fail(|db| not_assignable_message(db, source, target))
     }
 }
 
@@ -159,7 +156,7 @@ pub(super) fn relate_table_const_to_table_generic(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if target_params.len() != 2 {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
     let db = relater.db();
@@ -190,7 +187,7 @@ pub(super) fn relate_to_table_const_target(
         let (missing_keys, _) =
             collect_missing_members(relater, source, target, intersection_state)?;
         if !missing_keys.is_empty() {
-            return unrelated_missing_members(relater, missing_keys);
+            return unrelated_missing_members(relater, source, target, missing_keys);
         }
     }
 

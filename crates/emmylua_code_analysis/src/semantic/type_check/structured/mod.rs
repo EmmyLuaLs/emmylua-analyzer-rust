@@ -7,12 +7,9 @@ mod table_const;
 mod table_generic;
 mod tuple;
 
-use crate::LuaType;
+use crate::{LuaType, semantic::type_check::error_chain::not_assignable_message};
 
-use super::{
-    mismatch::TypeMismatch,
-    relation::{IntersectionState, Relater, RelationResult},
-};
+use super::relation::{IntersectionState, Relater, RelationResult};
 use array::relate_array_source;
 pub(in crate::semantic::type_check) use array::relate_array_to_array;
 pub(in crate::semantic::type_check) use declared::relate_to_declared_target_members;
@@ -59,7 +56,7 @@ pub(super) fn relate_structured(
                     _ => None,
                 };
                 let Some(target_decl) = target_decl else {
-                    return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+                    return Some(relater.fail(|db| not_assignable_message(db, source, target)));
                 };
 
                 if target_decl.is_alias() || target_decl.is_enum() {

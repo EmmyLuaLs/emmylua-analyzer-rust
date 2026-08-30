@@ -1,8 +1,10 @@
-use crate::{LuaGenericType, LuaType, TypeSubstitutor};
+use crate::{
+    LuaGenericType, LuaType, TypeSubstitutor,
+    semantic::type_check::error_chain::{ChainMessage, OverflowKind, not_assignable_message},
+};
 
-use super::super::{
-    mismatch::{TypeMismatch, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult},
+use super::super::relation::{
+    IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult,
 };
 use super::{
     array::relate_keyed_source_to_array,
@@ -29,26 +31,38 @@ pub(super) fn relate_generic_source(
         .get_type_index()
         .get_type_decl(source_generic.get_base_type_id_ref())
     else {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     };
 
-    // 基类型 id 相同时先按位置比较类型实参
-    let fast_failure = if let LuaType::Generic(target_generic) = target
+    // todo: 实现完整的型变探测
+    // 基类型 id 相同时先按位置比较类型实参.
+    // 快捷尝试仅作探测, 因此需要保留快照.
+    let saved_chain = relater.error_chain_snapshot();
+    let args_outcome = if let LuaType::Generic(target_generic) = target
         && source_generic.get_base_type_id_ref() == target_generic.get_base_type_id_ref()
         && !source_decl.is_enum()
     {
-        match relate_same_family_generic_args(
+        Some(relate_same_family_generic_args(
             relater,
             source_generic,
             target_generic,
             intersection_state,
-        ) {
-            SameFamilyArgsOutcome::Related => return Some(Ok(())),
-            SameFamilyArgsOutcome::Proceed(failure) => failure,
-        }
+        ))
     } else {
         None
     };
+
+    match args_outcome {
+        Some(SameFamilyArgsOutcome::Related) => return Some(Ok(())),
+        Some(SameFamilyArgsOutcome::Indeterminate(kind)) => {
+            return Some(Err(RelationFailure::Indeterminate(kind)));
+        }
+        // `Covariant` 仅表示实参按协变通过, 但对于泛型别名实参可能处于逆变/不变位置, 仍然需要交由后续流程展开验证.
+        Some(SameFamilyArgsOutcome::Covariant | SameFamilyArgsOutcome::Proceed) => {
+            relater.restore_error_chain(saved_chain);
+        }
+        None => {}
+    }
 
     let result = if source_decl.is_alias() {
         let substitutor = TypeSubstitutor::from_alias(
@@ -57,7 +71,9 @@ pub(super) fn relate_generic_source(
         );
         match source_decl.get_alias_origin(relater.db(), Some(&substitutor)) {
             Some(alias_origin) => Some(relater.relate(&alias_origin, target, intersection_state)),
-            None => return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target))),
+            None => {
+                return Some(relater.fail(|db| not_assignable_message(db, source, target)));
+            }
         }
     } else if source_decl.is_class() {
         match target {
@@ -120,19 +136,10 @@ pub(super) fn relate_generic_source(
             _ => None,
         }
     } else {
-        return Some(relater.unrelated(|| TypeMismatch::incompatible(source, target)));
+        return Some(relater.fail(|db| not_assignable_message(db, source, target)));
     };
 
-    match (fast_failure, result) {
-        // 多实参别名可能让不同参数处于不同方差位置, 首个快捷失败未必是真正的失败原因.
-        // 单实参时不存在参数归因歧义, 可以用快捷失败压缩诊断路径.
-        (Some(fast_failure), Some(Err(RelationFailure::Unrelated(_))))
-            if source_decl.is_alias() && source_generic.get_params().len() == 1 =>
-        {
-            Some(Err(fast_failure))
-        }
-        (_, result) => result,
-    }
+    result
 }
 
 fn relate_generic_source_to_generic_target(
@@ -148,7 +155,7 @@ fn relate_generic_source_to_generic_target(
         .get_type_index()
         .get_type_decl(target_generic.get_base_type_id_ref())
     else {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     };
     if target_decl.is_alias() || target_decl.is_enum() {
         return relate_structural_source_to_declared_target(
@@ -167,7 +174,7 @@ fn relate_generic_source_to_generic_target(
     let same_family = source_id == target_id;
     let direct_result = 'direct: {
         if !same_family || source_generic.get_params().len() != target_generic.get_params().len() {
-            break 'direct relater.unrelated(|| TypeMismatch::incompatible(source, target));
+            break 'direct relater.fail(|db| not_assignable_message(db, source, target));
         }
 
         match relate_same_family_generic_args(
@@ -176,12 +183,13 @@ fn relate_generic_source_to_generic_target(
             target_generic,
             intersection_state,
         ) {
-            SameFamilyArgsOutcome::Related | SameFamilyArgsOutcome::Proceed(None) => {
-                // 此时无失配报告且参数量相等, 那么认为是成功的
+            // 此时无失配报告且参数量相等, 那么认为是成功的
+            SameFamilyArgsOutcome::Related | SameFamilyArgsOutcome::Covariant => {
                 relater.note_progress();
                 Ok(())
             }
-            SameFamilyArgsOutcome::Proceed(Some(failure)) => break 'direct Err(failure),
+            SameFamilyArgsOutcome::Indeterminate(kind) => Err(RelationFailure::Indeterminate(kind)),
+            SameFamilyArgsOutcome::Proceed => break 'direct Err(RelationFailure::Unrelated),
         }
     };
 
@@ -230,8 +238,11 @@ fn relate_generic_source_to_generic_target(
 /// 同族泛型实参快捷比较的结果
 enum SameFamilyArgsOutcome {
     Related,
-    /// 需完整流程裁决
-    Proceed(Option<RelationFailure>),
+    /// 实参按默认协变方向检查全部通过, 但仍需要进一步验证
+    Covariant,
+    /// 存在实参不兼容
+    Proceed,
+    Indeterminate(OverflowKind),
 }
 
 /// 基类型 id 相同时直接按位置比较类型实参, 不做结构展开.
@@ -244,7 +255,7 @@ fn relate_same_family_generic_args(
     let source_params = source_generic.get_params();
     let target_params = target_generic.get_params();
     if source_params.len() != target_params.len() {
-        return SameFamilyArgsOutcome::Proceed(None);
+        return SameFamilyArgsOutcome::Proceed;
     }
     // 单实参失败时保留空 path, 诊断直接展示实参对比; 多实参需标注失配位置.
     let locate_argument = source_params.len() > 1;
@@ -261,22 +272,27 @@ fn relate_same_family_generic_args(
             || matches!(source_param, LuaType::TplRef(tpl) if tpl.get_constraint().is_none())
             || matches!(target_param, LuaType::TplRef(tpl) if tpl.get_constraint().is_none());
         all_trivial &= trivial;
-        if !trivial
-            && let Err(failure) = relater.relate(source_param, target_param, intersection_state)
-        {
-            let failure = if locate_argument {
-                failure
-                    .map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(index)))
+        if !trivial {
+            let result = relater.relate(source_param, target_param, intersection_state);
+            let result = if locate_argument {
+                relater.on_unrelated(result, |_| ChainMessage::GenericArgument { index })
             } else {
-                failure
+                result
             };
-            return SameFamilyArgsOutcome::Proceed(Some(failure));
+            match result {
+                Err(RelationFailure::Indeterminate(kind)) => {
+                    return SameFamilyArgsOutcome::Indeterminate(kind);
+                }
+                Err(RelationFailure::Unrelated) => return SameFamilyArgsOutcome::Proceed,
+                Ok(()) => {}
+            }
         }
     }
+
     if all_trivial {
         relater.note_progress();
         SameFamilyArgsOutcome::Related
     } else {
-        SameFamilyArgsOutcome::Proceed(None)
+        SameFamilyArgsOutcome::Covariant
     }
 }

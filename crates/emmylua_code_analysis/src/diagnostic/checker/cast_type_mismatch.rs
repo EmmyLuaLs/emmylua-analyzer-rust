@@ -3,12 +3,12 @@ use hashbrown::HashSet;
 use rowan::TextRange;
 
 use crate::{
-    AssignabilityResult, DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType,
-    SemanticModel, TypeMismatch, get_real_type, infer_doc_type,
+    AssignabilityResult, DbIndex, DiagnosticCode, DocTypeInferContext, ErrorChain, LuaType,
+    LuaUnionType, SemanticModel, get_real_type, infer_doc_type,
 };
 
 use super::{
-    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_diagnostic_detail,
+    Checker, DiagnosticContext, DiagnosticMessage, humanize_lint_type, render_error_chain,
 };
 
 pub struct CastTypeMismatchChecker;
@@ -117,9 +117,7 @@ fn add_cast_type_mismatch_diagnostic(
         Ok(_) => (),
         Err(reason) => {
             let detail = match reason {
-                CastCheckFailure::Mismatch(mismatch) => mismatch.as_ref().and_then(|mismatch| {
-                    render_diagnostic_detail(db, mismatch, origin_type, target_type)
-                }),
+                CastCheckFailure::Mismatch(chain) => render_error_chain(chain.as_ref(), true),
                 CastCheckFailure::Recursion => Some(format!("  {}", t!("type recursion"))),
             };
 
@@ -204,14 +202,14 @@ fn cast_type_check(
             }
             match semantic_model.check_assignable(origin_type, target_type) {
                 AssignabilityResult::Assignable => Ok(()),
-                AssignabilityResult::NotAssignable(mismatch) => {
+                AssignabilityResult::NotAssignable(chain) => {
                     if matches!(
                         semantic_model.check_assignable(target_type, origin_type),
                         AssignabilityResult::Assignable
                     ) {
                         Ok(())
                     } else {
-                        Err(CastCheckFailure::Mismatch(Some(mismatch)))
+                        Err(CastCheckFailure::Mismatch(chain))
                     }
                 }
                 AssignabilityResult::Indeterminate(_) => Ok(()),
@@ -222,7 +220,7 @@ fn cast_type_check(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CastCheckFailure {
-    Mismatch(Option<TypeMismatch>),
+    Mismatch(Option<ErrorChain>),
     Recursion,
 }
 

@@ -1,16 +1,14 @@
 //! TableGeneric source 的具体结构关系.
 
-use crate::{LuaArrayType, LuaType};
-
-use super::super::{
-    mismatch::{TypeMismatch, TypePathSegment},
-    relation::{IntersectionState, Relater, RelationResult},
+use crate::{
+    LuaArrayType, LuaType,
+    semantic::type_check::error_chain::{ChainMessage, not_assignable_message},
 };
+
+use super::super::relation::{IntersectionState, Relater, RelationResult};
 use super::{
-    array::{append_array_element_path, effective_array_base},
-    declared::relate_structural_source_to_declared_target,
-    object_type::relate_to_object_target,
-    table_const::relate_to_table_const_target,
+    array::effective_array_base, declared::relate_structural_source_to_declared_target,
+    object_type::relate_to_object_target, table_const::relate_to_table_const_target,
 };
 
 pub(super) fn relate_table_generic_source(
@@ -76,20 +74,14 @@ pub(super) fn relate_table_generic_to_table_generic(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if source_params.len() != 2 || target_params.len() != 2 {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
-    relater
-        .relate(&source_params[0], &target_params[0], intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(0)))
-        })?;
+    let key_result = relater.relate(&source_params[0], &target_params[0], intersection_state);
+    relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
     relater.note_progress();
-    relater
-        .relate(&source_params[1], &target_params[1], intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| mismatch.at(TypePathSegment::GenericArgument(1)))
-        })?;
+    let value_result = relater.relate(&source_params[1], &target_params[1], intersection_state);
+    relater.on_unrelated(value_result, |_| ChainMessage::GenericArgument { index: 1 })?;
     relater.note_progress();
     Ok(())
 }
@@ -103,20 +95,9 @@ pub(super) fn relate_table_generic_to_array(
     intersection_state: IntersectionState,
 ) -> RelationResult {
     if source_params.len() != 2 || (!source_params[0].is_integer() && !source_params[0].is_any()) {
-        return relater.unrelated(|| TypeMismatch::incompatible(source, target));
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
     let target_base = effective_array_base(relater, target_array.get_base());
-    relater
-        .relate(&source_params[1], &target_base, intersection_state)
-        .map_err(|failure| {
-            failure.map_mismatch(|mismatch| {
-                append_array_element_path(
-                    mismatch,
-                    source,
-                    target,
-                    &source_params[1],
-                    target_array.get_base(),
-                )
-            })
-        })
+    let result = relater.relate(&source_params[1], &target_base, intersection_state);
+    relater.on_unrelated(result, |_| ChainMessage::ArrayElement)
 }
