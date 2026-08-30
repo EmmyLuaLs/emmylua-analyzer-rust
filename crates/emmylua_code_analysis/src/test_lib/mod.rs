@@ -4,18 +4,16 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
 use lsp_types::NumberOrString;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    DbIndex, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, RenderLevel,
-    VirtualUrlGenerator, check_type_compact, humanize_type,
-};
+use crate::{DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, VirtualUrlGenerator};
 
-/// A virtual workspace for testing.
+/// A virtual workspace for testing (M4: via the salsa analysis layer only).
 #[allow(unused)]
 #[derive(Debug)]
 pub struct VirtualWorkspace {
     pub virtual_url_generator: VirtualUrlGenerator,
     pub analysis: EmmyLuaAnalysis,
     id_counter: u32,
+    last_file_id: Option<FileId>,
 }
 
 #[allow(unused, clippy::unwrap_used)]
@@ -35,6 +33,7 @@ impl VirtualWorkspace {
             virtual_url_generator: generator,
             analysis,
             id_counter: 0,
+            last_file_id: None,
         }
     }
 
@@ -48,6 +47,7 @@ impl VirtualWorkspace {
             virtual_url_generator: generator,
             analysis,
             id_counter: 0,
+            last_file_id: None,
         }
     }
 
@@ -58,17 +58,23 @@ impl VirtualWorkspace {
             .virtual_url_generator
             .new_uri(&format!("virtual_{}.lua", id));
 
-        self.analysis
+        let file_id = self
+            .analysis
             .update_file_by_uri(&uri, Some(content.to_string()))
-            .expect("File ID must be present")
+            .expect("File ID must be present");
+        self.last_file_id = Some(file_id);
+        file_id
     }
 
     pub fn def_file(&mut self, file_name: &str, content: &str) -> FileId {
         let uri = self.virtual_url_generator.new_uri(file_name);
 
-        self.analysis
+        let file_id = self
+            .analysis
             .update_file_by_uri(&uri, Some(content.to_string()))
-            .expect("File ID must be present")
+            .expect("File ID must be present");
+        self.last_file_id = Some(file_id);
+        file_id
     }
 
     pub fn def_files(&mut self, files: Vec<(&str, &str)>) -> Vec<FileId> {
@@ -82,6 +88,7 @@ impl VirtualWorkspace {
 
         let mut file_ids = self.analysis.update_files_by_uri_sorted(file_infos);
         file_ids.sort();
+        self.last_file_id = file_ids.last().copied();
 
         file_ids
     }
@@ -95,54 +102,63 @@ impl VirtualWorkspace {
     }
 
     pub fn get_node<Ast: LuaAstNode>(&self, file_id: FileId) -> Ast {
-        let tree = self
-            .analysis
-            .compilation
-            .get_db()
-            .get_vfs()
-            .get_syntax_tree(&file_id)
-            .expect("Tree must exist");
-        tree.get_chunk_node()
-            .descendants::<Ast>()
-            .next()
-            .expect("Node must exist")
+        let model = self.analysis.semantic_model(file_id).expect("salsa model");
+        let chunk = model.chunk().expect("chunk");
+        chunk.descendants::<Ast>().next().expect("Node must exist")
     }
 
     pub fn ty(&mut self, type_repr: &str) -> LuaType {
         let virtual_content = format!("---@type {}\nlocal t", type_repr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let semantic_model = self
-            .analysis
-            .compilation
-            .get_semantic_model(file_id)
-            .expect("Semantic model must exist");
+        let model = self.analysis.semantic_model(file_id).expect("salsa model");
         let token = local_name.get_name_token().expect("Name token must exist");
-        let info = semantic_model
-            .get_semantic_info(token.syntax().clone().into())
-            .expect("Semantic info must exist");
-        info.typ
+        let decl = model
+            .decl_by_offset(token.get_position())
+            .expect("decl must exist");
+        model.type_of_decl(&decl).expect("type must exist")
     }
 
     pub fn expr_ty(&mut self, expr: &str) -> LuaType {
         let virtual_content = format!("local t = {}", expr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let semantic_model = self
-            .analysis
-            .compilation
-            .get_semantic_model(file_id)
-            .expect("Model must exist");
+        let model = self.analysis.semantic_model(file_id).expect("salsa model");
         let token = local_name.get_name_token().expect("Name token must exist");
-        let info = semantic_model
-            .get_semantic_info(token.syntax().clone().into())
-            .expect("Semantic info must exist");
-        info.typ
+        let decl = model
+            .decl_by_offset(token.get_position())
+            .expect("decl must exist");
+        model.type_of_decl(&decl).expect("type must exist")
     }
 
-    pub fn check_type(&self, source: &LuaType, compact_type: &LuaType) -> bool {
-        let db = &self.analysis.compilation.get_db();
-        check_type_compact(db, source, compact_type).is_ok()
+    pub fn humanize_type(&self, ty: LuaType) -> String {
+        let Some(file_id) = self.last_file_id else {
+            return format!("{ty:?}");
+        };
+        let Some(model) = self.analysis.semantic_model(file_id) else {
+            return format!("{ty:?}");
+        };
+        crate::semantic_model::render::humanize_type(&model, &ty)
+    }
+
+    pub fn humanize_type_detailed(&self, ty: LuaType) -> String {
+        let Some(file_id) = self.last_file_id else {
+            return format!("{ty:?}");
+        };
+        let Some(model) = self.analysis.semantic_model(file_id) else {
+            return format!("{ty:?}");
+        };
+        crate::semantic_model::render::humanize_type_detailed(&model, &ty)
+    }
+
+    pub fn check_type(&self, source: &LuaType, target: &LuaType) -> bool {
+        let Some(file_id) = self.last_file_id else {
+            return false;
+        };
+        let Some(model) = self.analysis.semantic_model(file_id) else {
+            return false;
+        };
+        model.type_check_subtype(source, target)
     }
 
     pub fn enable_check(&mut self, diagnostic_code: DiagnosticCode) {
@@ -151,9 +167,9 @@ impl VirtualWorkspace {
         self.analysis.diagnostic.update_config(Arc::new(emmyrc));
     }
 
-    /// 只执行对应诊断代码的检查, 必须要在对应的`Checker`中为`const CODES`添加对应的诊断代码
+    /// Only run the check for the corresponding diagnostic code; the corresponding `Checker` must add that code to its `const CODES`.
     pub fn has_no_diagnostic(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
-        // 只启用对应的诊断
+        // Only enable the corresponding diagnostic.
         self.analysis.diagnostic.enable_only(diagnostic_code);
         let file_id = self.def(block_str);
         let result = self
@@ -194,20 +210,6 @@ impl VirtualWorkspace {
         enables.push(DiagnosticCode::MissingGlobalDoc);
         emmyrc.diagnostics.enables = enables;
         self.analysis.diagnostic.update_config(Arc::new(emmyrc));
-    }
-
-    pub fn humanize_type(&self, ty: LuaType) -> String {
-        let db = &self.analysis.compilation.get_db();
-        humanize_type(db, &ty, RenderLevel::Brief)
-    }
-
-    pub fn humanize_type_detailed(&self, ty: LuaType) -> String {
-        let db = &self.analysis.compilation.get_db();
-        humanize_type(db, &ty, RenderLevel::Detailed)
-    }
-
-    pub fn get_db_mut(&mut self) -> &mut DbIndex {
-        (self.analysis.compilation.get_db_mut()) as _
     }
 }
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{DbIndex, FileId};
+use emmylua_code_analysis::{FileId, SalsaDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 
 use super::OutputWriter;
@@ -24,13 +24,13 @@ impl GithubOutputWriter {
 }
 
 impl OutputWriter for GithubOutputWriter {
-    fn write(&mut self, db: &DbIndex, file_id: FileId, diagnostics: Vec<Diagnostic>) {
-        let Some(file_path) = db.get_vfs().get_file_path(&file_id) else {
+    fn write(&mut self, db: &SalsaDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
+        let Some(file_path) = db.file_path(file_id) else {
             return;
         };
         let relative = file_path
             .strip_prefix(strip_extended_prefix(&self.workspace))
-            .unwrap_or(file_path);
+            .unwrap_or(&file_path);
         let file = relative.to_string_lossy().replace('\\', "/");
 
         for diagnostic in diagnostics {

@@ -809,17 +809,9 @@ mod tests {
             .get_file_id(&file_path_to_uri(&net_file).unwrap())
             .unwrap();
 
-        assert_ne!(
-            analysis
-                .compilation
-                .get_db()
-                .get_module_index()
-                .get_workspace_id(socket_file_id),
-            analysis
-                .compilation
-                .get_db()
-                .get_module_index()
-                .get_workspace_id(net_file_id)
-        );
+        // M4: salsa has no workspace partition concept; only verify both files enter the analysis layer.
+        assert!(analysis.get_uri(socket_file_id).is_some());
+        assert!(analysis.get_uri(net_file_id).is_some());
+        assert_ne!(socket_file_id, net_file_id);
     }
 }

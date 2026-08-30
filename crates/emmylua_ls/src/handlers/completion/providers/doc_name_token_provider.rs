@@ -1,6 +1,8 @@
+//! Doc tag name token completion: `@param` parameter names / `@cast` local names / `@diagnostic` actions and codes / type flags.
+
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{DiagnosticCode, LuaTypeFlag};
+use emmylua_code_analysis::{DiagnosticCode, LuaTypeFlag, SalsaSemanticModel};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocTag, LuaDocTypeFlag, LuaSyntaxKind,
     LuaSyntaxToken, LuaTokenKind,
@@ -9,7 +11,7 @@ use lsp_types::{CompletionItem, CompletionItemTag, Documentation, MarkupContent,
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
-use super::{CompletionProvider, ProviderDecision};
+use super::{CompletionProvider, ProviderDecision, env_provider::visible_local_decls};
 
 pub struct DocNameTokenProvider;
 
@@ -19,7 +21,7 @@ impl CompletionProvider for DocNameTokenProvider {
     }
 
     fn supports(&self, builder: &CompletionBuilder) -> bool {
-        supports_provider(builder)
+        get_doc_completion_expected(&builder.trigger_token).is_some()
     }
 
     fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
@@ -31,10 +33,6 @@ impl CompletionProvider for DocNameTokenProvider {
     }
 }
 
-fn supports_provider(builder: &CompletionBuilder) -> bool {
-    get_doc_completion_expected(&builder.trigger_token).is_some()
-}
-
 fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
@@ -42,30 +40,26 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 
     let expected = get_doc_completion_expected(&builder.trigger_token)?;
     match expected {
-        DocCompletionExpected::ParamName => {
-            add_tag_param_name_completion(builder);
-        }
-        DocCompletionExpected::Cast => {
-            add_tag_cast_name_completion(builder);
-        }
+        DocCompletionExpected::ParamName => add_tag_param_name_completion(builder),
+        DocCompletionExpected::Cast => add_tag_cast_name_completion(builder),
         DocCompletionExpected::DiagnosticAction => {
             add_tag_diagnostic_action_completion(builder);
+            Some(())
         }
         DocCompletionExpected::DiagnosticCode => {
             add_tag_diagnostic_code_completion(builder);
+            Some(())
         }
-        DocCompletionExpected::TypeFlag(node) => {
-            add_tag_type_flag_completion(builder, node);
-        }
+        DocCompletionExpected::TypeFlag(node) => add_tag_type_flag_completion(builder, node),
         DocCompletionExpected::Namespace => {
             add_tag_namespace_completion(builder);
+            Some(())
         }
         DocCompletionExpected::Using => {
             add_tag_using_completion(builder);
+            Some(())
         }
     }
-
-    Some(())
 }
 
 fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocCompletionExpected> {
@@ -181,65 +175,49 @@ fn add_tag_param_name_completion(builder: &mut CompletionBuilder) -> Option<()> 
 }
 
 fn add_tag_cast_name_completion(builder: &mut CompletionBuilder) -> Option<()> {
-    let file_id = builder.semantic_model.get_file_id();
-    let decl_tree = builder
-        .semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl_tree(&file_id)?;
     let mut duplicated_name = HashSet::new();
-    let local_env = decl_tree.get_env_decls(builder.trigger_token.text_range().start())?;
-    for decl_id in local_env.iter() {
-        let name = {
-            let decl = builder
-                .semantic_model
-                .get_db()
-                .get_decl_index()
-                .get_decl(decl_id)?;
-
-            decl.get_name().to_string()
+    let local_env = visible_local_decls(&builder.semantic_model, builder.position_offset);
+    for decl_id in local_env {
+        let Some(facts) = builder.semantic_model.file_facts() else {
+            continue;
         };
-        if duplicated_name.contains(&name) {
+        let Some(decl) = facts.decl_by_id(&decl_id) else {
+            continue;
+        };
+        let name = decl.name.to_string();
+        if !duplicated_name.insert(name.clone()) {
             continue;
         }
-
-        duplicated_name.insert(name.clone());
-        let completion_item = CompletionItem {
+        builder.add_completion_item(CompletionItem {
             label: name,
             kind: Some(lsp_types::CompletionItemKind::VARIABLE),
             ..Default::default()
-        };
-        builder.add_completion_item(completion_item);
+        });
     }
-
     Some(())
 }
 
 fn add_tag_diagnostic_action_completion(builder: &mut CompletionBuilder) {
     let actions = ["disable", "disable-next-line", "disable-line", "enable"];
     for (sorted_index, action) in actions.iter().enumerate() {
-        let completion_item = CompletionItem {
+        builder.add_completion_item(CompletionItem {
             label: action.to_string(),
             kind: Some(lsp_types::CompletionItemKind::EVENT),
             sort_text: Some(format!("{:03}", sorted_index)),
             ..Default::default()
-        };
-
-        builder.add_completion_item(completion_item);
+        });
     }
 }
 
 fn add_tag_diagnostic_code_completion(builder: &mut CompletionBuilder) {
     let codes = DiagnosticCode::all();
     for (sorted_index, code) in codes.iter().enumerate() {
-        let completion_item = CompletionItem {
+        builder.add_completion_item(CompletionItem {
             label: code.get_name().to_string(),
             kind: Some(lsp_types::CompletionItemKind::EVENT),
             sort_text: Some(format!("{:03}", sorted_index)),
             ..Default::default()
-        };
-
-        builder.add_completion_item(completion_item);
+        });
     }
 }
 
@@ -331,7 +309,6 @@ fn add_tag_type_flag_completion(
         _ => &[],
     };
 
-    // Existing type flags include legacy aliases, so private and file exclude each other.
     let mut existing_flags = Vec::new();
     for token in node.get_attrib_tokens() {
         let name_text = token.get_name_text();
@@ -366,45 +343,62 @@ fn add_tag_type_flag_completion(
     Some(())
 }
 
+fn all_file_namespaces(builder: &CompletionBuilder) -> Vec<String> {
+    let db = builder.semantic_model.db();
+    let mut namespaces = HashSet::new();
+    for file_id in db.main_workspace_file_ids() {
+        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+            continue;
+        };
+        let Some(facts) = model.file_facts() else {
+            continue;
+        };
+        if let Some(namespace) = &facts.namespace {
+            namespaces.insert(namespace.to_string());
+        }
+    }
+    let mut namespaces: Vec<_> = namespaces.into_iter().collect();
+    namespaces.sort();
+    namespaces
+}
+
 fn add_tag_namespace_completion(builder: &mut CompletionBuilder) {
-    let type_index = builder.semantic_model.get_db().get_type_index();
-    let file_id = builder.semantic_model.get_file_id();
-    if type_index.get_file_namespace(&file_id).is_some() {
+    let current = builder
+        .semantic_model
+        .file_facts()
+        .and_then(|facts| facts.namespace.clone());
+    if current.is_some() {
         return;
     }
-    let mut namespaces = type_index.get_file_namespaces();
-
-    namespaces.sort();
-
+    let namespaces = all_file_namespaces(builder);
     for (sorted_index, namespace) in namespaces.iter().enumerate() {
-        let completion_item = CompletionItem {
+        builder.add_completion_item(CompletionItem {
             label: namespace.clone(),
             kind: Some(lsp_types::CompletionItemKind::MODULE),
             sort_text: Some(format!("{:03}", sorted_index)),
             ..Default::default()
-        };
-        builder.add_completion_item(completion_item);
+        });
     }
 }
 
 fn add_tag_using_completion(builder: &mut CompletionBuilder) {
-    let type_index = builder.semantic_model.get_db().get_type_index();
-    let file_id = builder.semantic_model.get_file_id();
-    let current_namespace = type_index.get_file_namespace(&file_id);
-    let mut namespaces = type_index.get_file_namespaces();
+    let current_namespace = builder
+        .semantic_model
+        .file_facts()
+        .and_then(|facts| facts.namespace.as_ref())
+        .map(|namespace| namespace.to_string());
+    let mut namespaces = all_file_namespaces(builder);
     if let Some(current_namespace) = current_namespace {
-        namespaces.retain(|namespace| namespace != current_namespace);
+        namespaces.retain(|namespace| namespace != &current_namespace);
     }
-    namespaces.sort();
 
     for (sorted_index, namespace) in namespaces.iter().enumerate() {
-        let completion_item = CompletionItem {
+        builder.add_completion_item(CompletionItem {
             label: format!("using {}", namespace),
             kind: Some(lsp_types::CompletionItemKind::MODULE),
             sort_text: Some(format!("{:03}", sorted_index)),
             insert_text: Some(namespace.to_string()),
             ..Default::default()
-        };
-        builder.add_completion_item(completion_item);
+        });
     }
 }

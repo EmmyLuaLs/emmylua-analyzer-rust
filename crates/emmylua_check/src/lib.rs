@@ -47,12 +47,12 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
         }
     };
 
-    let db = analysis.compilation.get_db();
-    let need_check_files = db.get_module_index().get_main_workspace_file_ids();
+    let db = &analysis.salsa;
+    let need_check_files = db.main_workspace_file_ids();
 
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
     let analysis = Arc::new(analysis);
-    let db = analysis.compilation.get_db();
+    let db = &analysis.salsa;
     for file_id in need_check_files.clone() {
         let sender = sender.clone();
         let analysis = analysis.clone();

@@ -1,3 +1,5 @@
+//! Filesystem path completion (when a `/` or `\` appears inside a string).
+
 use std::path::{Path, PathBuf};
 
 use emmylua_code_analysis::file_path_to_uri;
@@ -6,9 +8,7 @@ use lsp_types::{CompletionItem, TextEdit};
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
-use super::get_text_edit_range_in_string;
-
-use super::{CompletionProvider, ProviderDecision};
+use super::{CompletionProvider, ProviderDecision, get_text_edit_range_in_string};
 
 pub struct FilePathProvider;
 
@@ -34,7 +34,6 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
     let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
         return false;
     };
-
     string_token.get_value().find(['/', '\\']).is_some()
 }
 
@@ -54,8 +53,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         ""
     };
 
-    let resources = builder.semantic_model.get_emmyrc().resource.paths.clone();
-
+    let resources = builder.get_emmyrc().resource.paths.clone();
     let suffix = prefix;
     let text_edit_range = get_text_edit_range_in_string(builder, string_token)?;
 
@@ -85,14 +83,13 @@ fn add_file_path_completion(
     prefix: &str,
     text_edit_range: lsp_types::Range,
 ) -> Option<()> {
-    let kind: lsp_types::CompletionItemKind = if path.is_dir() {
+    let kind = if path.is_dir() {
         lsp_types::CompletionItemKind::FOLDER
     } else {
         lsp_types::CompletionItemKind::FILE
     };
 
     let detail = file_path_to_uri(path).map(|uri| uri.to_string());
-
     let filter_text = format!("{}{}", prefix, name);
     let text_edit = TextEdit {
         range: text_edit_range,
@@ -107,7 +104,5 @@ fn add_file_path_completion(
         ..Default::default()
     };
 
-    builder.add_completion_item(completion_item)?;
-
-    Some(())
+    builder.add_completion_item(completion_item)
 }

@@ -168,7 +168,7 @@ mod tests {
             ],
         ));
 
-        // 主动触发补全
+        // Actively triggered completion
         check!(ws.check_completion(
             r#"
                 ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
@@ -196,7 +196,7 @@ mod tests {
             ],
         ));
 
-        // 被动触发补全
+        // Passively triggered completion
         check!(ws.check_completion_with_kind(
             r#"
                 ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
@@ -225,7 +225,7 @@ mod tests {
     #[gtest]
     fn test_3() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        // 被动触发补全
+        // Passively triggered completion
         check!(ws.check_completion_with_kind(
             r#"
                 ---@class Test
@@ -249,7 +249,7 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
 
-        // 主动触发补全
+        // Actively triggered completion
         check!(ws.check_completion(
             r#"
                 ---@class Test1
@@ -1104,6 +1104,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_issue_502() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1131,6 +1132,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_class_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1157,6 +1159,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_class_function_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1244,6 +1247,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_auto_require() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1272,6 +1276,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_auto_require_table_field() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1399,10 +1404,11 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_auto_require_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        // 模块 return 显式声明后，不再区分稳定 surface。
+        // After an explicit module return declaration, the stable surface is no longer distinguished.
         ws.def_file(
             "AAA.lua",
             r#"
@@ -1524,6 +1530,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_file_start() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
@@ -1549,7 +1556,7 @@ mod tests {
                 A = {}
             "#,
         );
-        // 测试索引成员别名语法
+        // Test index member alias syntax
         check!(ws.check_completion(
             r#"
                 A.<??>
@@ -2410,6 +2417,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_colon_member_completion_after_method_trigger() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

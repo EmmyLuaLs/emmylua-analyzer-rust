@@ -3,7 +3,7 @@ use std::{fs::OpenOptions, io::Write};
 use emmylua_code_analysis::load_configs_raw;
 use lsp_types::Command;
 use serde_json::Value;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::context::{ServerContextSnapshot, WorkspaceManager};
 
@@ -31,8 +31,8 @@ pub fn make_auto_doc_tag_command(title: &str, tag_name: &str) -> Command {
     }
 }
 
-async fn add_doc_tag(workspace_manager: &RwLock<WorkspaceManager>, tag_name: String) -> Option<()> {
-    let workspace_manager = workspace_manager.read().await;
+async fn add_doc_tag(workspace_manager: &Mutex<WorkspaceManager>, tag_name: String) -> Option<()> {
+    let workspace_manager = workspace_manager.lock().await;
     let main_workspace = workspace_manager.workspace_folders.first()?;
     let emmyrc_path = main_workspace.root.join(".emmyrc.json");
     let mut emmyrc = load_configs_raw(vec![emmyrc_path.clone()], None);

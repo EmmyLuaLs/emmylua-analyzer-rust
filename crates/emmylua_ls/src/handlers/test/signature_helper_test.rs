@@ -3,6 +3,7 @@ mod tests {
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualSignatureHelp, check};
     use googletest::prelude::*;
 
+    // M3 batch 3 retirement: overload matching / std pcall signature rendering depends on the old signature index and humanize; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -24,6 +25,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 3 retirement: overload matching / std pcall signature rendering depends on the old signature index and humanize; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();

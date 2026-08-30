@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{LuaType, SemanticModel};
+use emmylua_code_analysis::{LuaFunctionType, LuaType, SalsaSemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaStringToken};
 use emmylua_parser_desc::CodeBlockLang;
 
@@ -8,11 +8,13 @@ use crate::handlers::semantic_token::{
 
 pub fn fun_string_highlight(
     builder: &mut SemanticBuilder,
-    semantic_model: &SemanticModel,
+    model: &SalsaSemanticModel<'_>,
     call_expr: LuaCallExpr,
     string_token: &LuaStringToken,
 ) -> Option<()> {
-    let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
+    let prefix = call_expr.get_prefix_expr()?;
+    let prefix_ty = model.type_of_expr(prefix.get_syntax_id());
+    let func = extract_function_type(&prefix_ty)?;
     let params = func.get_params();
     let mut param_idx = call_expr
         .get_args_list()?
@@ -35,15 +37,18 @@ pub fn fun_string_highlight(
     let (_, opt_typ) = params.get(param_idx)?;
     let param_type = opt_typ.as_ref()?;
     let lang_name = get_lang_str_from_type(param_type)?;
-    match CodeBlockLang::try_parse(&lang_name) {
-        Some(lang) => {
-            process_inject_lang_string_token(builder, lang, string_token);
-        }
-        None => {
-            // TODO
-        }
+    if let Some(lang) = CodeBlockLang::try_parse(&lang_name) {
+        process_inject_lang_string_token(builder, lang, string_token);
     }
     Some(())
+}
+
+fn extract_function_type(ty: &LuaType) -> Option<LuaFunctionType> {
+    match ty {
+        LuaType::DocFunction(func) => Some(func.as_ref().clone()),
+        LuaType::Union(u) => u.into_vec().iter().find_map(extract_function_type),
+        _ => None,
+    }
 }
 
 fn get_lang_str_from_type(typ: &LuaType) -> Option<String> {

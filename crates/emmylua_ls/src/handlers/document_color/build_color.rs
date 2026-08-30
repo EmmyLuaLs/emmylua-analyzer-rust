@@ -1,9 +1,9 @@
-use emmylua_code_analysis::LuaDocument;
+use emmylua_code_analysis::DocumentView;
 use emmylua_parser::{LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{Color, ColorInformation};
 use rowan::{TextRange, TextSize};
 
-pub fn build_colors(root: LuaSyntaxNode, document: &LuaDocument) -> Vec<ColorInformation> {
+pub fn build_colors(root: LuaSyntaxNode, document: &DocumentView) -> Vec<ColorInformation> {
     let mut result = vec![];
     let string_tokens = root
         .descendants_with_tokens()
@@ -22,7 +22,7 @@ pub fn build_colors(root: LuaSyntaxNode, document: &LuaDocument) -> Vec<ColorInf
 
 fn try_build_color_information(
     token: LuaSyntaxToken,
-    document: &LuaDocument,
+    document: &DocumentView,
     result: &mut Vec<ColorInformation>,
 ) -> Option<()> {
     let text = token.text();
@@ -77,7 +77,7 @@ fn try_build_color_information(
 fn parse_hex_color(hex: &str) -> Option<Color> {
     match hex.len() {
         6 => {
-            // RGB格式
+            // RGB format
             let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
@@ -89,7 +89,7 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
             })
         }
         8 => {
-            // RGBA格式
+            // RGBA format
             let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
@@ -101,7 +101,7 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
                 alpha: a,
             })
         }
-        _ => None, // 不匹配的长度
+        _ => None, // Unsupported length
     }
 }
 

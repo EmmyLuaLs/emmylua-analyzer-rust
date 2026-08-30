@@ -1,12 +1,9 @@
-mod add_completions;
 mod completion_builder;
-mod completion_context;
 mod completion_data;
-mod data;
-mod providers;
+pub(crate) mod data;
+pub(crate) mod providers;
 mod resolve_completion;
 
-pub use add_completions::get_index_alias_name;
 use completion_builder::CompletionBuilder;
 use completion_data::CompletionData;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
@@ -21,7 +18,9 @@ use resolve_completion::resolve_completion;
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{ClientId, ServerContextSnapshot};
+use crate::context::{
+    CancelStrategy, ClientId, RequestOutcome, ServerContextSnapshot, analysis_query,
+};
 
 use super::RegisterCapabilities;
 
@@ -29,26 +28,37 @@ pub async fn on_completion_handler(
     context: ServerContextSnapshot,
     params: CompletionParams,
     cancel_token: CancellationToken,
-) -> Option<CompletionResponse> {
+) -> RequestOutcome<CompletionResponse> {
     let uri = params.text_document_position.text_document.uri;
     let position = params.text_document_position.position;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    if !semantic_model.get_emmyrc().completion.enable {
-        return None;
-    }
+    let trigger_kind = params
+        .context
+        .map(|context| context.trigger_kind)
+        .unwrap_or(CompletionTriggerKind::INVOKED);
+    let cache_key = format!("completion:{}", uri.as_str());
+    let external_cancel = cancel_token.clone();
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        Some(external_cancel),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            if !analysis.get_emmyrc().completion.enable {
+                return None;
+            }
 
-    completion(
-        &analysis,
-        file_id,
-        position,
-        params
-            .context
-            .map(|context| context.trigger_kind)
-            .unwrap_or(CompletionTriggerKind::INVOKED),
-        cancel_token,
+            completion(
+                analysis,
+                file_id,
+                position,
+                trigger_kind,
+                cancel_token.clone(),
+            )
+        },
     )
+    .await
 }
 
 pub fn completion(
@@ -58,16 +68,15 @@ pub fn completion(
     trigger_kind: CompletionTriggerKind,
     cancel_token: CancellationToken,
 ) -> Option<CompletionResponse> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    if !semantic_model.get_emmyrc().completion.enable {
+    if !analysis.get_emmyrc().completion.enable {
         return None;
     }
-
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let emmyrc = analysis.get_emmyrc();
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -83,10 +92,12 @@ pub fn completion(
 
     let mut builder = CompletionBuilder::new(
         token,
-        semantic_model,
-        cancel_token,
+        model,
+        document,
+        emmyrc,
         trigger_kind,
         position_offset,
+        cancel_token,
     );
     add_completions(&mut builder);
     Some(CompletionResponse::Array(builder.get_completion_items()))
@@ -96,11 +107,16 @@ pub async fn on_completion_resolve_handler(
     context: ServerContextSnapshot,
     params: CompletionItem,
     _: CancellationToken,
-) -> CompletionItem {
-    let analysis = context.analysis().read().await;
-    let workspace_manager = context.workspace_manager().read().await;
-    let client_id = workspace_manager.client_config.client_id;
-    completion_resolve(&analysis, params, client_id)
+) -> RequestOutcome<CompletionItem> {
+    let client_id = {
+        let workspace_manager = context.workspace_manager().lock().await;
+        workspace_manager.client_config.client_id
+    };
+    let result = context
+        .analysis()
+        .with_snapshot(|analysis| completion_resolve(analysis, params.clone(), client_id))
+        .unwrap_or_else(|| params.clone());
+    RequestOutcome::Ready(result)
 }
 
 pub fn completion_resolve(
@@ -108,8 +124,7 @@ pub fn completion_resolve(
     params: CompletionItem,
     client_id: ClientId,
 ) -> CompletionItem {
-    let mut completion_item = params;
-    let db = analysis.compilation.get_db();
+    let completion_item = params;
     if let Some(data) = completion_item.data.clone() {
         let completion_data = match serde_json::from_value::<CompletionData>(data.clone()) {
             Ok(data) => data,
@@ -118,20 +133,10 @@ pub fn completion_resolve(
                 return completion_item;
             }
         };
-        let semantic_model = analysis
-            .compilation
-            .get_semantic_model(completion_data.field_id);
-        if let Some(semantic_model) = semantic_model {
-            resolve_completion(
-                &semantic_model,
-                db,
-                &mut completion_item,
-                completion_data,
-                client_id,
-            );
-        }
+        resolve_completion(analysis, completion_item, completion_data, client_id)
+    } else {
+        completion_item
     }
-    completion_item
 }
 
 pub struct CompletionCapabilities;

@@ -1,13 +1,13 @@
 mod reference_searcher;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::{LuaAstNode, LuaTokenKind};
 use lsp_types::{
     ClientCapabilities, Location, OneOf, Position, ReferenceParams, ServerCapabilities,
 };
 use reference_searcher::search_references;
-pub use reference_searcher::{search_decl_references, search_member_references};
+// Legacy DbIndex reference search (temporarily reused before the M3 batch 3 migration of call_hierarchy / implementation / code_lens;
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
@@ -16,19 +16,24 @@ use super::RegisterCapabilities;
 pub async fn on_references_handler(
     context: ServerContextSnapshot,
     params: ReferenceParams,
-    _: CancellationToken,
-) -> Option<Vec<Location>> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<Location>> {
     let uri = params.text_document_position.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
     let position = params.text_document_position.position;
-
-    references(
-        &analysis,
-        file_id,
-        position,
-        params.context.include_declaration,
+    let include_declaration = params.context.include_declaration;
+    let cache_key = format!("references:{}", uri.as_str());
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        Some(cancel_token.clone()),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            references(analysis, file_id, position, include_declaration)
+        },
     )
+    .await
 }
 
 pub fn references(
@@ -37,16 +42,14 @@ pub fn references(
     position: Position,
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    if !semantic_model.get_emmyrc().references.enable {
+    if !analysis.get_emmyrc().references.enable {
         return None;
     }
-
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -66,12 +69,7 @@ pub fn references(
         }
     };
 
-    search_references(
-        &semantic_model,
-        &analysis.compilation,
-        token,
-        include_declaration,
-    )
+    search_references(&model, &analysis.salsa, token, include_declaration)
 }
 
 pub struct ReferencesCapabilities;

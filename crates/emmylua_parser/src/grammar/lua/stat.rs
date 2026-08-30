@@ -263,7 +263,7 @@ fn parse_if(p: &mut LuaParser) -> ParseResult {
     // Parse condition expression
     if parse_expr(p).is_err() {
         push_expr_error_lazy(p, || t!("expected condition expression after 'if'"));
-        // 尝试恢复到 'then' 或语句开始
+        // try to recover to 'then' or the start of a statement
         recover_to_keywords(p, &[LuaTokenKind::TkThen, LuaTokenKind::TkEnd]);
     }
 
@@ -271,7 +271,7 @@ fn parse_if(p: &mut LuaParser) -> ParseResult {
     if !expect_keyword_with_recovery(p, LuaTokenKind::TkThen, || {
         t!("expected 'then' after if condition")
     }) {
-        // 如果没有找到 'then'，尝试恢复
+        // if 'then' was not found, try to recover
         recover_to_keywords(
             p,
             &[
@@ -282,7 +282,7 @@ fn parse_if(p: &mut LuaParser) -> ParseResult {
         );
     }
 
-    // 只有在找到合适的恢复点时才解析块
+    // only parse the block when a suitable recovery point is found
     if !matches!(
         p.current_token(),
         LuaTokenKind::TkEnd | LuaTokenKind::TkElseIf | LuaTokenKind::TkElse | LuaTokenKind::TkEof
@@ -350,7 +350,7 @@ fn parse_while(p: &mut LuaParser) -> ParseResult {
         recover_to_keywords(p, &[LuaTokenKind::TkEnd]);
     }
 
-    // 只有在找到合适的恢复点时才解析块
+    // only parse the block when a suitable recovery point is found
     if p.current_token() != LuaTokenKind::TkEnd && p.current_token() != LuaTokenKind::TkEof {
         parse_block(p)?;
     }
@@ -484,7 +484,7 @@ fn parse_for(p: &mut LuaParser) -> ParseResult {
         recover_to_keywords(p, &[LuaTokenKind::TkEnd]);
     }
 
-    // 只有在找到合适的恢复点时才解析块
+    // only parse the block when a suitable recovery point is found
     if p.current_token() != LuaTokenKind::TkEnd && p.current_token() != LuaTokenKind::TkEof {
         parse_block(p)?;
     }
@@ -592,7 +592,7 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
         LuaTokenKind::TkName => {
             parse_variable_name_list(p, true)?;
 
-            // 可选的初始化表达式
+            // optional initialization expression
             if p.current_token() == LuaTokenKind::TkAssign {
                 p.bump();
                 if parse_expr_list_impl(p).is_err() {
@@ -923,7 +923,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     let mut m = p.mark(LuaSyntaxKind::AssignStat);
     let range = p.current_token_range();
 
-    // 解析第一个表达式
+    // parse the first expression
     let cm = match parse_simple_expr(p) {
         Ok(cm) => cm,
         Err(err) => {
@@ -935,7 +935,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         }
     };
 
-    // 检查是否是函数调用语句
+    // check if this is a function call statement
     if matches!(
         cm.kind,
         LuaSyntaxKind::CallExpr
@@ -950,7 +950,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         return Ok(m.complete(p));
     }
 
-    // 验证左值
+    // validate the left-hand side
     if !matches!(
         cm.kind,
         LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr | LuaSyntaxKind::SafeIndexExpr
@@ -981,7 +981,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         return Ok(m.complete(p));
     }
 
-    // 解析更多左值（如果有逗号）
+    // parse more left-hand sides (if there is a comma)
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
         match parse_simple_expr(p) {
@@ -1010,11 +1010,11 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         }
     }
 
-    // 期望赋值操作符
+    // expect the assignment operator
     if p.current_token() == LuaTokenKind::TkAssign {
         p.bump();
 
-        // 解析右值表达式列表
+        // parse the right-hand side expression list
         if let Err(e) = parse_expr_list_impl(p) {
             push_expr_error_lazy(p, || {
                 t!(

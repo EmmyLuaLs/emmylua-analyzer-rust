@@ -2,11 +2,11 @@ use crate::handlers::{
     document_formatting::{FormattingOptions, FormattingRange, external_tool_format},
     document_range_formatting::RangeFormatResult,
 };
-use emmylua_code_analysis::{EmmyrcExternalTool, LuaDocument};
+use emmylua_code_analysis::{DocumentView, EmmyrcExternalTool};
 
 pub async fn external_tool_range_format(
     emmyrc_external_tool: &EmmyrcExternalTool,
-    document: &LuaDocument<'_>,
+    document: &DocumentView,
     range: &lsp_types::Range,
     file_path: &str,
     options: FormattingOptions,

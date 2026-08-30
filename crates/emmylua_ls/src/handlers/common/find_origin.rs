@@ -100,7 +100,7 @@ pub fn find_member_origin_owners(
         return DeclOriginResult::Single(final_owner);
     }
 
-    // 如果存在多个同名成员, 则返回多个成员
+    // If multiple same-named members exist, return them all
     let final_owner_result = Some(final_owner.clone());
     if let Some(same_named_members) =
         find_all_same_named_members(semantic_model, &final_owner_result)
@@ -108,7 +108,7 @@ pub fn find_member_origin_owners(
     {
         return DeclOriginResult::Multiple(same_named_members);
     }
-    // 否则返回单个成员
+    // Otherwise return the single member
     DeclOriginResult::Single(final_owner)
 }
 

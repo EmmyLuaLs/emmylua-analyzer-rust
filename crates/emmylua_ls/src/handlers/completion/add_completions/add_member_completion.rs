@@ -95,7 +95,7 @@ pub fn add_member_completion(
         return None;
     }
 
-    // 附加数据, 用于在`resolve`时进一步处理
+    // Extra data used for further processing during `resolve`.
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
             CompletionData::from_overload(builder, id.clone(), index)
@@ -108,9 +108,9 @@ pub fn add_member_completion(
 
     let call_display = get_call_show(builder.semantic_model.get_db(), &remove_nil_type, status)
         .unwrap_or(CallDisplay::None);
-    // 紧靠着 label 显示的描述
+    // Description shown right next to the label.
     let detail = get_detail(builder, &remove_nil_type, call_display, false);
-    // 在`detail`更右侧, 且不紧靠着`detail`显示
+    // Displayed further right, not directly next to `detail`.
     let description = get_description(builder, &remove_nil_type);
 
     let deprecated = property_owner
@@ -144,7 +144,7 @@ pub fn add_member_completion(
             new_text: "".to_string(),
         }]);
     }
-    // 对于函数的定义时的特殊处理
+    // Special handling for function definitions.
     if matches!(
         status,
         CompletionTriggerStatus::Dot | CompletionTriggerStatus::Colon
@@ -166,7 +166,7 @@ pub fn add_member_completion(
         }
     }
 
-    // 尝试添加别名补全项, 如果添加成功, 则不添加原来的 `[index]` 补全项
+    // Try to add an alias completion item; if successful, skip the original `[index]` item.
     if !try_add_alias_completion_item_new(builder, &member_info, &completion_item, &label)
         .unwrap_or(false)
     {
@@ -263,7 +263,7 @@ fn get_call_show(
     }
 }
 
-/// 在定义函数时, 是否需要补全参数列表, 只补全原类型为`docfunction`的函数
+/// Whether to complete the parameter list when defining a function. Only functions whose original type is `docfunction` are handled.
 /// ```lua
 /// ---@class A
 /// ---@field on_add fun(self: A, a: string, b: string)
@@ -278,21 +278,21 @@ fn resolve_function_params(
     typ: &LuaType,
     call_display: CallDisplay,
 ) -> Option<()> {
-    // 目前仅允许`completion_item.label`存在值时触发
+    // Currently only triggered when `completion_item.label` has a value.
     if completion_item.insert_text.is_some() || completion_item.text_edit.is_some() {
         return None;
     }
     let new_text = get_resolve_function_params_str(typ, call_display)?;
     let index_expr = LuaIndexExpr::cast(builder.trigger_token.parent()?)?;
     let func_stat = index_expr.get_parent::<LuaFuncStat>()?;
-    // 从 ast 解析
+    // Parse from the AST.
     if func_stat.get_closure().is_some() {
         return None;
     }
     let next_sibling = func_stat.syntax().next_sibling()?;
     let assign_stat = LuaAssignStat::cast(next_sibling)?;
     let paren_expr = assign_stat.child::<LuaParenExpr>()?;
-    // 如果 ast 中包含了参数, 则不补全
+    // If the AST already contains parameters, do not complete.
     if paren_expr.get_expr().is_some() {
         return None;
     }
@@ -300,12 +300,12 @@ fn resolve_function_params(
     if left_paren.get_token_kind() != LuaTokenKind::TkLeftParen {
         return None;
     }
-    // 可能不稳定! 因为 completion_item.label 先被应用, 然后再应用本项, 此时 range 发生了改变
+    // May be unstable! Because completion_item.label is applied first, then this item is applied, so the range has already changed.
     let document = builder.semantic_model.get_document();
-    // 先取得左括号位置
+    // Get the left parenthesis position first.
     let add_range = left_paren.syntax().text_range();
     let mut lsp_add_range = document.to_lsp_range(add_range)?;
-    // 必须要移动一位字符, 不能与 label 的插入位置重复
+    // Must move one character so it does not overlap with the label insertion position.
     lsp_add_range.start.character += 1;
     if new_text.is_empty() {
         return None;
@@ -356,7 +356,7 @@ fn try_add_alias_completion_item_new(
     alias_completion_item.label = alias_label;
     alias_completion_item.insert_text = Some(label.clone());
 
-    // 更新 label_details 添加别名提示
+    // Update label_details to add the alias hint.
     let index_hint = t!("completion.index %{label}", label = label).to_string();
     let label_details = alias_completion_item
         .label_details
@@ -385,7 +385,7 @@ pub fn get_index_alias_name(
     let common_property = match db.get_property_index().get_property(property_owner_id) {
         Some(common_property) => common_property,
         None => {
-            // field定义的`signature`的`common_property`绑定位置稍有不同, 需要特殊处理
+            // The `common_property` binding position of a field-defined `signature` is slightly different and needs special handling.
             let member = db.get_member_index().get_member(member_id)?;
             let signature_id =
                 try_extract_signature_id_from_field(semantic_model.get_db(), member)?;

@@ -1,56 +1,31 @@
-use emmylua_code_analysis::{FileId, LuaSemanticDeclId};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+//! # completion_data — Completion item data payload (used for resolve; serde-serializable).
 
-use super::completion_builder::CompletionBuilder;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionData {
-    pub field_id: FileId,
+    /// Triggering file.
+    pub field_id: u32,
+    /// Trigger offset.
     pub trigger_offset: Option<u32>,
+    /// Payload type.
     pub typ: CompletionDataType,
-}
-
-#[allow(unused)]
-impl CompletionData {
-    pub fn from_property_owner_id(
-        builder: &CompletionBuilder,
-        id: LuaSemanticDeclId,
-    ) -> Option<Value> {
-        let data = Self {
-            field_id: builder.semantic_model.get_file_id(),
-            trigger_offset: Some(builder.position_offset.into()),
-            typ: CompletionDataType::PropertyOwnerId(id),
-        };
-        Some(serde_json::to_value(data).unwrap())
-    }
-
-    pub fn from_overload(
-        builder: &CompletionBuilder,
-        id: LuaSemanticDeclId,
-        index: usize,
-    ) -> Option<Value> {
-        let data = Self {
-            field_id: builder.semantic_model.get_file_id(),
-            trigger_offset: Some(builder.position_offset.into()),
-            typ: CompletionDataType::Overload((id, index)),
-        };
-        Some(serde_json::to_value(data).unwrap())
-    }
-
-    pub fn from_module(builder: &CompletionBuilder, module: String) -> Option<Value> {
-        let data = Self {
-            field_id: builder.semantic_model.get_file_id(),
-            trigger_offset: Some(builder.position_offset.into()),
-            typ: CompletionDataType::Module(module),
-        };
-        Some(serde_json::to_value(data).unwrap())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CompletionDataType {
-    PropertyOwnerId(LuaSemanticDeclId),
-    Module(String),
-    Overload((LuaSemanticDeclId, usize)),
+    /// Member completion: member declaration identity (file, key_range).
+    Member { file_id: u32, range: (u32, u32) },
+    /// Declaration completion: declaration name identity (file, name_range).
+    Decl { file_id: u32, range: (u32, u32) },
+    /// Name completion: the name text.
+    Name(String),
+    /// Other (no resolution).
+    None,
+}
+
+impl CompletionData {
+    pub fn to_value(&self) -> Option<serde_json::Value> {
+        serde_json::to_value(self).ok()
+    }
 }

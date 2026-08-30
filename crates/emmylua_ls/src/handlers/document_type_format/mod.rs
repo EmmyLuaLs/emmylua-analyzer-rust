@@ -1,7 +1,7 @@
 use lsp_types::{ClientCapabilities, DocumentOnTypeFormattingParams, ServerCapabilities, TextEdit};
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{RequestOutcome, ServerContextSnapshot};
 
 use super::RegisterCapabilities;
 
@@ -10,8 +10,8 @@ pub async fn on_type_formatting_handler(
     _: ServerContextSnapshot,
     _: DocumentOnTypeFormattingParams,
     _: CancellationToken,
-) -> Option<Vec<TextEdit>> {
-    None
+) -> RequestOutcome<Vec<TextEdit>> {
+    RequestOutcome::Missing
 }
 
 #[allow(unused)]

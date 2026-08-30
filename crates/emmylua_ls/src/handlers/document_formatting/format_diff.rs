@@ -1,4 +1,4 @@
-use emmylua_code_analysis::LuaDocument;
+use emmylua_code_analysis::DocumentView;
 use lsp_types::{Position, Range, TextEdit};
 
 /// Represents the type of line difference
@@ -156,7 +156,7 @@ fn generate_text_edits(
     diffs: &[LineDiff],
     _source_lines: &[&str],
     formatted_lines: &[&str],
-    document: &LuaDocument,
+    document: &DocumentView,
 ) -> Vec<TextEdit> {
     // Pre-allocate capacity to reduce Vec reallocations
     let mut edits = Vec::with_capacity(diffs.len().min(100)); // Limit max pre-allocation to avoid memory waste
@@ -237,7 +237,7 @@ fn generate_text_edits(
 pub fn format_diff(
     source_text: &str,
     formatted_text: &str,
-    document: &LuaDocument,
+    document: &DocumentView,
     replace_all_limit: usize,
 ) -> Vec<TextEdit> {
     // Early exit: if texts are identical, return empty edits

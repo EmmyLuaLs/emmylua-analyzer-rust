@@ -7,8 +7,8 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     cmd_args::CmdArgs,
     context::{
-        FileDiagnostic, LspFeatures, ProgressTask, ServerContextSnapshot, StatusBar, get_client_id,
-        load_emmy_config,
+        AnalysisState, DiagnosticService, LspFeatures, ProgressTask, ServerContextSnapshot,
+        StatusBar, get_client_id, load_emmy_config,
     },
     handlers::{
         initialized::std_i18n::try_generate_translated_std, text_document::register_files_watch,
@@ -17,11 +17,9 @@ use crate::{
 };
 pub use client_config::{ClientConfig, get_client_config};
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
-    uri_to_file_path,
+    Emmyrc, WorkspaceFolder, build_workspace_folders, collect_workspace_files, uri_to_file_path,
 };
 use lsp_types::InitializeParams;
-use tokio::sync::RwLock;
 
 pub async fn initialized_handler(
     context: ServerContextSnapshot,
@@ -55,7 +53,7 @@ pub async fn initialized_handler(
 
     {
         log::info!("set workspace folders: {:?}", workspace_folders);
-        let mut workspace_manager = context.workspace_manager().write().await;
+        let mut workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.workspace_folders = workspace_folders.clone();
         log::info!("workspace folders set");
     }
@@ -76,7 +74,7 @@ pub async fn initialized_handler(
     init_std_lib(context.analysis(), &cmd_args, emmyrc.clone()).await;
 
     {
-        let mut workspace_manager = context.workspace_manager().write().await;
+        let mut workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.client_config = client_config.clone();
         workspace_manager.update_match_state(emmyrc.as_ref());
         log::info!("workspace manager updated with client config and watch file patterns")
@@ -98,19 +96,14 @@ pub async fn initialized_handler(
 }
 
 pub async fn init_analysis(
-    analysis: &RwLock<EmmyLuaAnalysis>,
+    analysis: &AnalysisState,
     status_bar: &StatusBar,
-    file_diagnostic: &FileDiagnostic,
+    file_diagnostic: &DiagnosticService,
     lsp_features: &LspFeatures,
     workspace_folders: Vec<WorkspaceFolder>,
     emmyrc: Arc<Emmyrc>,
     open_files: Vec<(lsp_types::Uri, String)>,
 ) {
-    let mut mut_analysis = analysis.write().await;
-
-    // update config
-    mut_analysis.update_config(emmyrc.clone());
-
     if let Ok(emmyrc_json) = serde_json::to_string_pretty(emmyrc.as_ref()) {
         log::info!("current config : {}", emmyrc_json);
     }
@@ -125,15 +118,6 @@ pub async fn init_analysis(
     );
 
     let workspace_folders = build_workspace_folders(&workspace_folders, emmyrc.as_ref());
-    for workspace in &workspace_folders {
-        if workspace.is_library {
-            log::info!("add library workspace: {:?}", workspace);
-            mut_analysis.add_library_workspace(workspace);
-        } else {
-            log::info!("add workspace root: {:?}", workspace.root);
-            mut_analysis.add_main_workspace(workspace.root.clone());
-        }
-    }
 
     status_bar.update_progress_task(
         ProgressTask::LoadWorkspace,
@@ -153,7 +137,23 @@ pub async fn init_analysis(
             Some(format!("Indexing {} files", file_count)),
         );
     }
-    let removed_uris = mut_analysis.reload_workspace_files(files, open_files);
+
+    // Only write critical section: update config / workspace roots / file set, then broadcast the new snapshot.
+    let removed_uris = analysis
+        .update(|analysis| {
+            analysis.update_config(emmyrc.clone());
+            for workspace in &workspace_folders {
+                if workspace.is_library {
+                    log::info!("add library workspace: {:?}", workspace.root);
+                    analysis.add_library_workspace(workspace);
+                } else {
+                    log::info!("add workspace root: {:?}", workspace.root);
+                    analysis.add_main_workspace(workspace.root.clone());
+                }
+            }
+            analysis.reload_workspace_files(files, open_files)
+        })
+        .await;
 
     status_bar.update_progress_task(
         ProgressTask::LoadWorkspace,
@@ -164,8 +164,6 @@ pub async fn init_analysis(
         ProgressTask::LoadWorkspace,
         Some("Indexing complete".to_string()),
     );
-
-    drop(mut_analysis);
 
     if !lsp_features.supports_pull_diagnostic() {
         for uri in removed_uris {
@@ -204,21 +202,20 @@ pub fn get_workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> 
     workspace_folders
 }
 
-pub async fn init_std_lib(
-    analysis: &RwLock<EmmyLuaAnalysis>,
-    cmd_args: &CmdArgs,
-    emmyrc: Arc<Emmyrc>,
-) {
+pub async fn init_std_lib(analysis: &AnalysisState, cmd_args: &CmdArgs, emmyrc: Arc<Emmyrc>) {
     log::info!(
         "initializing std lib with resources path: {:?}",
         cmd_args.resources_path
     );
-    let mut analysis = analysis.write().await;
     if cmd_args.load_stdlib.0 {
-        // double update config
-        analysis.update_config(emmyrc);
         try_generate_translated_std();
-        analysis.init_std_lib(cmd_args.resources_path.0.clone());
+        analysis
+            .update(|analysis| {
+                // double update config
+                analysis.update_config(emmyrc);
+                analysis.init_std_lib(cmd_args.resources_path.0.clone());
+            })
+            .await;
     }
 
     log::info!("initialized std lib complete");

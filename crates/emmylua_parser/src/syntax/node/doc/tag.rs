@@ -1647,7 +1647,7 @@ impl LuaDocTagAttributeUse {
         self.token()
     }
 
-    /// 获取所有使用的属性
+    /// Gets all used attributes.
     pub fn get_attribute_uses(&self) -> LuaAstChildren<LuaDocAttributeUse> {
         self.children()
     }

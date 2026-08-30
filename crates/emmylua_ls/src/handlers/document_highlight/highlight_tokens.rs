@@ -1,32 +1,64 @@
-use emmylua_code_analysis::{
-    LuaDeclId, LuaDocument, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel,
+use emmylua_code_analysis::{SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_parser::{
+    LuaAstNode, LuaDocNameType, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
 };
-use emmylua_parser::{LuaAstNode, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{DocumentHighlight, DocumentHighlightKind};
 use rowan::NodeOrToken;
 
+use crate::handlers::common::{
+    decl_reference_ranges, member_reference_ranges, type_def_reference_ranges,
+};
+
 pub fn highlight_tokens(
-    semantic_model: &SemanticModel,
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
     token: LuaSyntaxToken,
 ) -> Option<Vec<DocumentHighlight>> {
     let mut result = Vec::new();
+    // Type doc name (`---@type Foo` / `---@param x Foo`): highlight same-name type definitions and uses.
+    if let Some(name_type) = token.parent_ancestors().find_map(LuaDocNameType::cast) {
+        if let Some(name) = name_type.get_name_text()
+            && let Some(def) = model.resolve_type_def(&name)
+        {
+            for (file_id, range) in type_def_reference_ranges(salsa, &def, true) {
+                if file_id != model.file_id() {
+                    continue;
+                }
+                push_highlight(
+                    model,
+                    salsa,
+                    range,
+                    Some(DocumentHighlightKind::TEXT),
+                    &mut result,
+                );
+            }
+            return Some(result);
+        }
+    }
     match token.kind().into() {
         LuaTokenKind::TkName => {
-            let semantic_decl =
-                semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::NoTrace);
-            match semantic_decl {
-                Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
-                    highlight_decl_references(semantic_model, decl_id, token, &mut result);
+            let Some(decl) = model.find_decl(token.clone().into()) else {
+                highlight_name(model, salsa, token, &mut result);
+                return Some(result);
+            };
+            match &decl {
+                SemanticId::Decl(_) => highlight_decl_references(model, salsa, &decl, &mut result),
+                SemanticId::Member(_) => {
+                    for (file_id, range) in member_reference_ranges(salsa, &decl, true) {
+                        if file_id != model.file_id() {
+                            continue;
+                        }
+                        push_highlight(model, salsa, range, None, &mut result);
+                    }
                 }
                 _ => {
-                    highlight_name(semantic_model, token, &mut result);
+                    let _ = highlight_name(model, salsa, token, &mut result);
                 }
             }
         }
         token_kind if is_keyword(token_kind) => {
-            highlight_keywords(semantic_model, token, &mut result);
+            highlight_keywords(model, salsa, token, &mut result);
         }
-
         _ => {}
     }
 
@@ -34,61 +66,53 @@ pub fn highlight_tokens(
 }
 
 fn highlight_decl_references(
-    semantic_model: &SemanticModel,
-    decl_id: LuaDeclId,
-    token: LuaSyntaxToken,
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
+    decl: &SemanticId,
     result: &mut Vec<DocumentHighlight>,
-) -> Option<()> {
-    let decl = semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl(&decl_id)?;
-    let document = semantic_model.get_document();
-    if decl.is_local() {
-        let decl_refs = semantic_model
-            .get_db()
-            .get_reference_index()
-            .get_decl_references(&decl_id.file_id, &decl_id)?;
-
-        for decl_ref in &decl_refs.cells {
-            let range: lsp_types::Range = document.to_lsp_range(decl_ref.range)?;
-            let kind = if decl_ref.is_write {
-                Some(DocumentHighlightKind::WRITE)
-            } else {
-                Some(DocumentHighlightKind::READ)
-            };
-            result.push(DocumentHighlight { range, kind });
+) {
+    let ranges = decl_reference_ranges(salsa, decl, false);
+    for (file_id, range) in ranges {
+        // document_highlight only cares about the current file.
+        if file_id != model.file_id() {
+            continue;
         }
-
-        let range = document.to_lsp_range(decl.get_range())?;
-        result.push(DocumentHighlight { range, kind: None });
-
-        return Some(());
-    } else {
-        highlight_name(semantic_model, token, result);
+        push_highlight(model, salsa, range, None, result);
     }
-
-    Some(())
+    // Declaration name (write position): only handle declarations in the current file to avoid converting ranges from other files into this document.
+    if let SemanticId::Decl(key) = decl
+        && key.file_id == model.file_id()
+    {
+        push_highlight(
+            model,
+            salsa,
+            key.name_range,
+            Some(DocumentHighlightKind::WRITE),
+            result,
+        );
+    }
 }
 
 fn highlight_name(
-    semantic_model: &SemanticModel,
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
-    let root = semantic_model.get_root();
+    let root = model.chunk()?;
     let token_name = token.text();
-    let document = semantic_model.get_document();
     for node_or_token in root.syntax().descendants_with_tokens() {
         if let NodeOrToken::Token(token) = node_or_token
             && token.kind() == LuaTokenKind::TkName.into()
             && token.text() == token_name
         {
-            let range = document.to_lsp_range(token.text_range())?;
-            result.push(DocumentHighlight {
-                range,
-                kind: Some(DocumentHighlightKind::TEXT),
-            });
+            push_highlight(
+                model,
+                salsa,
+                token.text_range(),
+                Some(DocumentHighlightKind::TEXT),
+                result,
+            );
         }
     }
 
@@ -119,22 +143,22 @@ fn is_keyword(kind: LuaTokenKind) -> bool {
 }
 
 fn highlight_keywords(
-    semantic_model: &SemanticModel,
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
-    let document = semantic_model.get_document();
     let parent_node = token.parent()?;
     match parent_node.kind().into() {
         LuaSyntaxKind::LocalFuncStat | LuaSyntaxKind::FuncStat => {
-            highlight_node_keywords(&document, parent_node.clone(), result);
+            highlight_node_keywords(model, salsa, parent_node.clone(), result);
             let closure_node = parent_node
                 .children()
                 .find(|node| node.kind() == LuaSyntaxKind::ClosureExpr.into())?;
-            highlight_node_keywords(&document, closure_node, result);
+            highlight_node_keywords(model, salsa, closure_node, result);
         }
         _ => {
-            highlight_node_keywords(&document, parent_node, result);
+            highlight_node_keywords(model, salsa, parent_node, result);
         }
     }
 
@@ -142,7 +166,8 @@ fn highlight_keywords(
 }
 
 fn highlight_node_keywords(
-    document: &LuaDocument,
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
     node: LuaSyntaxNode,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -150,13 +175,37 @@ fn highlight_node_keywords(
         if let NodeOrToken::Token(token) = node_or_token
             && is_keyword(token.kind().into())
         {
-            let range = document.to_lsp_range(token.text_range())?;
-            result.push(DocumentHighlight {
-                range,
-                kind: Some(DocumentHighlightKind::TEXT),
-            });
+            push_highlight(
+                model,
+                salsa,
+                token.text_range(),
+                Some(DocumentHighlightKind::TEXT),
+                result,
+            );
         }
     }
 
     Some(())
+}
+
+fn push_highlight(
+    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
+    range: rowan::TextRange,
+    kind: Option<DocumentHighlightKind>,
+    result: &mut Vec<DocumentHighlight>,
+) {
+    let Some(document) = salsa.document(model.file_id()) else {
+        return;
+    };
+    let Some(lsp_range) = document.to_lsp_range(range) else {
+        return;
+    };
+    if result.iter().any(|h| h.range == lsp_range) {
+        return;
+    }
+    result.push(DocumentHighlight {
+        range: lsp_range,
+        kind,
+    });
 }

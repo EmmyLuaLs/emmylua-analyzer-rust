@@ -8,78 +8,73 @@ use lsp_types::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
 
 use super::RegisterCapabilities;
 
 pub async fn on_document_color(
     context: ServerContextSnapshot,
     params: DocumentColorParams,
-    _: CancellationToken,
-) -> Vec<ColorInformation> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<ColorInformation>> {
     let uri = params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = if let Some(file_id) = analysis.get_file_id(&uri) {
-        file_id
-    } else {
-        return vec![];
-    };
-
-    let semantic_model =
-        if let Some(semantic_model) = analysis.compilation.get_semantic_model(file_id) {
-            semantic_model
-        } else {
-            return vec![];
-        };
-
-    if !semantic_model.get_emmyrc().document_color.enable {
-        return vec![];
+    match snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            let model = analysis.semantic_model(file_id)?;
+            if !analysis.get_emmyrc().document_color.enable {
+                return None;
+            }
+            let document = analysis.salsa.document(file_id)?;
+            let root = model.chunk()?;
+            Some(build_colors(root.syntax().clone(), &document))
+        },
+    )
+    .await
+    {
+        RequestOutcome::Ready(colors) => RequestOutcome::Ready(colors),
+        RequestOutcome::Cancelled(source) => RequestOutcome::Cancelled(source),
+        RequestOutcome::Missing => RequestOutcome::Ready(Vec::new()),
     }
-
-    let document = semantic_model.get_document();
-    let root = semantic_model.get_root();
-    build_colors(root.syntax().clone(), &document)
 }
 
 pub async fn on_document_color_presentation(
     context: ServerContextSnapshot,
     params: ColorPresentationParams,
-    _: CancellationToken,
-) -> Vec<ColorPresentation> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<ColorPresentation>> {
     let uri = params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = if let Some(file_id) = analysis.get_file_id(&uri) {
-        file_id
-    } else {
-        return vec![];
-    };
-
-    let semantic_model =
-        if let Some(semantic_model) = analysis.compilation.get_semantic_model(file_id) {
-            semantic_model
-        } else {
-            return vec![];
-        };
-    let document = semantic_model.get_document();
-
-    let range = if let Some(range) = document.to_rowan_range(params.range) {
-        range
-    } else {
-        return vec![];
-    };
-    let color = params.color;
-    let text = document.get_text_slice(range);
-    let color_text = convert_color_to_hex(color, text.len());
-    let color_presentations = vec![ColorPresentation {
-        label: text.to_string(),
-        text_edit: Some(TextEdit {
-            range: params.range,
-            new_text: color_text,
-        }),
-        additional_text_edits: None,
-    }];
-
-    color_presentations
+    match snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            let document = analysis.salsa.document(file_id)?;
+            let range = document.to_rowan_range(params.range)?;
+            let color = params.color;
+            let text = document.get_text_slice(range);
+            let color_text = convert_color_to_hex(color, text.len());
+            let color_presentations = vec![ColorPresentation {
+                label: text.to_string(),
+                text_edit: Some(TextEdit {
+                    range: params.range,
+                    new_text: color_text,
+                }),
+                additional_text_edits: None,
+            }];
+            Some(color_presentations)
+        },
+    )
+    .await
+    {
+        RequestOutcome::Ready(presentations) => RequestOutcome::Ready(presentations),
+        RequestOutcome::Cancelled(source) => RequestOutcome::Cancelled(source),
+        RequestOutcome::Missing => RequestOutcome::Ready(Vec::new()),
+    }
 }
 
 pub struct DocumentColorCapabilities;

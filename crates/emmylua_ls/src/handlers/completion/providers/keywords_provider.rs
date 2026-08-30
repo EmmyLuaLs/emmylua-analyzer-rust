@@ -1,9 +1,10 @@
+//! Keyword completion: statement / expression keywords + the function template after `local `.
+
 use emmylua_code_analysis::EmmyrcLuaVersion::LuaJIT2;
 use emmylua_parser::{LuaAstNode, LuaKind, LuaNameExpr, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionItemLabelDetails, InsertTextFormat, InsertTextMode};
 
 use crate::handlers::completion::{
-    add_completions::check_match_word,
     completion_builder::CompletionBuilder,
     data::{KEYWORD_COMPLETIONS, KEYWORD_EXPR_COMPLETIONS},
 };
@@ -61,7 +62,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     Some(())
 }
 
-/// 处理中文输入法下输入完整单词的情况
+/// Handle full words typed through a Chinese IME.
 fn is_full_match_keyword(builder: &CompletionBuilder) -> Option<()> {
     match builder.trigger_token.kind() {
         LuaKind::Token(LuaTokenKind::TkIf) => Some(()),
@@ -90,7 +91,7 @@ fn add_stat_keyword_completions(
     builder: &mut CompletionBuilder,
     name_expr: Option<LuaNameExpr>,
 ) -> Option<()> {
-    let level = builder.semantic_model.get_emmyrc().runtime.version;
+    let level = builder.get_emmyrc().runtime.version;
     if let Some(name_expr) = name_expr
         && name_expr.syntax().parent()?.parent()?.kind() != LuaSyntaxKind::Block.into()
     {
@@ -104,7 +105,7 @@ fn add_stat_keyword_completions(
 
         let (label_detail, insert_text) =
             if matches!(keyword_info.label, "function" | "local function")
-                && !base_function_includes_name(builder)
+                && !builder.get_emmyrc().completion.base_function_includes_name
             {
                 (
                     keyword_info.detail.replace("name", ""),
@@ -165,7 +166,7 @@ fn add_expr_keyword_completions(builder: &mut CompletionBuilder) -> Option<()> {
 }
 
 fn add_function_keyword_completions(builder: &mut CompletionBuilder) -> Option<()> {
-    // 非主动补全不添加
+    // Do not add on non-invoked completion.
     if !builder.is_invoked() {
         return None;
     }
@@ -175,19 +176,49 @@ fn add_function_keyword_completions(builder: &mut CompletionBuilder) -> Option<(
         insert_text: Some("function ${1:name}(${2:})\n\t${0}\nend".to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
         insert_text_mode: Some(InsertTextMode::ADJUST_INDENTATION),
-        sort_text: Some("0000".to_string()), // 优先级较高
+        sort_text: Some("0000".to_string()),
         ..CompletionItem::default()
     };
 
-    builder.add_completion_item(item)?;
-
-    Some(())
+    builder.add_completion_item(item)
 }
 
-fn base_function_includes_name(builder: &CompletionBuilder) -> bool {
-    builder
-        .semantic_model
-        .get_emmyrc()
-        .completion
-        .base_function_includes_name
+/// Word-prefix matching (underscore / camel-case / CJK-Latin boundaries), consistent with the old provider.
+pub fn check_match_word(key: &str, candidate_key: &str) -> bool {
+    if key.is_empty() {
+        return true;
+    }
+    if candidate_key.is_empty() {
+        return false;
+    }
+
+    let key_first_char = key.chars().next().unwrap().to_lowercase().next().unwrap();
+    if key_first_char == '_' && candidate_key.starts_with('_') {
+        return true;
+    }
+
+    let mut prev_char = '\0';
+    for (i, curr_char) in candidate_key.chars().enumerate() {
+        let is_word_start = (i == 0 && curr_char != '_')
+            || (prev_char == '_')
+            || (curr_char.is_uppercase() && prev_char.is_lowercase())
+            || (curr_char.is_ascii_alphabetic() != prev_char.is_ascii_alphabetic() && i > 0);
+
+        if is_word_start {
+            let curr_lowercase = curr_char.to_lowercase().next().unwrap();
+            if curr_lowercase == key_first_char {
+                let candidate_key_set: std::collections::HashSet<char> =
+                    candidate_key.to_lowercase().chars().collect();
+                for trigger_char in key.to_lowercase().chars() {
+                    if !candidate_key_set.contains(&trigger_char) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+        prev_char = curr_char;
+    }
+
+    false
 }

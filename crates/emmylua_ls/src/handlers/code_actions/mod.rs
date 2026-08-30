@@ -9,7 +9,7 @@ use lsp_types::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 
 use super::RegisterCapabilities;
 
@@ -17,13 +17,24 @@ use super::RegisterCapabilities;
 pub async fn on_code_action_handler(
     context: ServerContextSnapshot,
     params: CodeActionParams,
-    _: CancellationToken,
-) -> Option<CodeActionResponse> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<CodeActionResponse> {
     let uri = params.text_document.uri;
     let diagnostics = params.context.diagnostics;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
-    code_action(&analysis, file_id, diagnostics)
+    let cache_key = format!("code_action:{}", uri.as_str());
+    let external_cancel = cancel_token.clone();
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        Some(external_cancel),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            code_action(analysis, file_id, diagnostics.clone())
+        },
+    )
+    .await
 }
 
 pub fn code_action(
@@ -31,9 +42,11 @@ pub fn code_action(
     file_id: FileId,
     diagnostics: Vec<Diagnostic>,
 ) -> Option<CodeActionResponse> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let emmyrc = analysis.get_emmyrc();
 
-    build_actions(&semantic_model, diagnostics)
+    build_actions(&model, &document, &emmyrc, file_id, diagnostics)
 }
 
 pub struct CodeActionsCapabilities;

@@ -7,7 +7,6 @@ use lsp_types::{
     InlayHintLabel, Location, MarkupContent, Position, SemanticToken, SemanticTokensResult,
     SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation, TextEdit,
 };
-use std::collections::HashSet;
 use std::{ops::Deref, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
@@ -142,28 +141,12 @@ impl ProviderVirtualWorkspace {
     }
 
     pub fn def_files(&mut self, files: Vec<(&str, &str)>) -> Vec<FileId> {
-        let mut removed_files = HashSet::new();
-        let mut updated_files = HashSet::new();
-
-        for (file_name, content) in files {
-            let uri = self.virtual_url_generator.new_uri(file_name);
-            let file_id = self
-                .analysis
-                .compilation
-                .get_db_mut()
-                .get_vfs_mut()
-                .set_file_content(&uri, Some(content.to_string()));
-            removed_files.insert(file_id);
-            updated_files.insert(file_id);
-        }
-
-        self.analysis
-            .compilation
-            .remove_index(removed_files.into_iter().collect());
-
-        let mut file_ids: Vec<FileId> = updated_files.into_iter().collect();
+        // M4: salsa has no remove_index/update_index; writing the file directly takes effect.
+        let mut file_ids = files
+            .into_iter()
+            .map(|(file_name, content)| self.def_file(file_name, content))
+            .collect::<Vec<_>>();
         file_ids.sort();
-        self.analysis.compilation.update_index(file_ids.clone());
 
         file_ids
     }
@@ -176,7 +159,7 @@ impl ProviderVirtualWorkspace {
         self.analysis.update_config(Arc::new(emmyrc));
     }
 
-    /// 处理文件内容
+    /// Handles file content.
     pub fn handle_file_content(content: &str) -> Result<(String, Position)> {
         let (content, position) = Self::handle_file_content_option(content)?;
         Ok((
@@ -254,7 +237,7 @@ impl ProviderVirtualWorkspace {
         )
         .ok_or("failed to get completion")
         .or_fail()?;
-        // 对比
+        // Compare
         let mut items = match result {
             CompletionResponse::Array(items) => items,
             CompletionResponse::List(list) => list.items,

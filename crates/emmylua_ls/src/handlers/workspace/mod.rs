@@ -1,6 +1,6 @@
 mod did_rename_files;
 
-pub use did_rename_files::on_did_rename_files_handler;
+pub use did_rename_files::{on_did_rename_files_handler, process_did_rename_files_handler};
 use lsp_types::{
     ClientCapabilities, FileOperationFilter, FileOperationPattern, FileOperationPatternOptions,
     FileOperationRegistrationOptions, ServerCapabilities,

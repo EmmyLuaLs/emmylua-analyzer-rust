@@ -1,19 +1,11 @@
-use emmylua_code_analysis::{
-    EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType, ModuleInfo, check_module_visibility,
-};
-use emmylua_parser::{LuaAstNode, LuaNameExpr};
-use lsp_types::{CompletionItem, Position};
+//! auto_require: workspace module surface completion (module names / exported types / members / globals).
 
-use crate::{
-    handlers::{
-        command::make_auto_require,
-        completion::{
-            add_completions::get_completion_kind, completion_builder::CompletionBuilder,
-            completion_data::CompletionData,
-        },
-    },
-    util::{file_name_convert, module_name_convert},
-};
+use emmylua_code_analysis::{LuaMemberKey, LuaType, ModuleExport, TypeDefKind};
+use emmylua_parser::LuaAstNode;
+use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails};
+
+use crate::handlers::command::make_auto_require;
+use crate::handlers::completion::completion_builder::CompletionBuilder;
 
 use super::{CompletionProvider, ProviderDecision};
 
@@ -25,11 +17,11 @@ impl CompletionProvider for AutoRequireProvider {
     }
 
     fn supports(&self, builder: &CompletionBuilder) -> bool {
-        builder.semantic_model.get_emmyrc().completion.auto_require
+        builder.get_emmyrc().completion.auto_require
             && builder
                 .trigger_token
                 .parent()
-                .and_then(LuaNameExpr::cast)
+                .and_then(emmylua_parser::LuaNameExpr::cast)
                 .is_some()
     }
 
@@ -47,222 +39,258 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let enable = builder.semantic_model.get_emmyrc().completion.auto_require;
-    if !enable {
+    let partial = builder.partial_name();
+    if partial.is_empty() {
         return None;
     }
 
-    let name_expr = LuaNameExpr::cast(builder.trigger_token.parent()?)?;
-    // optimize for large project
-    let prefix = name_expr.get_name_text()?.to_lowercase();
-    let emmyrc = builder.semantic_model.get_emmyrc();
-    let file_conversion = emmyrc.completion.auto_require_naming_convention;
-    let version_number = emmyrc.runtime.version.to_lua_version_number();
-    let file_id = builder.semantic_model.get_file_id();
-    let module_index = builder.semantic_model.get_db().get_module_index();
-    let module_infos = module_index.get_module_infos();
-    let range = builder.trigger_token.text_range();
-    let document = builder.semantic_model.get_document();
-    let lsp_position = document.to_lsp_range(range)?.start;
+    let db = builder.semantic_model.db();
+    let current_file = builder.semantic_model.file_id();
+    let mut file_ids = db.main_workspace_file_ids();
+    file_ids.sort();
 
-    let mut completions = Vec::new();
-    for module_info in module_infos {
-        if module_info.is_visible(&version_number)
-            && module_info.file_id != file_id
-            && module_info.export_type.is_some()
-            && !module_index.is_std(&module_info.file_id)
+    let document = builder.get_document();
+    let position = document
+        .to_lsp_range(builder.trigger_token.text_range())?
+        .start;
+
+    for file_id in file_ids {
+        if file_id == current_file {
+            continue;
+        }
+        let Some(module_name) = db.module_name_of(file_id) else {
+            continue;
+        };
+        let Some(exports) = builder.semantic_model.file_exports(file_id) else {
+            continue;
+        };
+
+        let module_label = db
+            .file_path(file_id)
+            .as_deref()
+            .and_then(|path| path.file_stem())
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| module_name.clone());
+
+        let exported_name = match &exports.module {
+            Some(ModuleExport::Decl { name, .. }) | Some(ModuleExport::Global { name }) => {
+                Some(name.as_str())
+            }
+            _ => None,
+        };
+
+        for def in exports.types.iter() {
+            let label = def.name.to_string();
+            if !label.to_lowercase().starts_with(&partial.to_lowercase()) {
+                continue;
+            }
+            let kind = if exported_name == Some(def.full_name.as_str()) {
+                CompletionItemKind::MODULE
+            } else {
+                match def.kind {
+                    TypeDefKind::Enum => CompletionItemKind::CLASS,
+                    _ => CompletionItemKind::CLASS,
+                }
+            };
+            if !builder.env_duplicate_name.insert(label.clone()) {
+                continue;
+            }
+            let mut item = CompletionItem {
+                label: label.clone(),
+                kind: Some(kind),
+                insert_text: None,
+                detail: None,
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(format!("    (in {module_label})")),
+                    description: None,
+                }),
+                ..Default::default()
+            };
+            if exports.module.is_some() {
+                item.command = Some(make_auto_require(
+                    "",
+                    current_file,
+                    file_id,
+                    position,
+                    label.clone(),
+                    None,
+                ));
+            }
+            builder.add_completion_item(item);
+        }
+
+        for export in &exports.members {
+            let LuaMemberKey::Name(name) = &export.key else {
+                continue;
+            };
+            let label = name.to_string();
+            if !label.to_lowercase().starts_with(&partial.to_lowercase()) {
+                continue;
+            }
+            let ty = builder
+                .semantic_model
+                .type_of_member(&export.member)
+                .unwrap_or(LuaType::Unknown);
+            let kind = if matches!(ty, LuaType::DocFunction(_) | LuaType::Function) {
+                CompletionItemKind::FUNCTION
+            } else {
+                CompletionItemKind::FIELD
+            };
+            if !builder.env_duplicate_name.insert(label.clone()) {
+                continue;
+            }
+            let mut item = CompletionItem {
+                label: label.clone(),
+                kind: Some(kind),
+                insert_text: None,
+                detail: None,
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(format!("    (in {module_label})")),
+                    description: None,
+                }),
+                ..Default::default()
+            };
+            if exports.module.is_some() {
+                item.command = Some(make_auto_require(
+                    "",
+                    current_file,
+                    file_id,
+                    position,
+                    label.clone(),
+                    Some(name.to_string()),
+                ));
+            }
+            builder.add_completion_item(item);
+        }
+
+        for global in &exports.globals {
+            let label = global.name.to_string();
+            if !label.to_lowercase().starts_with(&partial.to_lowercase()) {
+                continue;
+            }
+            if !builder.env_duplicate_name.insert(label.clone()) {
+                continue;
+            }
+            let mut item = CompletionItem {
+                label: label.clone(),
+                kind: Some(CompletionItemKind::VARIABLE),
+                insert_text: None,
+                detail: None,
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(format!("    (in {module_label})")),
+                    description: None,
+                }),
+                ..Default::default()
+            };
+            if exports.module.is_some() {
+                item.command = Some(make_auto_require(
+                    "",
+                    current_file,
+                    file_id,
+                    position,
+                    label.clone(),
+                    None,
+                ));
+            }
+            builder.add_completion_item(item);
+        }
+
+        // `return processError`: when a module exports a single declaration (function),
+        // complete it as that declaration; place it after types/members so it does not
+        // shadow same-named type exports (KeepClass semantics).
+        if let Some(ModuleExport::Decl { name, decl }) = &exports.module {
+            let label = name.to_string();
+            if label.to_lowercase().starts_with(&partial.to_lowercase())
+                && builder.env_duplicate_name.insert(label.clone())
+            {
+                let ty = builder
+                    .semantic_model
+                    .type_of_decl(decl)
+                    .unwrap_or(LuaType::Unknown);
+                let kind = if ty.is_function() {
+                    CompletionItemKind::FUNCTION
+                } else {
+                    CompletionItemKind::VARIABLE
+                };
+                let mut item = CompletionItem {
+                    label: label.clone(),
+                    kind: Some(kind),
+                    insert_text: None,
+                    detail: None,
+                    label_details: Some(CompletionItemLabelDetails {
+                        detail: Some(format!("    (in {module_label})")),
+                        description: None,
+                    }),
+                    ..Default::default()
+                };
+                item.command = Some(make_auto_require(
+                    "",
+                    current_file,
+                    file_id,
+                    position,
+                    label.clone(),
+                    None,
+                ));
+                builder.add_completion_item(item);
+            }
+        }
+    }
+    let db = builder.semantic_model.db();
+    let mut seen_modules = std::collections::HashSet::new();
+    for file_id in db.main_workspace_file_ids() {
+        let Some(module_name) = db.module_name_of(file_id) else {
+            continue;
+        };
+        let Some(exports) = builder.semantic_model.file_exports(file_id) else {
+            continue;
+        };
+        if exports.module.is_none() {
+            continue;
+        }
+        if let Some(exported_name) = match &exports.module {
+            Some(ModuleExport::Decl { name, .. }) | Some(ModuleExport::Global { name }) => {
+                Some(name.as_str())
+            }
+            _ => None,
+        } && exports
+            .types
+            .iter()
+            .any(|def| def.full_name.as_str() == exported_name)
         {
-            add_module_completion_item(
-                builder,
-                &prefix,
-                module_info,
-                file_conversion,
-                lsp_position,
-                &mut completions,
-            );
+            continue;
         }
-    }
-
-    for completion in completions {
-        builder.add_completion_item(completion);
-    }
-
-    Some(())
-}
-
-fn add_module_completion_item(
-    builder: &CompletionBuilder,
-    prefix: &str,
-    module_info: &ModuleInfo,
-    file_conversion: EmmyrcFilenameConvention,
-    position: Position,
-    completions: &mut Vec<CompletionItem>,
-) -> Option<()> {
-    if !check_module_visibility(&builder.semantic_model, module_info).unwrap_or(false) {
-        return None;
-    }
-
-    let completion_name = module_name_convert(module_info, file_conversion);
-    if !completion_name.to_lowercase().starts_with(prefix) {
-        // 如果模块名不匹配, 则根据导出类型添加完成项
-        add_completion_item_by_type(
-            builder,
-            prefix,
-            module_info,
-            file_conversion,
-            position,
-            completions,
-        );
-        return None;
-    }
-
-    if builder.env_duplicate_name.contains(&completion_name) {
-        return None;
-    }
-
-    let data = if let Some(property_id) = &module_info.semantic_id {
-        CompletionData::from_property_owner_id(builder, property_id.clone())
-    } else {
-        None
-    };
-    let completion_item = CompletionItem {
-        label: completion_name.clone(),
-        kind: Some(lsp_types::CompletionItemKind::MODULE),
-        label_details: Some(lsp_types::CompletionItemLabelDetails {
-            detail: Some(format!("    (in {})", module_info.full_module_name)),
+        let stem = db
+            .file_path(file_id)
+            .as_deref()
+            .and_then(|path| path.file_stem())
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| module_name.clone());
+        if !stem.to_lowercase().starts_with(&partial.to_lowercase()) {
+            continue;
+        }
+        if !seen_modules.insert(stem.clone()) || !builder.env_duplicate_name.insert(stem.clone()) {
+            continue;
+        }
+        let mut item = CompletionItem {
+            label: stem.clone(),
+            kind: Some(CompletionItemKind::MODULE),
+            insert_text: Some(stem.to_string()),
+            detail: None,
+            label_details: Some(CompletionItemLabelDetails {
+                detail: Some(format!("    (in {stem})")),
+                description: None,
+            }),
             ..Default::default()
-        }),
-        command: Some(make_auto_require(
+        };
+        item.command = Some(make_auto_require(
             "",
-            builder.semantic_model.get_file_id(),
-            module_info.file_id,
+            current_file,
+            file_id,
             position,
-            completion_name,
+            stem.clone(),
             None,
-        )),
-        data,
-        ..Default::default()
-    };
-
-    completions.push(completion_item);
-
-    Some(())
-}
-
-fn add_completion_item_by_type(
-    builder: &CompletionBuilder,
-    prefix: &str,
-    module_info: &ModuleInfo,
-    file_conversion: EmmyrcFilenameConvention,
-    position: Position,
-    completions: &mut Vec<CompletionItem>,
-) -> Option<()> {
-    if !module_info.has_export_type() {
-        return None;
-    }
-
-    if let Some(export_type) = &module_info.export_type {
-        match export_type {
-            LuaType::TableConst(_) | LuaType::Def(_) => {
-                let member_infos = builder.semantic_model.get_member_infos(export_type)?;
-                for member_info in member_infos {
-                    let key_name = file_name_convert(
-                        &member_info.key.to_path(),
-                        &member_info.typ,
-                        file_conversion,
-                    );
-                    match member_info.typ {
-                        LuaType::Def(_) => {}
-                        LuaType::Signature(_) => {}
-                        LuaType::DocFunction(_) => {}
-                        LuaType::Ref(_) => {}
-                        _ => {
-                            continue;
-                        }
-                    }
-
-                    if key_name.to_lowercase().starts_with(prefix) {
-                        if builder.env_duplicate_name.contains(&key_name) {
-                            continue;
-                        }
-
-                        let data = if let Some(property_owner_id) = &member_info.property_owner_id {
-                            let is_visible = builder.semantic_model.is_semantic_visible(
-                                builder.trigger_token.clone(),
-                                property_owner_id.clone(),
-                            );
-                            if !is_visible {
-                                continue;
-                            }
-                            CompletionData::from_property_owner_id(
-                                builder,
-                                property_owner_id.clone(),
-                            )
-                        } else {
-                            None
-                        };
-
-                        let completion_item = CompletionItem {
-                            label: key_name.clone(),
-                            kind: Some(get_completion_kind(&member_info.typ)),
-                            label_details: Some(lsp_types::CompletionItemLabelDetails {
-                                detail: Some(format!("    (in {})", module_info.full_module_name)),
-                                ..Default::default()
-                            }),
-                            command: Some(make_auto_require(
-                                "",
-                                builder.semantic_model.get_file_id(),
-                                module_info.file_id,
-                                position,
-                                key_name,
-                                Some(member_info.key.to_path().to_string()),
-                            )),
-                            data,
-                            ..Default::default()
-                        };
-
-                        completions.push(completion_item);
-                    }
-                }
-            }
-            LuaType::Signature(_) => {
-                let semantic_id = module_info.semantic_id.as_ref()?;
-                if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_id {
-                    let decl = builder
-                        .semantic_model
-                        .get_db()
-                        .get_decl_index()
-                        .get_decl(&decl_id)?;
-                    let name = decl.get_name();
-                    if name.to_lowercase().starts_with(prefix) {
-                        if builder.env_duplicate_name.contains(name) {
-                            return None;
-                        }
-
-                        let completion_item = CompletionItem {
-                            label: name.to_string(),
-                            kind: Some(get_completion_kind(&export_type)),
-                            label_details: Some(lsp_types::CompletionItemLabelDetails {
-                                detail: Some(format!("    (in {})", module_info.full_module_name)),
-                                ..Default::default()
-                            }),
-                            command: Some(make_auto_require(
-                                "",
-                                builder.semantic_model.get_file_id(),
-                                module_info.file_id,
-                                position,
-                                name.to_string(),
-                                None,
-                            )),
-                            ..Default::default()
-                        };
-
-                        completions.push(completion_item);
-                    }
-                }
-            }
-            _ => {}
-        }
+        ));
+        builder.add_completion_item(item);
     }
     Some(())
 }

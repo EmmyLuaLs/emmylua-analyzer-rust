@@ -97,14 +97,14 @@ enum MetaKind {
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// 尝试生成翻译后的 std
+/// Try to generate the translated std library.
 pub fn try_generate_translated_std() -> Option<()> {
     let locale = get_locale_code(&rust_i18n::locale());
     if locale == "en" {
         return Some(());
     }
 
-    // 确定是否存在对应语言的翻译文件
+    // Check whether a translation file exists for the locale.
     let first_sub_dir = STD_I18N_DIR
         .entries()
         .iter()
@@ -129,18 +129,18 @@ pub fn try_generate_translated_std() -> Option<()> {
     if !check_need_dump_std(&resources_dir, &locale) {
         return None;
     }
-    // 获取最佳资源目录作为输出目录的父目录
+    // Use the best resources directory as the parent of the output directory.
     generate(&locale, &resources_dir);
     Some(())
 }
 
-/// 检查是否需要重新生成翻译后的 std 文件
+/// Check whether the translated std files need to be regenerated.
 fn check_need_dump_std(resources_dir: &Path, locale: &str) -> bool {
-    // debug 模式下总是重新生成
+    // Always regenerate in debug builds.
     if cfg!(debug_assertions) {
         return true;
     }
-    // 不存在对应语言的翻译文件, 需要生成
+    // No translation file for the locale exists, so generate it.
     let translated_std_dir = resources_dir.join(format!("std-{locale}"));
     if !translated_std_dir.exists() {
         return true;
@@ -148,17 +148,17 @@ fn check_need_dump_std(resources_dir: &Path, locale: &str) -> bool {
 
     let version_path = resources_dir.join("version");
 
-    // 版本文件不存在, 需要重新生成
+    // Version file is missing, so regenerate.
     if !version_path.exists() {
         return true;
     }
 
-    // 读取版本文件失败, 需要重新生成
+    // Failed to read the version file, so regenerate.
     let Ok(content) = std::fs::read_to_string(&version_path) else {
         return true;
     };
 
-    // 版本不匹配, 需要重新生成
+    // Version mismatch, so regenerate.
     let version = content.trim();
     if version != VERSION {
         return true;
@@ -167,8 +167,8 @@ fn check_need_dump_std(resources_dir: &Path, locale: &str) -> bool {
 }
 
 /// Params:
-/// - `locale` - 语言
-/// - `out_parent_dir` - 输出目录的父目录
+/// - `locale` - language
+/// - `out_parent_dir` - parent of the output directory
 fn generate(locale: &str, out_parent_dir: &Path) -> Vec<LuaFileInfo> {
     let origin_std_files = emmylua_code_analysis::load_resource_from_include_dir();
     let translate_std_root = out_parent_dir.join(format!("std-{locale}"));
@@ -428,7 +428,7 @@ fn locate_entry_by_relative_range(
 }
 
 fn std_rel_path(path: &str) -> Option<PathBuf> {
-    // `emmylua_code_analysis` 嵌入资源的路径形如 `std/builtin.lua`.
+    // Paths embedded by `emmylua_code_analysis` look like `std/builtin.lua`.
     let p = Path::new(path);
     let mut it = p.components();
     let first = it.next()?.as_os_str().to_string_lossy();
@@ -1068,7 +1068,6 @@ mod tests {
     };
 
     #[test]
-    #[ignore]
     fn test_generate_translated() {
         let test_output_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()

@@ -21,74 +21,74 @@ impl CommandSpec for AutoRequireCommand {
         let local_name: String = serde_json::from_value(args.get(3)?.clone()).ok()?;
         let member_name: String = serde_json::from_value(args.get(4)?.clone()).ok()?;
 
-        let analysis = context.analysis().read().await;
-        let semantic_model = analysis.compilation.get_semantic_model(add_to)?;
-        let module_info = semantic_model
-            .get_db()
-            .get_module_index()
-            .get_module(need_require_file_id)?;
-        let emmyrc = semantic_model.get_emmyrc();
-        let require_like_func = &emmyrc.runtime.require_like_function;
-        let auto_require_func = emmyrc.completion.auto_require_function.clone();
-        let require_separator = emmyrc.completion.auto_require_separator.clone();
-        let full_module_path = match require_separator.as_str() {
-            "." | "" => module_info.full_module_name.clone(),
-            _ => module_info
-                .full_module_name
-                .replace(".", &require_separator),
-        };
+        let (text_edit, uri) = context.analysis().try_with_snapshot(|analysis| {
+            let model = analysis.semantic_model(add_to)?;
+            let document = analysis.salsa.document(add_to)?;
+            let module_name = analysis.salsa.module_name_of(need_require_file_id)?;
+            let emmyrc = analysis.get_emmyrc();
+            let require_like_func = &emmyrc.runtime.require_like_function;
+            let auto_require_func = emmyrc.completion.auto_require_function.clone();
+            let require_separator = emmyrc.completion.auto_require_separator.clone();
+            let full_module_path = match require_separator.as_str() {
+                "." | "" => module_name,
+                _ => module_name.replace(".", &require_separator),
+            };
 
-        let require_str = format!(
-            "local {} = {}(\"{}\"){}",
-            if member_name.is_empty() {
-                local_name
-            } else {
-                member_name.clone()
-            },
-            auto_require_func,
-            full_module_path,
-            if !member_name.is_empty() {
-                format!(".{}", member_name)
-            } else {
-                "".to_string()
-            }
-        );
-        let document = semantic_model.get_document();
-        let offset = document.get_offset(position.line as usize, position.character as usize)?;
-        let root_block = semantic_model.get_root().get_block()?;
-        let mut last_require_stat: Option<LuaStat> = None;
-        for stat in root_block.get_stats() {
-            if stat.get_position() > offset {
-                break;
-            }
-
-            if is_require_stat(stat.clone(), require_like_func).unwrap_or(false) {
-                last_require_stat = Some(stat);
-            }
-        }
-
-        let line = if let Some(last_require_stat) = last_require_stat {
-            let last_require_stat_end = last_require_stat.get_range().end();
-            document.get_line(last_require_stat_end)? + 1
-        } else {
-            0
-        };
-
-        let text_edit = TextEdit {
-            range: lsp_types::Range {
-                start: Position {
-                    line: line as u32,
-                    character: 0,
+            let require_str = format!(
+                "local {} = {}(\"{}\"){}",
+                if member_name.is_empty() {
+                    local_name
+                } else {
+                    member_name.clone()
                 },
-                end: Position {
-                    line: line as u32,
-                    character: 0,
-                },
-            },
-            new_text: format!("{}\n", require_str),
-        };
+                auto_require_func,
+                full_module_path,
+                if !member_name.is_empty() {
+                    format!(".{}", member_name)
+                } else {
+                    "".to_string()
+                }
+            );
+            let document = document.clone();
+            let offset =
+                document.get_offset(position.line as usize, position.character as usize)?;
+            let root_block = model.chunk()?.get_block()?;
+            let mut last_require_stat: Option<LuaStat> = None;
+            for stat in root_block.get_stats() {
+                if stat.get_position() > offset {
+                    break;
+                }
 
-        let uri = document.get_uri();
+                if is_require_stat(stat.clone(), require_like_func).unwrap_or(false) {
+                    last_require_stat = Some(stat);
+                }
+            }
+
+            let line = if let Some(last_require_stat) = last_require_stat {
+                let last_require_stat_end = last_require_stat.get_range().end();
+                document.get_line_col(last_require_stat_end)?.0 + 1
+            } else {
+                0
+            };
+
+            let text_edit = TextEdit {
+                range: lsp_types::Range {
+                    start: Position {
+                        line: line as u32,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: line as u32,
+                        character: 0,
+                    },
+                },
+                new_text: require_str.to_string(),
+            };
+
+            let uri = document.get_uri()?;
+            Some((text_edit, uri))
+        })?;
+
         #[allow(clippy::mutable_key_type)]
         let mut changes = HashMap::new();
         changes.insert(uri.clone(), vec![text_edit.clone()]);

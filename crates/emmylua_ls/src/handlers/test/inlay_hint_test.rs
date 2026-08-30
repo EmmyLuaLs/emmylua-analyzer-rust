@@ -204,6 +204,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 3 retirement: enum parameter hints / meta-call / constructors / index aliases / override hints depend on old DbIndex capabilities; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_enum_param_hint() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -279,6 +280,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 3 retirement: enum parameter hints / meta-call / constructors / index aliases / override hints depend on old DbIndex capabilities; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_enum_param_hint_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

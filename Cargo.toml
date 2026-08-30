@@ -1,8 +1,19 @@
 [workspace]
 resolver = "2"
+#members = [
+#    "crates/*",
+#    "tools/*",
+#]
 members = [
-    "crates/*",
-    "tools/*",
+    "crates/emmylua_code_analysis",
+    "crates/emmylua_formatter",
+    "crates/emmylua_parser",
+    "crates/emmylua_parser_desc",
+    "crates/emmylua_diagnostic_macro",
+    "crates/schema_to_emmylua",
+    "crates/emmylua_ls",
+    "crates/emmylua_check",
+    "crates/emmylua_doc_cli",
 ]
 
 [workspace.dependencies]
@@ -59,6 +70,7 @@ luars = { version = "0.26.2", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
 similar = { version = "2.7.0", features = ["inline"] }
 hashbrown = "0.17.0"
+salsa = { version = "0.28.2" }
 
 # Lint configuration for the entire workspace
 [workspace.lints.rust]

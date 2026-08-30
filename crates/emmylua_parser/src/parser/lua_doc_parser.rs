@@ -263,7 +263,7 @@ impl<'b> LuaDocParser<'_, 'b> {
             return;
         }
 
-        // cast key 的解析是可以以`.`分割的, 但 `type` 不能以`.`分割必须视为一个整体, 因此我们需要回退
+        // Cast keys can be split by '.', but `type` cannot and must be treated as a whole, so we need to rewind.
         let read_range = self.current_token_range;
         let origin_token_range = self.tokens[self.origin_token_index].range;
         let origin_token_kind = self.tokens[self.origin_token_index].kind;

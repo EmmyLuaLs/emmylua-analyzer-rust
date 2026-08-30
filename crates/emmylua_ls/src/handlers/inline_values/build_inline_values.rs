@@ -1,15 +1,15 @@
-use emmylua_code_analysis::SemanticModel;
+use emmylua_code_analysis::{DocumentView, SalsaSemanticModel};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaSyntaxKind};
 use lsp_types::{InlineValue, InlineValueVariableLookup, Position};
 use rowan::TokenAtOffset;
 
 pub fn build_inline_values(
-    semantic_model: &SemanticModel,
+    model: &SalsaSemanticModel<'_>,
+    document: &DocumentView,
     position: Position,
 ) -> Option<Vec<InlineValue>> {
     let mut result = Vec::new();
-    let root = semantic_model.get_root();
-    let document = semantic_model.get_document();
+    let root = model.chunk()?;
     let offset = document.get_offset(position.line as usize, position.character as usize)?;
     let token = match root.syntax().token_at_offset(offset) {
         TokenAtOffset::Between(left, _) => left,

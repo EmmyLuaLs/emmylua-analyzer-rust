@@ -12,7 +12,7 @@ use lsp_types::{
 use rowan::NodeCache;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
 pub use external_format::{FormattingRange, external_tool_format};
 pub(crate) use format_diff::format_diff;
 
@@ -28,43 +28,74 @@ pub struct FormattingOptions {
 pub async fn on_formatting_handler(
     context: ServerContextSnapshot,
     params: DocumentFormattingParams,
-    _: CancellationToken,
-) -> Option<Vec<TextEdit>> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<TextEdit>> {
     let uri = params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let workspace_manager = context.workspace_manager().read().await;
-    let client_id = workspace_manager.client_config.client_id;
-    let emmyrc = analysis.get_emmyrc();
 
-    let file_id = analysis.get_file_id(&uri)?;
-    let document = analysis
-        .compilation
-        .get_db()
-        .get_vfs()
-        .get_document(&file_id)?;
-    let text = document.get_text();
-    let file_path = document.get_file_path();
-    let normalized_path = file_path.to_string_lossy().to_string().replace("\\", "/");
-    let formatting_options = FormattingOptions {
-        indent_size: params.options.tab_size,
-        use_tabs: !params.options.insert_spaces,
-        insert_final_newline: params.options.insert_final_newline.unwrap_or(true),
-        non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
+    // Extract only the needed data while holding the lock, then immediately release
+    // the workspace lock and analysis snapshot to avoid blocking other requests/writes
+    // during external_tool_format(...).await.
+    let client_id = {
+        let workspace_manager = context.workspace_manager().lock().await;
+        workspace_manager.client_config.client_id
+    };
+    let extracted = match snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            let document = analysis.salsa.document(file_id)?;
+            let file_path = document.path.clone();
+            let normalized_path = file_path
+                .as_deref()
+                .map(|p| p.to_string_lossy().to_string().replace("\\", "/"))
+                .unwrap_or_default();
+            let emmyrc = analysis.get_emmyrc();
+            let formatting_options = FormattingOptions {
+                indent_size: params.options.tab_size,
+                use_tabs: !params.options.insert_spaces,
+                insert_final_newline: params.options.insert_final_newline.unwrap_or(true),
+                non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
+            };
+            Some((
+                document,
+                emmyrc,
+                file_path,
+                normalized_path,
+                formatting_options,
+            ))
+        },
+    )
+    .await
+    {
+        RequestOutcome::Ready(data) => data,
+        RequestOutcome::Missing => {
+            return RequestOutcome::Missing;
+        }
+        RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
 
+    let (document, emmyrc, file_path, normalized_path, formatting_options) = extracted;
+
+    let text = document.get_text().to_string();
     let mut formatted_text = if let Some(external_config) = &emmyrc.format.external_tool {
-        external_tool_format(
+        match external_tool_format(
             external_config,
-            text,
+            &text,
             &normalized_path,
             None,
             formatting_options,
         )
-        .await?
+        .await
+        {
+            Some(formatted) => formatted,
+            None => return RequestOutcome::Missing,
+        }
     } else {
         format_with_workspace_formatter(
-            text,
-            Some(file_path.as_path()),
+            &text,
+            file_path.as_deref(),
             &emmyrc,
             params.options.tab_size as usize,
             params.options.insert_spaces,
@@ -78,7 +109,7 @@ pub async fn on_formatting_handler(
 
     let replace_all_limit = 50;
     let text_edits = if emmyrc.format.use_diff {
-        format_diff(text, &formatted_text, &document, replace_all_limit)
+        format_diff(&text, &formatted_text, &document, replace_all_limit)
     } else {
         let document_range = document.get_document_lsp_range();
         vec![TextEdit {
@@ -87,7 +118,7 @@ pub async fn on_formatting_handler(
         }]
     };
 
-    Some(text_edits)
+    RequestOutcome::Ready(text_edits)
 }
 
 pub(crate) fn format_with_workspace_formatter(

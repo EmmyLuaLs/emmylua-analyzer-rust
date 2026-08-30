@@ -37,7 +37,8 @@ macro_rules! dispatch_notification {
                 <$sync_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$sync_notif as LspNotification>::Params>(<$sync_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        $sync_handler(snapshot, params).await;
+                        // Run in a subtask to avoid a salsa Cancelled panic interrupting the main loop.
+                        let _ = tokio::spawn($sync_handler(snapshot, params)).await;
                     }
                 }
             )*
@@ -64,9 +65,9 @@ pub async fn on_notification_handler(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     dispatch_notification!(notification, server_context, {
         sync: {
-            DidChangeTextDocument => on_did_change_text_document,
         }
         async: {
+            DidChangeTextDocument => on_did_change_text_document,
             DidOpenTextDocument => on_did_open_text_document,
             DidSaveTextDocument => on_did_save_text_document,
             DidCloseTextDocument => on_did_close_document,

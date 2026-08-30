@@ -60,6 +60,13 @@ pub trait LuaAstNode {
         self.syntax().descendants().filter_map(N::cast)
     }
 
+    fn find_descendant<N: LuaAstNode, F>(&self, f: F) -> Option<N>
+    where
+        F: FnMut(&N) -> bool,
+    {
+        self.descendants().find(f)
+    }
+
     fn walk_descendants<N: LuaAstNode>(&self) -> impl Iterator<Item = WalkEvent<N>> {
         self.syntax().preorder().filter_map(|event| match event {
             WalkEvent::Enter(node) => N::cast(node).map(WalkEvent::Enter),

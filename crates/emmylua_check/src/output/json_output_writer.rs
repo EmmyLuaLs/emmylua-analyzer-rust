@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write};
 
-use emmylua_code_analysis::{DbIndex, FileId};
+use emmylua_code_analysis::{FileId, SalsaDatabase};
 use lsp_types::Diagnostic;
 use serde_json::{Value, json};
 
@@ -38,8 +38,8 @@ impl JsonOutputWriter {
 }
 
 impl OutputWriter for JsonOutputWriter {
-    fn write(&mut self, db: &DbIndex, file_id: FileId, diagnostics: Vec<Diagnostic>) {
-        let file_path = db.get_vfs().get_file_path(&file_id).unwrap();
+    fn write(&mut self, db: &SalsaDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
+        let file_path = db.file_path(file_id).unwrap();
         let file_path = file_path.to_str().unwrap();
         let mut json_diagnostics = Vec::new();
         for diagnostic in diagnostics {

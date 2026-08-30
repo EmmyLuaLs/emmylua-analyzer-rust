@@ -1,7 +1,6 @@
 mod build_signature_helper;
-mod signature_helper_builder;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_signature_helper::build_signature_helper;
 pub use build_signature_helper::get_current_param_index;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
@@ -19,11 +18,9 @@ use super::RegisterCapabilities;
 pub async fn on_signature_helper_handler(
     context: ServerContextSnapshot,
     params: SignatureHelpParams,
-    _: CancellationToken,
-) -> Option<SignatureHelp> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<SignatureHelp> {
     let uri = params.text_document_position_params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
     let position = params.text_document_position_params.position;
     let param_context = params.context.unwrap_or(SignatureHelpContext {
         trigger_kind: SignatureHelpTriggerKind::INVOKED,
@@ -31,7 +28,19 @@ pub async fn on_signature_helper_handler(
         is_retrigger: false,
         active_signature_help: None,
     });
-    signature_help(&analysis, file_id, position, param_context)
+    let cache_key = format!("signature:{}", uri.as_str());
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        Some(cancel_token.clone()),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            signature_help(analysis, file_id, position, param_context.clone())
+        },
+    )
+    .await
 }
 
 pub fn signature_help(
@@ -40,12 +49,11 @@ pub fn signature_help(
     position: Position,
     param_context: SignatureHelpContext,
 ) -> Option<SignatureHelp> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -63,7 +71,7 @@ pub fn signature_help(
         match node.kind().into() {
             LuaSyntaxKind::CallArgList => {
                 let call_expr = LuaCallExpr::cast(node.parent()?)?;
-                build_signature_helper(&semantic_model, call_expr, token)
+                build_signature_helper(&model, call_expr, token)
             }
             // todo
             LuaSyntaxKind::TypeGeneric | LuaSyntaxKind::DocTypeList => None,
@@ -90,7 +98,7 @@ pub fn signature_help(
         match node.kind().into() {
             LuaSyntaxKind::CallArgList => {
                 let call_expr = LuaCallExpr::cast(node.parent()?)?;
-                build_signature_helper(&semantic_model, call_expr, token)
+                build_signature_helper(&model, call_expr, token)
             }
             // todo
             LuaSyntaxKind::TypeGeneric | LuaSyntaxKind::DocTypeList => None,

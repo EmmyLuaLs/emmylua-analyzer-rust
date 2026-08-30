@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
-use emmylua_code_analysis::{DbIndex, FileId, file_path_to_uri};
+use emmylua_code_analysis::{FileId, SalsaDatabase, file_path_to_uri};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 use serde_json::{Value, json};
 
@@ -109,13 +109,13 @@ impl SarifOutputWriter {
 }
 
 impl OutputWriter for SarifOutputWriter {
-    fn write(&mut self, db: &DbIndex, file_id: FileId, diagnostics: Vec<Diagnostic>) {
+    fn write(&mut self, db: &SalsaDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
         if diagnostics.is_empty() {
             return;
         }
 
-        let file_path = db.get_vfs().get_file_path(&file_id).unwrap();
-        let file_uri = file_path_to_uri(file_path).unwrap().as_str().to_string();
+        let file_path = db.file_path(file_id).unwrap();
+        let file_uri = file_path_to_uri(&file_path).unwrap().as_str().to_string();
         self.ensure_tool();
 
         for diagnostic in diagnostics {

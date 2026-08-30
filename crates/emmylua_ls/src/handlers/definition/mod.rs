@@ -1,21 +1,10 @@
 mod goto_def_definition;
-mod goto_doc_see;
-mod goto_function;
 mod goto_label;
 mod goto_module_file;
-mod goto_path;
+mod goto_string;
 
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel, WorkspaceId};
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaDocDescription, LuaDocTagSee, LuaGeneralToken, LuaStringToken,
-    LuaTokenKind,
-};
-pub use goto_def_definition::goto_def_definition;
-use goto_def_definition::goto_str_tpl_ref_definition;
-pub use goto_doc_see::goto_doc_see;
-pub use goto_function::compare_function_types;
-use goto_label::goto_label_definition;
-pub use goto_module_file::goto_module_file;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaStringToken, LuaTokenKind};
 use lsp_types::{
     ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, OneOf, Position,
     ServerCapabilities,
@@ -24,22 +13,25 @@ use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
 use super::RegisterCapabilities;
-use crate::context::ServerContextSnapshot;
-use crate::handlers::definition::goto_function::goto_overload_function;
-use crate::handlers::definition::goto_path::goto_path;
-use crate::util::find_ref_at;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
 
 pub async fn on_goto_definition_handler(
     context: ServerContextSnapshot,
     params: GotoDefinitionParams,
-    _: CancellationToken,
-) -> Option<GotoDefinitionResponse> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<GotoDefinitionResponse> {
     let uri = params.text_document_position_params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
     let position = params.text_document_position_params.position;
-
-    definition(&analysis, file_id, position)
+    snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            definition(analysis, file_id, position)
+        },
+    )
+    .await
 }
 
 pub fn definition(
@@ -47,12 +39,11 @@ pub fn definition(
     file_id: FileId,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -74,60 +65,40 @@ pub fn definition(
         }
     };
 
-    if let Some(goto_label_response) = goto_label_definition(&semantic_model, file_id, &token) {
-        return Some(goto_label_response);
+    // 1. Label definition (goto / label).
+    if let Some(response) = goto_label::goto_label_definition(&model, &analysis.salsa, &token) {
+        return Some(response);
     }
 
-    if let Some(semantic_decl) =
-        semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())
-    {
-        return goto_def_definition(
-            &semantic_model,
-            &analysis.compilation,
-            semantic_decl,
-            &token,
-        );
-    } else if let Some(string_token) = LuaStringToken::cast(token.clone()) {
-        if let Some(module_response) = goto_module_file(&semantic_model, string_token.clone()) {
-            return Some(module_response);
-        }
-        if let Some(str_tpl_ref_response) =
-            goto_str_tpl_ref_definition(&semantic_model, string_token)
+    // 2. String token: require module file / string template reference.
+    if let Some(string_token) = LuaStringToken::cast(token.clone()) {
+        if let Some(response) =
+            goto_module_file::goto_module_file(&analysis.salsa, string_token.clone())
         {
-            return Some(str_tpl_ref_response);
+            return Some(response);
         }
-    } else if token.kind() == LuaTokenKind::TkDocSeeContent.into() {
-        let general_token = LuaGeneralToken::cast(token.clone())?;
-        if general_token.get_parent::<LuaDocTagSee>().is_some() {
-            return goto_doc_see(
-                &semantic_model,
-                &analysis.compilation,
-                general_token,
-                position_offset,
-            );
+        if let Some(response) =
+            goto_string::goto_str_tpl_ref_definition(&model, &analysis.salsa, string_token)
+        {
+            return Some(response);
         }
-    } else if token.kind() == LuaTokenKind::TkDocDetail.into() {
-        let parent = token.parent()?;
-        let description = LuaDocDescription::cast(parent)?;
-        let document = semantic_model.get_document();
-
-        let path = find_ref_at(
-            semantic_model
-                .get_module()
-                .map(|m| m.workspace_id)
-                .unwrap_or(WorkspaceId::MAIN),
-            semantic_model.get_emmyrc(),
-            document.get_text(),
-            description.clone(),
-            position_offset,
-        )?;
-
-        return goto_path(&semantic_model, &analysis.compilation, &path, &token);
-    } else if token.kind() == LuaTokenKind::TkTagOverload.into() {
-        return goto_overload_function(&semantic_model, &token);
+        return None;
     }
 
-    None
+    // 2.5 Doc description reference / `@see`.
+    if let Some(response) = goto_def_definition::goto_doc_definition(
+        &model,
+        &analysis.salsa,
+        &token,
+        position_offset,
+        &analysis.get_emmyrc(),
+    ) {
+        return Some(response);
+    }
+
+    // 3. Semantic declarations (decl / member / typedef).
+    let decl = model.find_decl(token.clone().into())?;
+    goto_def_definition::goto_def_definition(&model, &analysis.salsa, &decl, &token)
 }
 
 pub struct DefinitionCapabilities;

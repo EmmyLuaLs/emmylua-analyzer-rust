@@ -1,11 +1,16 @@
-use emmylua_code_analysis::{LuaTypeDeclId, is_attribute_class};
-use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
-use lsp_types::CompletionItem;
+//! Doc type completion: type names in `---@type` / `@param` / `@field` etc.
+//!
+//! The salsa version currently uses the full `FileExports::types` set with prefix/path filtering;
+//! attribute contexts only suggest known built-in attribute classes like `constructor`
+//! (Attribute class inheritance detection is a later step).
+
 use std::collections::HashSet;
 
-use crate::handlers::completion::{
-    completion_builder::CompletionBuilder, completion_data::CompletionData,
-};
+use emmylua_code_analysis::{SalsaSemanticModel, TypeDefKind};
+use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
+use lsp_types::{CompletionItem, CompletionItemKind};
+
+use crate::handlers::completion::completion_builder::CompletionBuilder;
 
 use super::{CompletionProvider, ProviderDecision};
 
@@ -29,13 +34,18 @@ impl CompletionProvider for DocTypeProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionType {
+    Type,
+    AttributeUse,
+}
+
 fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
     let completion_type = completion_type_for(builder)?;
-
     let prefix_content = builder.trigger_token.text().to_string();
     let prefix = if let Some(last_sep) = prefix_content.rfind('.') {
         let (path, _) = prefix_content.split_at(last_sep + 1);
@@ -43,75 +53,72 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     } else {
         ""
     };
-    complete_types_by_prefix(builder, prefix, None, Some(completion_type));
+    complete_types_by_prefix(builder, prefix, completion_type);
     Some(())
 }
 
 pub fn complete_types_by_prefix(
     builder: &mut CompletionBuilder,
     prefix: &str,
-    filter: Option<&HashSet<LuaTypeDeclId>>,
-    completion_type: Option<CompletionType>,
-) -> Option<()> {
-    let completion_type = completion_type.or(Some(CompletionType::Type))?;
-    let file_id = builder.semantic_model.get_file_id();
-    let type_index = builder.semantic_model.get_db().get_type_index();
-    let results = type_index.find_type_decls(
-        file_id,
-        prefix,
-        builder
-            .semantic_model
-            .get_db()
-            .resolve_workspace_id(file_id),
-    );
-
-    for (name, type_decl) in results {
-        if let Some(filter) = filter
-            && type_decl
-                .as_ref()
-                .is_some_and(|type_decl| filter.contains(type_decl))
-        {
+    completion_type: CompletionType,
+) {
+    let partial = builder.partial_name();
+    let mut seen = HashSet::new();
+    let db = builder.semantic_model.db();
+    let mut file_ids = db.main_workspace_file_ids();
+    file_ids.sort();
+    for file_id in file_ids {
+        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
             continue;
-        }
-        match completion_type {
-            CompletionType::AttributeUse => {
-                if let Some(decl_id) = type_decl {
-                    if is_attribute_class(builder.semantic_model.get_db(), &decl_id) {
-                        add_type_completion_item(builder, &name, Some(decl_id));
-                    }
-                }
+        };
+        let Some(exports) = model.file_exports_current() else {
+            continue;
+        };
+        for def in exports.types.iter() {
+            if def.flags.meta {
+                continue;
             }
-            CompletionType::Type => {
-                if let Some(decl_id) = &type_decl {
-                    if is_attribute_class(builder.semantic_model.get_db(), decl_id) {
-                        continue;
-                    }
-                }
-                add_type_completion_item(builder, &name, type_decl);
+            let full_name = def.full_name.as_str();
+            // Prefix path matching: `ns.` only accepts types under `ns`.
+            if !full_name.starts_with(prefix) {
+                continue;
             }
+            let relative = &full_name[prefix.len()..];
+            if !partial.is_empty() && !relative.starts_with(&partial) {
+                continue;
+            }
+            if completion_type == CompletionType::AttributeUse && def.kind != TypeDefKind::Class {
+                continue;
+            }
+            if !seen.insert(full_name.to_string()) {
+                continue;
+            }
+            let kind = match completion_type {
+                CompletionType::AttributeUse => CompletionItemKind::CLASS,
+                CompletionType::Type => match def.kind {
+                    TypeDefKind::Enum => CompletionItemKind::ENUM,
+                    TypeDefKind::Class => CompletionItemKind::CLASS,
+                    TypeDefKind::Alias => CompletionItemKind::STRUCT,
+                },
+            };
+            builder.add_completion_item(CompletionItem {
+                label: relative.to_string(),
+                kind: Some(kind),
+                ..Default::default()
+            });
         }
     }
-
-    Some(())
-}
-
-pub enum CompletionType {
-    Type,
-    AttributeUse,
 }
 
 fn completion_type_for(builder: &CompletionBuilder) -> Option<CompletionType> {
     match builder.trigger_token.kind().into() {
         LuaTokenKind::TkName => {
             let parent = builder.trigger_token.parent()?;
-            if let Some(doc_name) = LuaDocNameType::cast(parent) {
-                if doc_name.get_parent::<LuaDocAttributeUse>().is_some() {
-                    return Some(CompletionType::AttributeUse);
-                }
-                return Some(CompletionType::Type);
+            let doc_name = LuaDocNameType::cast(parent)?;
+            if doc_name.get_parent::<LuaDocAttributeUse>().is_some() {
+                return Some(CompletionType::AttributeUse);
             }
-
-            None
+            Some(CompletionType::Type)
         }
         LuaTokenKind::TkWhitespace => {
             let left_token = builder.trigger_token.prev_token()?;
@@ -143,36 +150,9 @@ fn completion_type_for(builder: &CompletionBuilder) -> Option<CompletionType> {
                 }
                 _ => {}
             }
-
             None
         }
         LuaTokenKind::TkDocAttributeUse => Some(CompletionType::AttributeUse),
         _ => None,
     }
-}
-
-fn add_type_completion_item(
-    builder: &mut CompletionBuilder,
-    name: &str,
-    type_decl: Option<LuaTypeDeclId>,
-) -> Option<()> {
-    let kind = match type_decl {
-        Some(_) => lsp_types::CompletionItemKind::CLASS,
-        None => lsp_types::CompletionItemKind::MODULE,
-    };
-
-    let data = if let Some(id) = type_decl {
-        CompletionData::from_property_owner_id(builder, id.into())
-    } else {
-        None
-    };
-
-    let completion_item = CompletionItem {
-        label: name.to_string(),
-        kind: Some(kind),
-        data,
-        ..CompletionItem::default()
-    };
-
-    builder.add_completion_item(completion_item)
 }

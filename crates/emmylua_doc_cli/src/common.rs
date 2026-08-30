@@ -1,12 +1,13 @@
-use emmylua_code_analysis::{DbIndex, LuaType, RenderLevel, humanize_type};
+use crate::doc_model::DocModel;
+use emmylua_code_analysis::{LuaType, RenderLevel};
 
-pub fn render_typ(db: &DbIndex, typ: &LuaType, level: RenderLevel) -> String {
+pub fn render_typ(model: &DocModel, typ: &LuaType, level: RenderLevel) -> String {
     match typ {
         LuaType::IntegerConst(_) => "integer".to_string(),
         LuaType::FloatConst(_) => "number".to_string(),
         LuaType::StringConst(_) => "string".to_string(),
         LuaType::BooleanConst(_) => "boolean".to_string(),
-        _ => humanize_type(db, typ, level),
+        _ => model.render_type(typ, level),
     }
 }
 

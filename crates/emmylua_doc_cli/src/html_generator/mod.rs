@@ -7,10 +7,11 @@ mod types;
 
 use std::path::Path;
 
-use emmylua_code_analysis::{DbIndex, LuaDeclId, LuaTypeDeclId};
+use emmylua_code_analysis::LuaType;
 use tera::Tera;
 
 use crate::OutputDestination;
+use crate::doc_model::{DocModel, DocTypeKey};
 use types::{HtmlDoc, NavGroup, NavItem, NavModel, NavTreeNode};
 
 use self::generators::{GenContext, build_global_doc, build_module_doc, build_type_doc};
@@ -37,7 +38,7 @@ pub fn generate_html(
     let tl = init::init_html_tl().ok_or("Failed to initialize HTML templates")?;
     init::write_static_assets(&output)?;
 
-    let db = analysis.compilation.get_db();
+    let model = DocModel::build(analysis);
     let mut nav = NavModel {
         site_name: site_name.clone(),
         ..Default::default()
@@ -45,25 +46,21 @@ pub fn generate_html(
 
     // Build a map of documented type full-names -> root-relative page hrefs so
     // signatures can link to them.
-    let link_map = build_link_map(db);
+    let link_map = build_link_map(&model);
 
     // Item pages live one level below the root, so links inside signatures use
     // the "../" prefix.
     let sub_linker =
-        |id: &LuaTypeDeclId| link_type(db, &link_map, id).map(|href| format!("../{href}"));
+        |id: &DocTypeKey| link_type(&model, &link_map, id).map(|href| format!("../{href}"));
     let ctx = GenContext {
-        db,
+        model: &model,
         linker: &sub_linker,
     };
 
     let mut pages: Vec<(String, HtmlDoc)> = Vec::new();
 
-    let type_index = db.get_type_index();
-    for typ in type_index.get_all_types() {
-        if !type_in_main_workspace(db, typ.get_locations()) {
-            continue;
-        }
-        if let Some(doc) = build_type_doc(&ctx, typ) {
+    for doc_type in &model.types {
+        if let Some(doc) = build_type_doc(&ctx, doc_type) {
             let dir = doc.kind.as_str();
             let filename = format!("{}/{}.html", dir, escape(doc.name.clone()));
             nav.types.push(NavItem {
@@ -78,14 +75,7 @@ pub fn generate_html(
         }
     }
 
-    let module_index = db.get_module_index();
-    for module in module_index.get_module_infos() {
-        let Some(workspace) = db.get_module_index().get_module(module.file_id) else {
-            continue;
-        };
-        if !workspace.workspace_id.is_main() {
-            continue;
-        }
+    for module in &model.modules {
         if let Some(doc) = build_module_doc(&ctx, module) {
             let filename = format!("module/{}.html", escape(doc.name.clone()));
             nav.modules.push(NavItem {
@@ -100,12 +90,11 @@ pub fn generate_html(
         }
     }
 
-    let global_index = db.get_global_index();
-    for decl_id in global_index.get_all_global_decl_ids() {
-        if !global_in_main_workspace(db, &decl_id) {
+    for global in &model.globals {
+        if !global_documented(global) {
             continue;
         }
-        if let Some(doc) = build_global_doc(&ctx, &decl_id) {
+        if let Some(doc) = build_global_doc(&ctx, global) {
             let filename = format!("global/{}.html", escape(doc.name.clone()));
             nav.globals.push(NavItem {
                 name: doc.name.clone(),
@@ -159,63 +148,32 @@ pub fn generate_html(
 
 /// Returns a root-relative href for `id` if its type is documented.
 fn link_type(
-    db: &DbIndex,
+    model: &DocModel,
     link_map: &std::collections::HashMap<String, String>,
-    id: &LuaTypeDeclId,
+    id: &DocTypeKey,
 ) -> Option<String> {
-    let name = db.get_type_index().get_type_decl(id)?.get_full_name();
-    link_map.get(name).cloned()
+    let name = model.type_name(&id.to_lua_id());
+    link_map.get(&name).cloned()
 }
 
 /// Maps every documented type full-name to its root-relative page href.
-fn build_link_map(db: &DbIndex) -> std::collections::HashMap<String, String> {
+fn build_link_map(model: &DocModel) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
-    let type_index = db.get_type_index();
-    for typ in type_index.get_all_types() {
-        if !type_in_main_workspace(db, typ.get_locations()) {
-            continue;
-        }
-        let kind = if typ.is_class() {
-            "class"
-        } else if typ.is_enum() {
-            "enum"
-        } else {
-            "alias"
-        };
-        let full_name = typ.get_full_name().to_string();
+    for doc_type in &model.types {
         map.insert(
-            full_name.clone(),
-            format!("{}/{}.html", kind, escape(full_name)),
+            doc_type.full_name.clone(),
+            format!(
+                "{}/{}.html",
+                doc_type.kind.as_str(),
+                escape(doc_type.full_name.clone())
+            ),
         );
     }
     map
 }
 
-fn type_in_main_workspace(
-    db: &DbIndex,
-    locations: &[emmylua_code_analysis::LuaDeclLocation],
-) -> bool {
-    locations.iter().any(|loc| {
-        db.get_module_index()
-            .get_module(loc.file_id)
-            .is_some_and(|module| module.workspace_id.is_main())
-    })
-}
-
-fn global_in_main_workspace(db: &DbIndex, decl_id: &LuaDeclId) -> bool {
-    let Some(module) = db.get_module_index().get_module(decl_id.file_id) else {
-        return false;
-    };
-    if !module.workspace_id.is_main() {
-        return false;
-    }
-    let Some(decl_type) = db.get_type_index().get_type_cache(&(*decl_id).into()) else {
-        return false;
-    };
-    !matches!(
-        decl_type.as_type(),
-        emmylua_code_analysis::LuaType::Ref(_) | emmylua_code_analysis::LuaType::Def(_)
-    )
+fn global_documented(global: &crate::doc_model::DocGlobal) -> bool {
+    !matches!(global.ty, LuaType::Ref(_) | LuaType::Def(_))
 }
 
 fn sort_nav(nav: &mut NavModel) {

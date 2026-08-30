@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{DbIndex, Emmyrc, LuaDocument, file_path_to_uri};
+use emmylua_code_analysis::{DocumentView, Emmyrc, SalsaDatabase, file_path_to_uri};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaLiteralExpr, LuaStringToken,
     LuaSyntaxNode,
@@ -8,9 +8,9 @@ use emmylua_parser::{
 use lsp_types::DocumentLink;
 
 pub fn build_links(
-    db: &DbIndex,
+    salsa: &SalsaDatabase,
     root: LuaSyntaxNode,
-    document: &LuaDocument,
+    document: &DocumentView,
     emmyrc: &Emmyrc,
 ) -> Option<Vec<DocumentLink>> {
     let string_tokens = root
@@ -20,21 +20,21 @@ pub fn build_links(
 
     let mut result = vec![];
     for token in string_tokens {
-        try_build_file_link(db, token, document, &mut result, emmyrc);
+        try_build_file_link(salsa, token, document, &mut result, emmyrc);
     }
 
     Some(result)
 }
 
 fn try_build_file_link(
-    db: &DbIndex,
+    salsa: &SalsaDatabase,
     token: LuaStringToken,
-    document: &LuaDocument,
+    document: &DocumentView,
     result: &mut Vec<DocumentLink>,
     emmyrc: &Emmyrc,
 ) -> Option<()> {
     if is_require_path(token.clone()).unwrap_or(false) {
-        try_build_module_link(db, token, document, result);
+        try_build_module_link(salsa, token, document, result);
         return Some(());
     }
 
@@ -78,17 +78,14 @@ fn try_build_file_link(
 }
 
 fn try_build_module_link(
-    db: &DbIndex,
+    salsa: &SalsaDatabase,
     token: LuaStringToken,
-    document: &LuaDocument,
+    document: &DocumentView,
     result: &mut Vec<DocumentLink>,
 ) -> Option<()> {
     let module_path = token.get_value();
-    let module_index = db.get_module_index();
-    let founded_module = module_index.find_module(&module_path)?;
-    let file_id = founded_module.file_id;
-    let vfs = db.get_vfs();
-    let uri = vfs.get_uri(&file_id)?;
+    let file_id = salsa.module_file_of(&module_path)?;
+    let uri = salsa.file_uri(file_id)?;
     let range = token.get_range();
     let lsp_range = document.to_lsp_range(range)?;
     let document_link = DocumentLink {

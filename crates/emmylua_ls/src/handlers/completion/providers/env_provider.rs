@@ -1,15 +1,17 @@
+//! Env completion: visible locals/params/globals at the current position + current file type definitions.
+
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaSignatureId, LuaType};
-use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList, LuaTokenKind,
+use emmylua_code_analysis::{DeclKind, LuaType, SalsaSemanticModel};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaCallArgList, LuaParamList, LuaTokenKind};
+use lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionTriggerKind,
 };
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionTriggerKind};
 
-use crate::handlers::completion::{
-    add_completions::{add_decl_completion, check_match_word},
-    completion_builder::CompletionBuilder,
-};
+use crate::handlers::completion::completion_builder::CompletionBuilder;
+use crate::handlers::completion::completion_data::{CompletionData, CompletionDataType};
+use crate::handlers::completion::providers::keywords_provider::check_match_word;
+use crate::handlers::hover::render::humanize;
 
 use super::{CompletionProvider, ProviderDecision};
 
@@ -47,15 +49,17 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         LuaAst::LuaBlock(_) => {}
         LuaAst::LuaClosureExpr(_) => {}
         LuaAst::LuaCallArgList(_) => {}
-        // 字符串中触发的补全
+        // Completions triggered inside strings are delegated to the context provider.
         LuaAst::LuaLiteralExpr(_) => return None,
         _ => return None,
     };
 
     let mut duplicated_name = HashSet::new();
-    add_local_env(builder, &mut duplicated_name, &parent_node);
-    add_global_env(builder, &mut duplicated_name, &builder.get_trigger_text());
-    add_self(builder, &mut duplicated_name, &parent_node);
+    if has_std_library(&builder.semantic_model) {
+        add_builtin_types(builder, &mut duplicated_name);
+    }
+    add_local_env(builder, &mut duplicated_name);
+    add_global_env(builder, &mut duplicated_name);
     builder.env_duplicate_name.extend(duplicated_name);
 
     Some(())
@@ -71,7 +75,6 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
         let Some(parent) = builder.trigger_token.parent() else {
             return false;
         };
-
         if trigger_text == "("
             && (LuaCallArgList::can_cast(parent.kind().into())
                 || LuaParamList::can_cast(parent.kind().into()))
@@ -90,8 +93,7 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
                 _ => {}
             }
         }
-
-        // 即使是主动触发, 也不允许在函数定义的参数列表中添加
+        // Do not provide ordinary env completions in function-definition parameter lists.
         if trigger_text == "(" && LuaParamList::can_cast(parent.kind().into()) {
             return false;
         }
@@ -100,168 +102,227 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
     true
 }
 
-fn add_self(
-    builder: &mut CompletionBuilder,
-    duplicated_name: &mut HashSet<String>,
-    node: &LuaAst,
-) -> Option<()> {
-    let closure_expr = node.ancestors::<LuaClosureExpr>().next()?;
-    let signature_id =
-        LuaSignatureId::from_closure(builder.semantic_model.get_file_id(), &closure_expr);
-    let signature = builder
-        .semantic_model
-        .get_db()
-        .get_signature_index()
-        .get(&signature_id)?;
-    if signature.is_colon_define {
-        let completion_item = CompletionItem {
-            label: "self".to_string(),
-            kind: Some(CompletionItemKind::VARIABLE),
-            data: None,
-            label_details: Some(lsp_types::CompletionItemLabelDetails {
-                detail: None,
-                description: None,
-            }),
-            sort_text: Some("0001".to_string()),
-            ..Default::default()
-        };
+fn has_std_library(model: &SalsaSemanticModel<'_>) -> bool {
+    let db = model.db();
+    db.file_ids()
+        .iter()
+        .filter_map(|file_id| db.file_path(*file_id))
+        .any(|path| {
+            let text = path.to_string_lossy();
+            text.contains("resources") || text.contains("std")
+        })
+}
 
-        builder.add_completion_item(completion_item)?;
-        duplicated_name.insert("self".to_string());
+fn add_builtin_types(builder: &mut CompletionBuilder, duplicated: &mut HashSet<String>) {
+    let partial = builder.partial_name();
+    for builtin in ["table", "any", "unknown", "void"] {
+        if builtin.starts_with(&partial) && duplicated.insert(builtin.to_string()) {
+            builder.add_completion_item(CompletionItem {
+                label: builtin.to_string(),
+                kind: Some(CompletionItemKind::CLASS),
+                insert_text: Some(builtin.to_string()),
+                ..Default::default()
+            });
+        }
     }
+}
 
-    Some(())
+/// Declarations visible in the lexical scope at the current position (facts visibility scope).
+pub fn visible_local_decls(
+    model: &SalsaSemanticModel<'_>,
+    position_offset: rowan::TextSize,
+) -> Vec<emmylua_code_analysis::SemanticId> {
+    let Some(facts) = model.file_facts() else {
+        return Vec::new();
+    };
+    facts
+        .visible_decls_at_offset(position_offset)
+        .into_iter()
+        .filter(|decl| !matches!(decl.kind, DeclKind::Global))
+        .map(|decl| decl.id.clone())
+        .collect()
 }
 
 fn add_local_env(
     builder: &mut CompletionBuilder,
     duplicated_name: &mut HashSet<String>,
-    _: &LuaAst,
 ) -> Option<()> {
-    let file_id = builder.semantic_model.get_file_id();
-    let decl_tree = builder
-        .semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl_tree(&file_id)?;
-    let local_env = decl_tree.get_env_decls(builder.trigger_token.text_range().start())?;
-
     let trigger_text = builder.get_trigger_text();
-
-    for decl_id in local_env.iter() {
-        // 获取变量名和类型
-        let (name, typ) = {
-            let decl = builder
-                .semantic_model
-                .get_db()
-                .get_decl_index()
-                .get_decl(decl_id)?;
-            (
-                decl.get_name().to_string(),
-                builder
-                    .semantic_model
-                    .get_db()
-                    .get_type_index()
-                    .get_type_cache(&(*decl_id).into())
-                    .map(|cache| cache.as_type().clone())
-                    .unwrap_or(LuaType::Unknown),
-            )
-        };
-
-        if duplicated_name.contains(&name) {
+    let decls = visible_local_decls(&builder.semantic_model, builder.position_offset);
+    for decl_id in decls {
+        let facts = builder.semantic_model.file_facts()?;
+        let decl = facts.decl_by_id(&decl_id)?;
+        let name = decl.name.to_string();
+        let typ = builder
+            .semantic_model
+            .type_of_decl(&decl_id)
+            .unwrap_or(LuaType::Unknown);
+        if is_typing_name(builder, &decl_id) || duplicated_name.contains(&name) {
             continue;
         }
-
         if !env_check_match_word(&trigger_text, name.as_str()) {
             duplicated_name.insert(name.clone());
             continue;
         }
-
-        // let flow_id = LuaClosureId::from_node(node.syntax());
-        // let var_ref_id = LuaVarRefId::DeclId(*decl_id);
-        // // 类型缩窄
-        // if let Some(chain) = builder
-        //     .semantic_model
-        //     .get_db()
-        //     .get_flow_index()
-        //     .get_flow_chain(file_id, var_ref_id)
-        // {
-        //     let semantic_model = &builder.semantic_model;
-        //     let db = semantic_model.get_db();
-        //     let root = semantic_model.get_root().syntax();
-        //     let config = semantic_model.get_config();
-        //     for type_assert in chain.get_type_asserts(node.get_position(), flow_id) {
-        //         typ = type_assert
-        //             .tighten_type(db, &mut config.borrow_mut(), root, typ)
-        //             .unwrap_or(LuaType::Unknown);
-        //     }
-        // }
-
         duplicated_name.insert(name.clone());
-        add_decl_completion(builder, *decl_id, &name, &typ);
+        add_decl_completion(builder, &decl_id, &name, &typ);
     }
-
     Some(())
 }
 
 pub fn add_global_env(
     builder: &mut CompletionBuilder,
     duplicated_name: &mut HashSet<String>,
-    trigger_text: &str,
 ) -> Option<()> {
-    let global_env = builder
-        .semantic_model
-        .get_db()
-        .get_global_index()
-        .get_all_global_decl_ids();
-    for decl_id in global_env.iter() {
-        let decl = builder
-            .semantic_model
-            .get_db()
-            .get_decl_index()
-            .get_decl(decl_id)?;
-        let (name, typ) = {
-            (
-                decl.get_name().to_string(),
-                builder
-                    .semantic_model
-                    .get_db()
-                    .get_type_index()
-                    .get_type_cache(&(*decl_id).into())
-                    .map(|cache| cache.as_type().clone())
-                    .unwrap_or(LuaType::Unknown),
-            )
+    let trigger_text = builder.get_trigger_text();
+    let db = builder.semantic_model.db();
+    // Global env includes the standard library (`table`/`any` etc. from std `---@class` / global declarations).
+    let mut file_ids = db.file_ids();
+    file_ids.sort();
+    let mut globals = Vec::new();
+    for file_id in file_ids {
+        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+            continue;
         };
-        if duplicated_name.contains(&name) {
+        let Some(exports) = model.file_exports_current() else {
+            continue;
+        };
+        for global in exports.globals.iter() {
+            globals.push((global.decl.clone(), global.name.to_string()));
+        }
+    }
+
+    for (decl_id, name) in globals {
+        let typ = builder
+            .semantic_model
+            .type_of_decl(&decl_id)
+            .unwrap_or(LuaType::Unknown);
+        if is_typing_name(builder, &decl_id) || duplicated_name.contains(&name) {
             continue;
         }
-        if !env_check_match_word(trigger_text, name.as_str()) {
+        if !env_check_match_word(&trigger_text, name.as_str()) {
             duplicated_name.insert(name.clone());
             continue;
         }
-        // 如果范围相同, 则是在定义一个新的全局变量, 不需要添加
-        if decl.get_range() == builder.trigger_token.text_range() {
+        // Do not repeat a global with the same name that is currently being defined.
+        if let Some(current) = builder.semantic_model.resolve_name(builder.position_offset)
+            && current == decl_id
+        {
             continue;
         }
-
         duplicated_name.insert(name.clone());
-        add_decl_completion(builder, *decl_id, &name, &typ);
+        add_decl_completion(builder, &decl_id, &name, &typ);
     }
-
     Some(())
 }
 
-fn env_check_match_word(trigger_text: &str, name: &str) -> bool {
-    // 如果首字母是`(`或者`,`则允许, 用于在函数参数调用处触发补全
+pub fn env_check_match_word(trigger_text: &str, name: &str) -> bool {
+    // After `(` or `,` allow any candidate (completion triggered at function call arguments).
     if matches!(trigger_text.chars().next(), Some('(') | Some(',')) {
         return true;
     }
+    check_match_word(trigger_text, name)
+}
 
-    if check_match_word(trigger_text, name) {
-        // 如果首字母匹配, 则需要检查 trigger_text 的每个字符是否都存在于 name 中
+fn is_typing_name(
+    builder: &CompletionBuilder,
+    decl_id: &emmylua_code_analysis::SemanticId,
+) -> bool {
+    matches!(
+        decl_id,
+        emmylua_code_analysis::SemanticId::Decl(key)
+            if key.name_range == builder.trigger_token.text_range()
+    )
+}
 
-        return true;
-    }
+fn add_decl_completion(
+    builder: &mut CompletionBuilder,
+    decl_id: &emmylua_code_analysis::SemanticId,
+    name: &str,
+    typ: &LuaType,
+) {
+    let _ = decl_id;
+    // `---@class Test1` followed by `local Test = {}`: even if the type name differs from the
+    // variable name, the type definition belongs to the same owner statement, so name completion
+    // shows it as a class.
+    let associated_type = builder
+        .semantic_model
+        .file_facts()
+        .and_then(|facts| facts.decl_by_id(decl_id))
+        .and_then(|decl| decl.owner_syntax)
+        .and_then(|owner| {
+            builder.semantic_model.file_facts().and_then(|facts| {
+                facts
+                    .type_defs
+                    .iter()
+                    .find(|def| def.owner_syntax == Some(owner))
+            })
+        });
 
-    false
+    let kind = if typ.is_function() {
+        CompletionItemKind::FUNCTION
+    } else if associated_type.is_some() || typ.is_def() {
+        CompletionItemKind::CLASS
+    } else if typ.is_namespace() {
+        CompletionItemKind::MODULE
+    } else if typ.is_const() {
+        CompletionItemKind::CONSTANT
+    } else {
+        CompletionItemKind::VARIABLE
+    };
+
+    // Function signatures appear in the detail next to the label; ordinary types appear in the description further right.
+    let (detail, description) =
+        if let Some(func) = builder.semantic_model.type_of_decl_signature(decl_id) {
+            let params = func
+                .get_params()
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            (Some(format!("({params})")), None)
+        } else {
+            match typ {
+                LuaType::DocFunction(func) => {
+                    let params = func
+                        .get_params()
+                        .iter()
+                        .map(|(name, _)| name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (Some(format!("({params})")), None)
+                }
+                LuaType::Unknown if associated_type.is_none() => (None, None),
+                other => {
+                    let text = associated_type
+                        .map(|def| def.name.to_string())
+                        .unwrap_or_else(|| humanize(&builder.semantic_model, other));
+                    (None, Some(text))
+                }
+            }
+        };
+    let data = match decl_id {
+        emmylua_code_analysis::SemanticId::Decl(key) => CompletionData {
+            field_id: builder.semantic_model.file_id().id,
+            trigger_offset: Some(builder.position_offset.into()),
+            typ: CompletionDataType::Decl {
+                file_id: key.file_id.id,
+                range: (key.name_range.start().into(), key.name_range.end().into()),
+            },
+        }
+        .to_value(),
+        _ => None,
+    };
+    builder.add_completion_item(CompletionItem {
+        label: name.to_string(),
+        kind: Some(kind),
+        insert_text: Some(name.to_string()),
+        detail: None,
+        label_details: Some(CompletionItemLabelDetails {
+            detail,
+            description,
+        }),
+        data,
+        ..Default::default()
+    });
 }

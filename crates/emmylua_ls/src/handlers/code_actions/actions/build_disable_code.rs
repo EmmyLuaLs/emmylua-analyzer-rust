@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DiagnosticCode, Emmyrc, LuaDocument, SemanticModel};
+use emmylua_code_analysis::{DiagnosticCode, DocumentView, Emmyrc, SalsaSemanticModel};
 use emmylua_formatter::resolve_config_for_path;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaCommentOwner, LuaDocTag, LuaDocTagDiagnostic, LuaExpr,
@@ -68,14 +68,14 @@ fn find_expr_attached_comment(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
 }
 
 pub fn build_disable_next_line_changes(
-    semantic_model: &SemanticModel<'_>,
+    model: &SalsaSemanticModel<'_>,
+    document: &DocumentView,
+    emmyrc: &Emmyrc,
     start: Position,
     code: DiagnosticCode,
 ) -> Option<HashMap<Uri, Vec<TextEdit>>> {
-    let emmyrc = semantic_model.get_emmyrc();
-    let document = semantic_model.get_document();
     let offset = document.get_offset(start.line as usize, start.character as usize)?;
-    let root = semantic_model.get_root();
+    let root = model.chunk()?;
     if offset >= root.get_range().end() {
         return None;
     }
@@ -89,16 +89,12 @@ pub fn build_disable_next_line_changes(
     let stat = token.parent_ancestors().find_map(LuaStat::cast)?;
     let mut ast = DisableLineAst::Stat(stat.clone());
     let expr = token.parent_ancestors().find_map(LuaExpr::cast);
-    // 如果 expr 是 stat 的子节点, 则认为是 expr
+    // If expr is a child node of stat, treat it as expr
     if let Some(expr) = expr
         && stat.get_range().contains(expr.get_range().start())
     {
-        let stat_line = semantic_model
-            .get_document()
-            .get_line(stat.get_position())?;
-        let expr_line = semantic_model
-            .get_document()
-            .get_line(expr.get_position())?;
+        let stat_line = document.get_line_col(stat.get_position())?.0;
+        let expr_line = document.get_line_col(expr.get_position())?.0;
         if expr_line != stat_line {
             ast = DisableLineAst::Expr(expr);
         }
@@ -132,7 +128,7 @@ pub fn build_disable_next_line_changes(
             });
         } else {
             text_edit = get_disable_next_line_text_edit(
-                &document,
+                document,
                 emmyrc,
                 comment.syntax().clone(),
                 comment.get_position(),
@@ -143,7 +139,7 @@ pub fn build_disable_next_line_changes(
 
     if text_edit.is_none() {
         text_edit = get_disable_next_line_text_edit(
-            &document,
+            document,
             emmyrc,
             ast.syntax().clone(),
             ast.get_position(),
@@ -153,14 +149,14 @@ pub fn build_disable_next_line_changes(
 
     #[allow(clippy::mutable_key_type)]
     let mut changes = HashMap::new();
-    let uri = document.get_uri();
+    let uri = document.get_uri()?;
     changes.insert(uri, vec![text_edit?]);
 
     Some(changes)
 }
 
 fn get_disable_next_line_text_edit(
-    document: &LuaDocument,
+    document: &DocumentView,
     emmyrc: &Emmyrc,
     node: LuaSyntaxNode,
     offset: TextSize,
@@ -176,7 +172,7 @@ fn get_disable_next_line_text_edit(
         "".to_string()
     };
 
-    let line = document.get_line(offset)?;
+    let line = document.get_line_col(offset)?.0;
     let space = if code_action_insert_space(emmyrc, document) {
         " "
     } else {
@@ -203,15 +199,15 @@ fn get_disable_next_line_text_edit(
 }
 
 pub fn build_disable_file_changes(
-    semantic_model: &SemanticModel<'_>,
+    model: &SalsaSemanticModel<'_>,
+    document: &DocumentView,
+    emmyrc: &Emmyrc,
     code: DiagnosticCode,
 ) -> Option<HashMap<Uri, Vec<TextEdit>>> {
-    let root = semantic_model.get_root();
+    let root = model.chunk()?;
     let first_block = root.get_block()?;
     let first_child = first_block.children::<LuaAst>().next()?;
-    let document = semantic_model.get_document();
-    let emmyrc = semantic_model.get_emmyrc();
-    let space = if code_action_insert_space(emmyrc, &document) {
+    let space = if code_action_insert_space(emmyrc, document) {
         " "
     } else {
         ""
@@ -273,15 +269,15 @@ pub fn build_disable_file_changes(
 
     #[allow(clippy::mutable_key_type)]
     let mut changes = HashMap::new();
-    let uri = document.get_uri();
+    let uri = document.get_uri()?;
     changes.insert(uri, vec![text_edit]);
 
     Some(changes)
 }
 
-fn code_action_insert_space(emmyrc: &Emmyrc, document: &LuaDocument) -> bool {
+fn code_action_insert_space(emmyrc: &Emmyrc, document: &DocumentView) -> bool {
     emmyrc.code_action.insert_space.unwrap_or_else(|| {
-        resolve_config_for_path(Some(document.get_file_path().as_path()), None)
+        resolve_config_for_path(document.path.as_deref(), None)
             .map(|resolved| resolved.config.emmy_doc.space_between_tag_columns)
             .unwrap_or(false)
     })

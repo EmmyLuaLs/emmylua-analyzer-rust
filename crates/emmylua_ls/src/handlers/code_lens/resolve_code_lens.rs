@@ -1,12 +1,12 @@
-use emmylua_code_analysis::LuaCompilation;
+use emmylua_code_analysis::SalsaDatabase;
 use lsp_types::{CodeLens, Command, Location, Range, Uri};
 
 use crate::{
     context::ClientId,
-    handlers::references::{search_decl_references, search_member_references},
+    handlers::common::{decl_reference_ranges, member_reference_ranges},
 };
 
-use super::CodeLensData;
+use super::build_code_lens::CodeLensData;
 
 // VSCode does not support calling editor.action.showReferences directly through LSP,
 // it can only be converted through the VSCode plugin
@@ -15,21 +15,23 @@ const VSCODE_COMMAND_NAME: &str = "emmy.showReferences";
 const OTHER_COMMAND_NAME: &str = "editor.action.showReferences";
 
 pub fn resolve_code_lens(
-    compilation: &LuaCompilation,
+    salsa: &SalsaDatabase,
     code_lens: CodeLens,
     client_id: ClientId,
 ) -> Option<CodeLens> {
     let data = code_lens.data.as_ref()?;
     let data = serde_json::from_value(data.clone()).ok()?;
     match data {
-        CodeLensData::Member(member_id) => {
-            let file_id = member_id.file_id;
-            let semantic_model = compilation.get_semantic_model(file_id)?;
-            let mut results = Vec::new();
-            search_member_references(&semantic_model, compilation, member_id, true, &mut results);
+        CodeLensData::Member(data) => {
+            let semantic_id = data.to_semantic_id()?;
+            let file_id = emmylua_code_analysis::FileId::new(data.file_id);
+            let results = member_reference_ranges(salsa, &semantic_id, true)
+                .into_iter()
+                .filter_map(|(fid, range)| location_of(salsa, fid, range))
+                .collect::<Vec<_>>();
             let mut ref_count = results.len();
             ref_count = ref_count.saturating_sub(1);
-            let uri = semantic_model.get_document().get_uri();
+            let uri = salsa.document(file_id)?.get_uri()?;
             let command = make_usage_command(uri, code_lens.range, ref_count, client_id, results);
 
             Some(CodeLens {
@@ -38,13 +40,15 @@ pub fn resolve_code_lens(
                 data: None,
             })
         }
-        CodeLensData::DeclId(decl_id) => {
-            let file_id = decl_id.file_id;
-            let semantic_model = compilation.get_semantic_model(file_id)?;
-            let mut results = Vec::new();
-            search_decl_references(&semantic_model, compilation, decl_id, &mut results);
+        CodeLensData::DeclId(data) => {
+            let semantic_id = data.to_semantic_id()?;
+            let file_id = emmylua_code_analysis::FileId::new(data.file_id);
+            let results = decl_reference_ranges(salsa, &semantic_id, true)
+                .into_iter()
+                .filter_map(|(fid, range)| location_of(salsa, fid, range))
+                .collect::<Vec<_>>();
             let ref_count = results.len();
-            let uri = semantic_model.get_document().get_uri();
+            let uri = salsa.document(file_id)?.get_uri()?;
             let command = make_usage_command(uri, code_lens.range, ref_count, client_id, results);
             Some(CodeLens {
                 range: code_lens.range,
@@ -53,6 +57,18 @@ pub fn resolve_code_lens(
             })
         }
     }
+}
+
+fn location_of(
+    salsa: &SalsaDatabase,
+    file_id: emmylua_code_analysis::FileId,
+    range: rowan::TextRange,
+) -> Option<Location> {
+    let document = salsa.document(file_id)?;
+    Some(Location {
+        uri: document.get_uri()?,
+        range: document.to_lsp_range(range)?,
+    })
 }
 
 fn get_command_name(client_id: ClientId) -> &'static str {

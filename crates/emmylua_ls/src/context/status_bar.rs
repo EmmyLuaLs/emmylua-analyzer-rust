@@ -5,9 +5,6 @@ use lsp_types::{
     WorkDoneProgressCreateParams, WorkDoneProgressEnd, WorkDoneProgressReport,
 };
 
-#[cfg(not(test))]
-use crate::util::time_cancel_token;
-
 use super::ClientProxy;
 
 pub struct StatusBar {
@@ -19,8 +16,6 @@ pub struct StatusBar {
 pub enum ProgressTask {
     LoadWorkspace = 0,
     DiagnoseWorkspace = 1,
-    #[allow(dead_code)]
-    RefreshIndex = 2,
 }
 
 impl ProgressTask {
@@ -32,7 +27,6 @@ impl ProgressTask {
         match self {
             ProgressTask::LoadWorkspace => "Load workspace",
             ProgressTask::DiagnoseWorkspace => "Diagnose workspace",
-            ProgressTask::RefreshIndex => "Refresh index",
         }
     }
 }
@@ -50,30 +44,12 @@ impl StatusBar {
             return;
         }
 
-        #[cfg(test)]
         self.client.send_request_no_response(
             "window/workDoneProgress/create",
             WorkDoneProgressCreateParams {
                 token: NumberOrString::Number(task.as_i32()),
             },
         );
-
-        #[cfg(not(test))]
-        {
-            let request_id = self.client.next_id();
-            let cancel_token = time_cancel_token(std::time::Duration::from_secs(5));
-            let _ = self
-                .client
-                .send_request(
-                    request_id,
-                    "window/workDoneProgress/create",
-                    WorkDoneProgressCreateParams {
-                        token: NumberOrString::Number(task.as_i32()),
-                    },
-                    cancel_token,
-                )
-                .await;
-        }
 
         self.client.send_notification(
             "$/progress",

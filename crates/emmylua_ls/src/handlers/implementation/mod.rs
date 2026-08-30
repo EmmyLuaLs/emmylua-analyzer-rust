@@ -1,6 +1,6 @@
 mod implementation_searcher;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
 use implementation_searcher::search_implementations;
@@ -16,14 +16,20 @@ use super::RegisterCapabilities;
 pub async fn on_implementation_handler(
     context: ServerContextSnapshot,
     params: GotoImplementationParams,
-    _: CancellationToken,
-) -> Option<GotoDefinitionResponse> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<GotoDefinitionResponse> {
     let uri = params.text_document_position_params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
     let position = params.text_document_position_params.position;
-
-    implementation(&analysis, file_id, position)
+    snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            implementation(analysis, file_id, position)
+        },
+    )
+    .await
 }
 
 pub fn implementation(
@@ -31,13 +37,11 @@ pub fn implementation(
     file_id: FileId,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -49,7 +53,7 @@ pub fn implementation(
         TokenAtOffset::Between(token, _) => token,
     };
 
-    let implementations = search_implementations(&semantic_model, &analysis.compilation, token)?;
+    let implementations = search_implementations(&model, &analysis.salsa, token)?;
 
     if implementations.is_empty() {
         return None;

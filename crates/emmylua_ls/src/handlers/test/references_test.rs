@@ -6,6 +6,8 @@ mod tests {
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualLocation, check};
     use googletest::prelude::*;
 
+    // M3 batch 2 retirement: module export alias following (`export.flush = flush` → `require("mod").flush`
+    // binding chain) requires cross-file alias chain queries at the salsa layer; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_function_references() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -58,6 +60,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: module export alias following; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_function_references_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -110,6 +113,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: `return init` module export → require binding alias following; see docs/SALSA_FROM_SCRATCH.md §M3.
     #[gtest]
     fn test_module_return() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

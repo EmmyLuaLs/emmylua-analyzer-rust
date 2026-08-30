@@ -37,7 +37,7 @@ pub async fn register_files_watch(context: ServerContextSnapshot) {
         .lsp_features()
         .supports_dynamic_watched_files_registration();
     let (watch_roots, workspace_folders, match_file_pattern) = {
-        let workspace_manager = context.workspace_manager().read().await;
+        let workspace_manager = context.workspace_manager().lock().await;
         (
             reduce_watch_roots(workspace_manager.match_file_pattern.watch_roots()),
             workspace_manager.workspace_folders.clone(),
@@ -57,7 +57,7 @@ pub async fn register_files_watch(context: ServerContextSnapshot) {
     }
 
     if watch_plan.notify_roots.is_empty() {
-        let mut workspace_manager = context.workspace_manager().write().await;
+        let mut workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.watcher = None;
         return;
     }
@@ -200,7 +200,7 @@ async fn register_files_watch_use_fsnotify(
         return false;
     }
 
-    let mut workspace_manager = context.workspace_manager().write().await;
+    let mut workspace_manager = context.workspace_manager().lock().await;
     workspace_manager.watcher = Some(watcher);
     drop(workspace_manager);
 

@@ -3,7 +3,9 @@ mod function_string_highlight;
 mod language_injector;
 mod semantic_token_builder;
 
-use crate::context::{ClientId, ServerContextSnapshot};
+use crate::context::{
+    CancelStrategy, ClientId, RequestOutcome, ServerContextSnapshot, analysis_query,
+};
 use build_semantic_tokens::build_semantic_tokens;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use lsp_types::{
@@ -20,22 +22,27 @@ use super::RegisterCapabilities;
 pub async fn on_semantic_token_handler(
     context: ServerContextSnapshot,
     params: SemanticTokensParams,
-    _: CancellationToken,
-) -> Option<SemanticTokensResult> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<SemanticTokensResult> {
     let uri = params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
-
-    let workspace_manager = context.workspace_manager().read().await;
-    let client_id = workspace_manager.client_config.client_id;
-    let _ = workspace_manager;
-
-    semantic_token(
-        &analysis,
-        file_id,
-        context.lsp_features().supports_multiline_tokens(),
-        client_id,
+    let client_id = {
+        let workspace_manager = context.workspace_manager().lock().await;
+        workspace_manager.client_config.client_id
+    };
+    let cache_key = format!("semantic:{}", uri.as_str());
+    let supports_multiline_tokens = context.lsp_features().supports_multiline_tokens();
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(50)),
+        Some(cancel_token.clone()),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            semantic_token(analysis, file_id, supports_multiline_tokens, client_id)
+        },
     )
+    .await
 }
 
 pub fn semantic_token(
@@ -44,17 +51,19 @@ pub fn semantic_token(
     supports_multiline_tokens: bool,
     client_id: ClientId,
 ) -> Option<SemanticTokensResult> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    let emmyrc = semantic_model.get_emmyrc();
-    if !emmyrc.semantic_tokens.enable {
+    if !analysis.get_emmyrc().semantic_tokens.enable {
         return None;
     }
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let emmyrc = analysis.get_emmyrc();
 
     let result = build_semantic_tokens(
-        &semantic_model,
+        &model,
+        &document,
         supports_multiline_tokens,
         client_id,
-        emmyrc,
+        &emmyrc,
     )?;
 
     Some(SemanticTokensResult::Tokens(SemanticTokens {

@@ -1,321 +1,220 @@
-use crate::common::{render_const, render_typ};
-use crate::json_generator::json_types::*;
-use emmylua_code_analysis::{
-    AsyncState, DbIndex, FileId, LuaDeprecated, LuaMemberKey, LuaMemberOwner, LuaNoDiscard,
-    LuaSemanticDeclId, LuaSignature, LuaType, LuaTypeCache, LuaTypeDecl, LuaTypeDeclId,
-    RenderLevel, Vfs,
-};
-use emmylua_parser::VisibilityKind;
-use rowan::TextRange;
+use std::sync::Arc;
 
-pub fn export(db: &DbIndex) -> Index {
+use crate::common::{render_const, render_typ};
+use crate::doc_model::{DocFunctionInfo, DocModel, DocProperty, DocType};
+use crate::json_generator::json_types::*;
+use emmylua_code_analysis::{Emmyrc, LuaType, RenderLevel};
+use emmylua_parser::VisibilityKind;
+
+pub fn export(model: &DocModel, config: Arc<Emmyrc>) -> Index {
     Index {
-        modules: export_modules(db),
-        types: export_types(db),
-        globals: export_globals(db),
-        config: db.get_emmyrc().clone(),
+        modules: export_modules(model),
+        types: export_types(model),
+        globals: export_globals(model),
+        config: config.as_ref().clone(),
     }
 }
 
-fn export_modules(db: &DbIndex) -> Vec<Module> {
-    let type_index = db.get_type_index();
-    let module_index = db.get_module_index();
-    let modules = module_index.get_module_infos();
-    let vfs = db.get_vfs();
-
-    modules
-        .into_iter()
-        .filter(|module| module_index.is_main(&module.file_id))
-        .filter_map(|module| {
-            let (members, typ) = match module.export_type.as_ref()? {
-                LuaType::TableConst(t) => {
-                    let member_owner = LuaMemberOwner::Element(t.clone());
-                    (export_members(db, member_owner), None)
-                }
-                LuaType::Instance(i) => {
-                    let member_owner = LuaMemberOwner::Element(i.get_range().clone());
-                    (export_members(db, member_owner), None)
-                }
-                typ => (Vec::new(), Some(render_typ(db, typ, RenderLevel::Simple))),
+fn export_modules(model: &DocModel) -> Vec<Module> {
+    model
+        .modules
+        .iter()
+        .map(|module| {
+            let (members, typ) = match &module.export_type {
+                LuaType::TableConst(_) | LuaType::Instance(_) => (
+                    export_members(model, &model.members_of_type(&module.export_type)),
+                    None,
+                ),
+                typ => (
+                    Vec::new(),
+                    Some(render_typ(model, typ, RenderLevel::Simple)),
+                ),
             };
 
-            let property = module
-                .semantic_id
-                .as_ref()
-                .map(|decl_id| export_property(db, decl_id))
-                .unwrap_or_default();
-
-            let namespace = type_index.get_file_namespace(&module.file_id).cloned();
-            let using = type_index
-                .get_file_using_namespace(&module.file_id)
-                .cloned()
-                .unwrap_or_default();
-
-            Some(Module {
-                name: module.full_module_name.clone(),
-                property,
-                file: vfs.get_file_path(&module.file_id).cloned(),
+            Module {
+                name: module.name.clone(),
+                property: property_json(&module.property),
+                file: module.path.clone(),
                 typ,
                 members,
-                namespace,
-                using,
-            })
-        })
-        .collect()
-}
-
-fn export_types(db: &DbIndex) -> Vec<Type> {
-    let type_index = db.get_type_index();
-    let module_index = db.get_module_index();
-    let types = type_index.get_all_types();
-
-    types
-        .into_iter()
-        .filter(|type_decl| {
-            type_decl
-                .get_locations()
-                .iter()
-                .any(|loc| module_index.is_main(&loc.file_id))
-        })
-        .flat_map(|type_decl| {
-            if type_decl.is_class() {
-                Some(Type::Class(export_class(db, type_decl)))
-            } else if type_decl.is_enum() {
-                Some(Type::Enum(export_enum(db, type_decl)))
-            } else if type_decl.is_alias() {
-                Some(Type::Alias(export_alias(db, type_decl)))
-            } else {
-                None
+                namespace: module.namespace.clone(),
+                using: module.usings.clone(),
             }
         })
         .collect()
 }
 
-fn export_globals(db: &DbIndex) -> Vec<Global> {
-    let global_index = db.get_global_index();
-    let module_index = db.get_module_index();
-    let type_index = db.get_type_index();
-    let vfs = db.get_vfs();
-    let globals = global_index.get_all_global_decl_ids();
+fn export_types(model: &DocModel) -> Vec<Type> {
+    model
+        .types
+        .iter()
+        .map(|doc_type| match doc_type.kind {
+            crate::doc_model::DocTypeKind::Class => Type::Class(export_class(model, doc_type)),
+            crate::doc_model::DocTypeKind::Enum => Type::Enum(export_enum(model, doc_type)),
+            crate::doc_model::DocTypeKind::Alias => Type::Alias(export_alias(model, doc_type)),
+        })
+        .collect()
+}
 
-    globals
-        .into_iter()
-        .filter(|global| module_index.is_main(&global.file_id))
-        .filter_map(|global| {
-            let decl = db.get_decl_index().get_decl(&global)?;
-            let typ = type_index.get_type_cache(&global.into())?.as_type();
-            let property = export_property(db, &LuaSemanticDeclId::LuaDecl(global));
-            let loc = export_loc(vfs, decl.get_file_id(), decl.get_range());
-            match typ {
-                LuaType::TableConst(table) => {
-                    let member_owner = LuaMemberOwner::Element(table.clone());
-                    Some(Global::Table(GlobalTable {
-                        name: decl.get_name().to_string(),
-                        property,
-                        loc,
-                        members: export_members(db, member_owner),
-                    }))
-                }
-                _ => Some(Global::Field(GlobalField {
-                    name: decl.get_name().to_string(),
+fn export_globals(model: &DocModel) -> Vec<Global> {
+    model
+        .globals
+        .iter()
+        .map(|global| {
+            let property = property_json(&global.property);
+            let loc = global.loc.as_ref().map(loc_json);
+            match &global.ty {
+                LuaType::TableConst(_) | LuaType::Instance(_) => Global::Table(GlobalTable {
+                    name: global.name.clone(),
                     property,
                     loc,
-                    typ: render_typ(db, typ, RenderLevel::Simple),
+                    members: export_members(model, &model.members_of_type(&global.ty)),
+                }),
+                typ => Global::Field(GlobalField {
+                    name: global.name.clone(),
+                    property,
+                    loc,
+                    typ: render_typ(model, typ, RenderLevel::Simple),
                     literal: render_const(typ),
-                })),
+                }),
             }
         })
         .collect()
 }
 
-fn export_class(db: &DbIndex, type_decl: &LuaTypeDecl) -> Class {
-    let type_decl_id = type_decl.get_id();
-    let type_index = db.get_type_index();
-    let property = export_property(db, &LuaSemanticDeclId::TypeDecl(type_decl.get_id().clone()));
-    let member_owner = LuaMemberOwner::Type(type_decl_id.clone());
-
+fn export_class(model: &DocModel, doc_type: &DocType) -> Class {
     Class {
-        name: type_decl.get_full_name().to_string(),
-        property,
-        loc: export_loc_for_type(db, type_decl),
-        bases: type_index
-            .get_super_types(&type_decl_id)
-            .unwrap_or_default()
+        name: doc_type.full_name.clone(),
+        property: property_json(&doc_type.property),
+        loc: export_locs(doc_type),
+        bases: doc_type
+            .bases
             .iter()
-            .map(|typ| render_typ(db, typ, RenderLevel::Simple))
+            .map(|typ| render_typ(model, typ, RenderLevel::Simple))
             .collect(),
-        generics: export_generics(db, &type_decl_id),
-        members: export_members(db, member_owner),
+        generics: export_generics(model, &doc_type.generics),
+        members: export_members(model, &doc_type.members),
     }
 }
 
-fn export_alias(db: &DbIndex, type_decl: &LuaTypeDecl) -> Alias {
-    let type_decl_id = type_decl.get_id();
-    let property = export_property(db, &LuaSemanticDeclId::TypeDecl(type_decl.get_id().clone()));
-    let member_owner = LuaMemberOwner::Type(type_decl_id.clone());
-
+fn export_alias(model: &DocModel, doc_type: &DocType) -> Alias {
     Alias {
-        name: type_decl.get_full_name().to_string(),
-        property,
-        loc: export_loc_for_type(db, type_decl),
-        typ: type_decl
-            .get_alias_ref()
-            .map(|typ| render_typ(db, typ, RenderLevel::Documentation)),
-        generics: export_generics(db, &type_decl_id),
-        members: export_members(db, member_owner),
+        name: doc_type.full_name.clone(),
+        property: property_json(&doc_type.property),
+        loc: export_locs(doc_type),
+        typ: doc_type
+            .alias_type
+            .as_ref()
+            .map(|typ| render_typ(model, typ, RenderLevel::Documentation)),
+        generics: export_generics(model, &doc_type.generics),
+        members: export_members(model, &doc_type.members),
     }
 }
 
-fn export_enum(db: &DbIndex, type_decl: &LuaTypeDecl) -> Enum {
-    let type_decl_id = type_decl.get_id();
-    let property = export_property(db, &LuaSemanticDeclId::TypeDecl(type_decl.get_id().clone()));
-    let member_owner = LuaMemberOwner::Type(type_decl_id.clone());
+fn export_enum(model: &DocModel, doc_type: &DocType) -> Enum {
+    let enum_typ = if doc_type.members.is_empty() {
+        None
+    } else {
+        let fields = doc_type
+            .members
+            .iter()
+            .map(|member| model.render_type(&member.ty, RenderLevel::Simple))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        Some(fields)
+    };
 
     Enum {
-        name: type_decl.get_full_name().to_string(),
-        property,
-        loc: export_loc_for_type(db, type_decl),
-        typ: type_decl
-            .get_enum_field_type(db)
-            .map(|typ| render_typ(db, &typ, RenderLevel::Simple)),
-        generics: export_generics(db, &type_decl_id),
-        members: export_members(db, member_owner),
+        name: doc_type.full_name.clone(),
+        property: property_json(&doc_type.property),
+        loc: export_locs(doc_type),
+        typ: enum_typ,
+        generics: export_generics(model, &doc_type.generics),
+        members: export_members(model, &doc_type.members),
     }
 }
 
-fn export_generics(db: &DbIndex, type_decl_id: &LuaTypeDeclId) -> Vec<TypeVar> {
-    let type_index = db.get_type_index();
-
-    type_index
-        .get_generic_params(type_decl_id)
-        .map(|v| v.as_slice())
-        .unwrap_or_default()
+fn export_generics(model: &DocModel, generics: &[crate::doc_model::DocGeneric]) -> Vec<TypeVar> {
+    generics
         .iter()
-        .map(|it| TypeVar {
-            name: it.name.to_string(),
-            base: it
+        .map(|generic| TypeVar {
+            name: generic.name.clone(),
+            base: generic
                 .constraint
                 .as_ref()
-                .map(|typ| render_typ(db, typ, RenderLevel::Simple)),
+                .map(|typ| render_typ(model, typ, RenderLevel::Simple)),
         })
         .collect()
 }
 
-fn export_members(db: &DbIndex, member_owner: LuaMemberOwner) -> Vec<Member> {
-    let member_index = db.get_member_index();
-    let type_index = db.get_type_index();
-    let vfs = db.get_vfs();
-    let members = member_index.get_sorted_members(&member_owner);
-    if let Some(members) = members {
-        members
-            .into_iter()
-            .filter_map(|member| {
-                let typ = type_index
-                    .get_type_cache(&member.get_id().into())
-                    .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown))
-                    .as_type();
-
-                let member_key = member.get_key();
-                let name = match member_key {
-                    LuaMemberKey::Name(name) => name.to_string(),
-                    LuaMemberKey::Integer(i) => format!("[{i}]"),
-                    LuaMemberKey::TypeKey(typ) => {
-                        format!("[{}]", render_typ(db, typ, RenderLevel::Simple))
-                    }
-                    _ => return None,
-                };
-
-                let member_id = member.get_id();
-                let member_property_id = LuaSemanticDeclId::Member(member_id);
-                let property = export_property(db, &member_property_id);
-
-                let loc = export_loc(vfs, member.get_file_id(), member.get_range());
-
-                match typ {
-                    LuaType::Signature(signature_id) => {
-                        db.get_signature_index().get(signature_id).map(|signature| {
-                            Member::Fn(export_signature(db, signature, name, property, loc))
-                        })
-                    }
-                    _ => Some(Member::Field(export_field(db, typ, name, property, loc))),
-                }
-            })
-            .collect()
-    } else {
-        Default::default()
-    }
+fn export_members(model: &DocModel, members: &[crate::doc_model::DocMember]) -> Vec<Member> {
+    members
+        .iter()
+        .map(|member| {
+            let property = property_json(&member.property);
+            let loc = member.loc.as_ref().map(loc_json);
+            if let Some(func) = model.function_info(&member.ty, member.signature.as_ref()) {
+                Member::Fn(export_function(model, &member.name, property, loc, func))
+            } else {
+                Member::Field(export_field(
+                    model,
+                    &member.ty,
+                    member.name.clone(),
+                    property,
+                    loc,
+                ))
+            }
+        })
+        .collect()
 }
 
-fn export_signature(
-    db: &DbIndex,
-    signature: &LuaSignature,
-    name: String,
+fn export_function(
+    model: &DocModel,
+    name: &str,
     property: Property,
     loc: Option<Loc>,
+    func: DocFunctionInfo,
 ) -> Fn {
     Fn {
-        name,
+        name: name.to_string(),
         property,
         loc,
-        generics: signature
-            .generic_params
-            .iter()
-            .map(|generic_param| TypeVar {
-                name: generic_param.name.to_string(),
-                base: generic_param
-                    .constraint
-                    .as_ref()
-                    .map(|typ| render_typ(db, typ, RenderLevel::Simple)),
-            })
-            .collect(),
-        params: signature
+        generics: export_generics(model, &func.generics),
+        params: func
             .params
             .iter()
-            .enumerate()
-            .map(|(i, name)| match signature.param_docs.get(&i) {
-                Some(param_info) => FnParam {
-                    name: Some(name.clone()),
-                    typ: Some(render_typ(db, &param_info.type_ref, RenderLevel::Simple)),
-                    desc: param_info.description.clone(),
-                },
-                None => FnParam {
-                    name: Some(name.clone()),
-                    ..Default::default()
-                },
+            .map(|param| FnParam {
+                name: Some(param.name.clone()),
+                typ: param
+                    .ty
+                    .as_ref()
+                    .map(|ty| render_typ(model, ty, RenderLevel::Simple)),
+                desc: None,
             })
             .collect(),
-        returns: signature
-            .return_docs
+        returns: func
+            .returns
             .iter()
-            .map(|ret| FnParam {
-                name: ret.name.clone(),
-                typ: Some(render_typ(db, &ret.type_ref, RenderLevel::Simple)),
-                desc: ret.description.clone(),
+            .map(|ty| FnParam {
+                name: None,
+                typ: Some(render_typ(model, ty, RenderLevel::Simple)),
+                desc: None,
             })
             .collect(),
-        overloads: signature
+        overloads: func
             .overloads
             .iter()
-            .map(|overload| {
-                render_typ(
-                    db,
-                    &LuaType::DocFunction(overload.clone()),
-                    RenderLevel::Simple,
-                )
-            })
+            .map(|ty| render_typ(model, ty, RenderLevel::Simple))
             .collect(),
-        is_async: signature.async_state == AsyncState::Async,
-        is_meth: signature.is_colon_define,
-        is_nodiscard: signature.nodiscard.is_some(),
-        nodiscard_message: match &signature.nodiscard {
-            Some(LuaNoDiscard::NoDiscardWithMessage(msg)) => Some(msg.to_string()),
-            _ => None,
-        },
+        is_async: func.is_async,
+        is_meth: func.is_method,
+        is_nodiscard: func.is_nodiscard,
+        nodiscard_message: func.nodiscard_message,
     }
 }
 
 fn export_field(
-    db: &DbIndex,
+    model: &DocModel,
     typ: &LuaType,
     name: String,
     property: Property,
@@ -325,52 +224,31 @@ fn export_field(
         name,
         property,
         loc,
-        typ: render_typ(db, typ, RenderLevel::Simple),
+        typ: render_typ(model, typ, RenderLevel::Simple),
         literal: render_const(typ),
     }
 }
 
-fn export_property(db: &DbIndex, semantic_decl: &LuaSemanticDeclId) -> Property {
-    match db.get_property_index().get_property(semantic_decl) {
-        Some(property) => Property {
-            description: property.description().map(|s| s.to_string()),
-            visibility: if property.visibility == VisibilityKind::Public {
-                None
-            } else {
-                Some(property.visibility.to_str().unwrap_or_default().to_string())
-            },
-            deprecated: property.deprecated().is_some(),
-            deprecation_reason: property.deprecated().as_ref().and_then(|s| match s {
-                LuaDeprecated::Deprecated => None,
-                LuaDeprecated::DeprecatedWithMessage(msg) => Some(msg.to_string()),
-            }),
-            tag_content: property.tag_content().map(|tag_content| {
-                tag_content
-                    .get_all_tags()
-                    .iter()
-                    .map(|(name, content)| TagNameContent {
-                        tag_name: name.clone(),
-                        content: content.clone(),
-                    })
-                    .collect()
-            }),
+fn property_json(property: &DocProperty) -> Property {
+    Property {
+        description: None,
+        visibility: match property.visibility {
+            Some(VisibilityKind::Public) | None => None,
+            Some(visibility) => Some(visibility.to_str().unwrap_or_default().to_string()),
         },
-        None => Default::default(),
+        deprecated: property.deprecated,
+        deprecation_reason: None,
+        tag_content: None,
     }
 }
 
-fn export_loc_for_type(db: &DbIndex, type_decl: &LuaTypeDecl) -> Vec<Loc> {
-    let vfs = db.get_vfs();
-    type_decl
-        .get_locations()
-        .iter()
-        .filter_map(|loc| export_loc(vfs, loc.file_id, loc.range))
-        .collect()
+fn export_locs(doc_type: &DocType) -> Vec<Loc> {
+    doc_type.locations.iter().map(loc_json).collect()
 }
 
-fn export_loc(vfs: &Vfs, file_id: FileId, range: TextRange) -> Option<Loc> {
-    vfs.get_document(&file_id).map(|document| Loc {
-        file: document.get_file_path().clone(),
-        line: document.get_line(range.start()).unwrap_or_default() + 1,
-    })
+fn loc_json(loc: &crate::doc_model::DocLoc) -> Loc {
+    Loc {
+        file: loc.file.clone(),
+        line: loc.line,
+    }
 }

@@ -1,0 +1,430 @@
+---@meta no-require
+-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
+--
+-- Licensed under the Apache License, Version 2.0 (the "License"); you may not
+-- use this file except in compliance with the License. You may obtain a copy of
+-- the License at
+--
+-- http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+-- License for the specific language governing permissions and limitations under
+-- the License.
+
+--- 如果参数 `v` 的值为假（即 **nil** 或 **false**），则调用 error；
+--- 否则返回所有参数。在发生错误的情况下，`message` 将是错误对象；
+--- 如果省略，默认为 "assertion failed!"。
+--- @generic T, T1
+--- @param v   T
+--- @param ... T1...
+--- @return std.NotNull<T>, T1...
+function assert(v, ...) end
+
+--- @alias std.collectgarbage_opt
+--- |> "collect"      # 执行完整的垃圾收集循环。这是默认选项。
+--- | "stop"         # 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，直到调用 restart。
+--- | "restart"      # 重启垃圾收集器的自动执行。
+--- | "count"        # 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
+--- | "step"         # 执行一次垃圾回收步骤。步进由 `arg` 控制。 如果值为 0，收集器将执行一个基础（不可分割）步进。 对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。 如果步进完成了一个收集循环，则返回 true。
+--- | "setpause"     # 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。返回 *pause* 的前一个值。
+--- | "setstepmul"   # 将 `arg` 设置为收集器 *step multiplier* （参见 §2.5）的新值。返回 *step* 的前一个值。
+--- | "incremental"  # 将收集器模式更改为增量模式。此选项后面可以跟三个数字：垃圾收集器暂停、步进倍率和步进大小。
+--- | "generational" # 将收集器模式更改为分代模式。此选项后面可以跟两个数字：垃圾收集器次要倍率和主要倍率。
+--- | "isrunning"    # 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+
+--- @alias std.collectgarbage.param
+--- | "minormul"   # minor multiplier
+--- | "majorminor" # major/minor ratio
+--- | "minormajor" # minor/major ratio
+--- | "pause"      # collector pause
+--- | "stepmul"    # step multiplier
+--- | "stepsize"   # step size
+
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+---
+--- ### opt
+---
+--- - **"collect"**: 执行完整的垃圾回收。这是默认选项。
+---
+--- - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
+--- 直到调用 restart。
+---
+--- - **"restart"**: 重启垃圾收集器的自动执行。
+---
+--- - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
+--- 乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
+---
+--- - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。
+--- 如果值为 0，收集器将执行一个基础（不可分割）步进。
+--- 对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。
+--- 如果步进完成了一个回收周期，则返回 **true**。
+---
+--- - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
+--- 返回 *pause* 的前一个值。
+---
+--- - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
+--- 垃圾收集器暂停、步进倍率和步进大小。
+---
+--- - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
+--- 垃圾收集器次要倍率和主要倍率。
+---
+--- - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+--- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
+--- @param opt? std.collectgarbage_opt
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- 打开指定的文件并将其内容作为 Lua 代码块执行。不带参数调用时，
+--- `dofile` 执行标准输入（`stdin`）的内容。返回代码块返回的所有值。
+--- 如果发生错误，`dofile` 将错误传播给调用者（即 `dofile` 不在保护模式下运行）。
+--- @param filename? string
+--- @return any ...
+function dofile(filename) end
+
+--- 终止最后调用的受保护函数，并将 `message` 作为错误对象返回。
+--- Function `error` 永远不会返回。通常，如果消息是字符串，`error`
+--- 会在消息开头添加一些关于错误位置的信息。`level` 参数指定如何获取
+--- 错误位置。使用 level 1（默认值），错误位置是调用 `error` 函数的位置。
+--- Level 2 将错误指向调用 `error` 的函数的调用位置；依此类推。
+--- 传递 level 0 可以避免向消息添加错误位置信息。
+--- @param message any
+--- @param level?  integer
+function error(message, level) end
+
+--- 一个保存全局环境的全局变量（不是函数）。Lua 本身不使用此变量；
+--- 更改其值不会影响任何环境，反之亦然。
+--- @type global
+_G = {}
+
+--- 如果 `object` 没有元表，则返回 **nil**。否则，如果对象的元表
+--- 具有 `"__metatable"` 字段，则返回关联的值。否则，返回给定对象的元表。
+--- @param object any
+--- @return any
+function getmetatable(object) end
+
+--- 返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
+--- > `for i,v in ipairs(t) do` *body* `end`
+--- 将遍历键值对 (1,`t[1]`), (2,`t[2]`), ...，直到第一个不存在的索引。
+--- @generic V
+--- @param t V[] | table<int, V> | { [int]: V }
+--- @return fun(tbl: any): int, V
+function ipairs(t) end
+
+--- @alias std.loadmode
+--- | "b"  # 仅二进制块
+--- | "t"  # 仅文本块
+--- | "bt" # 二进制和文本块
+
+--- 加载一个代码块。
+--- 如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
+--- `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
+--- 一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
+---
+--- 如果没有语法错误，则将编译后的代码块作为函数返回；
+--- 否则，返回 **nil** 加上错误消息。
+---
+--- 如果生成的函数有上值，则第一个上值设置为 `env` 的值（如果给定了该参数），
+--- 或者设置为全局环境的值。其他上值初始化为 **nil**。（当你加载主代码块时，
+--- 生成的函数将始终只有一个上值，即 _ENV 变量。但是，当你加载从函数创建的
+--- 二进制代码块时（参见 string.dump），生成的函数可以有任意数量的上值。）
+--- 所有上值都是新的，即它们不与任何其他函数共享。
+---
+--- `chunkname` 用作错误消息和调试信息的代码块名称。如果省略，
+--- 由于 `chunk` 是字符串，默认为 `chunk`，否则默认为 "=(load)"。
+---
+--- 字符串 `mode` 控制代码块是文本还是二进制（即预编译代码块）。
+--- 它可以是字符串 "b"（仅二进制代码块）、"t"（仅文本代码块）
+--- 或 "bt"（二进制和文本）。默认为 "bt"。
+---
+--- Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
+--- @param chunk      (fun(...: any): string) | Language<"Lua">
+--- @param chunkname? string
+--- @param mode?      std.loadmode
+--- @param env?       table
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function load(chunk, chunkname, mode, env) end
+
+--- 从给定字符串加载代码块。
+--- @version 5.1, JIT
+--- @param text       Language<"Lua">
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadstring(text, chunkname) end
+
+--- 类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+--- 则从标准输入获取。
+--- @param filename? string
+--- @param mode?     std.loadmode
+--- @param env?      table
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+function loadfile(filename, mode, env) end
+
+--- @version 5.1, JIT
+--- @param proxy boolean | table | userdata
+--- @return userdata
+function newproxy(proxy) end
+
+--- @version 5.1, JIT
+--- 创建一个模块。
+--- @param name string
+--- @param ...  any
+function module(name, ...) end
+
+--- 允许程序遍历表的所有字段。它的第一个参数是一个表，第二个参数是
+--- 表中的一个索引。`next` 返回表的下一个索引及其关联的值。当使用 **nil**
+--- 作为第二个参数调用时，`next` 返回初始索引及其关联的值。当使用最后一个索引
+--- 调用，或者在空表中使用 **nil** 调用时，`next` 返回 **nil**。
+--- 如果省略第二个参数，则将其解释为 **nil**。特别是，你可以使用 `next(t)`
+--- 来检查表是否为空。
+---
+--- 索引枚举的顺序未指定，*即使对于数字索引也是如此*。（要按数字顺序
+--- 遍历表，请使用数字 **for**。）
+---
+--- 如果在遍历过程中将任何值赋给表中不存在的字段，则 `next` 的行为未定义。
+--- 但是，你可以修改现有字段。特别是，你可以将现有字段设置为 nil。
+--- @generic K, V
+--- @overload fun(table: table<K, V>): K?, V?
+--- @param table  table<K, V> | V[] | { [K]: V }
+--- @param index? K
+--- @return K?, V?
+function next(table, index) end
+
+--- 如果 `t` 具有元方法 `__pairs`，则以 `t` 作为参数调用它，并返回该调用的前三个结果。
+---
+--- 否则，返回三个值：`next` 函数、表 `t` 和 `nil`，
+--- 因此结构 `for k,v in pairs(t) do *body* end` 会遍历表 `t` 的所有键值对。
+---
+--- 关于在遍历过程中修改表的注意事项，请参见函数 `next`。
+--- @generic K, V, I
+--- @param t table<K, V> | V[] | { [K]: V }
+--- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
+function pairs(t) end
+
+--- 以 *保护模式* 调用给定参数的函数 `f`。这意味着 `f` 内部的任何错误
+--- 都不会传播；相反，`pcall` 会捕获错误并返回状态码。它的第一个结果是
+--- 状态码（一个布尔值），如果调用成功且没有错误，则为 true。在这种情况下，
+--- `pcall` 还会返回调用后的所有结果。如果发生任何错误，`pcall` 返回
+--- **false** 加上错误消息。
+--- @generic T, R
+--- @param f   sync fun(...: T...): R...
+--- @param ... T...
+--- @return_overload true, R...
+--- @return_overload false, string
+function pcall(f, ...) end
+
+--- 接收任意数量的参数，并使用 `tostring` 函数将它们转换为字符串，
+--- 然后将它们的值打印到 `stdout`。`print` 不用于格式化输出，
+--- 仅作为显示值的快速方式，例如用于调试。为了完全控制输出，
+--- 请使用 `string.format` 和 `io.write`。
+function print(...) end
+
+--- 检查 `v1` 是否等于 `v2`，不调用 `__eq` 元方法。返回布尔值。
+--- @param v1 any
+--- @param v2 any
+--- @return boolean
+function rawequal(v1, v2) end
+
+--- 获取 `table[index]` 的实际值，不调用 `__index` 元方法。`table`
+--- 必须是一个表；`index` 可以是任何值。
+--- @generic const T, const K
+--- @param table T
+--- @param index K
+--- @return std.RawGet<T, K>
+function rawget(table, index) end
+
+--- @version >5.2
+--- 返回对象 `v` 的长度，该对象必须是表或字符串，不调用任何元方法。返回一个整数。
+--- @param v string | table
+--- @return integer
+function rawlen(v) end
+
+--- 将 `table[index]` 的实际值设置为 `value`，不调用 `__newindex` 元方法。
+--- `table` 必须是一个表，`index` 是除 **nil** 和 NaN 之外的任何值，
+--- `value` 是任何 Lua 值。
+--- @param table table
+--- @param index any
+--- @param value any
+--- @return table
+function rawset(table, index, value) end
+
+--- 加载给定的模块。该函数首先在 'package.loaded' 表中查找 `modname`
+--- 是否这就加载。如果是，则 `require` 返回存储在 `package.loaded[modname]`
+--- 中的值。否则，它尝试为模块查找 *加载器*。
+---
+--- 为了查找加载器，`require` 由 `package.searchers` 序列引导。
+--- 通过更改此序列，我们可以改变 `require` 查找模块的方式。
+--- 以下解释基于 `package.searchers` 的默认配置。
+---
+--- 首先 `require` 查询 `package.preload[modname]`。如果它有值，
+--- 该值（应该是一个函数）就是加载器。否则 `require` 使用存储在
+--- `package.path` 中的路径搜索 Lua 加载器。如果这也失败，它使用
+--- 存储在 `package.cpath` 中的路径搜索 C 加载器。如果这也失败，
+--- 它尝试 *一体化* 加载器（参见 `package.loaders`）。
+---
+--- 一旦找到加载器，`require` 就会使用两个参数调用加载器：`modname`
+--- 和一个取决于它如何获取加载器的额外值。（如果加载器来自文件，
+--- 这个额外值就是文件名。）如果加载器返回任何非 nil 值，require
+--- 将返回的值赋值给 `package.loaded[modname]`。如果加载器没有返回
+--- 非 nil 值并且没有给 `package.loaded[modname]` 赋值，则 `require`
+--- 将 true 赋值给该条目。在任何情况下，require 返回
+--- `package.loaded[modname]` 的最终值。
+---
+--- 如果加载或运行模块时出现任何错误，或者找不到模块的任何加载器，
+--- 则 `require` 引发错误。
+--- @param modname string
+--- @return any
+function require(modname) end
+
+--- 如果 `index` 是数字，则返回参数编号 `index` 之后的所有参数；
+--- 负数从末尾开始索引（-1 是最后一个参数）。
+--- 否则，`index` 必须是字符串 "#"，`select` 返回接收到的额外参数的总数。
+--- @generic T, const Num: integer | '#'
+--- @param index Num
+--- @param ...   T...
+--- @return std.Select<T..., Num>
+function select(index, ...) end
+
+--- @class std.metatable
+--- @field __mode?      'v' | 'k' | 'kv'
+--- @field __metatable? any
+--- @field __tostring?  (fun(t): string)
+--- @field __gc?        fun(t)
+--- @field __add?       fun(t1, t2): any
+--- @field __sub?       fun(t1, t2): any
+--- @field __mul?       fun(t1, t2): any
+--- @field __div?       fun(t1, t2): any
+--- @field __mod?       fun(t1, t2): any
+--- @field __pow?       fun(t1, t2): any
+--- @field __unm?       fun(t): any
+--- @field __idiv?      fun(t1, t2): any
+--- @field __band?      fun(t1, t2): any
+--- @field __bor?       fun(t1, t2): any
+--- @field __bxor?      fun(t1, t2): any
+--- @field __bnot?      fun(t): any
+--- @field __shl?       fun(t1, t2): any
+--- @field __shr?       fun(t1, t2): any
+--- @field __concat?    fun(t1, t2): any
+--- @field __len?       fun(t): integer
+--- @field __eq?        fun(t1, t2): boolean
+--- @field __lt?        fun(t1, t2): boolean
+--- @field __le?        fun(t1, t2): boolean
+--- @field __index?     table | fun(t, k): any
+--- @field __newindex?  table | fun(t, k, v)
+--- @field __call?      fun(t, ...): any...
+--- @field __pairs?     fun(t): ((fun(t, k, v): any, any), any, any)
+--- @field __close?     fun(t, errobj): any
+
+-- NOTE: The actual implementation of setmetatable is provided by the language server
+
+--- 为给定表设置元表。（要从 Lua 代码更改其他类型的元表，必须使用调试库。）
+--- 如果 `metatable` 为 **nil**，则移除给定表的元表。如果原始元表
+--- 具有 `"__metatable"` 字段，则引发错误。
+---
+--- 此函数返回 `table`。
+--- @generic T: table
+--- @param table     T
+--- @param metatable std.metatable | table | nil
+--- @return T
+function setmetatable(table, metatable) end
+
+--- 当不带 `base` 调用时，`tonumber` 尝试将其参数转换为数字。
+--- 如果参数已经是数字或可转换为数字的字符串，则 `tonumber` 返回该数字；
+--- 否则，返回 **nil**。
+---
+--- 字符串的转换可以根据 Lua 的词法约定产生整数或浮点数。（字符串可以有
+--- 前导和尾随空格以及符号。）
+---
+--- 当带 `base` 调用时，e 必须是一个字符串，被解释为该进制的整数。
+--- 进制可以是 2 到 36 之间的任何整数（含）。在 10 以上的进制中，
+--- 字母 'A'（大写或小写）表示 10，'B' 表示 11，依此类推，'Z' 表示 35。
+--- 如果字符串 `e` 不是给定进制的有效数字，则函数返回 **nil**。
+--- @overload fun(e: string, base: integer): integer?
+--- @param e any
+--- @return number?
+--- @nodiscard
+function tonumber(e) end
+
+--- 接收任何类型的值并将其转换为人类可读格式的字符串。（为了完全控制
+--- 数字的转换方式，请使用 `string.format`）。
+---
+--- 如果 `v` 的元表具有 `__tostring` 字段，则 `tostring` 使用 `v`
+--- 作为参数调用相应的值，并将调用的结果作为其结果。
+--- @param v any
+--- @return string
+function tostring(v) end
+
+--- @alias std.type
+--- | "nil"
+--- | "number"
+--- | "string"
+--- | "boolean"
+--- | "table"
+--- | "function"
+--- | "thread"
+--- | "userdata"
+
+--- 返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
+--- （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
+--- "`table`"、"`function`"、"`thread`" 和 "`userdata`"。
+--- @param v any
+--- @return std.type type
+function type(v) end
+
+--- 一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
+--- 此变量的当前值是 "`Lua 5.4`"。
+_VERSION = "Lua 5.5"
+
+--- 此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+--- @generic T, R
+--- @param f    sync fun(...: T...): R...
+--- @param msgh fun(err: any): any
+--- @param ...  T...
+--- @return boolean, R...
+function xpcall(f, msgh, ...) end
+
+--- @version 5.1, JIT
+---
+--- @generic const T, const Start: integer, const End: integer
+--- @param i?   Start
+--- @param j?   End
+--- @param list T
+--- @return std.Unpack<T, Start, End>
+function unpack(list, i, j) end
+
+--- @version >5.4
+--- 发出一条警告，其消息由其所有参数（应为字符串）拼接而成。
+---
+--- 按照约定，以“@”开头的单段消息被视为控制消息，也就是发给警告系统本身的消息。
+--- 具体来说，Lua 中的标准警告函数会识别控制消息“@off”，用于停止发出警告，
+--- 以及“@on”，用于（重新）开始发出警告；它会忽略未知的控制消息。
+--- @param msg1 string | number
+--- @param ...  string | number
+function warn(msg1, ...) end
+
+--- @type string[]
+arg = {}
+
+--- 这是一个不正确的注解，但真正支持 _ENV 会完全破坏变量分析路径；目前将其视为一个全局变量。
+--- @version >5.3
+--- @type global
+_ENV = {}
+
+--- @version 5.1, JIT
+--- 设置指定函数的环境。
+--- @param f   function | integer 要设置环境的函数。
+--- @param env table              要分配给函数的环境表。
+function setfenv(f, env) end
+
+--- @version 5.1, JIT
+--- 检索指定函数的环境表。
+--- @param f function | integer 要检索环境的函数。
+--- @return table The 与给定函数关联的环境表。
+function getfenv(f) end

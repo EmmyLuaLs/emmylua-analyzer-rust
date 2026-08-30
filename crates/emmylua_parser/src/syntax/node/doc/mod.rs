@@ -53,9 +53,9 @@ impl LuaAstNode for LuaComment {
     }
 }
 
-/// 检查语法节点是否为附加性质的文档标签
+/// Checks whether the syntax node is an additive documentation tag.
 ///
-/// 附加性质的标签不会阻止查找 DocDescription
+/// Additive tags do not prevent finding a DocDescription.
 fn is_additive_doc_tag(kind: LuaSyntaxKind) -> bool {
     matches!(
         kind,

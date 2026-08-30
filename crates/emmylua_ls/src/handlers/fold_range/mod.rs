@@ -20,32 +20,40 @@ use stats::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 
 use super::RegisterCapabilities;
 
 pub async fn on_folding_range_handler(
     context: ServerContextSnapshot,
     params: FoldingRangeParams,
-    _: CancellationToken,
-) -> Option<Vec<FoldingRange>> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<FoldingRange>> {
     let uri = params.text_document.uri;
-    let analysis = context.analysis().read().await;
-    let client_id = context
-        .workspace_manager()
-        .read()
-        .await
-        .client_config
-        .client_id;
-    let file_id = analysis.get_file_id(&uri)?;
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    let document = semantic_model.get_document();
-    let root = semantic_model.get_root();
-    let emmyrc = semantic_model.get_emmyrc();
+    let client_id = {
+        let workspace_manager = context.workspace_manager().lock().await;
+        workspace_manager.client_config.client_id
+    };
+    let cache_key = format!("fold:{}", uri.as_str());
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(50)),
+        Some(cancel_token.clone()),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            let semantic_model = analysis.semantic_model(file_id)?;
+            let document = analysis.salsa.document(file_id)?;
+            let root = semantic_model.chunk()?;
+            let emmyrc = analysis.get_emmyrc();
 
-    let mut builder = FoldingRangeBuilder::new(&document, root.clone(), client_id);
-    build_folding_ranges(&mut builder, emmyrc);
-    Some(builder.build())
+            let mut builder = FoldingRangeBuilder::new(&document, root.clone(), client_id);
+            build_folding_ranges(&mut builder, &emmyrc);
+            Some(builder.build())
+        },
+    )
+    .await
 }
 
 fn build_folding_ranges(builder: &mut FoldingRangeBuilder, emmyrc: &Emmyrc) {

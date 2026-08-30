@@ -1,22 +1,13 @@
 mod build_hover;
-mod decl_context;
-mod function;
-mod hover_builder;
-mod humanize_type_decl;
-mod humanize_types;
+pub(crate) mod desc;
 mod keyword_hover;
+pub(crate) mod render;
 
 use super::RegisterCapabilities;
-use crate::context::ServerContextSnapshot;
-use crate::util::{find_ref_at, resolve_ref_single};
-pub use build_hover::build_hover_content_for_completion;
+use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_hover::build_semantic_info_hover;
-pub(crate) use decl_context::{HoverDeclContext, HoverDeclInfo};
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, WorkspaceId};
-use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
-use emmylua_parser_desc::parse_ref_target;
-pub use hover_builder::HoverBuilder;
-pub use humanize_types::infer_prefix_global_name;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
+use emmylua_parser::{LuaAstNode, LuaTokenKind};
 use keyword_hover::{hover_keyword, is_keyword};
 use lsp_types::{
     ClientCapabilities, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkupContent,
@@ -24,30 +15,39 @@ use lsp_types::{
 };
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
+// Old DbIndex-version hover (temporary reuse before batch 3 signature_helper / batch 4 completion migration;
 
 pub async fn on_hover(
     context: ServerContextSnapshot,
     params: HoverParams,
-    _: CancellationToken,
-) -> Option<Hover> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Hover> {
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    let analysis = context.analysis().read().await;
-    let file_id = analysis.get_file_id(&uri)?;
-    hover(&analysis, file_id, position)
+    let cache_key = format!("hover:{}", uri.as_str());
+    analysis_query(
+        context.analysis(),
+        context.request_manager(),
+        &cache_key,
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        Some(cancel_token.clone()),
+        move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            hover(analysis, file_id, position)
+        },
+    )
+    .await
 }
 
 pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) -> Option<Hover> {
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
-    if !semantic_model.get_emmyrc().hover.enable {
+    if !analysis.get_emmyrc().hover.enable {
         return None;
     }
-
-    let root = semantic_model.get_root();
-    let position_offset = {
-        let document = semantic_model.get_document();
-        document.get_offset(position.line as usize, position.character as usize)?
-    };
+    let model = analysis.semantic_model(file_id)?;
+    let document = analysis.salsa.document(file_id)?;
+    let root = model.chunk()?;
+    let position_offset =
+        document.get_offset(position.line as usize, position.character as usize)?;
 
     if position_offset > root.syntax().text_range().end() {
         return None;
@@ -62,6 +62,7 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
                     | LuaTokenKind::TkColon
                     | LuaTokenKind::TkLeftBracket
                     | LuaTokenKind::TkRightBracket
+                    | LuaTokenKind::TkWhitespace
             ) {
                 left
             } else {
@@ -71,70 +72,28 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
         TokenAtOffset::None => return None,
     };
     match token {
-        keywords if is_keyword(keywords.clone()) => {
-            let document = semantic_model.get_document();
+        keywords if is_keyword(keywords.clone()) => Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: hover_keyword(keywords.clone()),
+            }),
+            range: document.to_lsp_range(keywords.text_range()),
+        }),
+        literal
+            if matches!(
+                literal.kind().into(),
+                LuaTokenKind::TkString | LuaTokenKind::TkLongString
+            ) =>
+        {
             Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: lsp_types::MarkupKind::Markdown,
-                    value: hover_keyword(keywords.clone()),
+                    value: literal.text().to_string(),
                 }),
-                range: document.to_lsp_range(keywords.text_range()),
+                range: document.to_lsp_range(literal.text_range()),
             })
         }
-        detail if detail.kind() == LuaTokenKind::TkDocDetail.into() => {
-            let parent = detail.parent()?;
-            let description = LuaDocDescription::cast(parent)?;
-            let document = semantic_model.get_document();
-
-            let path = find_ref_at(
-                semantic_model
-                    .get_module()
-                    .map(|m| m.workspace_id)
-                    .unwrap_or(WorkspaceId::MAIN),
-                semantic_model.get_emmyrc(),
-                document.get_text(),
-                description.clone(),
-                position_offset,
-            )?;
-
-            let db = analysis.compilation.get_db();
-            let semantic_info = resolve_ref_single(db, file_id, &path, &detail)?;
-
-            build_semantic_info_hover(
-                &semantic_model,
-                db,
-                &document,
-                detail,
-                semantic_info,
-                path.last()?.1,
-            )
-        }
-        doc_see if doc_see.kind() == LuaTokenKind::TkDocSeeContent.into() => {
-            let document = semantic_model.get_document();
-
-            let path =
-                parse_ref_target(document.get_text(), doc_see.text_range(), position_offset)?;
-
-            let db = analysis.compilation.get_db();
-            let semantic_info = resolve_ref_single(db, file_id, &path, &doc_see)?;
-
-            build_semantic_info_hover(
-                &semantic_model,
-                db,
-                &document,
-                doc_see,
-                semantic_info,
-                path.last()?.1,
-            )
-        }
-        _ => {
-            let semantic_info = semantic_model.get_semantic_info(token.clone().into())?;
-            let db = semantic_model.get_db();
-            let document = semantic_model.get_document();
-            let range = token.text_range();
-
-            build_semantic_info_hover(&semantic_model, db, &document, token, semantic_info, range)
-        }
+        _ => build_semantic_info_hover(&model, &analysis.salsa, token.clone(), token.text_range()),
     }
 }
 

@@ -8,7 +8,7 @@ pub fn generate_json(
     analysis: &EmmyLuaAnalysis,
     output: OutputDestination,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let db = analysis.compilation.get_db();
+    let model = crate::doc_model::DocModel::build(analysis);
 
     let output = match output {
         OutputDestination::File(output) if output.extension() == Some("json".as_ref()) => {
@@ -32,7 +32,7 @@ pub fn generate_json(
         OutputDestination::Stdout => OutputDestination::Stdout,
     };
 
-    let data = export::export(db);
+    let data = export::export(&model, analysis.emmyrc.clone());
 
     match output {
         OutputDestination::Stdout => {

@@ -1,4 +1,6 @@
-use emmylua_code_analysis::{LuaMemberKey, LuaType, get_real_type};
+//! Array append completion: `arr[#<??>]` → `#arr + 1` append position.
+
+use emmylua_code_analysis::{LuaMemberKey, LuaType};
 use emmylua_parser::{LuaAstNode, LuaIndexExpr, LuaKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionTextEdit, InsertTextFormat, TextEdit};
 use rowan::TextRange;
@@ -33,8 +35,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision
     let prefix_expr = index_expr.get_prefix_expr()?;
     let prefix_type = builder
         .semantic_model
-        .infer_expr(prefix_expr.clone())
-        .ok()?;
+        .type_of_expr(prefix_expr.get_syntax_id());
     if !can_use_as_array(builder, &prefix_type) {
         return None;
     }
@@ -44,7 +45,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision
         return None;
     }
 
-    // 用户已经输入了 `#`, 候选只补齐数组尾部索引和赋值位置.
+    // The user has typed `#`; only complete the array tail index and assignment position.
     let insert_text = format!("{table_text} + 1] = $0");
     let mut next_token = builder.trigger_token.next_token();
     while next_token
@@ -58,7 +59,6 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision
         .map(|token| token.text_range().end())
         .unwrap_or(builder.position_offset);
     let edit_range = builder
-        .semantic_model
         .get_document()
         .to_lsp_range(TextRange::new(builder.position_offset, edit_end))?;
 
@@ -107,8 +107,7 @@ fn get_array_append_index_expr(builder: &CompletionBuilder) -> Option<LuaIndexEx
 }
 
 fn can_use_as_array(builder: &CompletionBuilder, typ: &LuaType) -> bool {
-    let real_type = get_real_type(builder.semantic_model.get_db(), typ).unwrap_or(typ);
-    match real_type {
+    match typ {
         LuaType::Union(union) => union
             .into_vec()
             .iter()
@@ -117,17 +116,19 @@ fn can_use_as_array(builder: &CompletionBuilder, typ: &LuaType) -> bool {
             .get_constraint()
             .is_some_and(|constraint| can_use_as_array(builder, constraint)),
         _ => {
-            real_type.is_table()
+            typ.is_table()
                 || builder
                     .semantic_model
-                    .get_member_infos(real_type)
-                    .is_some_and(|members| {
-                        members.iter().any(|member| {
-                            matches!(
-                                &member.key,
-                                LuaMemberKey::Integer(_) | LuaMemberKey::TypeKey(LuaType::Integer)
-                            )
-                        })
+                    .member_infos(typ)
+                    .iter()
+                    .any(|member| match &member.key {
+                        LuaMemberKey::Integer(_)
+                        | LuaMemberKey::TypeKey(LuaType::Integer)
+                        | LuaMemberKey::TypeKey(LuaType::Number) => true,
+                        LuaMemberKey::Name(name) => {
+                            name.as_str() == "[int]" || name.as_str() == "int"
+                        }
+                        _ => false,
                     })
         }
     }

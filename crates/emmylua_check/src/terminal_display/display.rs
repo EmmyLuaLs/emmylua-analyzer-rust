@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use ansi_term::{Color, Style};
-use emmylua_code_analysis::{DbIndex, FileId, LuaDocument};
+use emmylua_code_analysis::{DocumentView, FileId, SalsaDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 
 #[derive(Debug)]
@@ -10,6 +10,13 @@ pub struct TerminalDisplay {
     workspace: PathBuf,
     supports_color: bool,
     supports_underline: bool,
+}
+
+/// LSP (line, character) → in-line byte column (for highlighting).
+fn col_offset(document: &DocumentView, line: usize, character: usize) -> Option<usize> {
+    let offset = document.get_offset(line, character)?;
+    let line_start = document.get_line_range(line)?.start();
+    Some(usize::from(offset) - usize::from(line_start))
 }
 
 impl TerminalDisplay {
@@ -30,7 +37,7 @@ impl TerminalDisplay {
 
     pub fn display_diagnostics(
         &mut self,
-        db: &DbIndex,
+        db: &SalsaDatabase,
         file_id: FileId,
         diagnostics: Vec<Diagnostic>,
     ) {
@@ -39,7 +46,7 @@ impl TerminalDisplay {
         }
 
         let file_path = self.get_relative_path(db, file_id);
-        let document = db.get_vfs().get_document(&file_id).unwrap();
+        let document = db.document(file_id).unwrap();
         let text = document.get_text();
         let text_lines = text.lines().collect::<Vec<&str>>();
 
@@ -76,8 +83,8 @@ impl TerminalDisplay {
         println!(); // Add blank line separator
     }
 
-    fn get_relative_path(&self, db: &DbIndex, file_id: FileId) -> String {
-        let mut file_path = db.get_vfs().get_file_path(&file_id).unwrap().clone();
+    fn get_relative_path(&self, db: &SalsaDatabase, file_id: FileId) -> String {
+        let mut file_path = db.file_path(file_id).unwrap().clone();
         if let Ok(new_file_path) = file_path.strip_prefix(&self.workspace) {
             file_path = new_file_path.to_path_buf();
         }
@@ -156,7 +163,7 @@ impl TerminalDisplay {
     fn display_single_diagnostic(
         &mut self,
         file_path: &str,
-        document: &LuaDocument,
+        document: &DocumentView,
         lines: &[&str],
         diagnostic: Diagnostic,
     ) {
@@ -182,16 +189,14 @@ impl TerminalDisplay {
         // Calculate line and column numbers
         let start_line = range.start.line as usize;
         let start_character = range.start.character as usize;
-        let Some(start_col) = document.get_col_offset_at_line(start_line, start_character) else {
+        let Some(start_col) = col_offset(document, start_line, start_character) else {
             return;
         };
-        let start_col = u32::from(start_col) as usize;
         let end_line = range.end.line as usize;
         let end_character = range.end.character as usize;
-        let Some(end_col) = document.get_col_offset_at_line(end_line, end_character) else {
+        let Some(end_col) = col_offset(document, end_line, end_character) else {
             return;
         };
-        let end_col = u32::from(end_col) as usize;
 
         if start_line >= lines.len() {
             return;

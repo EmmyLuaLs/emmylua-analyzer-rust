@@ -61,23 +61,17 @@ pub fn generate_markdown(
         mkdocs_index.site_name = site_name;
     }
 
-    let db = analysis.compilation.get_db();
-    let type_index = db.get_type_index();
-    let types = type_index.get_all_types();
-    for type_decl in types {
-        generate_type_markdown(db, &tl, type_decl, &types_out, &mut mkdocs_index);
+    let model = crate::doc_model::DocModel::build(analysis);
+    for doc_type in &model.types {
+        generate_type_markdown(&model, &tl, doc_type, &types_out, &mut mkdocs_index);
     }
 
-    let module_index = db.get_module_index();
-    let modules = module_index.get_module_infos();
-    for module in modules {
-        generate_module_markdown(db, &tl, module, &module_out, &mut mkdocs_index);
+    for module in &model.modules {
+        generate_module_markdown(&model, &tl, module, &module_out, &mut mkdocs_index);
     }
 
-    let global_index = db.get_global_index();
-    let globals = global_index.get_all_global_decl_ids();
-    for global_decl_id in globals {
-        generate_global_markdown(db, &tl, &global_decl_id, &global_out, &mut mkdocs_index);
+    for global in &model.globals {
+        generate_global_markdown(&model, &tl, global, &global_out, &mut mkdocs_index);
     }
 
     generate_index(&tl, &mut mkdocs_index, &output);
