@@ -201,10 +201,11 @@ fn check_call_args(
     semantic_model: &SemanticModel<'_>,
     call: &LuaCallExpr,
 ) {
-    let Some(callee) = call.get_prefix_expr() else {
+    if call.get_prefix_expr().is_none() {
         return;
-    };
-    let candidates = param_type_check::callable_candidates(semantic_model, &callee);
+    }
+    let analysis = semantic_model.call_site_analysis(call);
+    let candidates = analysis.candidates;
     if candidates.is_empty() {
         return;
     }

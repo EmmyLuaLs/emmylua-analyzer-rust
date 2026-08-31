@@ -53,7 +53,8 @@ fn check_call(
         return;
     };
     let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
-    let mut candidates = param_type_check::callable_candidates(semantic_model, &callee);
+    let analysis = semantic_model.call_site_analysis(call_expr);
+    let mut candidates = analysis.candidates;
     if candidates.is_empty() {
         candidates = callable_functions(semantic_model, &callee_ty);
     }
@@ -115,7 +116,7 @@ fn check_call(
         return;
     }
     let arg_range = expanded_arg_range(semantic_model, &args);
-    let colon_call = call_expr.is_colon_call();
+    let colon_call = analysis.colon_call;
 
     for candidate in &candidates {
         let range = param_count_range(semantic_model, candidate, colon_call);

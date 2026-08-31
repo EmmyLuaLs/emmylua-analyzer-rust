@@ -84,6 +84,42 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
     .unwrap_or_else(fallback)
 }
 
+/// Flow-sensitive type of `decl` at a concrete CFG start node.
+pub fn type_of_decl_at_flow_id(model: &SemanticModel, decl: &SemanticId, start: FlowId) -> LuaType {
+    let fallback = || model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
+    let Some(tree) = model.flow_tree() else {
+        return fallback();
+    };
+    let mut visited = HashSet::new();
+    let mut path = PathState::default();
+    trace_decl(
+        model,
+        decl,
+        &tree,
+        start,
+        TraceOptions::FLOW_READ,
+        TraceMode::Point,
+        &mut visited,
+        &mut path,
+    )
+    .unwrap_or_else(fallback)
+}
+
+/// Flow-sensitive type of `member` at a concrete CFG start node.
+pub fn type_of_member_at_flow_id(
+    model: &SemanticModel,
+    member: &SemanticId,
+    start: FlowId,
+) -> LuaType {
+    let fallback = || flow_member_value_type(model, member).unwrap_or(LuaType::Unknown);
+    let Some(tree) = model.flow_tree() else {
+        return fallback();
+    };
+    let mut visited = HashSet::new();
+    let mut path = PathState::default();
+    trace_member(model, member, &tree, start, &mut visited, &mut path).unwrap_or_else(fallback)
+}
+
 /// Target type for assignment checks: apply `---@cast x +T` and exclude this assignment, but **do not apply branch narrowing** —
 /// the declared type is the assignment target's contract, so inside an `x == 1` branch `x = "a"` is still accepted as declared `string|number`.
 pub fn type_of_decl_assign_target_at(
@@ -221,7 +257,7 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
 }
 
 /// Skip this assignment only when `offset` is inside the `t.x = value` assignment and that node assigns this member.
-fn skip_own_member_assign(
+pub(crate) fn skip_own_member_assign(
     member: &SemanticId,
     tree: &FlowTree,
     flow_id: FlowId,

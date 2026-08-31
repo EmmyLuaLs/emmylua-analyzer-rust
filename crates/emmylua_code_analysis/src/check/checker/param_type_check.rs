@@ -35,7 +35,16 @@ impl Checker for ParamTypeChecker {
             let LuaAst::LuaCallExpr(call_expr) = node else {
                 continue;
             };
+            let start = std::time::Instant::now();
             check_call(context, semantic_model, &call_expr);
+            let elapsed = start.elapsed();
+            if elapsed.as_millis() > 200 {
+                eprintln!(
+                    "SLOW CALL at {:?} elapsed={:?}",
+                    call_expr.get_range(),
+                    elapsed
+                );
+            }
         }
     }
 }
@@ -69,6 +78,7 @@ fn check_pcall_forward(
             false,
             &LuaType::Unknown,
             &[],
+            None,
         );
         if mismatches.is_empty() {
             return true;
@@ -97,84 +107,74 @@ pub(crate) fn callable_candidates(
     semantic_model: &SemanticModel<'_>,
     callee: &LuaExpr,
 ) -> Vec<crate::LuaFunctionType> {
+    semantic_model.callable_candidates_cached(callee)
+}
+
+pub(crate) fn callable_candidates_uncached(
+    semantic_model: &SemanticModel<'_>,
+    callee: &LuaExpr,
+) -> Vec<crate::LuaFunctionType> {
+    // For static member calls, the member table is the authoritative source of
+    // callable signatures.  Avoid paying for full VM expression inference on the
+    // callee when the member lookup already tells us there is no callable here.
+    if let LuaExpr::IndexExpr(index_expr) = callee {
+        let direct = member_callable_candidates(semantic_model, index_expr);
+        if !direct.is_empty() {
+            return direct;
+        }
+        let static_key = index_expr.get_index_key().is_some_and(|key| {
+            matches!(
+                key,
+                emmylua_parser::LuaIndexKey::Name(_)
+                    | emmylua_parser::LuaIndexKey::String(_)
+                    | emmylua_parser::LuaIndexKey::Integer(_)
+            )
+        });
+        if static_key {
+            return Vec::new();
+        }
+    }
+
     let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
     let mut candidates = callable_functions(semantic_model, &callee_ty);
     if candidates.is_empty()
         && let LuaExpr::IndexExpr(index_expr) = callee
-        && let Some(resolved) = semantic_model.resolve_member(index_expr)
     {
-        if resolved.member_id.is_none()
-            && let Some(prefix) = index_expr.get_prefix_expr()
-        {
-            let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
-            let key = crate::LuaMemberKey::Name(resolved.name.to_string().into());
-            let member_ty = semantic_model.member_type(&prefix_ty, &key);
-            if let Some(ty) = member_ty {
-                candidates.extend(callable_functions(semantic_model, &ty));
-            }
-            // Runtime function members (`string.rep`): find the member closure signature in the file of the prefix table identity.
-            if candidates.is_empty()
-                && let LuaType::TableConst(table) = &prefix_ty
-                && let Some(facts) = semantic_model.file_facts_of(table.file_id)
-            {
-                for member in facts
-                    .members
-                    .iter()
-                    .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-                {
-                    let Some(value_syntax) = member.value_syntax else {
-                        continue;
-                    };
-                    if let Some(func) =
-                        semantic_model.type_of_signature_in_file(facts.file_id, value_syntax)
-                    {
-                        candidates.push(func);
-                        break;
-                    }
-                }
-            }
+        candidates = member_callable_candidates(semantic_model, index_expr);
+    }
+    if candidates.is_empty()
+        && let LuaExpr::NameExpr(name_expr) = callee
+        && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
+        && let Some(func) = semantic_model.type_of_decl_signature(&decl)
+    {
+        candidates.push(func);
+    }
+    candidates
+}
+
+/// Resolve callable signatures directly from an index expression's member declaration,
+/// without first inferring the whole callee expression type.
+fn member_callable_candidates(
+    semantic_model: &SemanticModel<'_>,
+    index_expr: &LuaIndexExpr,
+) -> Vec<crate::LuaFunctionType> {
+    let mut candidates = Vec::new();
+    let Some(resolved) = semantic_model.resolve_member(index_expr) else {
+        return candidates;
+    };
+
+    if resolved.member_id.is_none()
+        && let Some(prefix) = index_expr.get_prefix_expr()
+    {
+        let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
+        let key = crate::LuaMemberKey::Name(resolved.name.to_string().into());
+        let member_ty = semantic_model.member_type(&prefix_ty, &key);
+        if let Some(ty) = member_ty {
+            candidates.extend(callable_functions(semantic_model, &ty));
         }
-        if let Some(member_id) = resolved.member_id {
-            if let Some(member_file) = resolved.file_id
-                && let Some(facts) = semantic_model.file_facts_of(member_file)
-            {
-                let mut overloads = Vec::new();
-                for overload in facts
-                    .members
-                    .iter()
-                    .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-                {
-                    if let Some(ty) = semantic_model.type_of_member(&overload.id) {
-                        overloads.extend(callable_functions(semantic_model, &ty));
-                    }
-                }
-                if !overloads.is_empty() {
-                    candidates = overloads;
-                }
-            }
-            if candidates.is_empty()
-                && let Some(member_ty) = semantic_model.type_of_member(&member_id)
-            {
-                candidates = callable_functions(semantic_model, &member_ty);
-            }
-            // Runtime method members (`self.name`) are often projected to a broad `Function`: fill in the member closure signature,
-            // so `pcall(obj.method, obj, ...)` can get the real function signature.
-            if candidates.is_empty()
-                && let Some(member_file) = resolved.file_id
-                && let Some(facts) = semantic_model.file_facts_of(member_file)
-                && let Some(member) = facts.member_by_id(&member_id)
-                && let Some(value_syntax) = member.value_syntax
-                && let Some(func) =
-                    semantic_model.type_of_signature_in_file(member_file, value_syntax)
-            {
-                candidates.push(func);
-            }
-        }
-        // Even if member_id was resolved, if no signature was obtained above,
-        // fall back to the runtime member closure signature in the TableConst's file (`string.rep` / `math.randomseed`).
+        // Runtime function members (`string.rep`): find the member closure signature in the file of the prefix table identity.
         if candidates.is_empty()
-            && let Some(prefix) = index_expr.get_prefix_expr()
-            && let LuaType::TableConst(table) = &semantic_model.type_of_expr(prefix.get_syntax_id())
+            && let LuaType::TableConst(table) = &prefix_ty
             && let Some(facts) = semantic_model.file_facts_of(table.file_id)
         {
             for member in facts
@@ -194,13 +194,68 @@ pub(crate) fn callable_candidates(
             }
         }
     }
-    if candidates.is_empty()
-        && let LuaExpr::NameExpr(name_expr) = callee
-        && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
-        && let Some(func) = semantic_model.type_of_decl_signature(&decl)
-    {
-        candidates.push(func);
+
+    if let Some(member_id) = resolved.member_id {
+        // Prefer the exact resolved member; the all-same-name scan is only needed
+        // when the exact member does not produce a callable signature.
+        if let Some(member_ty) = semantic_model.type_of_member(&member_id) {
+            candidates = callable_functions(semantic_model, &member_ty);
+        }
+        if candidates.is_empty()
+            && let Some(member_file) = resolved.file_id
+            && let Some(facts) = semantic_model.file_facts_of(member_file)
+        {
+            let mut overloads = Vec::new();
+            for overload in facts
+                .members
+                .iter()
+                .filter(|member| member.key.name() == Some(resolved.name.as_str()))
+            {
+                if let Some(ty) = semantic_model.type_of_member(&overload.id) {
+                    overloads.extend(callable_functions(semantic_model, &ty));
+                }
+            }
+            if !overloads.is_empty() {
+                candidates = overloads;
+            }
+        }
+        // Runtime method members (`self.name`) are often projected to a broad `Function`: fill in the member closure signature,
+        // so `pcall(obj.method, obj, ...)` can get the real function signature.
+        if candidates.is_empty()
+            && let Some(member_file) = resolved.file_id
+            && let Some(facts) = semantic_model.file_facts_of(member_file)
+            && let Some(member) = facts.member_by_id(&member_id)
+            && let Some(value_syntax) = member.value_syntax
+            && let Some(func) = semantic_model.type_of_signature_in_file(member_file, value_syntax)
+        {
+            candidates.push(func);
+        }
     }
+
+    // Even if member_id was resolved, if no signature was obtained above,
+    // fall back to the runtime member closure signature in the TableConst's file (`string.rep` / `math.randomseed`).
+    if candidates.is_empty()
+        && let Some(prefix) = index_expr.get_prefix_expr()
+        && let LuaType::TableConst(table) = &semantic_model.type_of_expr(prefix.get_syntax_id())
+        && let Some(facts) = semantic_model.file_facts_of(table.file_id)
+    {
+        for member in facts
+            .members
+            .iter()
+            .filter(|member| member.key.name() == Some(resolved.name.as_str()))
+        {
+            let Some(value_syntax) = member.value_syntax else {
+                continue;
+            };
+            if let Some(func) =
+                semantic_model.type_of_signature_in_file(facts.file_id, value_syntax)
+            {
+                candidates.push(func);
+                break;
+            }
+        }
+    }
+
     candidates
 }
 
@@ -212,60 +267,9 @@ fn check_call(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
-    let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
-    let mut candidates = callable_functions(semantic_model, &callee_ty);
-    // `A.foo`: VM only gives Function; use the declared member type from member resolution.
-    if candidates.is_empty()
-        && let Some(index_expr) = LuaIndexExpr::cast(callee.syntax().clone())
-        && let Some(resolved) = semantic_model.resolve_member(&index_expr)
-    {
-        if let Some(member_id) = resolved.member_id {
-            // Same-name `@field` overloads: all same-name members in the file (different owners) are candidate signatures.
-            if let Some(member_file) = resolved.file_id
-                && let Some(facts) = semantic_model.file_facts_of(member_file)
-            {
-                let mut overloads = Vec::new();
-                for overload in facts
-                    .members
-                    .iter()
-                    .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-                {
-                    if let Some(ty) = semantic_model.type_of_member(&overload.id) {
-                        overloads.extend(callable_functions(semantic_model, &ty));
-                    }
-                }
-                if !overloads.is_empty() {
-                    candidates = overloads;
-                }
-            }
-            if candidates.is_empty()
-                && let Some(member_ty) = semantic_model.type_of_member(&member_id)
-            {
-                candidates = callable_functions(semantic_model, &member_ty);
-            }
-            if candidates.is_empty()
-                && let Some(member_file) = resolved.file_id
-                && let Some(facts) = semantic_model.file_facts_of(member_file)
-                && let Some(member) = facts.member_by_id(&member_id)
-                && let Some(value_syntax) = member.value_syntax
-                && let Some(tree) = semantic_model.syntax_tree()
-                && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
-                && let Some(closure) = emmylua_parser::LuaClosureExpr::cast(node)
-                && let Some(func) = semantic_model.type_of_signature(closure.get_syntax_id())
-            {
-                candidates.push(func);
-            }
-        }
-    }
-    // Cross-file global functions: VM only gives Function; take the signature from the name declaration file.
-    if candidates.is_empty()
-        && let LuaExpr::NameExpr(name_expr) = &callee
-        && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
-    {
-        if let Some(func) = semantic_model.type_of_decl_signature(&decl) {
-            candidates.push(func);
-        }
-    }
+    let analysis = semantic_model.call_site_analysis(call_expr);
+    let mut candidates = analysis.candidates;
+    eprintln!("CALL {:?} cand={}", call_expr.get_range(), candidates.len());
     // Local `---@type F1` (fun alias) declaration structure takes precedence over closure body inference.
     if let LuaExpr::NameExpr(name_expr) = &callee
         && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
@@ -284,10 +288,6 @@ fn check_call(
         .get_args_list()
         .map(|list| list.get_args().collect::<Vec<_>>())
         .unwrap_or_default();
-    let explicit_generics: Vec<LuaSyntaxId> = call_expr
-        .get_call_generic_type_list()
-        .map(|list| list.get_types().map(|ty| ty.get_syntax_id()).collect())
-        .unwrap_or_default();
     // `pcall(callback, ...)`: forward the remaining arguments to the callback check.
     if let LuaExpr::NameExpr(callee_name) = &callee
         && callee_name.get_name_text().as_deref() == Some("pcall")
@@ -299,25 +299,28 @@ fn check_call(
     if candidates.is_empty() {
         return;
     }
-    let colon_call = call_expr.is_colon_call();
-    let receiver_ty = if colon_call {
-        LuaIndexExpr::cast(callee.syntax().clone())
-            .and_then(|index| index.get_prefix_expr())
-            .map(|prefix| semantic_model.type_of_expr(prefix.get_syntax_id()))
-            .unwrap_or(LuaType::Unknown)
-    } else {
-        LuaType::Unknown
-    };
+    let colon_call = analysis.colon_call;
+    let receiver_ty = analysis.receiver_ty;
+    let explicit_generics = &analysis.explicit_generics;
+
+    // Cheap candidate ordering: check likely overloads first so the common
+    // “one candidate matches” case returns before running the expensive
+    // parameter-by-parameter check on every other overload.
+    let mut ordered: Vec<&crate::LuaFunctionType> = candidates.iter().collect();
+    ordered.sort_by_key(|func| {
+        quick_candidate_score(func, &analysis.arg_types, colon_call, &receiver_ty)
+    });
 
     let mut best: Option<Vec<Mismatch>> = None;
-    for candidate in &candidates {
+    for candidate in ordered {
         let mismatches = check_candidate(
             semantic_model,
             candidate,
             &args,
             colon_call,
             &receiver_ty,
-            &explicit_generics,
+            explicit_generics,
+            Some(&analysis.arg_types),
         );
         if mismatches.is_empty() {
             return;
@@ -436,6 +439,97 @@ fn table_literal_mismatch(
     }
 }
 
+/// A cheap literal/scalar-shape score used only to order call candidates.
+/// It does not replace the real compatibility check; it only avoids running
+/// the expensive type-check path on obviously wrong overloads first.
+fn quick_candidate_score(
+    func: &crate::LuaFunctionType,
+    arg_types: &[LuaType],
+    colon_call: bool,
+    receiver_ty: &LuaType,
+) -> usize {
+    let params = func.get_params();
+    let self_param = first_param_is_self(func);
+    let param_start = usize::from(colon_call && self_param);
+    let dot_method_receiver = !colon_call && !self_param && func.is_colon_define();
+    let arg_offset = usize::from(dot_method_receiver);
+    let mut score = 0usize;
+
+    let mut check_pair = |arg_ty: &LuaType, param_ty: &LuaType| {
+        if obvious_scalar_mismatch(arg_ty, param_ty) {
+            score += 1;
+        }
+    };
+
+    if colon_call && !self_param && !func.is_colon_define() {
+        if let Some((_, Some(param_ty))) = params.first() {
+            check_pair(receiver_ty, param_ty);
+        }
+        let remainder = if params.is_empty() {
+            &params[..]
+        } else {
+            &params[1..]
+        };
+        for (index, (_, param_ty)) in remainder.iter().enumerate() {
+            let Some(param_ty) = param_ty else {
+                continue;
+            };
+            let Some(arg_ty) = arg_types.get(index) else {
+                break;
+            };
+            check_pair(arg_ty, param_ty);
+        }
+    } else {
+        for (index, (_, param_ty)) in params[param_start..].iter().enumerate() {
+            let Some(param_ty) = param_ty else {
+                continue;
+            };
+            let Some(arg_ty) = arg_types.get(index + arg_offset) else {
+                break;
+            };
+            check_pair(arg_ty, param_ty);
+        }
+    }
+    score
+}
+
+fn obvious_scalar_mismatch(arg_ty: &LuaType, param_ty: &LuaType) -> bool {
+    match param_ty {
+        LuaType::Any | LuaType::Unknown | LuaType::Never => return false,
+        LuaType::Union(union) => {
+            return !union
+                .into_vec()
+                .iter()
+                .any(|component| !obvious_scalar_mismatch(arg_ty, component));
+        }
+        _ => {}
+    }
+    match (arg_ty, param_ty) {
+        (
+            LuaType::StringConst(_) | LuaType::DocStringConst(_),
+            LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::DocStringConst(_)
+            | LuaType::StrTplRef(_),
+        ) => false,
+        (LuaType::StringConst(_) | LuaType::DocStringConst(_), _) => true,
+        (
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
+            LuaType::Integer
+            | LuaType::Number
+            | LuaType::IntegerConst(_)
+            | LuaType::DocIntegerConst(_),
+        ) => false,
+        (LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_), _) => true,
+        (
+            LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_),
+            LuaType::Boolean | LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_),
+        ) => false,
+        (LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_), _) => true,
+        _ => false,
+    }
+}
+
 fn check_candidate(
     semantic_model: &SemanticModel<'_>,
     func: &crate::LuaFunctionType,
@@ -443,6 +537,7 @@ fn check_candidate(
     colon_call: bool,
     receiver_ty: &LuaType,
     explicit_generics: &[LuaSyntaxId],
+    arg_types: Option<&[LuaType]>,
 ) -> Vec<Mismatch> {
     let params = func.get_params();
     let self_param = first_param_is_self(func);
@@ -463,7 +558,10 @@ fn check_candidate(
     }
 
     // Plain function called with colon syntax: the receiver occupies the first argument slot.
-    if colon_call && !self_param {
+    // Method definitions (`function C:m()`) store only user parameters, so the implicit
+    // receiver is not part of the user-facing parameter list and should not be compared
+    // against the first declared parameter.
+    if colon_call && !self_param && !func.is_colon_define() {
         let mut mismatches = Vec::new();
         if let Some((name, Some(param_ty))) = params.first() {
             let param_ty = effective_param(param_ty, receiver_ty);
@@ -486,6 +584,7 @@ fn check_candidate(
             args,
             func.is_variadic(),
             &mut bindings,
+            arg_types,
         ));
         return mismatches;
     }
@@ -496,6 +595,7 @@ fn check_candidate(
         &args[arg_offset..],
         func.is_variadic(),
         &mut bindings,
+        arg_types,
     )
 }
 
@@ -521,12 +621,29 @@ fn param_generic_base_match(
     }
 }
 
+fn cached_arg_type(
+    semantic_model: &SemanticModel<'_>,
+    args: &[LuaExpr],
+    arg_types: Option<&[LuaType]>,
+    index: usize,
+) -> LuaType {
+    if let Some(types) = arg_types
+        && let Some(ty) = types.get(index)
+    {
+        return ty.clone();
+    }
+    args.get(index)
+        .map(|arg| semantic_model.type_of_expr(arg.get_syntax_id()))
+        .unwrap_or(LuaType::Unknown)
+}
+
 fn check_arg_pairs(
     semantic_model: &SemanticModel<'_>,
     params: &[(String, Option<LuaType>)],
     args: &[LuaExpr],
     is_variadic: bool,
     bindings: &mut unify::TplBindings,
+    arg_types: Option<&[LuaType]>,
 ) -> Vec<Mismatch> {
     let mut out = Vec::new();
     for (index, (name, param_ty)) in params.iter().enumerate() {
@@ -548,8 +665,14 @@ fn check_arg_pairs(
                     {
                         let rest_types: Vec<LuaType> = args[index..]
                             .iter()
-                            .map(|arg| {
-                                let ty = semantic_model.type_of_expr(arg.get_syntax_id());
+                            .enumerate()
+                            .map(|(offset, _)| {
+                                let ty = cached_arg_type(
+                                    semantic_model,
+                                    args,
+                                    arg_types,
+                                    index + offset,
+                                );
                                 normalize_arg_for_check(semantic_model, &ty)
                             })
                             .collect();
@@ -569,7 +692,12 @@ fn check_arg_pairs(
                         let Some(slot_ty) = variadic.get_type(variadic_index) else {
                             break;
                         };
-                        let arg_ty = semantic_model.type_of_expr(arg.get_syntax_id());
+                        let arg_ty = cached_arg_type(
+                            semantic_model,
+                            args,
+                            arg_types,
+                            index + variadic_index,
+                        );
                         let arg_ty = normalize_arg_for_check(semantic_model, &arg_ty);
                         let mut slot_ty = slot_ty.clone();
                         slot_ty = unify::substitute(&slot_ty, bindings);
@@ -605,8 +733,9 @@ fn check_arg_pairs(
                         });
                     }
                 } else {
-                    for arg in &args[index..] {
-                        let arg_ty = semantic_model.type_of_expr(arg.get_syntax_id());
+                    for (offset, arg) in args[index..].iter().enumerate() {
+                        let arg_ty =
+                            cached_arg_type(semantic_model, args, arg_types, index + offset);
                         let arg_ty = normalize_arg_for_check(semantic_model, &arg_ty);
                         let param_ty_orig = param_ty.clone();
                         let unified =
@@ -649,7 +778,7 @@ fn check_arg_pairs(
         let Some(arg) = args.get(index) else {
             continue;
         };
-        let arg_ty = semantic_model.type_of_expr(arg.get_syntax_id());
+        let arg_ty = cached_arg_type(semantic_model, args, arg_types, index);
         let arg_ty = normalize_arg_for_check(semantic_model, &arg_ty);
         let call_arg_ty = call_argument_type(semantic_model, arg, &arg_ty);
         let call_arg_ty = normalize_arg_for_check(semantic_model, &call_arg_ty);
@@ -834,14 +963,7 @@ fn object_array_compatible(
     let (LuaType::Object(object), LuaType::Array(array)) = (arg_ty, param_ty) else {
         return false;
     };
-    for (key_ty, value_ty) in object.get_index_access() {
-        let numeric = matches!(
-            key_ty,
-            LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
-        );
-        if !numeric {
-            continue;
-        }
+    let try_value = |value_ty: &LuaType, bindings: &mut unify::TplBindings| -> bool {
         if let LuaType::TplRef(tpl) = array.get_base() {
             match bindings.get(&tpl.get_tpl_id()) {
                 Some(existing) => return existing == value_ty,
@@ -851,7 +973,21 @@ fn object_array_compatible(
                 }
             }
         }
-        return is_compatible(semantic_model, value_ty, array.get_base());
+        is_compatible(semantic_model, value_ty, array.get_base())
+    };
+    for (key, value_ty) in object.get_fields() {
+        if key.get_integer().is_some() && try_value(value_ty, bindings) {
+            return true;
+        }
+    }
+    for (key_ty, value_ty) in object.get_index_access() {
+        let numeric = matches!(
+            key_ty,
+            LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
+        );
+        if numeric && try_value(value_ty, bindings) {
+            return true;
+        }
     }
     false
 }
@@ -1076,12 +1212,34 @@ fn named_kind_compatible(
 }
 
 /// Callback parameters vs function arguments: use the explicit work-queue function solver for structural/contravariant checks.
+
+fn is_function_like_type(ty: &LuaType) -> bool {
+    match ty {
+        LuaType::DocFunction(_) | LuaType::Signature(_) => true,
+        LuaType::Union(union) => union
+            .into_vec()
+            .iter()
+            .any(|component| is_function_like_type(component)),
+        LuaType::Intersection(intersection) => intersection
+            .get_types()
+            .iter()
+            .any(|component| is_function_like_type(component)),
+        _ => false,
+    }
+}
+
 fn function_arg_compatible(
     semantic_model: &SemanticModel<'_>,
     arg_ty: &LuaType,
     param_ty: &LuaType,
     bindings: &unify::TplBindings,
 ) -> bool {
+    // A broad `function` value (e.g. `---@param cb function`) may be passed
+    // wherever a function type is expected. Without this, stdlib generic
+    // callbacks (`table.sort(list, comp)`) would report false positives.
+    if matches!(arg_ty, LuaType::Function) && is_function_like_type(param_ty) {
+        return true;
+    }
     let actual = doc_function_of(semantic_model, arg_ty);
     let expected = doc_function_of(semantic_model, param_ty);
     match (actual, expected) {

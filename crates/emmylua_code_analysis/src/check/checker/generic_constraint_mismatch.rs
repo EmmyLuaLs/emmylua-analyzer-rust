@@ -17,7 +17,7 @@ use crate::semantic_model::infer::unify;
 use crate::semantic_model::type_check::is_compatible;
 use crate::{FileId, GenericTplId, LuaType};
 
-use super::param_count::{callable_functions, first_param_is_self};
+use super::param_count::first_param_is_self;
 use super::{CheckContext, Checker};
 use crate::semantic_model::render::humanize_type;
 
@@ -188,8 +188,9 @@ fn check_call(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
+    let analysis = semantic_model.call_site_analysis(call_expr);
     let owner_constraints = owner_generic_constraints(semantic_model, &callee);
-    for (fun, bindings) in resolved_call_signatures(semantic_model, call_expr) {
+    for (fun, bindings) in &analysis.signatures {
         // Constraints carried by the signature's generic parameters. Prefer re-projecting from the signature doc syntax using bindings:
         // `K extends keyof T` / conditional-type constraints require AST-level evaluation.
         let mut constraints: Vec<(GenericTplId, LuaType)> = Vec::new();
@@ -294,7 +295,14 @@ fn check_call(
             add_constraint_diagnostic(context, range, &actual, &resolved_constraint);
         }
 
-        check_str_tpl_params(context, semantic_model, call_expr, &fun, &owner_constraints);
+        check_str_tpl_params(
+            context,
+            semantic_model,
+            call_expr,
+            &fun,
+            &owner_constraints,
+            &analysis.arg_types,
+        );
     }
 }
 
@@ -325,97 +333,29 @@ fn signature_docs_of_callee(
 }
 
 /// callee -> candidate signatures plus each candidate's independent generic bindings.
-fn resolved_call_signatures(
+pub(crate) fn resolved_call_signatures(
     semantic_model: &SemanticModel<'_>,
     call_expr: &LuaCallExpr,
+    candidates: &[crate::LuaFunctionType],
+    arg_types: &[LuaType],
+    colon_call: bool,
+    receiver_ty: &LuaType,
 ) -> Vec<(crate::LuaFunctionType, unify::TplBindings)> {
     let Some(callee) = call_expr.get_prefix_expr() else {
         return Vec::new();
     };
-    let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
-    let mut candidates = callable_functions(semantic_model, &callee_ty);
     let owner_constraints = owner_generic_constraints(semantic_model, &callee);
-
-    // `A.foo`: the VM only gives Function; use the declared type from member resolution.
-    if candidates.is_empty()
-        && let Some(index_expr) = LuaIndexExpr::cast(callee.syntax().clone())
-        && let Some(resolved) = semantic_model.resolve_member(&index_expr)
-        && let Some(member_id) = resolved.member_id
-    {
-        if let Some(member_file) = resolved.file_id
-            && let Some(facts) = semantic_model.file_facts_of(member_file)
-        {
-            let mut overloads = Vec::new();
-            for overload in facts
-                .members
-                .iter()
-                .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-            {
-                if let Some(ty) = semantic_model.type_of_member(&overload.id) {
-                    overloads.extend(callable_functions(semantic_model, &ty));
-                }
-            }
-            if !overloads.is_empty() {
-                candidates = overloads;
-            }
-            if candidates.is_empty()
-                && let Some(member) = facts.member_by_id(&member_id)
-                && let Some(value_syntax) = member.value_syntax
-            {
-                if let Some(fun) =
-                    semantic_model.type_of_signature_in_file(facts.file_id, value_syntax)
-                {
-                    candidates.push(fun);
-                }
-            }
-        }
-        if candidates.is_empty()
-            && let Some(member_ty) = semantic_model.type_of_member(&member_id)
-        {
-            candidates = callable_functions(semantic_model, &member_ty);
-        }
-    }
-
-    // Cross-file global functions: the VM only gives Function; take the signature from the declaration file by name.
-    if candidates.is_empty()
-        && let LuaExpr::NameExpr(name_expr) = &callee
-        && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
-    {
-        if let Some(fun) = semantic_model.type_of_decl_signature(&decl) {
-            candidates.push(fun);
-        }
-    }
-
-    let args = call_expr
-        .get_args_list()
-        .map(|list| list.get_args().collect::<Vec<_>>())
-        .unwrap_or_default();
-    let arg_types: Vec<LuaType> = args
-        .iter()
-        .map(|arg| {
-            semantic_model.type_of_expr_at(arg.get_syntax_id(), call_expr.get_range().start())
-        })
-        .collect();
-    let colon_call = call_expr.is_colon_call();
-    let receiver_ty = if colon_call {
-        LuaIndexExpr::cast(callee.syntax().clone())
-            .and_then(|index| index.get_prefix_expr())
-            .map(|prefix| semantic_model.type_of_expr(prefix.get_syntax_id()))
-            .unwrap_or(LuaType::Unknown)
-    } else {
-        LuaType::Unknown
-    };
 
     let mut out = Vec::new();
     for fun in candidates {
-        let fun = apply_owner_generics(fun, &owner_constraints);
+        let fun = apply_owner_generics(fun.clone(), &owner_constraints);
         let params = fun.get_params();
         let self_param = first_param_is_self(&fun);
         let param_start = usize::from(colon_call && self_param);
         let mut bindings = unify::TplBindings::new();
         if colon_call && !self_param {
             if let Some((_, Some(param_ty))) = params.first() {
-                let _ = unify::unify_bindings(param_ty, &receiver_ty, &mut bindings);
+                let _ = unify::unify_bindings(param_ty, receiver_ty, &mut bindings);
             }
         }
         for ((_, param_ty), arg_ty) in params[param_start..].iter().zip(arg_types.iter()) {
@@ -600,6 +540,7 @@ fn check_str_tpl_params(
     call_expr: &LuaCallExpr,
     fun: &crate::LuaFunctionType,
     owner_constraints: &HashMap<smol_str::SmolStr, (usize, LuaType)>,
+    arg_types: &[LuaType],
 ) {
     let args = call_expr
         .get_args_list()
@@ -620,7 +561,10 @@ fn check_str_tpl_params(
             continue;
         };
         for str_tpl in str_tpl_refs_in(param_ty) {
-            let arg_ty = semantic_model.type_of_expr(arg.get_syntax_id());
+            let arg_ty = arg_types
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| semantic_model.type_of_expr(arg.get_syntax_id()));
             // For a union parameter `` `T`|T ``: when the argument is not a string, only the T branch applies, so don't report a template type error.
             if matches!(param_ty, LuaType::Union(_))
                 && !matches!(

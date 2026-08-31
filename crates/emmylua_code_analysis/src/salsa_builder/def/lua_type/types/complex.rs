@@ -5,7 +5,8 @@ use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
-use std::{ops::Deref, sync::Arc};
+use std::hash::{Hash, Hasher};
+use std::{collections::hash_map::DefaultHasher, ops::Deref, sync::Arc};
 
 use super::super::basic_union::{BasicTypeKind, BasicTypeUnion};
 use super::super::type_decl::LuaTypeDeclId;
@@ -329,6 +330,59 @@ impl LuaObjectType {
 
     //     Some(ty.unwrap_or(LuaType::Unknown))
     // }
+}
+
+impl Hash for LuaObjectType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let mut fields: Vec<_> = self.fields.iter().collect();
+        fields.sort_by(|a, b| a.0.cmp(b.0));
+        fields.len().hash(state);
+        for (key, ty) in fields {
+            key.hash(state);
+            ty.hash(state);
+        }
+        self.index_access.len().hash(state);
+        for (key, ty) in &self.index_access {
+            key.hash(state);
+            ty.hash(state);
+        }
+    }
+}
+
+impl Hash for LuaUnionType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            LuaUnionType::Basic(basic) => {
+                0u8.hash(state);
+                basic.hash(state);
+            }
+            LuaUnionType::Nullable(ty) => {
+                1u8.hash(state);
+                ty.hash(state);
+            }
+            LuaUnionType::Multi(types) => {
+                2u8.hash(state);
+                types.len().hash(state);
+                let mut sum = 0u64;
+                for ty in types {
+                    let mut h = DefaultHasher::new();
+                    ty.hash(&mut h);
+                    sum = sum.wrapping_add(h.finish());
+                }
+                sum.hash(state);
+            }
+        }
+    }
+}
+
+impl Hash for LuaStringTplType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.prefix.hash(state);
+        self.tpl_id.hash(state);
+        self.name.hash(state);
+        self.suffix.hash(state);
+        self.constraint.hash(state);
+    }
 }
 
 impl From<LuaObjectType> for LuaType {

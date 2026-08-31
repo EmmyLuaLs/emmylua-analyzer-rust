@@ -45,11 +45,223 @@ pub fn member_info(
     member_info_impl(model, prefix_type, key)
 }
 
+fn member_ref_matches_key(
+    model: &SemanticModel,
+    member_ref: &MemberRef,
+    key: &LuaMemberKey,
+) -> bool {
+    let Some(facts) = model.file_facts_of(member_ref.file_id) else {
+        return false;
+    };
+    facts
+        .member_by_id(&member_ref.id)
+        .is_some_and(|member| &member.key == key)
+}
+
+fn find_member_in_owner(
+    model: &SemanticModel,
+    owner: &SemanticId,
+    key: &LuaMemberKey,
+    bindings: Option<&TplBindings>,
+    name_bindings: Option<&HashMap<String, LuaType>>,
+) -> Option<MemberInfo> {
+    for member_ref in model.members_of_owner(owner) {
+        if member_ref_matches_key(model, &member_ref, key) {
+            if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+                return Some(info);
+            }
+        }
+    }
+    None
+}
+
+fn find_type_def_member(
+    model: &SemanticModel,
+    def: &TypeDef,
+    key: &LuaMemberKey,
+    bindings: Option<&TplBindings>,
+    name_bindings: Option<&HashMap<String, LuaType>>,
+    visited: &mut Vec<SemanticId>,
+) -> Option<MemberInfo> {
+    if visited.contains(&def.id) {
+        return None;
+    }
+    visited.push(def.id.clone());
+
+    if let Some(info) = find_member_in_owner(model, &def.id, key, bindings, name_bindings) {
+        visited.pop();
+        return Some(info);
+    }
+
+    for super_name in &def.super_names {
+        if let Some(bindings) = bindings {
+            let mut found_super = false;
+            for (index, param) in def.generic_params.iter().enumerate() {
+                let param_name = param.name.as_str();
+                if super_name.as_str() == param_name
+                    || super_name.as_str().starts_with(&format!("{param_name}<"))
+                {
+                    if let Some(bound) = bindings.get(&GenericTplId::Type(index as u32)) {
+                        if let Some(info) = member_info_impl(model, bound, key) {
+                            visited.pop();
+                            return Some(info);
+                        }
+                        found_super = true;
+                    }
+                    break;
+                }
+            }
+            if found_super {
+                continue;
+            }
+        }
+        if let Some(super_def) = model.resolve_type_def_in(def.file_id, super_name.as_str()) {
+            if let Some(info) =
+                find_type_def_member(model, &super_def, key, bindings, name_bindings, visited)
+            {
+                visited.pop();
+                return Some(info);
+            }
+        }
+    }
+
+    for owner in model.q().resolve_owner_set(def.id.clone()) {
+        if owner == def.id {
+            continue;
+        }
+        if let Some(info) = find_member_in_owner(model, &owner, key, bindings, name_bindings) {
+            visited.pop();
+            return Some(info);
+        }
+    }
+
+    visited.pop();
+    None
+}
+
+fn direct_member_info(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key: &LuaMemberKey,
+) -> Option<MemberInfo> {
+    match prefix_type {
+        LuaType::Ref(id) | LuaType::Def(id) => {
+            let def = type_def_of(model, id)?;
+            let mut visited = Vec::new();
+            // Bare generic type (`Box`) uses its declared defaults/constraints for member lookup.
+            let mut bindings = TplBindings::new();
+            let mut name_bindings = HashMap::new();
+            let mut all_bound = true;
+            for (index, param) in def.generic_params.iter().enumerate() {
+                let ty = param
+                    .default
+                    .map(|syntax| model.doc_type_lua_in(def.file_id, syntax, &def.generic_params))
+                    .or_else(|| {
+                        param.constraint.map(|syntax| {
+                            model.doc_type_lua_in(def.file_id, syntax, &def.generic_params)
+                        })
+                    });
+                if let Some(ty) = ty {
+                    bindings.insert(GenericTplId::Type(index as u32), ty.clone());
+                    name_bindings.insert(param.name.to_string(), ty);
+                } else {
+                    all_bound = false;
+                    break;
+                }
+            }
+            if all_bound && !bindings.is_empty() {
+                find_type_def_member(
+                    model,
+                    &def,
+                    key,
+                    Some(&bindings),
+                    Some(&name_bindings),
+                    &mut visited,
+                )
+            } else {
+                find_type_def_member(model, &def, key, None, None, &mut visited)
+            }
+        }
+        LuaType::Generic(generic) => {
+            let def = type_def_of(model, &generic.get_base_type_id())?;
+            let bindings: TplBindings = generic
+                .get_params()
+                .iter()
+                .enumerate()
+                .map(|(index, ty)| (GenericTplId::Type(index as u32), ty.clone()))
+                .collect();
+            let name_map: HashMap<String, LuaType> = def
+                .generic_params
+                .iter()
+                .enumerate()
+                .filter_map(|(index, param)| {
+                    generic
+                        .get_params()
+                        .get(index)
+                        .map(|value| (param.name.to_string(), value.clone()))
+                })
+                .collect();
+            let mut visited = Vec::new();
+            find_type_def_member(
+                model,
+                &def,
+                key,
+                Some(&bindings),
+                Some(&name_map),
+                &mut visited,
+            )
+        }
+        LuaType::TableConst(table) => {
+            let owner = SemanticId::member(table.file_id, table.value);
+            if let Some(info) = find_member_in_owner(model, &owner, key, None, None) {
+                return Some(info);
+            }
+            if let Some(facts) = model.file_facts_of(table.file_id) {
+                for decl in &facts.decls {
+                    if decl
+                        .value_expr_syntax
+                        .is_some_and(|syntax| syntax.get_range() == table.value)
+                    {
+                        let mut owners = vec![decl.id.clone()];
+                        if matches!(decl.kind, DeclKind::Global) {
+                            owners.push(SemanticId::name(decl.name.clone()));
+                        }
+                        for owner in owners {
+                            if let Some(info) = find_member_in_owner(model, &owner, key, None, None)
+                            {
+                                return Some(info);
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+        LuaType::Object(object) => object.get_fields().get(key).cloned().map(|typ| MemberInfo {
+            key: key.clone(),
+            typ,
+            id: None,
+            file_id: None,
+            is_method: false,
+        }),
+        LuaType::Array(array) => direct_member_info(model, array.get_base(), key),
+        LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
+            let string_owner = SemanticId::name(SmolStr::new("string"));
+            find_member_in_owner(model, &string_owner, key, None, None)
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn member_info_impl(
     model: &SemanticModel,
     prefix_type: &LuaType,
     key: &LuaMemberKey,
 ) -> Option<MemberInfo> {
+    // Single-key direct lookup avoids collecting every member of a type when only one key is needed.
+    if let Some(info) = direct_member_info(model, prefix_type, key) {
+        return Some(info);
+    }
     // Intersection members: same-key members from all components are merged; conflicting types (`number & string`) collapse to `never`.
     if let LuaType::Intersection(intersection) = prefix_type {
         let mut types = Vec::new();
