@@ -79,4 +79,57 @@ mod tests {
 
         assert_eq!(visited, depth + 1);
     }
+
+    #[test]
+    fn test_union_iterator() {
+        use crate::{BasicTypeKind, BasicTypeUnion, LuaMultiLineUnion, LuaUnionType};
+
+        // 基础类型联合
+        let mut basic = BasicTypeUnion::new();
+        basic.add(BasicTypeKind::Boolean);
+        basic.add(BasicTypeKind::String);
+        let union_basic = LuaUnionType::Basic(basic);
+        let members: Vec<LuaType> = union_basic.iter().map(|c| c.into_owned()).collect();
+        assert_eq!(members, vec![LuaType::Boolean, LuaType::String]);
+        assert_eq!(union_basic.iter().len(), 2);
+
+        // 可空联合
+        let union_nullable = LuaUnionType::Nullable(LuaType::Integer);
+        let mut iter = union_nullable.iter();
+        assert_eq!(
+            iter.next(),
+            Some(std::borrow::Cow::Borrowed(&LuaType::Integer))
+        );
+        assert_eq!(iter.next(), Some(std::borrow::Cow::Owned(LuaType::Nil)));
+        assert_eq!(iter.next(), None);
+        assert_eq!(union_nullable.iter().len(), 2);
+
+        // 多成员联合
+        let union_multi =
+            LuaUnionType::Multi(vec![LuaType::Integer, LuaType::String, LuaType::Boolean]);
+        let mut iter = union_multi.iter();
+        assert_eq!(
+            iter.next(),
+            Some(std::borrow::Cow::Borrowed(&LuaType::Integer))
+        );
+        assert_eq!(
+            iter.next(),
+            Some(std::borrow::Cow::Borrowed(&LuaType::String))
+        );
+        assert_eq!(
+            iter.next(),
+            Some(std::borrow::Cow::Borrowed(&LuaType::Boolean))
+        );
+        assert_eq!(iter.next(), None);
+        assert_eq!(union_multi.iter().len(), 3);
+
+        // 多行联合
+        let multi_line = LuaMultiLineUnion::new(vec![
+            (LuaType::Number, Some("doc1".to_string())),
+            (LuaType::String, None),
+        ]);
+        let types: Vec<&LuaType> = multi_line.iter().collect();
+        assert_eq!(types, vec![&LuaType::Number, &LuaType::String]);
+        assert_eq!(multi_line.iter().len(), 2);
+    }
 }

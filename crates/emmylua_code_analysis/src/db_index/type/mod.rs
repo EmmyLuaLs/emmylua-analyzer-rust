@@ -10,7 +10,7 @@ mod types;
 
 use super::traits::LuaIndex;
 use crate::{DbIndex, FileId, InFiled, db_index::WorkspaceId};
-pub use basic_union::{BasicTypeKind, BasicTypeUnion};
+pub use basic_union::{BasicTypeKind, BasicTypeUnion, BasicTypeUnionIter};
 pub use generic_param::GenericParam;
 use hashbrown::{HashMap, HashSet};
 pub use humanize_type::{RenderLevel, TypeHumanizer, format_union_type, humanize_type};

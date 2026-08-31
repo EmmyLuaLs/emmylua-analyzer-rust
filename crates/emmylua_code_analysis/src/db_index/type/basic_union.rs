@@ -1,6 +1,8 @@
-use crate::{LuaType, TypeVisitTrait};
+use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use crate::{LuaType, LuaUnionType, TypeVisitTrait};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BasicTypeUnion(u32);
 
 impl BasicTypeUnion {
@@ -24,10 +26,113 @@ impl BasicTypeUnion {
         self.0 == 0
     }
 
+    pub fn to_type(&self) -> LuaType {
+        let valid_mask = (1u32 << BasicTypeKind::Count as u32) - 1;
+        let flags = self.0 & valid_mask;
+        let count = flags.count_ones() as usize;
+        if count == 0 {
+            LuaType::Never
+        } else if count == 1 {
+            let kind = BasicTypeKind::from(flags.trailing_zeros());
+            kind.into()
+        } else {
+            LuaUnionType::Basic(Self(flags)).into()
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = LuaType> + '_ {
-        (0..BasicTypeKind::Count as u32)
-            .filter(move |&i| (self.0 & (1 << i)) != 0)
-            .map(|i| BasicTypeKind::from(i).into())
+        self.iter_kinds().map(|k| k.into())
+    }
+
+    pub fn iter_kinds(&self) -> BasicTypeUnionIter {
+        BasicTypeUnionIter::new(self.0)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicTypeUnionIter {
+    flags: u32,
+}
+
+impl BasicTypeUnionIter {
+    pub fn new(flags: u32) -> Self {
+        let valid_mask = (1u32 << BasicTypeKind::Count as u32) - 1;
+        Self {
+            flags: flags & valid_mask,
+        }
+    }
+}
+
+impl Iterator for BasicTypeUnionIter {
+    type Item = BasicTypeKind;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.flags == 0 {
+            return None;
+        }
+        let tz = self.flags.trailing_zeros();
+        // 减 1 会把最低位的 1 变为 0, 并把更低位全部变 1, 接着按位与就能精确移除掉指定位的 1 了
+        self.flags &= self.flags - 1;
+        if tz < BasicTypeKind::Count as u32 {
+            Some(BasicTypeKind::from(tz))
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = self.flags.count_ones() as usize;
+        (count, Some(count))
+    }
+}
+
+impl ExactSizeIterator for BasicTypeUnionIter {}
+impl std::iter::FusedIterator for BasicTypeUnionIter {}
+
+impl IntoIterator for BasicTypeUnion {
+    type Item = BasicTypeKind;
+    type IntoIter = BasicTypeUnionIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_kinds()
+    }
+}
+
+impl IntoIterator for &BasicTypeUnion {
+    type Item = BasicTypeKind;
+    type IntoIter = BasicTypeUnionIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_kinds()
+    }
+}
+
+impl fmt::Debug for BasicTypeUnion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return write!(f, "BasicTypeUnion(None)");
+        }
+
+        let mut first = true;
+        write!(f, "BasicTypeUnion(")?;
+        for kind in self.iter_kinds() {
+            if !first {
+                write!(f, " | ")?;
+            }
+            write!(f, "{:?}", kind)?;
+            first = false;
+        }
+
+        let valid_mask = (1 << BasicTypeKind::Count as u32) - 1;
+        let unknown_bits = self.0 & !valid_mask;
+        if unknown_bits != 0 {
+            if !first {
+                write!(f, " | ")?;
+            }
+            write!(f, "{:#x}", unknown_bits)?;
+        }
+
+        write!(f, ")")
     }
 }
 
@@ -154,5 +259,18 @@ mod tests {
 
         let types: Vec<LuaType> = union.iter().collect();
         assert_eq!(types, vec![LuaType::Table]);
+    }
+
+    #[test]
+    fn test_basic_type_union_debug() {
+        let mut union = BasicTypeUnion::new();
+        assert_eq!(format!("{:?}", union), "BasicTypeUnion(None)");
+
+        union.add(BasicTypeKind::Nil);
+        union.add(BasicTypeKind::Boolean);
+        assert_eq!(format!("{:?}", union), "BasicTypeUnion(Nil | Boolean)");
+
+        union.remove(BasicTypeKind::Nil);
+        assert_eq!(format!("{:?}", union), "BasicTypeUnion(Boolean)");
     }
 }

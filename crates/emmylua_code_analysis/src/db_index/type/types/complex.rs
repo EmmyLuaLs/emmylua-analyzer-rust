@@ -2,14 +2,14 @@ use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
-use std::{ops::Deref, sync::Arc};
+use std::{borrow::Cow, ops::Deref, sync::Arc};
 
 use crate::db_index::LuaMemberKey;
 use crate::{
     AsyncState, DbIndex, InFiled, LuaAttributeUse, SemanticModel, first_param_may_not_self,
 };
 
-use super::super::basic_union::{BasicTypeKind, BasicTypeUnion};
+use super::super::basic_union::{BasicTypeKind, BasicTypeUnion, BasicTypeUnionIter};
 use super::super::generic_param::GenericParam;
 use super::super::type_decl::LuaTypeDeclId;
 use super::super::type_ops::TypeOps;
@@ -418,26 +418,24 @@ impl LuaUnionType {
         Self::Multi(types)
     }
 
-    pub fn into_vec(&self) -> Vec<LuaType> {
+    pub fn iter(&self) -> UnionIter<'_> {
         match self {
-            LuaUnionType::Basic(basic) => basic.iter().collect(),
-            LuaUnionType::Nullable(ty) => vec![ty.clone(), LuaType::Nil],
-            LuaUnionType::Multi(types) => types.clone(),
+            LuaUnionType::Basic(basic) => UnionIter::Basic(basic.iter_kinds()),
+            LuaUnionType::Nullable(ty) => UnionIter::Nullable {
+                ty: Some(ty),
+                yield_nil: true,
+            },
+            LuaUnionType::Multi(types) => UnionIter::Multi(types.iter()),
         }
+    }
+
+    pub fn into_vec(&self) -> Vec<LuaType> {
+        self.iter().map(Cow::into_owned).collect()
     }
 
     #[allow(unused, clippy::wrong_self_convention)]
     pub(crate) fn into_set(&self) -> HashSet<LuaType> {
-        match self {
-            LuaUnionType::Basic(basic) => basic.iter().collect(),
-            LuaUnionType::Nullable(ty) => {
-                let mut set = HashSet::new();
-                set.insert(ty.clone());
-                set.insert(LuaType::Nil);
-                set
-            }
-            LuaUnionType::Multi(types) => types.clone().into_iter().collect(),
-        }
+        self.iter().map(Cow::into_owned).collect()
     }
 
     pub fn contain_tpl(&self) -> bool {
@@ -474,6 +472,60 @@ impl LuaUnionType {
             LuaUnionType::Nullable(f) => f.is_always_falsy(),
             LuaUnionType::Multi(types) => types.iter().all(|t| t.is_always_falsy()),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum UnionIter<'a> {
+    Basic(BasicTypeUnionIter),
+    Nullable {
+        ty: Option<&'a LuaType>,
+        yield_nil: bool,
+    },
+    Multi(std::slice::Iter<'a, LuaType>),
+}
+
+impl<'a> Iterator for UnionIter<'a> {
+    type Item = Cow<'a, LuaType>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            UnionIter::Basic(iter) => iter.next().map(|k| Cow::Owned(k.into())),
+            UnionIter::Nullable { ty, yield_nil } => {
+                if let Some(t) = ty.take() {
+                    Some(Cow::Borrowed(t))
+                } else if *yield_nil {
+                    *yield_nil = false;
+                    Some(Cow::Owned(LuaType::Nil))
+                } else {
+                    None
+                }
+            }
+            UnionIter::Multi(iter) => iter.next().map(Cow::Borrowed),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            UnionIter::Basic(iter) => iter.size_hint(),
+            UnionIter::Nullable { ty, yield_nil } => {
+                let count = if ty.is_some() { 1 } else { 0 } + if *yield_nil { 1 } else { 0 };
+                (count, Some(count))
+            }
+            UnionIter::Multi(iter) => iter.size_hint(),
+        }
+    }
+}
+
+impl<'a> ExactSizeIterator for UnionIter<'a> {}
+impl<'a> std::iter::FusedIterator for UnionIter<'a> {}
+
+impl<'a> IntoIterator for &'a LuaUnionType {
+    type Item = Cow<'a, LuaType>;
+    type IntoIter = UnionIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -885,12 +937,14 @@ impl LuaMultiLineUnion {
         &self.unions
     }
 
-    pub fn to_union(&self) -> LuaType {
-        let mut types = Vec::new();
-        for (t, _) in &self.unions {
-            types.push(t.clone());
+    pub fn iter(&self) -> MultiLineUnionIter<'_> {
+        MultiLineUnionIter {
+            iter: self.unions.iter(),
         }
+    }
 
+    pub fn to_union(&self) -> LuaType {
+        let types = self.iter().cloned().collect();
         LuaType::Union(Arc::new(LuaUnionType::from_vec(types)))
     }
 
@@ -899,19 +953,53 @@ impl LuaMultiLineUnion {
     }
 
     pub fn is_nullable(&self) -> bool {
-        self.unions.iter().any(|(t, _)| t.is_nullable())
+        self.iter().any(|t| t.is_nullable())
     }
 
     pub fn is_optional(&self) -> bool {
-        self.unions.iter().any(|(t, _)| t.is_optional())
+        self.iter().any(|t| t.is_optional())
     }
 
     pub fn is_always_truthy(&self) -> bool {
-        self.unions.iter().all(|(t, _)| t.is_always_truthy())
+        self.iter().all(|t| t.is_always_truthy())
     }
 
     pub fn is_always_falsy(&self) -> bool {
-        self.unions.iter().all(|(t, _)| t.is_always_falsy())
+        self.iter().all(|t| t.is_always_falsy())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MultiLineUnionIter<'a> {
+    iter: std::slice::Iter<'a, (LuaType, Option<String>)>,
+}
+
+impl<'a> Iterator for MultiLineUnionIter<'a> {
+    type Item = &'a LuaType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(ty, _)| ty)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for MultiLineUnionIter<'a> {}
+impl<'a> std::iter::FusedIterator for MultiLineUnionIter<'a> {}
+impl<'a> DoubleEndedIterator for MultiLineUnionIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back().map(|(ty, _)| ty)
+    }
+}
+
+impl<'a> IntoIterator for &'a LuaMultiLineUnion {
+    type Item = &'a LuaType;
+    type IntoIter = MultiLineUnionIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
