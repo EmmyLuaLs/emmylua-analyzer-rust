@@ -362,7 +362,7 @@ target = source"#;
         assert_that!(
             diagnostics[0].message,
             eq("Type `string?` is not assignable to type `boolean?`.
-  Type `string` is not assignable to type `boolean?`.")
+  Type `string` is not assignable to type `boolean`.")
         );
     }
 

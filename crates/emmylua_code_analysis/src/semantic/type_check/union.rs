@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     BasicTypeKind, LuaMemberKey, LuaType, LuaUnionType,
     semantic::type_check::error_chain::not_assignable_message,
@@ -14,120 +16,129 @@ pub(crate) fn relate_union(
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
-    // source union 必须先分派, target union 只在普通 source 下作为候选义务.
-    if let LuaType::Union(source_union) = source {
-        let result = match source_union.as_ref() {
-            LuaUnionType::Multi(members) => {
-                relate_source_union_members(relater, members, target, intersection_state)
-            }
-            _ => {
-                let members = source_union.into_vec();
-                relate_source_union_members(relater, &members, target, intersection_state)
-            }
-        };
-        return Some(relater.on_unrelated(result, |db| not_assignable_message(db, source, target)));
-    }
-    if let LuaType::Union(target_union) = target {
-        let result = match target_union.as_ref() {
-            LuaUnionType::Nullable(non_nil_target) => relate_to_nullable_target(
+    // 先分派源类型
+    match source {
+        LuaType::Union(source_union) => {
+            let result = relate_source_union_members(
                 relater,
-                source,
+                source_union.iter(),
                 target,
-                non_nil_target,
                 intersection_state,
-            ),
+            );
+            return Some(
+                relater.on_unrelated(result, |db| not_assignable_message(db, source, target)),
+            );
+        }
+        LuaType::MultiLineUnion(source_multi) => {
+            let result = relate_source_union_members(
+                relater,
+                source_multi.iter().map(Cow::Borrowed),
+                target,
+                intersection_state,
+            );
+            return Some(
+                relater.on_unrelated(result, |db| not_assignable_message(db, source, target)),
+            );
+        }
+        _ => {}
+    }
+
+    // 目标不是联合类型时交由其他关系处理.
+    if !matches!(target, LuaType::Union(_) | LuaType::MultiLineUnion(_)) {
+        return None;
+    }
+
+    // 源确定非空时, 单一可空目标可直接剥离为其非 Nil 成员进行比对.
+    if !source.is_nullable() {
+        if let Some(non_nil_target) = get_single_non_nil_candidate(target) {
+            return Some(relater.relate(source, &non_nil_target, intersection_state));
+        }
+    }
+
+    match target {
+        LuaType::Union(target_union) => Some(relate_to_target_union_candidates(
+            relater,
+            source,
+            target,
+            target_union.iter(),
+            intersection_state,
+        )),
+        LuaType::MultiLineUnion(target_multi) => Some(relate_to_target_union_candidates(
+            relater,
+            source,
+            target,
+            target_multi.iter().map(Cow::Borrowed),
+            intersection_state,
+        )),
+        _ => None,
+    }
+}
+
+fn get_single_non_nil_candidate<'a>(target: &'a LuaType) -> Option<Cow<'a, LuaType>> {
+    match target {
+        LuaType::Union(target_union) => match target_union.as_ref() {
+            LuaUnionType::Nullable(non_nil) => {
+                if !matches!(non_nil, LuaType::Union(_) | LuaType::MultiLineUnion(_)) {
+                    Some(Cow::Borrowed(non_nil))
+                } else {
+                    None
+                }
+            }
             LuaUnionType::Basic(basic) if basic.contains(BasicTypeKind::Nil) => {
                 let mut non_nil_basic = *basic;
                 non_nil_basic.remove(BasicTypeKind::Nil);
-                if non_nil_basic.is_empty() {
-                    relater.relate(source, &LuaType::Nil, intersection_state)
+                let mut iter = non_nil_basic.iter_kinds();
+                let first = iter.next()?;
+                if iter.next().is_none() {
+                    Some(Cow::Owned(first.into()))
                 } else {
-                    relate_to_nullable_target(
-                        relater,
-                        source,
-                        target,
-                        &LuaUnionType::Basic(non_nil_basic).into(),
-                        intersection_state,
-                    )
+                    None
                 }
             }
-            LuaUnionType::Multi(candidates) => relate_to_target_union_candidates(
-                relater,
-                source,
-                target,
-                candidates,
-                intersection_state,
-            ),
-            _ => {
-                let candidates = target_union.into_vec();
-                relate_to_target_union_candidates(
-                    relater,
-                    source,
-                    target,
-                    &candidates,
-                    intersection_state,
-                )
+            LuaUnionType::Multi(candidates) if candidates.contains(&LuaType::Nil) => {
+                let mut non_nil = candidates.iter().filter(|t| !t.is_nil());
+                let first = non_nil.next()?;
+                if non_nil.next().is_none()
+                    && !matches!(first, LuaType::Union(_) | LuaType::MultiLineUnion(_))
+                {
+                    Some(Cow::Borrowed(first))
+                } else {
+                    None
+                }
             }
-        };
-        return Some(result);
-    }
-    None
-}
-
-#[inline(always)]
-pub(super) fn relate_to_nullable_target(
-    relater: &mut Relater,
-    source: &LuaType,
-    target: &LuaType,
-    non_nil_target: &LuaType,
-    intersection_state: IntersectionState,
-) -> RelationResult {
-    let saved_chain = relater.error_chain_snapshot();
-    let non_nil_failure = match relater.relate(source, non_nil_target, intersection_state) {
-        Ok(()) => return Ok(()),
-        Err(failure) => failure,
-    };
-    let nil_outcome = relater
-        .probe_relation(source, &LuaType::Nil, intersection_state)
-        .0;
-    match (non_nil_failure, nil_outcome) {
-        // 非 nil 分支失败的证据已入链, 当 nil 放行时需要撤销
-        (_, RelationOutcome::Related) => {
-            relater.restore_error_chain(saved_chain);
-            Ok(())
-        }
-        (RelationFailure::Indeterminate(kind), _) => Err(RelationFailure::Indeterminate(kind)),
-        (RelationFailure::Unrelated, RelationOutcome::Indeterminate(kind)) => {
-            Err(RelationFailure::Indeterminate(kind))
-        }
-        (RelationFailure::Unrelated, RelationOutcome::Unrelated) => {
-            // 仅当源类型确定非空且目标类型非联合类型时, 剥离可空后的错误链才能完整表述失败.
-            let is_definitely_non_nil =
-                !matches!(source, LuaType::Union(_) | LuaType::MultiLineUnion(_))
-                    && !source.is_nullable();
-            let is_single_non_nil_target = !matches!(
-                non_nil_target,
-                LuaType::Union(_) | LuaType::MultiLineUnion(_)
-            );
-            if is_definitely_non_nil && is_single_non_nil_target {
-                Err(RelationFailure::Unrelated)
+            _ => None,
+        },
+        LuaType::MultiLineUnion(target_multi) => {
+            if target_multi.iter().any(|t| t.is_nil()) {
+                let mut non_nil = target_multi.iter().filter(|t| !t.is_nil());
+                let first = non_nil.next()?;
+                if non_nil.next().is_none()
+                    && !matches!(first, LuaType::Union(_) | LuaType::MultiLineUnion(_))
+                {
+                    Some(Cow::Borrowed(first))
+                } else {
+                    None
+                }
             } else {
-                relater.restore_error_chain(saved_chain);
-                relater.fail(|db| not_assignable_message(db, source, target))
+                None
             }
         }
+        _ => None,
     }
 }
 
-fn relate_source_union_members(
+fn relate_source_union_members<'a>(
     relater: &mut Relater,
-    members: &[LuaType],
+    members: impl Iterator<Item = Cow<'a, LuaType>>,
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let mut first_indeterminate = None;
     for member in members {
-        match relater.probe_relation(member, target, intersection_state).0 {
+        match relater
+            .probe_relation(&member, target, intersection_state)
+            .0
+        {
             RelationOutcome::Related => {}
             RelationOutcome::Indeterminate(kind) => {
                 first_indeterminate.get_or_insert(kind);
@@ -136,7 +147,7 @@ fn relate_source_union_members(
                 if !relater.is_explain() {
                     return Err(RelationFailure::Unrelated);
                 }
-                return relater.relate(member, target, intersection_state);
+                return relater.relate(&member, target, intersection_state);
             }
         }
     }
@@ -146,17 +157,19 @@ fn relate_source_union_members(
     Ok(())
 }
 
-fn relate_to_target_union_candidates(
+fn relate_to_target_union_candidates<'a>(
     relater: &mut Relater,
     source: &LuaType,
     target: &LuaType,
-    candidates: &[LuaType],
+    candidates: impl Iterator<Item = Cow<'a, LuaType>>,
     intersection_state: IntersectionState,
 ) -> RelationResult {
     let mut indeterminate = None;
-    for candidate in candidates.iter() {
+    let mut failed_candidates = Vec::new();
+
+    for candidate in candidates {
         match relater
-            .probe_relation(source, candidate, intersection_state)
+            .probe_relation(source, &candidate, intersection_state)
             .0
         {
             RelationOutcome::Related => return Ok(()),
@@ -165,7 +178,11 @@ fn relate_to_target_union_candidates(
             }
             RelationOutcome::Unrelated => {}
         }
+        if relater.is_explain() {
+            failed_candidates.push(candidate.into_owned());
+        }
     }
+
     if let Some(kind) = indeterminate {
         return Err(RelationFailure::Indeterminate(kind));
     }
@@ -176,7 +193,7 @@ fn relate_to_target_union_candidates(
 
     // probe_relation 有早退行为, 因此得到的结果并不一定是最匹配的, 我们必须独立处理缺失字段判别.
     let mut evidence: Option<(usize, Vec<LuaMemberKey>)> = None;
-    for (index, candidate) in candidates.iter().enumerate() {
+    for (index, candidate) in failed_candidates.iter().enumerate() {
         let (missing_keys, has_shared_key) =
             collect_missing_members(relater, source, candidate, intersection_state)?;
         if !has_shared_key {
@@ -199,7 +216,12 @@ fn relate_to_target_union_candidates(
         return relater.fail(|db| not_assignable_message(db, source, target));
     };
     if !missing_keys.is_empty() {
-        return unrelated_missing_members(relater, source, &candidates[best_index], missing_keys);
+        return unrelated_missing_members(
+            relater,
+            source,
+            &failed_candidates[best_index],
+            missing_keys,
+        );
     }
-    relater.relate(source, &candidates[best_index], intersection_state)
+    relater.relate(source, &failed_candidates[best_index], intersection_state)
 }
