@@ -475,9 +475,14 @@ fn check_candidate(
                 });
             }
         }
+        let remainder_params = if params.is_empty() {
+            &params[..]
+        } else {
+            &params[1..]
+        };
         mismatches.extend(check_arg_pairs(
             semantic_model,
-            &params[1..],
+            remainder_params,
             args,
             func.is_variadic(),
             &mut bindings,

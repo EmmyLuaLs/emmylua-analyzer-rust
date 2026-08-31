@@ -42,6 +42,14 @@ pub fn member_info(
     prefix_type: &LuaType,
     key: &LuaMemberKey,
 ) -> Option<MemberInfo> {
+    member_info_impl(model, prefix_type, key)
+}
+
+pub(crate) fn member_info_impl(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key: &LuaMemberKey,
+) -> Option<MemberInfo> {
     // Intersection members: same-key members from all components are merged; conflicting types (`number & string`) collapse to `never`.
     if let LuaType::Intersection(intersection) = prefix_type {
         let mut types = Vec::new();
@@ -735,31 +743,6 @@ fn member_info_of(
             typ = LuaType::DocFunction(Arc::new(fun));
         }
     }
-    // A nullable field from `---@field x? T` should merge nil directly on member access,
-    // to avoid the later flow "prefix member is more precise" step wrongly narrowing the nullable type to T.
-    // Table literal fields keep string/integer literal shapes in type-side member queries
-    // (`t.a`/`t["a"]` for `local t = { a = "hello" }` sees `"hello"`,
-    //  `t.x` for `local t = { x = 1 }` sees `IntegerConst(1)`).
-    // Runtime member assignments (`M.y = 1`) keep the existing VM/TypeShell projection.
-    if model.is_initializer_table_field(&member_ref.id, &member)
-        && let Some(value_syntax) = member.value_syntax
-        && member_ref.file_id == model.file_id()
-        && let Some(tree) = model.syntax_tree_of(member_ref.file_id)
-        && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
-        && let Some(expr) = LuaExpr::cast(node.clone())
-    {
-        let expr_ty = model.type_of_expr(expr.get_syntax_id());
-        if matches!(
-            expr_ty,
-            LuaType::StringConst(_)
-                | LuaType::DocStringConst(_)
-                | LuaType::IntegerConst(_)
-                | LuaType::DocIntegerConst(_)
-        ) {
-            typ = expr_ty;
-        }
-    }
-
     // Nullable fields merge nil; function fields stay pure-function shaped to avoid parameter/self inference
     // being disturbed by a `fun | nil` union (flow queries still add nil through flow_member_value_type).
     if member.is_nullable

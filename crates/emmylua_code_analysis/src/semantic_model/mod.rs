@@ -2,13 +2,14 @@ pub mod flow;
 pub mod infer;
 pub mod member;
 pub mod render;
+mod salsa_queries;
 pub mod type_check;
 pub mod type_eval;
 
 #[cfg(test)]
 mod legacy_visibility_tests;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,13 +30,13 @@ use smol_str::SmolStr;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
-use crate::salsa_builder::SalsaDatabase;
 use crate::salsa_builder::SalsaQueries;
 use crate::salsa_builder::def::{
     ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
     SemanticId, Signature, TypeDef, TypeDefKind, TypeScope, TypeVisibility,
 };
 use crate::salsa_builder::flow::{FlowId, FlowTree};
+use crate::salsa_builder::{SalsaDatabase, SalsaDb};
 use crate::signature::LuaSignatureId;
 use crate::{
     AsyncState, FileExports, FileFacts, FileId, GenericParam, GenericTpl, GenericTplId,
@@ -47,8 +48,6 @@ use crate::{
 pub struct SemanticModel<'db> {
     db: &'db SalsaDatabase,
     file_id: FileId,
-    /// Projection-layer recursion cycle guard (replaces thread_local; model instances are only used on the thread stack).
-    cycle_guard: RefCell<Vec<SemanticId>>,
     /// Closure return-inference in-progress stack (replaces thread_local; scoped to each SemanticModel instance).
     closure_return_infer_stack: RefCell<Vec<LuaSyntaxId>>,
     /// Flow-type cache for `type_of_decl_at` within a single semantic model instance.
@@ -97,7 +96,6 @@ impl<'db> SemanticModel<'db> {
         Some(Self {
             db,
             file_id,
-            cycle_guard: RefCell::new(Vec::new()),
             closure_return_infer_stack: RefCell::new(Vec::new()),
             flow_decl_cache: RefCell::new(HashMap::new()),
         })
@@ -878,7 +876,7 @@ impl<'db> SemanticModel<'db> {
             };
             if is_class {
                 let key = LuaMemberKey::Name(name.clone());
-                if let Some(info) = member::member_info(self, &prefix_ty, &key)
+                if let Some(info) = self.member_info(&prefix_ty, &key)
                     && let Some(id) = info.id
                     && let Some(file_id) = info.file_id
                 {
@@ -1001,6 +999,12 @@ impl<'db> SemanticModel<'db> {
     /// Type of a declaration: `---@type` annotation takes priority; closure -> `DocFunction` signature; otherwise VM infers the initializer
     /// (table identity / constants / setmetatable / require special cases); falls back to salsa shell projection when VM fails.
     pub fn type_of_decl(&self, decl: &SemanticId) -> Option<LuaType> {
+        let file = self.db.file_input(self.file_id)?;
+        let config = self.db.config_input()?;
+        salsa_queries::semantic_decl_type(self.db, file, config, decl.clone())
+    }
+
+    pub(crate) fn type_of_decl_impl(&self, decl: &SemanticId) -> Option<LuaType> {
         if let Some(decls) = self.decls()
             && let Some(decl) = decls.iter().find(|d| &d.id == decl)
         {
@@ -1678,6 +1682,12 @@ impl<'db> SemanticModel<'db> {
 
     /// A member's declared type (keyed by declaring file, supports cross-file members; `@field` members carry the owner's generic context).
     pub fn type_of_member(&self, member: &SemanticId) -> Option<LuaType> {
+        let file = self.db.file_input(self.file_id)?;
+        let config = self.db.config_input()?;
+        salsa_queries::semantic_member_type(self.db, file, config, member.clone())
+    }
+
+    pub(crate) fn type_of_member_impl(&self, member: &SemanticId) -> Option<LuaType> {
         // Members are keyed by declaring file: take the file from the Member key.
         let member_file = match member {
             SemanticId::Member(key) => key.file_id,
@@ -1695,7 +1705,7 @@ impl<'db> SemanticModel<'db> {
         }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
-        // Inside cycles, cycle_guard provides a fallback back to the salsa shell.
+        // Cycles are handled by the Salsa tracked `semantic_member_type` / `semantic_expr_type` queries.
         if let Some(facts) = self.file_facts_of(member_file)
             && let Some(member_def) = facts.member_by_id(member)
             && !matches!(member_def.owner, SemanticId::TypeDef(_))
@@ -1703,35 +1713,22 @@ impl<'db> SemanticModel<'db> {
         {
             // Table-literal fields keep the expression type from construction (`[key] = 1`, named fields
             // `foo = 123` keep `IntegerConst`; flow/type matching widens when `number` is needed).
-            if self.is_initializer_table_field(member, &member_def) {
+            // Reentry is handled by the Salsa tracked `semantic_expr_type` / `semantic_member_type`.
+            let vm_ty = (|| {
                 let tree = self.syntax_tree_of(member_file)?;
                 let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
-                if let Some(expr) = LuaExpr::cast(node) {
-                    let ty = self.type_of_expr(expr.get_syntax_id());
-                    if !matches!(ty, LuaType::Unknown) {
-                        return Some(ty);
-                    }
-                }
-            }
-            let mut guard = self.cycle_guard.borrow_mut();
-            if !guard.contains(member) {
-                guard.push(member.clone());
-                drop(guard);
-                let vm_ty = (|| {
-                    let tree = self.syntax_tree()?;
-                    let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
-                    if LuaExpr::cast(node).is_some_and(|expr| matches!(expr, LuaExpr::CallExpr(_)))
-                    {
-                        let ty = self.type_of_expr(value_syntax);
-                        (!matches!(ty, LuaType::Unknown)).then_some(ty)
-                    } else {
-                        None
-                    }
-                })();
-                self.cycle_guard.borrow_mut().pop();
-                if let Some(ty) = vm_ty {
-                    return Some(ty);
-                }
+                let expr = LuaExpr::cast(node)?;
+                let eval = if self.is_initializer_table_field(member, &member_def) {
+                    self.type_of_expr(expr.get_syntax_id())
+                } else if matches!(expr, LuaExpr::CallExpr(_)) {
+                    self.type_of_expr(value_syntax)
+                } else {
+                    return None;
+                };
+                (!matches!(eval, LuaType::Unknown)).then_some(eval)
+            })();
+            if let Some(ty) = vm_ty {
+                return Some(ty);
             }
         }
 
@@ -1747,6 +1744,10 @@ impl<'db> SemanticModel<'db> {
 
     /// Whether this is a table-literal field in a declaration initializer.
     /// Such members keep the literal shape from table construction; explicit `t.x = v` is not an initializer field.
+    /// Evaluate a member's value expression with the same-member reentry guard.
+    /// Member resolution can recursively need this expression's type; without sharing the
+    /// SemanticModel cycle guard, `member_info -> type_of_expr -> new InferVm -> member_info`
+    /// can restart and eventually overflow the native stack.
     fn is_initializer_table_field(&self, _member: &SemanticId, member_def: &Member) -> bool {
         let Some(value_syntax) = member_def.value_syntax else {
             return false;
@@ -1853,7 +1854,13 @@ impl<'db> SemanticModel<'db> {
 
     /// All members of a prefix type (completion candidates; `@field` + inheritance + runtime values, with generic substitution).
     pub fn member_infos(&self, prefix_type: &LuaType) -> Vec<member::MemberInfo> {
-        member::member_infos(self, prefix_type)
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return Vec::new();
+        };
+        let Some(config) = self.db.config_input() else {
+            return Vec::new();
+        };
+        salsa_queries::semantic_member_infos(self.db, file, config, prefix_type.clone())
     }
 
     /// The specified-key member of a prefix type (first match).
@@ -1862,7 +1869,13 @@ impl<'db> SemanticModel<'db> {
         prefix_type: &LuaType,
         key: &LuaMemberKey,
     ) -> Option<member::MemberInfo> {
-        member::member_info(self, prefix_type, key)
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return None;
+        };
+        let Some(config) = self.db.config_input() else {
+            return None;
+        };
+        salsa_queries::semantic_member_info(self.db, file, config, prefix_type.clone(), key.clone())
     }
 
     /// Replaces `TplRef` in a type with a set of generic arguments (for hover/display-layer call-site projection).
@@ -2060,7 +2073,7 @@ impl<'db> SemanticModel<'db> {
 
     /// Member type for prefix type + key (old `infer_member_type`).
     pub fn member_type(&self, prefix_type: &LuaType, key: &LuaMemberKey) -> Option<LuaType> {
-        member::member_type(self, prefix_type, key)
+        self.member_info(prefix_type, key).map(|info| info.typ)
     }
 
     pub(crate) fn get_cached_decl_flow(
@@ -2083,6 +2096,16 @@ impl<'db> SemanticModel<'db> {
     /// Flow-sensitive type of a decl at offset (assignment-flow aware: last assignment's RHS type / declaration initial type,
     /// branching merges take unions).
     pub fn type_of_decl_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_decl_type_at(self.db, file, config, decl.clone(), offset)
+    }
+
+    pub(crate) fn type_of_decl_at_impl(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
         let (start, cached) = if let Some(tree) = self.flow_tree()
             && let Some(flow_id) = tree.get_flow_id_at(offset)
         {
@@ -2138,26 +2161,92 @@ impl<'db> SemanticModel<'db> {
 
     /// Flow-sensitive type of a member at offset (member assignment flow awareness + `---@cast t.x +T` widening).
     pub fn type_of_member_at(&self, member: &SemanticId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_member_type_at(self.db, file, config, member.clone(), offset)
+    }
+
+    pub(crate) fn type_of_member_at_impl(&self, member: &SemanticId, offset: TextSize) -> LuaType {
         flow::type_of_member_at(self, member, offset)
     }
 
     /// Decl type before the flow node at offset (for assignment checks: this assignment does not participate in the target type).
     pub fn type_of_decl_before_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_decl_type_before_at(self.db, file, config, decl.clone(), offset)
+    }
+
+    pub(crate) fn type_of_decl_before_at_impl(
+        &self,
+        decl: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
         flow::type_of_decl_before_at(self, decl, offset)
     }
 
     /// Target type for assignment checks: applies `---@cast +T`, excludes this assignment, but does not apply conditional narrowing.
     pub fn type_of_decl_assign_target_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_decl_assign_target_at(self.db, file, config, decl.clone(), offset)
+    }
+
+    pub(crate) fn type_of_decl_assign_target_at_impl(
+        &self,
+        decl: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
         flow::type_of_decl_assign_target_at(self, decl, offset)
     }
 
     /// Member type before the flow node at offset (for assignment checks: this member assignment does not participate in the target type).
     pub fn type_of_member_before_at(&self, member: &SemanticId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_member_type_before_at(self.db, file, config, member.clone(), offset)
+    }
+
+    pub(crate) fn type_of_member_before_at_impl(
+        &self,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
         flow::type_of_member_before_at(self, member, offset)
     }
 
     /// Flow-sensitive type of an expression at offset (NameExpr / IndexExpr use flow backtracking; others use ordinary inference).
     pub fn type_of_expr_at(&self, expr_syntax: LuaSyntaxId, offset: TextSize) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_expr_type_at(self.db, file, config, expr_syntax, offset)
+    }
+
+    pub(crate) fn type_of_expr_at_impl(
+        &self,
+        expr_syntax: LuaSyntaxId,
+        offset: TextSize,
+    ) -> LuaType {
         flow::type_of_expr_at(self, expr_syntax, offset)
     }
 
@@ -3022,6 +3111,16 @@ impl<'db> SemanticModel<'db> {
 
     /// Type of an expression (VM inference; `Unknown` = no type / inference failed).
     pub fn type_of_expr(&self, expr_syntax: LuaSyntaxId) -> LuaType {
+        let Some(file) = self.db.file_input(self.file_id) else {
+            return LuaType::Unknown;
+        };
+        let Some(config) = self.db.config_input() else {
+            return LuaType::Unknown;
+        };
+        salsa_queries::semantic_expr_type(self.db, file, config, expr_syntax)
+    }
+
+    pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
         infer::infer_expr(self, expr_syntax)
     }
 
@@ -3819,22 +3918,14 @@ fn type_def_ref(def: &TypeDef) -> LuaType {
 }
 
 impl<'db> SemanticModel<'db> {
-    /// Declaration inference with cycle guard: returns `None` inside a cycle (callers fall back to shell; salsa cycle_fn resolves cycles).
+    /// Declaration inference. Reentry/cycles are handled by the Salsa tracked
+    /// `semantic_decl_type` / `semantic_expr_type` queries; no manual guard is needed here.
     fn infer_decl_guarded(
         &self,
-        decl: SemanticId,
+        _decl: SemanticId,
         infer: impl FnOnce() -> LuaType,
     ) -> Option<LuaType> {
-        {
-            let mut guard = self.cycle_guard.borrow_mut();
-            if guard.contains(&decl) {
-                return None;
-            }
-            guard.push(decl.clone());
-        }
-        let ty = infer();
-        self.cycle_guard.borrow_mut().pop();
-        Some(ty)
+        Some(infer())
     }
 }
 

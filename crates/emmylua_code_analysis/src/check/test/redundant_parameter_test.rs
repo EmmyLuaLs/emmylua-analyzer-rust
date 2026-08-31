@@ -241,4 +241,29 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_named_dots_zero_args() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+            function f(...args)
+            end
+
+            f()
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            local function g(...args)
+            end
+
+            g(1, 2, 3)
+        "#
+        ));
+    }
 }

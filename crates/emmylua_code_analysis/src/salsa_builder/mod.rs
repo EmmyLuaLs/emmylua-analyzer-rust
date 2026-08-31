@@ -132,6 +132,8 @@ pub(crate) trait SalsaDb: Database {
     fn file_input(&self, file_id: FileId) -> Option<SourceFileInput>;
     /// Current workspace input (stable id, in-place content updates → revision bumps on any file change).
     fn workspace_input(&self) -> Option<WorkspaceInput>;
+    /// Concrete database handle for semantic-model query construction.
+    fn database(&self) -> &SalsaDatabase;
 }
 
 #[salsa::db]
@@ -187,6 +189,10 @@ impl SalsaDb for SalsaDatabase {
 
     fn workspace_input(&self) -> Option<WorkspaceInput> {
         self.workspace
+    }
+
+    fn database(&self) -> &SalsaDatabase {
+        self
     }
 }
 

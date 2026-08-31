@@ -674,64 +674,70 @@ fn param_count_range(
     } else {
         params
     };
+
+    // Lua 5.5 named vararg (`...args`) 的最后一个参数名不是 "..."，但仍应视为可变参数槽。
+    // 优先使用 LuaFunctionType::is_variadic()；doc/operator 投影若没传该标志，则回退到
+    // 参数名或参数类型为 Variadic 的启发式判断。
+    let variadic_index = if func.is_variadic() {
+        Some(params.len().saturating_sub(1))
+    } else {
+        params.iter().rposition(|(name, ty)| {
+            name == "..."
+                || ty
+                    .as_ref()
+                    .is_some_and(|ty| matches!(ty, LuaType::Variadic(_)))
+        })
+    };
+    let variadic_slot = variadic_index.and_then(|i| params.get(i));
+
     let mut min = params
         .iter()
-        .filter(|(name, ty)| {
-            name != "..."
+        .enumerate()
+        .filter(|(idx, (name, ty))| {
+            Some(*idx) != variadic_index
+                && name != "..."
                 && !matches!(ty, None | Some(LuaType::Any | LuaType::Unknown))
                 && !ty
                     .as_ref()
                     .is_some_and(|ty| is_optional(semantic_model, ty))
         })
         .count();
-    // When `fun(...: T...)`'s T is not instantiated, it projects to Unknown or `Ref("T")`; in that case it must not be
-    // treated as an unbounded variadic (preserve old behavior: check as one unknown slot, restore real tuple expansion after generic instantiation).
-    let unresolved_variadic = params.last().is_some_and(|(name, ty)| {
-        name == "..."
-            && ty.as_ref().is_some_and(|ty| {
-                matches!(ty, LuaType::Unknown)
-                    || matches!(ty, LuaType::Variadic(variadic)
-                    if matches!(
-                        variadic.as_ref(),
-                        VariadicType::Base(LuaType::Ref(id) | LuaType::Def(id))
-                            if member::type_def_of(semantic_model, id).is_none()
-                    ))
-            })
+
+    // 未实例化的 `fun(...: T...)`：T 仍然未知或命名引用时，不能当作无界可变参数。
+    let unresolved_variadic = variadic_slot.is_some_and(|(_, ty)| {
+        ty.as_ref().is_some_and(|ty| {
+            matches!(ty, LuaType::Variadic(variadic) if matches!(
+                variadic.as_ref(),
+                VariadicType::Base(LuaType::Ref(id) | LuaType::Def(id))
+                    if member::type_def_of(semantic_model, id).is_none()
+            ))
+        })
     });
-    // Instantiated `T...` (T is a tuple) or `Variadic::Multi` can be expanded to fixed-length parameters.
-    let instantiated_variadic_len = params.last().and_then(|(name, ty)| {
-        if name != "..." {
-            return None;
-        }
-        match ty.as_ref()? {
-            LuaType::Variadic(variadic) => match variadic.as_ref() {
-                VariadicType::Base(base) => {
-                    if let LuaType::Tuple(tuple) = base {
-                        Some(tuple.get_types().len())
-                    } else {
-                        None
-                    }
+
+    // 已实例化的 `T...`（T 是 tuple）或 `Variadic::Multi` 可展开为固定长度参数。
+    let instantiated_variadic_len = variadic_slot.and_then(|(_, ty)| match ty.as_ref()? {
+        LuaType::Variadic(variadic) => match variadic.as_ref() {
+            VariadicType::Base(base) => {
+                if let LuaType::Tuple(tuple) = base {
+                    Some(tuple.get_types().len())
+                } else {
+                    None
                 }
-                VariadicType::Multi(types) => Some(types.len()),
-            },
-            _ => None,
-        }
+            }
+            VariadicType::Multi(types) => Some(types.len()),
+        },
+        _ => None,
     });
+
+    let has_variadic = func.is_variadic() || variadic_index.is_some();
     let mut max = if let Some(len) = instantiated_variadic_len {
         Some(params.len() - 1 + len)
-    } else if !unresolved_variadic
-        && (func.is_variadic()
-            || params.last().is_some_and(|(name, ty)| {
-                name == "..."
-                    || ty
-                        .as_ref()
-                        .is_some_and(|ty| matches!(ty, LuaType::Variadic(_)))
-            }))
-    {
+    } else if !unresolved_variadic && has_variadic {
         None
     } else {
         Some(params.len())
     };
+
     // Method definitions (implicit self) need an extra required self slot in non-colon calls;
     // explicit `fun(self: self)` parameter lists already contain self, so don't double-count.
     if !colon_call && !explicit_self_in_params && (func.is_colon_define() || self_param) {

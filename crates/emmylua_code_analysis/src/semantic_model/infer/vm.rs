@@ -423,6 +423,32 @@ impl<'a> InferVm<'a> {
             .unwrap_or(LuaType::Unknown)
     }
 
+    /// Evaluate a sub-expression in a child VM that inherits the current cyclone
+    /// state (`computing` member IDs and closure parameter environment).
+    ///
+    /// This prevents `InferVm -> SemanticModel::type_of_expr -> new InferVm` from
+    /// losing the in-progress member/decl guards and restarting unbounded recursion.
+    fn type_of_expr_inherit(&self, expr_syntax: LuaSyntaxId) -> LuaType {
+        let Some(tree) = self.model.syntax_tree() else {
+            return LuaType::Unknown;
+        };
+        let root = tree.get_red_root();
+        let Some(node) = expr_syntax.to_node_from_root(&root) else {
+            return LuaType::Unknown;
+        };
+        let Some(expr) = LuaExpr::cast(node) else {
+            return LuaType::Unknown;
+        };
+        let mut code = Vec::new();
+        compile(expr, self.model.file_id(), &mut code);
+        code.push(Instr::Result);
+        let mut vm = InferVm::new(self.model, &code);
+        vm.computing = self.computing.clone();
+        vm.closure_params = self.closure_params.clone();
+        vm.callback_call_depth = self.callback_call_depth;
+        vm.run()
+    }
+
     fn execute(&mut self, instr: Instr) {
         match instr {
             Instr::PushPrimitive(p) => {
@@ -1114,7 +1140,7 @@ impl<'a> InferVm<'a> {
                     && matches!(&member_def.key, LuaMemberKey::Name(name) if name.is_empty())
                     && let Some(value_syntax) = member_def.value_syntax
                 {
-                    let expr_ty = self.model.type_of_expr(value_syntax);
+                    let expr_ty = self.type_of_expr_inherit(value_syntax);
                     if !matches!(expr_ty, LuaType::Unknown) {
                         ty = expr_ty;
                     }
@@ -1134,7 +1160,7 @@ impl<'a> InferVm<'a> {
                     && let Some(member_def) = facts.member_by_id(&member.id)
                     && let Some(value_syntax) = member_def.value_syntax
                 {
-                    let expr_ty = self.model.type_of_expr(value_syntax);
+                    let expr_ty = self.type_of_expr_inherit(value_syntax);
                     if !matches!(expr_ty, LuaType::Unknown) {
                         ty = expr_ty;
                     }
@@ -1217,7 +1243,7 @@ impl<'a> InferVm<'a> {
                         receiver: receiver_ty.clone(),
                     };
                 }
-                let expr_ty = self.model.type_of_expr(value_syntax);
+                let expr_ty = self.type_of_expr_inherit(value_syntax);
                 if !matches!(expr_ty, LuaType::Unknown) {
                     return Value {
                         ty: expr_ty,
@@ -1275,7 +1301,7 @@ impl<'a> InferVm<'a> {
                     && let Some(member_def) = facts.member_by_id(&member.id)
                     && let Some(value_syntax) = member_def.value_syntax
                 {
-                    ty = self.model.type_of_expr(value_syntax);
+                    ty = self.type_of_expr_inherit(value_syntax);
                 }
                 return Value {
                     ty,
@@ -1508,7 +1534,7 @@ impl<'a> InferVm<'a> {
                             {
                                 if let LuaMemberKey::Integer(i) = &member.key {
                                     let ty = if let Some(value_syntax) = member.value_syntax {
-                                        self.model.type_of_expr(value_syntax)
+                                        self.type_of_expr_inherit(value_syntax)
                                     } else {
                                         self.model.type_of_member(&m.id).unwrap_or(LuaType::Unknown)
                                     };
@@ -2249,7 +2275,7 @@ impl<'a> InferVm<'a> {
                     {
                         if let LuaMemberKey::Integer(i) = &member.key {
                             let value = if let Some(value_syntax) = member.value_syntax {
-                                self.model.type_of_expr(value_syntax)
+                                self.type_of_expr_inherit(value_syntax)
                             } else {
                                 self.model.type_of_member(&m.id).unwrap_or(LuaType::Unknown)
                             };
