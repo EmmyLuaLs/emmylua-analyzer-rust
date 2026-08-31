@@ -2179,3 +2179,19 @@ fn test_vfs_file_ids_sorted_and_lookup_uses_snapshot() {
         Some(fid2)
     );
 }
+
+#[test]
+fn test_parallel_for_each_file_runs_on_shared_snapshots() {
+    let mut db = setup();
+    set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    set_test_file(&mut db, 2, "C:/ws/b.lua", "local b = 2");
+
+    let visited = std::sync::atomic::AtomicUsize::new(0);
+    db.parallel_for_each_file(|_file_id, model| {
+        // Touch salsa-backed per-file facts from worker-owned database clones.
+        let _ = model.file_facts();
+        visited.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+
+    assert_eq!(visited.load(std::sync::atomic::Ordering::Relaxed), 2);
+}

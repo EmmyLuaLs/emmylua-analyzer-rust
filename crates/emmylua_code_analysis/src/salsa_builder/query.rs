@@ -109,45 +109,50 @@ pub(crate) fn workspace_type_index(
     }
     // Interned TypeName ids have no `Ord`; sort by internal index so bucket binary search works.
     entries.sort_by_key(|(index, _)| *index);
-    let mut buckets: Vec<Bucket<u32>> = Vec::new();
-    let mut defs: Vec<TypeDef> = Vec::new();
+    let mut grouped: Vec<(u32, Vec<TypeDef>)> = Vec::new();
     for (index, def) in entries {
-        let def_index = defs.len() as u32;
-        defs.push(def);
-        if let Some(last) = buckets.last_mut()
-            && last.key == index
+        if let Some(last) = grouped.last_mut()
+            && last.0 == index
         {
-            last.indices.push(def_index);
+            last.1.push(def);
         } else {
-            buckets.push(Bucket {
-                key: index,
-                indices: vec![def_index],
-            });
+            grouped.push((index, vec![def]));
         }
+    }
+    let mut buckets: Vec<Bucket<u32>> = Vec::new();
+    let mut bucket_values: Vec<Arc<[TypeDef]>> = Vec::new();
+    for (index, defs) in grouped {
+        let len = defs.len() as u32;
+        bucket_values.push(Arc::from(defs));
+        buckets.push(Bucket {
+            key: index,
+            indices: (0..len).collect(),
+        });
     }
     WorkspaceTypeIndex {
         by_index: buckets,
-        defs,
+        bucket_values,
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
 pub struct WorkspaceTypeIndex {
     by_index: Vec<Bucket<u32>>,
-    defs: Vec<TypeDef>,
+    bucket_values: Vec<Arc<[TypeDef]>>,
 }
 
 impl WorkspaceTypeIndex {
     /// **All** definitions in the bucket (same-name definitions in multiple places, used by duplicate-type checks).
-    fn find_all(&self, db: &dyn SalsaDb, scope: TypeScope, full_name: &str) -> Vec<TypeDef> {
+    fn find_all(&self, db: &dyn SalsaDb, scope: TypeScope, full_name: &str) -> Arc<[TypeDef]> {
         let id = TypeName::new(db, scope, SmolStr::new(full_name));
-        let Some(indices) = find_bucket(&self.by_index, &id.as_id().index()) else {
-            return Vec::new();
+        let key = id.as_id().index();
+        let Ok(index) = self
+            .by_index
+            .binary_search_by(|bucket| bucket.key.cmp(&key))
+        else {
+            return Arc::from([]);
         };
-        indices
-            .iter()
-            .map(|&i| self.defs[i as usize].clone())
-            .collect()
+        self.bucket_values[index].clone()
     }
 }
 
@@ -160,7 +165,7 @@ pub(crate) fn resolve_type_def_locations(
     config: ConfigInput,
     file: SourceFileInput,
     bare_name: SmolStr,
-) -> Vec<TypeDef> {
+) -> Arc<[TypeDef]> {
     let file_id = file.file_id(db);
     let facts = file_facts(db, file, config);
     let index = workspace_type_index(db, workspace, config);
@@ -212,8 +217,8 @@ pub(crate) fn resolve_type_def(
     bare_name: SmolStr,
 ) -> Option<TypeDef> {
     resolve_type_def_locations(db, workspace, config, file, bare_name)
-        .into_iter()
-        .next()
+        .first()
+        .cloned()
 }
 
 /// Constructor attribute associated with a type definition.
@@ -284,7 +289,7 @@ fn constructor_attribute_of_decl(
 /// Editing one file only recomputes the `export_shard` of that file's shard; this index only re-aggregates exported members, not all local facts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberIndex {
-    by_owner: HashMap<SemanticId, Vec<MemberRef>>,
+    by_owner: HashMap<SemanticId, Arc<[MemberRef]>>,
 }
 
 #[salsa::tracked(returns(ref), no_eq, unsafe(non_salsa_values))]
@@ -307,7 +312,12 @@ pub(crate) fn workspace_member_index(
                 });
         }
     }
-    WorkspaceMemberIndex { by_owner }
+    WorkspaceMemberIndex {
+        by_owner: by_owner
+            .into_iter()
+            .map(|(owner, members)| (owner, Arc::<[MemberRef]>::from(members)))
+            .collect(),
+    }
 }
 
 /// Per-file reference index: only collects reference points in this file that can resolve to cross-file identities.
@@ -474,7 +484,10 @@ fn resolve_member_id(
     let (owner, name) = member_ref_from_index_expr(facts, index_expr)?;
     let workspace = workspace?;
     for resolved in resolve_owner_set(db, workspace, config, owner) {
-        for member in members_of_owner(db, workspace, config, resolved) {
+        for member in members_of_owner(db, workspace, config, resolved)
+            .iter()
+            .cloned()
+        {
             if member.name == name {
                 return Some(member.id);
             }
@@ -490,7 +503,7 @@ pub(crate) fn members_of_owner(
     workspace: WorkspaceInput,
     config: ConfigInput,
     owner: SemanticId,
-) -> Vec<MemberRef> {
+) -> Arc<[MemberRef]> {
     // An owner with a file-local identity (Decl/Member) only has members in its declaring file:
     // read that file's facts directly, avoiding a 64-shard scan and narrowing invalidation to a single file.
     let owner_file = match &owner {
@@ -503,14 +516,15 @@ pub(crate) fn members_of_owner(
     };
     if let Some(file) = db.file_input(owner_file) {
         let facts = file_facts(db, file, config);
-        return facts
+        let members = facts
             .members_of_owner(&owner)
             .map(|member| MemberRef {
                 file_id: owner_file,
                 id: member.id.clone(),
                 name: member.key.to_path().into(),
             })
-            .collect();
+            .collect::<Vec<_>>();
+        return Arc::from(members);
     }
 
     return_members_of_owner_scan(db, workspace, config, owner)
@@ -521,7 +535,7 @@ fn return_members_of_owner_scan(
     workspace: WorkspaceInput,
     config: ConfigInput,
     owner: SemanticId,
-) -> Vec<MemberRef> {
+) -> Arc<[MemberRef]> {
     workspace_member_index(db, workspace, config)
         .by_owner
         .get(&owner)
@@ -543,7 +557,8 @@ pub(crate) fn member_keys_of_owner(
     for resolved in resolve_owner_set(db, workspace, config, owner.clone()) {
         keys.extend(
             members_of_owner(db, workspace, config, resolved)
-                .into_iter()
+                .iter()
+                .cloned()
                 .map(|member| member.name),
         );
     }
@@ -560,7 +575,7 @@ pub(crate) fn type_defs_in_scope(
     config: ConfigInput,
     scope: TypeScope,
     full_name: SmolStr,
-) -> Vec<TypeDef> {
+) -> Arc<[TypeDef]> {
     workspace_type_index(db, workspace, config).find_all(db, scope, &full_name)
 }
 
@@ -574,9 +589,8 @@ pub(crate) fn global_type_by_name(
 ) -> Option<SemanticId> {
     workspace_type_index(db, workspace, config)
         .find_all(db, TypeScope::Global, &full_name)
-        .into_iter()
-        .next()
-        .map(|def| def.id)
+        .first()
+        .map(|def| def.id.clone())
 }
 
 /// Workspace declaration index: global declarations (by bare-name bucket) + type runtime values + type definition locations.
@@ -1101,8 +1115,13 @@ pub(crate) fn resolve_owner(
         let tail = &name[dot + 1..];
         let resolved = resolve_owner(db, workspace, config, SemanticId::name(head.clone()))?;
         // Members are looked up by union: declared under the head's name key (same-file `M.N = {}`) or under a concrete id key (`@field` etc.).
-        let mut members = members_of_owner(db, workspace, config, SemanticId::name(head.clone()));
-        members.extend(members_of_owner(db, workspace, config, resolved));
+        let mut members =
+            members_of_owner(db, workspace, config, SemanticId::name(head.clone())).to_vec();
+        members.extend(
+            members_of_owner(db, workspace, config, resolved)
+                .iter()
+                .cloned(),
+        );
         members
             .into_iter()
             .find(|member| member.name.as_str() == tail)
@@ -1197,7 +1216,10 @@ pub(crate) fn resolve_owner_set(
                 let head = SmolStr::new(&name[..dot]);
                 let tail = &name[dot + 1..];
                 for head_owner in resolve_owner_set(db, workspace, config, SemanticId::name(head)) {
-                    for member in members_of_owner(db, workspace, config, head_owner) {
+                    for member in members_of_owner(db, workspace, config, head_owner)
+                        .iter()
+                        .cloned()
+                    {
                         if member.name.as_str() == tail {
                             push_unique(&mut out, member.id);
                         }
@@ -1397,9 +1419,13 @@ fn iter_slot_type(
             }
             _ => continue,
         };
-        let mut member_refs = members_of_owner(db, workspace?, config, def.id.clone());
+        let mut member_refs = members_of_owner(db, workspace?, config, def.id.clone()).to_vec();
         for resolved in resolve_owner_set(db, workspace?, config, def.id.clone()) {
-            member_refs.extend(members_of_owner(db, workspace?, config, resolved));
+            member_refs.extend(
+                members_of_owner(db, workspace?, config, resolved)
+                    .iter()
+                    .cloned(),
+            );
         }
         for member_ref in member_refs
             .iter()
@@ -2782,7 +2808,10 @@ fn member_type_via_owner(
 ) -> Option<TypeShell> {
     // Union of dual identities: same-name type (@field) + runtime value (member declaration).
     for owner in resolve_owner_set(db, workspace, config, owner.clone()) {
-        for member in members_of_owner(db, workspace, config, owner) {
+        for member in members_of_owner(db, workspace, config, owner)
+            .iter()
+            .cloned()
+        {
             if member.name != name {
                 continue;
             }
@@ -2808,7 +2837,10 @@ fn member_type_via_owner_method(
     name: &str,
 ) -> Option<TypeShell> {
     for resolved in resolve_owner_set(db, workspace, config, owner.clone()) {
-        for member in members_of_owner(db, workspace, config, resolved) {
+        for member in members_of_owner(db, workspace, config, resolved)
+            .iter()
+            .cloned()
+        {
             if member.name != name {
                 continue;
             }

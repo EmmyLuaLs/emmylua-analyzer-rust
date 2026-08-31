@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use emmylua_code_analysis::{DeclKind, SalsaDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaDocTagField, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaStat,
@@ -39,22 +41,26 @@ fn search_member_implementations(
     let mut ranges = member_reference_ranges(salsa, member, true);
     // Other definition sites of the same member key (`@field` / table field / runtime assignment / method implementation) are also implementation positions.
     if let Some(key_text) = member_key_text(salsa, member) {
-        for file_id in salsa.file_ids() {
-            let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
-                continue;
-            };
+        let discovered = Mutex::new(Vec::new());
+        salsa.parallel_for_each_file(|file_id, model| {
             let Some(members) = model.members() else {
-                continue;
+                return;
             };
+            let mut discovered = discovered.lock().expect("implementation locations lock");
             for m in members.iter() {
                 if m.key.to_path() == key_text
                     && let Some(key_range) = m.id.member_key_range()
-                    && !ranges.contains(&(file_id, key_range))
+                    && !discovered.contains(&(file_id, key_range))
                 {
-                    ranges.push((file_id, key_range));
+                    discovered.push((file_id, key_range));
                 }
             }
-        }
+        });
+        let mut discovered = discovered
+            .into_inner()
+            .expect("implementation locations lock");
+        discovered.sort_by_key(|(file_id, _)| file_id.id);
+        ranges.extend(discovered);
     }
     let mut signatures = Vec::new();
     let mut others = Vec::new();
@@ -156,17 +162,25 @@ fn search_decl_implementations(
         let decl_info = model.file_facts()?.decl_by_id(decl)?;
         if matches!(decl_info.kind, DeclKind::Global) {
             let name = decl_info.name.clone();
-            for file_id in salsa.file_ids() {
-                let Some(file_model) = SalsaSemanticModel::new(salsa, file_id) else {
-                    continue;
-                };
+            let matched = Mutex::new(Vec::new());
+            salsa.parallel_for_each_file(|file_id, file_model| {
                 let Some(facts) = file_model.file_facts() else {
-                    continue;
+                    return;
                 };
+                let mut matched = matched.lock().expect("implementation locations lock");
                 for d in &facts.decls {
                     if d.name == name && matches!(d.kind, DeclKind::Global) {
-                        push_location(salsa, file_id, d.name_range, result);
+                        matched.push((file_id, d.name_range));
                     }
+                }
+            });
+            let mut matched = matched.into_inner().expect("implementation locations lock");
+            matched.sort_by_key(|(file_id, _)| file_id.id);
+            for (file_id, range) in matched {
+                if let Some(location) = make_location(salsa, file_id, range)
+                    && !result.contains(&location)
+                {
+                    result.push(location);
                 }
             }
         }
@@ -217,24 +231,28 @@ fn member_key_text(salsa: &SalsaDatabase, member: &SemanticId) -> Option<String>
         .map(|m| m.key.to_path())
 }
 
+fn make_location(
+    salsa: &SalsaDatabase,
+    file_id: emmylua_code_analysis::FileId,
+    range: rowan::TextRange,
+) -> Option<Location> {
+    let document = salsa.document(file_id)?;
+    let uri = document.get_uri()?;
+    let lsp_range = document.to_lsp_range(range)?;
+    Some(Location {
+        uri,
+        range: lsp_range,
+    })
+}
+
 fn push_location(
     salsa: &SalsaDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
     result: &mut Vec<Location>,
 ) {
-    let Some(document) = salsa.document(file_id) else {
+    let Some(location) = make_location(salsa, file_id, range) else {
         return;
-    };
-    let Some(uri) = document.get_uri() else {
-        return;
-    };
-    let Some(lsp_range) = document.to_lsp_range(range) else {
-        return;
-    };
-    let location = Location {
-        uri,
-        range: lsp_range,
     };
     if !result.contains(&location) {
         result.push(location);

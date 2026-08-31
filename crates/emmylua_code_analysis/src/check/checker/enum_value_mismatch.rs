@@ -84,7 +84,7 @@ fn check_pair(
     // Enum value text set: `@field` (owner=TypeDef) plus runtime table fields (`local Status = {...}`, owner=Decl).
     let tree = semantic_model.syntax_tree().expect("tree");
     let root = tree.get_red_root();
-    let mut member_refs = semantic_model.members_of_owner(&def.id);
+    let mut member_refs = semantic_model.members_of_owner(&def.id).as_slice().to_vec();
     if let Some(facts) = semantic_model.file_facts_of(def.file_id)
         && let Some(decl) = facts.decl_named(def.name.as_str())
     {

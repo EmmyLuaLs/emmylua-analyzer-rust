@@ -2,6 +2,7 @@ mod emmy_gutter_detail_request;
 mod emmy_gutter_request;
 
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use crate::{
     context::{
@@ -197,15 +198,19 @@ pub async fn on_emmy_gutter_detail_handler(
         CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         cancel_token,
         move |analysis| {
+            let locations = Mutex::new(Vec::new());
             let salsa = analysis.salsa_snapshot();
-            let mut locations = Vec::new();
-            for file_id in salsa.file_ids() {
-                let Some(model) = SalsaSemanticModel::new(&salsa, file_id) else {
-                    continue;
-                };
+            salsa.parallel_for_each_file(|file_id, model| {
                 let Some(facts) = model.file_facts() else {
-                    continue;
+                    return;
                 };
+                let Some(document) = model.db().document(file_id) else {
+                    return;
+                };
+                let Some(uri) = document.get_uri() else {
+                    return;
+                };
+                let mut locations = locations.lock().expect("gutter locations lock");
                 for def in facts.type_defs.iter() {
                     if !def
                         .super_names
@@ -214,12 +219,7 @@ pub async fn on_emmy_gutter_detail_handler(
                     {
                         continue;
                     }
-                    let Some(document) = salsa.document(file_id) else {
-                        continue;
-                    };
-                    if let Some(lsp_range) = document.to_lsp_range(def.name_range)
-                        && let Some(uri) = document.get_uri()
-                    {
+                    if let Some(lsp_range) = document.to_lsp_range(def.name_range) {
                         locations.push(GutterLocation {
                             uri: uri.to_string(),
                             line: lsp_range.start.line as i32,
@@ -227,8 +227,10 @@ pub async fn on_emmy_gutter_detail_handler(
                         });
                     }
                 }
-            }
-            Some(GutterDetailResponse { locations })
+            });
+            Some(GutterDetailResponse {
+                locations: locations.into_inner().expect("gutter locations lock"),
+            })
         },
     )
     .await

@@ -466,7 +466,7 @@ fn quick_candidate_score(
             check_pair(receiver_ty, param_ty);
         }
         let remainder = if params.is_empty() {
-            &params[..]
+            params
         } else {
             &params[1..]
         };
@@ -574,7 +574,7 @@ fn check_candidate(
             }
         }
         let remainder_params = if params.is_empty() {
-            &params[..]
+            params
         } else {
             &params[1..]
         };
@@ -1212,18 +1212,13 @@ fn named_kind_compatible(
 }
 
 /// Callback parameters vs function arguments: use the explicit work-queue function solver for structural/contravariant checks.
-
 fn is_function_like_type(ty: &LuaType) -> bool {
     match ty {
         LuaType::DocFunction(_) | LuaType::Signature(_) => true,
-        LuaType::Union(union) => union
-            .into_vec()
-            .iter()
-            .any(|component| is_function_like_type(component)),
-        LuaType::Intersection(intersection) => intersection
-            .get_types()
-            .iter()
-            .any(|component| is_function_like_type(component)),
+        LuaType::Union(union) => union.into_vec().iter().any(is_function_like_type),
+        LuaType::Intersection(intersection) => {
+            intersection.get_types().iter().any(is_function_like_type)
+        }
         _ => false,
     }
 }

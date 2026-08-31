@@ -19,6 +19,7 @@ use std::sync::Arc;
 use emmylua_parser::LineIndex;
 use lsp_types::Uri;
 
+use crate::semantic_model::cache::SemanticCache;
 use crate::vfs::file_path_to_uri;
 use crate::{Emmyrc, FileId, WorkspaceFolder, WorkspaceImport};
 pub use def::*;
@@ -27,6 +28,7 @@ use salsa::{Database, Setter};
 use vfs_snapshot::{FileEntry, VfsSnapshot};
 
 pub(crate) use facade::SalsaQueries;
+pub use facade::{MemberList, TypeDefList};
 #[derive(Clone)]
 pub struct DocumentView {
     pub file_id: FileId,
@@ -147,6 +149,10 @@ pub struct SalsaDatabase {
     /// Stable VFS mount point: immutable snapshot, Arc-shared on clone.
     vfs: Arc<VfsSnapshot>,
 
+    /// Shared high-level semantic cache (currently a bridge before full salsa-tracked
+    /// semantic queries; cloned snapshots share the same cache).
+    semantic_cache: Arc<SemanticCache>,
+
     /// Next FileId to allocate.
     next_file_id: u32,
 
@@ -168,6 +174,7 @@ impl Default for SalsaDatabase {
             config: None,
             workspace: None,
             vfs: Arc::new(VfsSnapshot::empty()),
+            semantic_cache: Arc::new(SemanticCache::default()),
             next_file_id: 0,
             executed_queries,
         };
@@ -229,6 +236,7 @@ impl SalsaDatabase {
     /// When `is_new == true`, also add the FileId to `WorkspaceInput.file_ids`;
     /// pure text/path updates only replace the VFS entry and do not touch the file set.
     fn commit_file_entry(&mut self, file_id: FileId, input: SourceFileInput, is_new: bool) {
+        self.semantic_cache.clear();
         let Some(workspace) = self.workspace else {
             return;
         };
@@ -255,6 +263,7 @@ impl SalsaDatabase {
 
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
+        self.semantic_cache.clear();
         let Some(workspace) = self.workspace else {
             return;
         };
@@ -276,6 +285,7 @@ impl SalsaDatabase {
 
     pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         let (
             language_level,
             special_like,
@@ -301,6 +311,7 @@ impl SalsaDatabase {
     /// Main workspace root (used for require module name derivation).
     pub fn update_main_root(&mut self, root: PathBuf) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         if let Some(config) = self.config {
             config.set_main_root(self).to(Some(root));
         }
@@ -317,9 +328,39 @@ impl SalsaDatabase {
             .unwrap_or(true)
     }
 
+    /// Shared high-level semantic cache. This is a bridge cache owned by the
+    /// database snapshot; it is cleared on any source/config mutation.
+    pub(crate) fn semantic_cache(&self) -> &SemanticCache {
+        &self.semantic_cache
+    }
+
+    /// Run `f` for every workspace file on scoped worker threads.
+    ///
+    /// Each worker owns its own `SalsaDatabase` clone, sharing the same salsa memo
+    /// and the shared high-level semantic cache. `f` must be `Sync` because it is
+    /// invoked concurrently from multiple scoped threads.
+    pub fn parallel_for_each_file<F>(&self, f: F)
+    where
+        F: Fn(FileId, &crate::SalsaSemanticModel<'_>) + Sync,
+    {
+        let file_ids: Vec<FileId> = self.file_ids().to_vec();
+        std::thread::scope(|scope| {
+            for file_id in file_ids {
+                let db = self.clone();
+                let f = &f;
+                scope.spawn(move || {
+                    if let Some(model) = crate::SalsaSemanticModel::new(&db, file_id) {
+                        f(file_id, &model);
+                    }
+                });
+            }
+        });
+    }
+
     /// Register the built-in std workspace root.
     pub fn add_std_workspace(&mut self, root: PathBuf) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         self.ensure_workspace();
         let Some(workspace_input) = self.workspace else {
             return;
@@ -337,6 +378,7 @@ impl SalsaDatabase {
     /// Register or replace the main workspace root.
     pub fn add_main_workspace(&mut self, root: PathBuf) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         self.update_main_root(root.clone());
         self.ensure_workspace();
         let Some(workspace_input) = self.workspace else {
@@ -355,6 +397,7 @@ impl SalsaDatabase {
     /// Register a library workspace (allocates a new `WorkspaceId`).
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         self.ensure_workspace();
         let Some(workspace_input) = self.workspace else {
             return;
@@ -374,6 +417,7 @@ impl SalsaDatabase {
     /// Keep only the std workspace (clear main/library before reload).
     pub fn clear_non_std_workspaces(&mut self) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         self.ensure_workspace();
         let Some(workspace_input) = self.workspace else {
             return;

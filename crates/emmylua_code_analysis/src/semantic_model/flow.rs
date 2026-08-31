@@ -85,6 +85,7 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
 }
 
 /// Flow-sensitive type of `decl` at a concrete CFG start node.
+#[allow(dead_code)] // Public flow API; retained for external/advanced callers.
 pub fn type_of_decl_at_flow_id(model: &SemanticModel, decl: &SemanticId, start: FlowId) -> LuaType {
     let fallback = || model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
     let Some(tree) = model.flow_tree() else {
@@ -106,6 +107,7 @@ pub fn type_of_decl_at_flow_id(model: &SemanticModel, decl: &SemanticId, start: 
 }
 
 /// Flow-sensitive type of `member` at a concrete CFG start node.
+#[allow(dead_code)] // Public flow API; retained for external/advanced callers.
 pub fn type_of_member_at_flow_id(
     model: &SemanticModel,
     member: &SemanticId,

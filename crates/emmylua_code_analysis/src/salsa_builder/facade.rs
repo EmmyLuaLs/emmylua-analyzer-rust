@@ -33,6 +33,106 @@ use crate::{
     LuaUnionType,
 };
 
+/// Owned member list wrapper.
+///
+/// Keeping an `Arc<[MemberRef]>` internally lets salsa snapshots share member lists
+/// without deep cloning. Iterating by value still materializes a `Vec` for callers
+/// that need owned `MemberRef` values, mirroring the previous API shape.
+#[derive(Clone, Debug, Default)]
+pub struct MemberList(Arc<[MemberRef]>);
+
+impl MemberList {
+    pub fn as_slice(&self) -> &[MemberRef] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl From<Arc<[MemberRef]>> for MemberList {
+    fn from(value: Arc<[MemberRef]>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Vec<MemberRef>> for MemberList {
+    fn from(value: Vec<MemberRef>) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
+impl std::ops::Deref for MemberList {
+    type Target = [MemberRef];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl IntoIterator for MemberList {
+    type Item = MemberRef;
+    type IntoIter = std::vec::IntoIter<MemberRef>;
+
+    #[allow(clippy::unnecessary_to_owned)] // By-value API intentionally yields owned MemberRef.
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.to_vec().into_iter()
+    }
+}
+
+/// Owned type-definition list wrapper, mirroring `MemberList`.
+#[derive(Clone, Debug, Default)]
+pub struct TypeDefList(Arc<[TypeDef]>);
+
+impl TypeDefList {
+    pub fn as_slice(&self) -> &[TypeDef] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl From<Arc<[TypeDef]>> for TypeDefList {
+    fn from(value: Arc<[TypeDef]>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Vec<TypeDef>> for TypeDefList {
+    fn from(value: Vec<TypeDef>) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
+impl std::ops::Deref for TypeDefList {
+    type Target = [TypeDef];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl IntoIterator for TypeDefList {
+    type Item = TypeDef;
+    type IntoIter = std::vec::IntoIter<TypeDef>;
+
+    #[allow(clippy::unnecessary_to_owned)] // By-value API intentionally yields owned TypeDef.
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.to_vec().into_iter()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct SalsaQueries<'db> {
     db: &'db SalsaDatabase,
@@ -231,14 +331,14 @@ impl<'db> SalsaQueries<'db> {
     }
 
     /// Members of an owner identified by `SemanticId` (cross-file).
-    pub fn members_of_owner(&self, owner: SemanticId) -> Vec<MemberRef> {
+    pub fn members_of_owner(&self, owner: SemanticId) -> MemberList {
         let Some(workspace) = self.db.workspace_input() else {
-            return Vec::new();
+            return MemberList::default();
         };
         let Some(config) = self.db.config_input() else {
-            return Vec::new();
+            return MemberList::default();
         };
-        query::members_of_owner(self.db, workspace, config, owner)
+        MemberList::from(query::members_of_owner(self.db, workspace, config, owner))
     }
 
     /// Constructor attribute for a type definition (from `meta("Class")` factory `---@[constructor("init")]`).
@@ -337,17 +437,24 @@ impl<'db> SalsaQueries<'db> {
             return Vec::new();
         };
         query::resolve_type_def_locations(self.db, workspace, config, file, SmolStr::new(name))
+            .to_vec()
     }
 
     /// All type definitions for a scope + full name (cross-file, for member queries / inheritance chains).
-    pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> Vec<TypeDef> {
+    pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> TypeDefList {
         let Some(workspace) = self.db.workspace_input() else {
-            return Vec::new();
+            return TypeDefList::default();
         };
         let Some(config) = self.db.config_input() else {
-            return Vec::new();
+            return TypeDefList::default();
         };
-        query::type_defs_in_scope(self.db, workspace, config, scope, SmolStr::new(full_name))
+        TypeDefList::from(query::type_defs_in_scope(
+            self.db,
+            workspace,
+            config,
+            scope,
+            SmolStr::new(full_name),
+        ))
     }
 
     // ── Projection: TypeShell → LuaType ──

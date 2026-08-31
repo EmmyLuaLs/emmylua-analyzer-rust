@@ -1,3 +1,4 @@
+pub(crate) mod cache;
 pub mod flow;
 pub mod infer;
 pub mod member;
@@ -49,37 +50,8 @@ pub struct SemanticModel<'db> {
     file_id: FileId,
     /// Closure return-inference in-progress stack (replaces thread_local; scoped to each SemanticModel instance).
     closure_return_infer_stack: RefCell<Vec<LuaSyntaxId>>,
-    /// Flow-type cache for `type_of_decl_at` within a single semantic model instance.
-    /// Keyed by `(decl, flow node)` to reduce repeated backtracking in linear assignment chains from exponential to linear.
-    flow_decl_cache: RefCell<HashMap<(SemanticId, FlowId), LuaType>>,
     /// Expression inference reentry guard: prevents recursive VM rebuilds without memoizing every expression in Salsa.
     expr_infer_guard: RefCell<Vec<LuaSyntaxId>>,
-    /// Per-model member lookup caches. These are intentionally not Salsa-tracked:
-    /// `LuaType` has pointer-identity Hash, so using it as a Salsa key caused unbounded memo growth.
-    /// Within one file check the same prefix-type values are reused heavily, so a scoped cache is enough.
-    member_info_cache: RefCell<HashMap<LuaType, HashMap<LuaMemberKey, Option<member::MemberInfo>>>>,
-    member_infos_cache: RefCell<HashMap<LuaType, Vec<member::MemberInfo>>>,
-    /// Non-Salsa expression type cache scoped to this SemanticModel instance. Diagnostics run many
-    /// checkers over the same file, and each checker calls `type_of_expr` on overlapping expressions.
-    expr_type_cache: RefCell<HashMap<LuaSyntaxId, LuaType>>,
-    /// Flow-sensitive expression cache scoped to one file-check pass.
-    expr_type_at_cache: RefCell<HashMap<(LuaSyntaxId, TextSize), LuaType>>,
-    /// Flow-sensitive member type cache scoped to one file-check pass.
-    member_type_at_cache: RefCell<HashMap<(SemanticId, TextSize), LuaType>>,
-    /// `resolve_member` is called by many checkers on the same index expressions; cache per syntax id.
-    resolve_member_cache: RefCell<HashMap<LuaSyntaxId, Option<ResolvedMember>>>,
-    /// Callable-candidate cache for the current file-check pass.
-    callable_candidates_cache: RefCell<HashMap<LuaSyntaxId, Vec<LuaFunctionType>>>,
-    /// Shared per-call-site analysis cache: candidates, argument types, receiver and resolved
-    /// generic signatures are computed once and reused by all call-related checkers.
-    call_site_cache: RefCell<HashMap<LuaSyntaxId, CallSiteAnalysis>>,
-    /// Type-compatibility cache. `type_check` is called extremely often by the same
-    /// checker set; with structural LuaType hashing this can be memoized safely.
-    type_check_cache: RefCell<HashMap<(LuaType, LuaType), bool>>,
-    /// Per-file-cache for declaration/member types, avoiding global Salsa memo growth
-    /// during cold full-workspace diagnostics.
-    decl_type_cache: RefCell<HashMap<SemanticId, Option<LuaType>>>,
-    member_type_cache: RefCell<HashMap<SemanticId, Option<LuaType>>>,
     decl_member_guard: RefCell<Vec<SemanticId>>,
 }
 
@@ -142,19 +114,7 @@ impl<'db> SemanticModel<'db> {
             db,
             file_id,
             closure_return_infer_stack: RefCell::new(Vec::new()),
-            flow_decl_cache: RefCell::new(HashMap::new()),
             expr_infer_guard: RefCell::new(Vec::new()),
-            member_info_cache: RefCell::new(HashMap::new()),
-            member_infos_cache: RefCell::new(HashMap::new()),
-            expr_type_cache: RefCell::new(HashMap::new()),
-            expr_type_at_cache: RefCell::new(HashMap::new()),
-            member_type_at_cache: RefCell::new(HashMap::new()),
-            resolve_member_cache: RefCell::new(HashMap::new()),
-            callable_candidates_cache: RefCell::new(HashMap::new()),
-            call_site_cache: RefCell::new(HashMap::new()),
-            type_check_cache: RefCell::new(HashMap::new()),
-            decl_type_cache: RefCell::new(HashMap::new()),
-            member_type_cache: RefCell::new(HashMap::new()),
             decl_member_guard: RefCell::new(Vec::new()),
         })
     }
@@ -657,21 +617,27 @@ impl<'db> SemanticModel<'db> {
     /// same-file member -> same-file class `@field` -> cross-file runtime member (resolve owner -> merge members).
     pub(crate) fn callable_candidates_cached(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
         let syntax = callee.get_syntax_id();
-        if let Some(cached) = self.callable_candidates_cache.borrow().get(&syntax) {
-            return cached.clone();
+        let file_id = self.file_id;
+        if let Some(cached) = self
+            .db
+            .semantic_cache()
+            .get_callable_candidates(file_id, syntax)
+        {
+            return cached;
         }
         let value =
             crate::check::checker::param_type_check::callable_candidates_uncached(self, callee);
-        self.callable_candidates_cache
-            .borrow_mut()
-            .insert(syntax, value.clone());
+        self.db
+            .semantic_cache()
+            .insert_callable_candidates(file_id, syntax, value.clone());
         value
     }
 
     pub(crate) fn call_site_analysis(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
         let syntax = call_expr.get_syntax_id();
-        if let Some(cached) = self.call_site_cache.borrow().get(&syntax) {
-            return cached.clone();
+        let file_id = self.file_id;
+        if let Some(cached) = self.db.semantic_cache().get_call_site(file_id, syntax) {
+            return cached;
         }
         let Some(callee) = call_expr.get_prefix_expr() else {
             let empty = CallSiteAnalysis {
@@ -682,19 +648,13 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
                 signatures: Vec::new(),
             };
-            self.call_site_cache
-                .borrow_mut()
-                .insert(syntax, empty.clone());
+            self.db
+                .semantic_cache()
+                .insert_call_site(file_id, syntax, empty.clone());
             return empty;
         };
-        let cs_t0 = std::time::Instant::now();
         let candidates = self.callable_candidates_cached(&callee);
         if candidates.is_empty() {
-            eprintln!(
-                "CSEMPTY {:?} cand_time={:?}",
-                call_expr.get_range(),
-                cs_t0.elapsed()
-            );
             let empty = CallSiteAnalysis {
                 candidates,
                 arg_types: Vec::new(),
@@ -703,12 +663,11 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
                 signatures: Vec::new(),
             };
-            self.call_site_cache
-                .borrow_mut()
-                .insert(syntax, empty.clone());
+            self.db
+                .semantic_cache()
+                .insert_call_site(file_id, syntax, empty.clone());
             return empty;
         }
-        let cs_t1 = std::time::Instant::now();
         let args = call_expr
             .get_args_list()
             .map(|list| list.get_args().collect::<Vec<_>>())
@@ -717,14 +676,6 @@ impl<'db> SemanticModel<'db> {
             .iter()
             .map(|arg| self.type_of_expr(arg.get_syntax_id()))
             .collect();
-        let cs_t2 = std::time::Instant::now();
-        eprintln!(
-            "CS {:?} cand={:?} args={:?} total_probe={:?}",
-            call_expr.get_range(),
-            cs_t1.duration_since(cs_t0),
-            cs_t2.duration_since(cs_t1),
-            cs_t2.duration_since(cs_t0)
-        );
         let colon_call = call_expr.is_colon_call();
         let receiver_ty = if colon_call {
             LuaIndexExpr::cast(callee.syntax().clone())
@@ -757,21 +708,22 @@ impl<'db> SemanticModel<'db> {
             explicit_generics,
             signatures,
         };
-        self.call_site_cache
-            .borrow_mut()
-            .insert(syntax, analysis.clone());
+        self.db
+            .semantic_cache()
+            .insert_call_site(file_id, syntax, analysis.clone());
         analysis
     }
 
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let syntax = index_expr.get_syntax_id();
-        if let Some(cached) = self.resolve_member_cache.borrow().get(&syntax) {
-            return cached.clone();
+        let file_id = self.file_id;
+        if let Some(cached) = self.db.semantic_cache().get_resolve_member(file_id, syntax) {
+            return cached;
         }
         let result = self.resolve_member_impl(index_expr);
-        self.resolve_member_cache
-            .borrow_mut()
-            .insert(syntax, result.clone());
+        self.db
+            .semantic_cache()
+            .insert_resolve_member(file_id, syntax, result.clone());
         result
     }
 
@@ -1199,8 +1151,13 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub fn type_of_decl(&self, decl: &SemanticId) -> Option<LuaType> {
-        if let Some(cached) = self.decl_type_cache.borrow().get(decl) {
-            return cached.clone();
+        let cache_file = match decl {
+            SemanticId::Decl(key) => key.file_id,
+            SemanticId::Member(key) => key.file_id,
+            _ => self.file_id,
+        };
+        if let Some(cached) = self.db.semantic_cache().get_decl_type(cache_file, decl) {
+            return cached;
         }
         {
             let mut guard = self.decl_member_guard.borrow_mut();
@@ -1211,9 +1168,9 @@ impl<'db> SemanticModel<'db> {
         }
         let result = self.type_of_decl_impl(decl);
         self.decl_member_guard.borrow_mut().pop();
-        self.decl_type_cache
-            .borrow_mut()
-            .insert(decl.clone(), result.clone());
+        self.db
+            .semantic_cache()
+            .insert_decl_type(cache_file, decl.clone(), result.clone());
         result
     }
 
@@ -1895,8 +1852,12 @@ impl<'db> SemanticModel<'db> {
 
     /// A member's declared type (keyed by declaring file, supports cross-file members; `@field` members carry the owner's generic context).
     pub fn type_of_member(&self, member: &SemanticId) -> Option<LuaType> {
-        if let Some(cached) = self.member_type_cache.borrow().get(member) {
-            return cached.clone();
+        let cache_file = match member {
+            SemanticId::Member(key) => key.file_id,
+            _ => self.file_id,
+        };
+        if let Some(cached) = self.db.semantic_cache().get_member_type(cache_file, member) {
+            return cached;
         }
         {
             let mut guard = self.decl_member_guard.borrow_mut();
@@ -1907,9 +1868,9 @@ impl<'db> SemanticModel<'db> {
         }
         let result = self.type_of_member_impl(member);
         self.decl_member_guard.borrow_mut().pop();
-        self.member_type_cache
-            .borrow_mut()
-            .insert(member.clone(), result.clone());
+        self.db
+            .semantic_cache()
+            .insert_member_type(cache_file, member.clone(), result.clone());
         result
     }
 
@@ -2080,13 +2041,13 @@ impl<'db> SemanticModel<'db> {
 
     /// All members of a prefix type (completion candidates; `@field` + inheritance + runtime values, with generic substitution).
     pub fn member_infos(&self, prefix_type: &LuaType) -> Vec<member::MemberInfo> {
-        if let Some(cached) = self.member_infos_cache.borrow().get(prefix_type) {
-            return cached.clone();
+        if let Some(cached) = self.db.semantic_cache().get_member_infos(prefix_type) {
+            return cached;
         }
         let value = member::member_infos(self, prefix_type);
-        self.member_infos_cache
-            .borrow_mut()
-            .insert(prefix_type.clone(), value.clone());
+        self.db
+            .semantic_cache()
+            .insert_member_infos(prefix_type.clone(), value.clone());
         value
     }
 
@@ -2096,19 +2057,15 @@ impl<'db> SemanticModel<'db> {
         prefix_type: &LuaType,
         key: &LuaMemberKey,
     ) -> Option<member::MemberInfo> {
-        let mut cache = self.member_info_cache.borrow_mut();
-        if let Some(key_cache) = cache.get_mut(prefix_type) {
-            if let Some(value) = key_cache.get(key) {
-                return value.clone();
-            }
-            let value = member::member_info(self, prefix_type, key);
-            key_cache.insert(key.clone(), value.clone());
+        if let Some(value) = self.db.semantic_cache().get_member_info(prefix_type, key) {
             return value;
         }
         let value = member::member_info(self, prefix_type, key);
-        let mut key_cache = HashMap::new();
-        key_cache.insert(key.clone(), value.clone());
-        cache.insert(prefix_type.clone(), key_cache);
+        self.db.semantic_cache().insert_member_info(
+            prefix_type.clone(),
+            key.clone(),
+            value.clone(),
+        );
         value
     }
 
@@ -2315,16 +2272,15 @@ impl<'db> SemanticModel<'db> {
         decl: &SemanticId,
         flow_id: FlowId,
     ) -> Option<LuaType> {
-        self.flow_decl_cache
-            .borrow()
-            .get(&(decl.clone(), flow_id))
-            .cloned()
+        self.db
+            .semantic_cache()
+            .get_flow_decl(self.file_id, decl, flow_id)
     }
 
     pub(crate) fn set_cached_decl_flow(&self, decl: &SemanticId, flow_id: FlowId, ty: LuaType) {
-        self.flow_decl_cache
-            .borrow_mut()
-            .insert((decl.clone(), flow_id), ty);
+        self.db
+            .semantic_cache()
+            .insert_flow_decl(self.file_id, decl.clone(), flow_id, ty);
     }
 
     /// Flow-sensitive type of a decl at offset (assignment-flow aware: last assignment's RHS type / declaration initial type,
@@ -2393,14 +2349,24 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub(crate) fn type_of_member_at_impl(&self, member: &SemanticId, offset: TextSize) -> LuaType {
-        let key = (member.clone(), offset);
-        if let Some(cached) = self.member_type_at_cache.borrow().get(&key) {
-            return cached.clone();
+        let cache_file = match member {
+            SemanticId::Member(key) => key.file_id,
+            _ => self.file_id,
+        };
+        if let Some(cached) = self
+            .db
+            .semantic_cache()
+            .get_member_type_at(cache_file, member, offset)
+        {
+            return cached;
         }
         let ty = flow::type_of_member_at(self, member, offset);
-        self.member_type_at_cache
-            .borrow_mut()
-            .insert(key, ty.clone());
+        self.db.semantic_cache().insert_member_type_at(
+            cache_file,
+            member.clone(),
+            offset,
+            ty.clone(),
+        );
         ty
     }
 
@@ -2445,7 +2411,7 @@ impl<'db> SemanticModel<'db> {
 
     /// Flow-sensitive type of an expression at offset (NameExpr / IndexExpr use flow backtracking; others use ordinary inference).
     pub fn type_of_expr_at(&self, expr_syntax: LuaSyntaxId, offset: TextSize) -> LuaType {
-        flow::type_of_expr_at(self, expr_syntax, offset)
+        self.type_of_expr_at_impl(expr_syntax, offset)
     }
 
     pub(crate) fn type_of_expr_at_impl(
@@ -2453,12 +2419,18 @@ impl<'db> SemanticModel<'db> {
         expr_syntax: LuaSyntaxId,
         offset: TextSize,
     ) -> LuaType {
-        let key = (expr_syntax, offset);
-        if let Some(cached) = self.expr_type_at_cache.borrow().get(&key) {
-            return cached.clone();
+        let file_id = self.file_id;
+        if let Some(cached) =
+            self.db
+                .semantic_cache()
+                .get_expr_type_at(file_id, expr_syntax, offset)
+        {
+            return cached;
         }
         let ty = flow::type_of_expr_at(self, expr_syntax, offset);
-        self.expr_type_at_cache.borrow_mut().insert(key, ty.clone());
+        self.db
+            .semantic_cache()
+            .insert_expr_type_at(file_id, expr_syntax, offset, ty.clone());
         ty
     }
 
@@ -2484,7 +2456,11 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// All type definitions for a scope + full name (cross-file; used by checkers / inheritance chains).
-    pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> Vec<TypeDef> {
+    pub fn type_defs_in_scope(
+        &self,
+        scope: TypeScope,
+        full_name: &str,
+    ) -> crate::salsa_builder::TypeDefList {
         self.q().type_defs_in_scope(scope, full_name)
     }
 
@@ -3178,7 +3154,7 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// Members whose owner is a `SemanticId` (cross-file).
-    pub fn members_of_owner(&self, owner: &SemanticId) -> Vec<MemberRef> {
+    pub fn members_of_owner(&self, owner: &SemanticId) -> crate::salsa_builder::MemberList {
         self.q().members_of_owner(owner.clone())
     }
 
@@ -3327,19 +3303,55 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
-        if let Some(cached) = self.expr_type_cache.borrow().get(&expr_syntax) {
-            return cached.clone();
+        let file_id = self.file_id;
+        if let Some(cached) = self.db.semantic_cache().get_expr_type(file_id, expr_syntax) {
+            return cached;
         }
+
+        // Body-level inference map: lazily store expression types under their enclosing
+        // function/closure body so a single logical body share one cache entry.
+        if let Some(body) = self.enclosing_body_syntax(expr_syntax)
+            && let Some(inference) = self.db.semantic_cache().get_body_inference(file_id, body)
+            && let Some(ty) = inference
+                .read()
+                .expect("body inference lock")
+                .get(&expr_syntax)
+                .cloned()
+        {
+            return ty;
+        }
+
         if self.is_expr_infer_active(expr_syntax) {
             return LuaType::Unknown;
         }
+
         self.begin_expr_infer(expr_syntax);
         let ty = infer::infer_expr(self, expr_syntax);
         self.end_expr_infer(expr_syntax);
-        self.expr_type_cache
-            .borrow_mut()
-            .insert(expr_syntax, ty.clone());
+        self.db
+            .semantic_cache()
+            .insert_expr_type(file_id, expr_syntax, ty.clone());
+        if let Some(body) = self.enclosing_body_syntax(expr_syntax) {
+            self.db
+                .semantic_cache()
+                .get_or_create_body_inference(file_id, body)
+                .write()
+                .expect("body inference lock")
+                .insert(expr_syntax, ty.clone());
+        }
         ty
+    }
+
+    /// Returns the nearest enclosing closure/function body syntax id, or the chunk itself
+    /// when the expression is at file scope.
+    fn enclosing_body_syntax(&self, expr_syntax: LuaSyntaxId) -> Option<LuaSyntaxId> {
+        let tree = self.syntax_tree()?;
+        let root = tree.get_red_root();
+        let node = expr_syntax.to_node_from_root(&root)?;
+        if let Some(closure) = node.ancestors().find_map(LuaClosureExpr::cast) {
+            return Some(closure.get_syntax_id());
+        }
+        self.chunk().map(|chunk| chunk.get_syntax_id())
     }
 
     /// Hover/display layer only: expands generic alias instances (`Pick<...>` -> `T[K]` structure).
@@ -3354,12 +3366,13 @@ impl<'db> SemanticModel<'db> {
 
     /// Type compatibility check (boolean version, mirrors the old `SemanticModel::type_check`).
     pub fn type_check(&self, source: &LuaType, target: &LuaType) -> bool {
-        let key = (source.clone(), target.clone());
-        if let Some(cached) = self.type_check_cache.borrow().get(&key) {
-            return *cached;
+        if let Some(cached) = self.db.semantic_cache().get_type_check(source, target) {
+            return cached;
         }
         let result = type_check::is_compatible(self, source, target);
-        self.type_check_cache.borrow_mut().insert(key, result);
+        self.db
+            .semantic_cache()
+            .insert_type_check(source.clone(), target.clone(), result);
         result
     }
 

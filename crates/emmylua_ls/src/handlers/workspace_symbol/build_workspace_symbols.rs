@@ -1,4 +1,6 @@
-use emmylua_code_analysis::{DeclKind, EmmyLuaAnalysis, SalsaSemanticModel};
+use std::sync::Mutex;
+
+use emmylua_code_analysis::{DeclKind, EmmyLuaAnalysis};
 use lsp_types::{SymbolKind, WorkspaceSymbol, WorkspaceSymbolResponse};
 use tokio_util::sync::CancellationToken;
 
@@ -16,21 +18,19 @@ pub fn build_workspace_symbols(
     query: String,
     cancel_token: CancellationToken,
 ) -> Option<WorkspaceSymbolResponse> {
-    let mut symbols = Vec::new();
+    let symbols = Mutex::new(Vec::new());
     let salsa = analysis.salsa_snapshot();
-    for file_id in salsa.file_ids() {
+    salsa.parallel_for_each_file(|file_id, model| {
         if cancel_token.is_cancelled() {
-            break;
+            return;
         }
-        let Some(model) = SalsaSemanticModel::new(&salsa, file_id) else {
-            continue;
-        };
-        let Some(document) = salsa.document(file_id) else {
-            continue;
+        let Some(document) = model.db().document(file_id) else {
+            return;
         };
         let Some(uri) = document.get_uri() else {
-            continue;
+            return;
         };
+        let mut symbols = symbols.lock().expect("workspace symbols lock");
         if let Some(decls) = model.decls() {
             for decl in decls.iter() {
                 if !matches!(decl.kind, DeclKind::Global) {
@@ -76,6 +76,8 @@ pub fn build_workspace_symbols(
                 });
             }
         }
-    }
-    Some(WorkspaceSymbolResponse::Nested(symbols))
+    });
+    Some(WorkspaceSymbolResponse::Nested(
+        symbols.into_inner().expect("workspace symbols lock"),
+    ))
 }
