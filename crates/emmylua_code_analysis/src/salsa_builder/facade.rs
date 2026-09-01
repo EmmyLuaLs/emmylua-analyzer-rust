@@ -17,11 +17,12 @@ use crate::{
 
 use super::SalsaDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, InternedLuaType, Member, MemberRef, ModuleExport, NameUse,
-    SalsaGenericParam, Scope, SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
+    ConstructorAttribute, Decl, InternedLuaType, LuaMemberKey, Member, MemberRef, ModuleExport,
+    NameUse, SalsaGenericParam, Scope, SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
 };
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
+use super::flow::FlowId;
 use super::query::{
     self, decl_references, decl_type, file_and_config, file_facts, member_keys_of_decl,
     member_keys_of_type, member_type, module_export_type, parse, resolve_name, resolve_type_def,
@@ -197,6 +198,136 @@ impl<'db> SalsaQueries<'db> {
     ) -> Option<query::SalsaResolvedMember> {
         let (file, config) = file_and_config(self.db, file_id)?;
         query::semantic_resolve_member(self.db, file, config, index_syntax)
+    }
+
+    /// High-level declaration type (salsa-tracked).
+    pub(crate) fn semantic_decl_type(&self, file_id: FileId, decl: &SemanticId) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_decl_type(self.db, file, config, decl.clone()).map(|ty| ty.into_inner())
+    }
+
+    /// High-level member type (salsa-tracked).
+    pub(crate) fn semantic_member_type(
+        &self,
+        file_id: FileId,
+        member: &SemanticId,
+    ) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_member_type(self.db, file, config, member.clone()).map(|ty| ty.into_inner())
+    }
+
+    /// All members of a prefix type (salsa-tracked).
+    pub(crate) fn semantic_member_infos(
+        &self,
+        file_id: FileId,
+        prefix_type: &LuaType,
+    ) -> Vec<crate::semantic_model::member::MemberInfo> {
+        let Some((file, config)) = file_and_config(self.db, file_id) else {
+            return Vec::new();
+        };
+        query::semantic_member_infos(
+            self.db,
+            file,
+            config,
+            InternedLuaType::new(prefix_type.clone()),
+        )
+        .into_iter()
+        .map(|info| crate::semantic_model::member::MemberInfo {
+            key: info.key.into_lua(),
+            typ: info.typ.into_inner(),
+            id: info.id,
+            file_id: info.file_id,
+            is_method: info.is_method,
+        })
+        .collect()
+    }
+
+    /// One member of a prefix type (salsa-tracked).
+    pub(crate) fn semantic_member_info(
+        &self,
+        file_id: FileId,
+        prefix_type: &LuaType,
+        key: &LuaMemberKey,
+    ) -> Option<crate::semantic_model::member::MemberInfo> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_member_info(
+            self.db,
+            file,
+            config,
+            InternedLuaType::new(prefix_type.clone()),
+            query::SalsaMemberKey::from_lua(key.clone()),
+        )
+        .map(|info| crate::semantic_model::member::MemberInfo {
+            key: info.key.into_lua(),
+            typ: info.typ.into_inner(),
+            id: info.id,
+            file_id: info.file_id,
+            is_method: info.is_method,
+        })
+    }
+
+    /// Flow-sensitive expression type at an offset (salsa-tracked).
+    pub(crate) fn semantic_expr_type_at(
+        &self,
+        file_id: FileId,
+        expr_syntax: LuaSyntaxId,
+        offset: TextSize,
+    ) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_expr_type_at(self.db, file, config, expr_syntax, offset)
+            .map(|ty| ty.into_inner())
+    }
+
+    /// Flow-sensitive member type at an offset (salsa-tracked).
+    pub(crate) fn semantic_member_type_at(
+        &self,
+        file_id: FileId,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_member_type_at(self.db, file, config, member.clone(), offset)
+            .map(|ty| ty.into_inner())
+    }
+
+    /// Flow-sensitive declaration type at a CFG start node (salsa-tracked).
+    pub(crate) fn semantic_decl_flow_type(
+        &self,
+        file_id: FileId,
+        decl: &SemanticId,
+        flow_id: FlowId,
+    ) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_decl_flow_type(self.db, file, config, decl.clone(), flow_id)
+            .map(|ty| ty.into_inner())
+    }
+
+    /// Callable candidates for a callee expression (salsa-tracked).
+    pub(crate) fn semantic_callable_candidates(
+        &self,
+        file_id: FileId,
+        callee_syntax: LuaSyntaxId,
+    ) -> Vec<LuaFunctionType> {
+        let Some((file, config)) = file_and_config(self.db, file_id) else {
+            return Vec::new();
+        };
+        query::semantic_callable_candidates(self.db, file, config, callee_syntax)
+            .into_iter()
+            .filter_map(|ty| match ty.as_ref() {
+                LuaType::DocFunction(fun) => Some(fun.as_ref().clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Call-site analysis for a call expression (salsa-tracked).
+    pub(crate) fn semantic_call_site(
+        &self,
+        file_id: FileId,
+        call_syntax: LuaSyntaxId,
+    ) -> Option<query::SalsaCallSiteAnalysis> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_call_site(self.db, file, config, call_syntax)
     }
 
     /// Whether a doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).

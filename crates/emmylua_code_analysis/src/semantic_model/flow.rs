@@ -1102,9 +1102,8 @@ fn antecedent_has_narrowing(tree: &FlowTree, start: Option<FlowAntecedent>) -> b
 
 /// Declaration assignment frame on the explicit stack: continue backtracking the antecedent first to get the "pre-assignment type", then compute the assignment result.
 struct DeclAssignmentFrame {
-    /// Single antecedent of the current assignment node (used to cache the pre-assignment state).
+    /// Single antecedent of the current assignment node.
     antecedent: FlowAntecedent,
-    antecedent_flow_id: FlowId,
     /// Current assignment flow node id.
     flow_id: FlowId,
     assign_pos: TextSize,
@@ -1126,46 +1125,6 @@ fn finish_decl_frames(
     let mut frames = frames;
     while let Some(frame) = frames.pop() {
         let narrowed_before = result;
-        // Cache the flow state "before this assignment". In a linear assignment chain, the `value` read by a later variable initialization
-        // is exactly this state; once cached, don't repeatedly backtrack along the whole chain.
-        model.set_cached_decl_flow(decl, frame.antecedent_flow_id, narrowed_before.clone());
-        // If the immediate previous node of `value = alias` is exactly `local alias = value`, then this alias's
-        // type at the assignment statement is the current `narrowed_before`. Cache it directly to avoid the later RHS
-        // `type_of_decl_at(alias)` walking the whole linear chain from alias's declaration again.
-        if let Some(ante_node) = tree.get_flow_node(frame.antecedent_flow_id) {
-            // Node of the form `local alias = value`: the state before the alias declaration (i.e. the flow node containing value's initializer)
-            // is the pre-assignment state. Cache that flow node too so later queries for value can hit it.
-            let alias_before_flow_id = match &ante_node.antecedent {
-                Some(FlowAntecedent::Single(prev)) => *prev,
-                _ => frame.antecedent_flow_id,
-            };
-            model.set_cached_decl_flow(decl, alias_before_flow_id, narrowed_before.clone());
-            if tree.get_flow_effects(frame.antecedent_flow_id).len() == 1 {
-                for effect in tree.get_flow_effects(frame.antecedent_flow_id) {
-                    if let FlowEffect::AssignDecl {
-                        decl: rhs_decl,
-                        value_syntax,
-                    } = effect
-                        && *rhs_decl != *decl
-                        && let Some(tree) = model.syntax_tree()
-                        && let Some(node) = (*value_syntax).to_node_from_root(&tree.get_red_root())
-                        && let Some(LuaExpr::NameExpr(name_expr)) = LuaExpr::cast(node)
-                        && model.resolve_name(name_expr.get_position()).as_ref() == Some(decl)
-                    {
-                        model.set_cached_decl_flow(
-                            &rhs_decl,
-                            frame.antecedent_flow_id,
-                            narrowed_before.clone(),
-                        );
-                        model.set_cached_decl_flow(
-                            &rhs_decl,
-                            frame.flow_id,
-                            narrowed_before.clone(),
-                        );
-                    }
-                }
-            }
-        }
         let value_ty = assigned_value_type(
             model,
             tree,
@@ -1264,7 +1223,6 @@ fn trace_decl(
                             if let Some(FlowAntecedent::Single(next)) = node.antecedent.as_ref() {
                                 frames.push(DeclAssignmentFrame {
                                     antecedent: FlowAntecedent::Single(*next),
-                                    antecedent_flow_id: *next,
                                     flow_id: current,
                                     assign_pos,
                                     value_syntax: *value_syntax,

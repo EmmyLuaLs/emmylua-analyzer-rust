@@ -790,6 +790,8 @@ pub enum GenericTplId {
     ConditionalInfer(u32),
 }
 
+unsafe impl salsa::SalsaValue for GenericTplId {}
+
 impl GenericTplId {
     pub fn get_idx(&self) -> usize {
         match self {
