@@ -64,32 +64,6 @@ impl LuaTupleType {
         self.contain_tpl_children()
     }
 
-    // pub fn collapse_to_union(&self, db: &DbIndex) -> LuaType {
-    //     let mut ty = LuaType::Never;
-    //     for t in &self.types {
-    //         match t {
-    //             LuaType::IntegerConst(i) => {
-    //                 ty = TypeOps::Union.apply(db, &ty, &LuaType::DocIntegerConst(*i));
-    //             }
-    //             LuaType::FloatConst(_) => {
-    //                 ty = TypeOps::Union.apply(db, &ty, &LuaType::Number);
-    //             }
-    //             LuaType::StringConst(s) => {
-    //                 ty = TypeOps::Union.apply(db, &ty, &LuaType::DocStringConst(s.clone()));
-    //             }
-    //             _ => {
-    //                 ty = TypeOps::Union.apply(db, &ty, t);
-    //             }
-    //         }
-    //     }
-
-    //     if self.types.is_empty() {
-    //         LuaType::Unknown
-    //     } else {
-    //         ty
-    //     }
-    // }
-
     pub fn is_infer_resolve(&self) -> bool {
         matches!(self.status, LuaTupleStatus::InferResolve)
     }

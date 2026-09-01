@@ -141,47 +141,6 @@ impl LuaTypeDecl {
     pub fn merge_decl(&mut self, other: LuaTypeDecl) {
         self.locations.extend(other.locations);
     }
-
-    // /// Get the type of an enum field
-    // pub fn get_enum_field_type(&self, db: &DbIndex) -> Option<LuaType> {
-    //     if !self.is_enum() {
-    //         return None;
-    //     }
-
-    //     let enum_member_owner = LuaMemberOwner::Type(self.get_id());
-    //     let enum_members = db.get_member_index().get_members(&enum_member_owner)?;
-
-    //     let mut union_types = Vec::new();
-    //     if self.is_enum_key() {
-    //         for enum_member in enum_members {
-    //             let member_key = enum_member.get_key();
-    //             let fake_type = match member_key {
-    //                 LuaMemberKey::Name(name) => LuaType::DocStringConst(name.clone().into()),
-    //                 LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-    //                 LuaMemberKey::TypeKey(typ) => typ.clone(),
-    //                 LuaMemberKey::None => continue,
-    //             };
-
-    //             union_types.push(fake_type);
-    //         }
-    //     } else {
-    //         for member in enum_members {
-    //             if let Some(type_cache) =
-    //                 db.get_type_index().get_type_cache(&member.get_id().into())
-    //             {
-    //                 let member_fake_type = match type_cache.as_type() {
-    //                     LuaType::StringConst(s) => LuaType::DocStringConst(s.clone()),
-    //                     LuaType::IntegerConst(i) => LuaType::DocIntegerConst(*i),
-    //                     _ => type_cache.as_type().clone(),
-    //                 };
-
-    //                 union_types.push(member_fake_type);
-    //             }
-    //         }
-    //     }
-
-    //     Some(LuaType::Union(LuaUnionType::from_vec(union_types).into()))
-    // }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -236,39 +195,6 @@ impl LuaTypeDeclId {
             basic_name
         }) as _
     }
-
-    // fn collect_super_types(&self, db: &DbIndex, collected_types: &mut Vec<LuaType>) {
-    //     // Must be breadth-first
-    //     let mut queue = Vec::new();
-    //     queue.push(self.clone());
-
-    //     while let Some(current_id) = queue.pop() {
-    //         let super_types = db.get_type_index().get_super_types(&current_id);
-    //         if let Some(super_types) = super_types {
-    //             for super_type in super_types {
-    //                 match &super_type {
-    //                     LuaType::Ref(super_type_id) => {
-    //                         if !collected_types.contains(&super_type) {
-    //                             collected_types.push(super_type.clone());
-    //                             queue.push(super_type_id.clone());
-    //                         }
-    //                     }
-    //                     _ => {
-    //                         if !collected_types.contains(&super_type) {
-    //                             collected_types.push(super_type.clone());
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    // pub fn collect_super_types_with_self(&self, db: &DbIndex, typ: LuaType) -> Vec<LuaType> {
-    //     let mut collected_types: Vec<LuaType> = vec![typ];
-    //     self.collect_super_types(db, &mut collected_types);
-    //     collected_types
-    // }
 
     pub fn is_local(&self) -> bool {
         matches!(self.id.as_ref(), LuaTypeIdentifier::File(_, _))

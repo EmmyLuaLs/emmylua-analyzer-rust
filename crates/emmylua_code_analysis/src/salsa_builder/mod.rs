@@ -133,8 +133,6 @@ pub(crate) trait SalsaDb: Database {
     fn file_input(&self, file_id: FileId) -> Option<SourceFileInput>;
     /// Current workspace input (stable id, in-place content updates → revision bumps on any file change).
     fn workspace_input(&self) -> Option<WorkspaceInput>;
-    /// Downcast to the concrete `SalsaDatabase` for the high-level semantic layer.
-    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 #[salsa::db]
@@ -190,10 +188,6 @@ impl SalsaDb for SalsaDatabase {
 
     fn workspace_input(&self) -> Option<WorkspaceInput> {
         self.workspace
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
