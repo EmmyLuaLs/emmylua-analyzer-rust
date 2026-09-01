@@ -10,7 +10,7 @@ use super::def::{
     ConstructorAttribute, DeclKind, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
     ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef, TypeDefKind,
 };
-use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
+use super::exports::{file_exports, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::{ConfigInput, SourceFileInput, TypeName, WorkspaceInput};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
@@ -86,28 +86,42 @@ use smol_str::SmolStr;
 
 /// Workspace type index: interned `TypeName` (scope+full_name) internal index -> definition.
 /// Interning happens at build time; queries binary-search by internal index (interned ids have no `Ord`, so sort by `as_id().index()`).
-#[salsa::tracked(returns(ref))]
-pub(crate) fn workspace_type_index(
+/// Type index scoped to a single workspace.
+///
+/// Like `workspace_decl_index_for`, this keeps std / library / main type indexes
+/// independent so editing one workspace does not rebuild another.
+#[salsa::tracked(returns(ref), lru = 16)]
+pub(crate) fn workspace_type_index_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
+    ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
     let mut entries: Vec<(u32, TypeDef)> = Vec::new();
-    for shard in 0..EXPORT_SHARDS {
-        let exports = export_shard(db, workspace, config, shard);
+    for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let exports = file_exports(db, file, config);
         for def in &exports.types {
             let scope = match def.visibility {
                 TypeVisibility::Public => TypeScope::Global,
-                TypeVisibility::Internal => TypeScope::Internal(
-                    file_workspace_id(db, workspace, def.file_id).unwrap_or(WorkspaceId::MAIN),
-                ),
+                TypeVisibility::Internal => TypeScope::Internal(ws_id),
                 TypeVisibility::Private => TypeScope::File(def.file_id),
             };
             let id = TypeName::new(db, scope, def.full_name.clone());
             entries.push((id.as_id().index(), def.clone()));
         }
     }
-    // Interned TypeName ids have no `Ord`; sort by internal index so bucket binary search works.
     entries.sort_by_key(|(index, _)| *index);
     let mut grouped: Vec<(u32, Vec<TypeDef>)> = Vec::new();
     for (index, def) in entries {
@@ -156,6 +170,54 @@ impl WorkspaceTypeIndex {
     }
 }
 
+pub(crate) fn all_workspace_ids(db: &dyn SalsaDb, workspace: WorkspaceInput) -> Vec<WorkspaceId> {
+    let roots = workspace.roots(db).to_vec();
+    let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
+        vec![WorkspaceId::MAIN]
+    } else {
+        roots.iter().map(|root| root.id).collect()
+    };
+    if !ids.contains(&WorkspaceId::REMOTE) {
+        ids.push(WorkspaceId::REMOTE);
+    }
+    ids
+}
+
+fn find_global_types(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    full_name: &str,
+) -> Arc<[TypeDef]> {
+    let mut out: Vec<TypeDef> = Vec::new();
+    for ws_id in all_workspace_ids(db, workspace) {
+        let index = workspace_type_index_for(db, workspace, config, ws_id);
+        out.extend(index.find_all(db, TypeScope::Global, full_name).iter().cloned());
+    }
+    Arc::from(out)
+}
+
+fn find_internal_types(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws: WorkspaceId,
+    full_name: &str,
+) -> Arc<[TypeDef]> {
+    workspace_type_index_for(db, workspace, config, ws).find_all(db, TypeScope::Internal(ws), full_name)
+}
+
+fn find_file_types(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    file_id: FileId,
+    full_name: &str,
+) -> Arc<[TypeDef]> {
+    let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
+    workspace_type_index_for(db, workspace, config, ws).find_all(db, TypeScope::File(file_id), full_name)
+}
+
 /// Resolve **all definition locations** of a named type in the current file scope
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 #[salsa::tracked(returns(clone))]
@@ -168,41 +230,40 @@ pub(crate) fn resolve_type_def_locations(
 ) -> Arc<[TypeDef]> {
     let file_id = file.file_id(db);
     let facts = file_facts(db, file, config);
-    let index = workspace_type_index(db, workspace, config);
     let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
 
     if let Some(ns) = &facts.namespace {
         let full = SmolStr::new(format!("{}.{}", ns, bare_name));
-        let defs = index.find_all(db, TypeScope::Internal(ws), &full);
+        let defs = find_internal_types(db, workspace, config, ws, &full);
         if !defs.is_empty() {
             return defs;
         }
-        let defs = index.find_all(db, TypeScope::Global, &full);
+        let defs = find_global_types(db, workspace, config, &full);
         if !defs.is_empty() {
             return defs;
         }
     }
     for us in &facts.usings {
         let full = SmolStr::new(format!("{}.{}", us, bare_name));
-        let defs = index.find_all(db, TypeScope::Internal(ws), &full);
+        let defs = find_internal_types(db, workspace, config, ws, &full);
         if !defs.is_empty() {
             return defs;
         }
-        let defs = index.find_all(db, TypeScope::Global, &full);
+        let defs = find_global_types(db, workspace, config, &full);
         if !defs.is_empty() {
             return defs;
         }
     }
 
-    let defs = index.find_all(db, TypeScope::File(file_id), &bare_name);
+    let defs = find_file_types(db, workspace, config, file_id, &bare_name);
     if !defs.is_empty() {
         return defs;
     }
-    let defs = index.find_all(db, TypeScope::Internal(ws), &bare_name);
+    let defs = find_internal_types(db, workspace, config, ws, &bare_name);
     if !defs.is_empty() {
         return defs;
     }
-    index.find_all(db, TypeScope::Global, &bare_name)
+    find_global_types(db, workspace, config, &bare_name)
 }
 
 /// Resolve a named type in the current file scope (mirrors the old `find_type_decl` order):
@@ -292,15 +353,29 @@ pub struct WorkspaceMemberIndex {
     by_owner: HashMap<SemanticId, Arc<[MemberRef]>>,
 }
 
-#[salsa::tracked(returns(ref), no_eq, unsafe(non_salsa_values))]
-pub(crate) fn workspace_member_index(
+/// Member index scoped to a single workspace.
+#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn workspace_member_index_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
+    ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
-    for shard in 0..EXPORT_SHARDS {
-        let exports = export_shard(db, workspace, config, shard);
+    for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let exports = file_exports(db, file, config);
         for member in &exports.members {
             by_owner
                 .entry(member.owner.clone())
@@ -442,32 +517,46 @@ pub(crate) fn reference_shard(
     out
 }
 
-#[salsa::tracked(returns(ref), no_eq, unsafe(non_salsa_values))]
-pub(crate) fn workspace_reference_index(
+/// Reference index scoped to a single workspace.
+#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn workspace_reference_index_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
+    ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
     let mut out = WorkspaceReferenceIndex::default();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = reference_shard(db, workspace, config, shard);
-        for (decl, ranges) in &shard.decl_refs {
+    for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let refs = file_references(db, file, config);
+        for (decl, ranges) in &refs.decl_refs {
             out.decl_refs
                 .entry(decl.clone())
                 .or_default()
-                .extend(ranges.iter().copied());
+                .extend(ranges.iter().map(|range| (file_id, *range)));
         }
-        for (member, ranges) in &shard.member_refs {
+        for (member, ranges) in &refs.member_refs {
             out.member_refs
                 .entry(member.clone())
                 .or_default()
-                .extend(ranges.iter().copied());
+                .extend(ranges.iter().map(|range| (file_id, *range)));
         }
-        for (member, ranges) in &shard.member_defs {
+        for (member, ranges) in &refs.member_defs {
             out.member_defs
                 .entry(member.clone())
                 .or_default()
-                .extend(ranges.iter().copied());
+                .extend(ranges.iter().map(|range| (file_id, *range)));
         }
     }
     out
@@ -536,11 +625,14 @@ fn return_members_of_owner_scan(
     config: ConfigInput,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
-    workspace_member_index(db, workspace, config)
-        .by_owner
-        .get(&owner)
-        .cloned()
-        .unwrap_or_default()
+    let mut out: Vec<MemberRef> = Vec::new();
+    for ws_id in all_workspace_ids(db, workspace) {
+        let index = workspace_member_index_for(db, workspace, config, ws_id);
+        if let Some(members) = index.by_owner.get(&owner) {
+            out.extend(members.iter().cloned());
+        }
+    }
+    Arc::from(out)
 }
 
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
@@ -576,7 +668,11 @@ pub(crate) fn type_defs_in_scope(
     scope: TypeScope,
     full_name: SmolStr,
 ) -> Arc<[TypeDef]> {
-    workspace_type_index(db, workspace, config).find_all(db, scope, &full_name)
+    match scope {
+        TypeScope::Global => find_global_types(db, workspace, config, &full_name),
+        TypeScope::Internal(ws) => find_internal_types(db, workspace, config, ws, &full_name),
+        TypeScope::File(file_id) => find_file_types(db, workspace, config, file_id, &full_name),
+    }
 }
 
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
@@ -587,34 +683,55 @@ pub(crate) fn global_type_by_name(
     config: ConfigInput,
     full_name: SmolStr,
 ) -> Option<SemanticId> {
-    workspace_type_index(db, workspace, config)
-        .find_all(db, TypeScope::Global, &full_name)
+    find_global_types(db, workspace, config, &full_name)
         .first()
         .map(|def| def.id.clone())
 }
 
 /// Workspace declaration index: global declarations (by bare-name bucket) + type runtime values + type definition locations.
 /// Built by traversing workspace files once; other cross-file queries only consume this index instead of looping over files.
-#[salsa::tracked(returns(ref))]
-pub(crate) fn workspace_decl_index(
+/// Declaration index scoped to a single workspace.
+///
+/// This is the key isolation layer: `std` / library / main workspaces are indexed
+/// separately, so editing main workspace files does not rebuild the std/library
+/// indexes.
+#[salsa::tracked(returns(ref), lru = 16)]
+pub(crate) fn workspace_decl_index_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
+    ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
     let mut runtime_values: Vec<(FileId, SmolStr, SemanticId)> = Vec::new();
     let mut type_def_files: Vec<(SemanticId, FileId, SmolStr)> = Vec::new();
-    for shard in 0..EXPORT_SHARDS {
-        let exports = export_shard(db, workspace, config, shard);
+    for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let exports = file_exports(db, file, config);
         for global in &exports.globals {
             entries.push((global.name.clone(), global.file_id, global.decl.clone()));
         }
         for def in &exports.types {
             type_def_files.push((def.id.clone(), def.file_id, def.name.clone()));
         }
-        runtime_values.extend(exports.runtime_values.iter().cloned());
+        runtime_values.extend(
+            exports
+                .runtime_values
+                .iter()
+                .map(|(name, decl)| (file_id, name.clone(), decl.clone())),
+        );
     }
-    // Deterministically pick the first same-named global: sort by (bare name, file_id) stable order to avoid HashMap shard iteration drift.
     let mut entries = entries;
     entries.sort_by(|a, b| (a.0.as_str(), a.1.id).cmp(&(b.0.as_str(), b.1.id)));
     let mut by_name_entries: Vec<(SmolStr, u32)> = entries
@@ -668,7 +785,19 @@ pub(crate) fn global_decl_by_name(
     config: ConfigInput,
     name: SmolStr,
 ) -> Option<SemanticId> {
-    workspace_decl_index(db, workspace, config).global_decl_named(&name)
+    let roots = workspace.roots(db).to_vec();
+    if roots.is_empty() {
+        return workspace_decl_index_for(db, workspace, config, WorkspaceId::MAIN)
+            .global_decl_named(&name);
+    }
+    for root in roots {
+        if let Some(decl) = workspace_decl_index_for(db, workspace, config, root.id)
+            .global_decl_named(&name)
+        {
+            return Some(decl);
+        }
+    }
+    None
 }
 
 // ──────────────────────────────────────────────
@@ -688,13 +817,20 @@ pub(crate) struct ModuleEntry {
 }
 
 /// Workspace module index: module name (relative to workspace root) -> file.
-#[salsa::tracked(returns(ref))]
-pub(crate) fn workspace_module_index(
+/// Module index scoped to a single workspace.
+#[salsa::tracked(returns(ref), lru = 16)]
+pub(crate) fn workspace_module_index_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
+    ws_id: WorkspaceId,
 ) -> ModuleIndex {
     let roots = workspace.roots(db).to_vec();
+    let ws_roots: Vec<PathBuf> = roots
+        .iter()
+        .filter(|root| root.id == ws_id)
+        .map(|root| root.root.clone())
+        .collect();
     let paths: Vec<PathBuf> = workspace
         .file_ids(db)
         .iter()
@@ -715,6 +851,15 @@ pub(crate) fn workspace_module_index(
     let mut module_name_to_file_ids: HashMap<SmolStr, Vec<FileId>> = HashMap::new();
 
     for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
         let Some(file) = db.file_input(file_id) else {
             continue;
         };
@@ -723,14 +868,12 @@ pub(crate) fn workspace_module_index(
         };
         by_path.insert(normalize_path(&path), file_id);
 
-        let workspace_for_file = if !roots.is_empty() {
-            find_workspace_root(&roots, &path)
+        let root_path = if !roots.is_empty() {
+            roots.iter().find(|root| root.id == ws_id).map(|root| root.root.clone())
         } else {
-            fallback_root
-                .as_ref()
-                .map(|root| (WorkspaceId::MAIN, root.clone()))
+            fallback_root.clone()
         };
-        let Some((workspace_id, root_path)) = workspace_for_file else {
+        let Some(root_path) = root_path else {
             continue;
         };
         let Some(full_module_name) = module_name_from_path(&path, Some(&root_path)) else {
@@ -751,7 +894,7 @@ pub(crate) fn workspace_module_index(
             file_id,
             full_module_name,
             name,
-            workspace_id,
+            workspace_id: ws_id,
             visible: facts.module_visibility,
             is_meta: facts.is_meta,
             version_conds: facts.version_conds.clone(),
@@ -770,20 +913,20 @@ pub(crate) fn workspace_module_index(
         file_ids.dedup();
     }
 
-    let (nodes, root) = build_module_tree(&entries);
+    let (nodes, root) = build_module_tree(&entries, ws_id);
 
     ModuleIndex {
         entries,
         by_path,
         module_name_to_file_ids,
-        roots: roots.into_iter().map(|root| root.root).collect(),
+        roots: ws_roots,
         nodes,
         root,
     }
 }
 
-fn build_module_tree(entries: &[ModuleEntry]) -> (HashMap<ModuleNodeId, ModuleNode>, ModuleNodeId) {
-    let root = ModuleNodeId { id: 0 };
+fn build_module_tree(entries: &[ModuleEntry], ws_id: WorkspaceId) -> (HashMap<ModuleNodeId, ModuleNode>, ModuleNodeId) {
+    let root = ModuleNodeId { id: 0, workspace_id: ws_id };
     let mut nodes = HashMap::new();
     nodes.insert(
         root,
@@ -809,7 +952,7 @@ fn build_module_tree(entries: &[ModuleEntry]) -> (HashMap<ModuleNodeId, ModuleNo
                 {
                     node.children[position].1
                 } else {
-                    let id = ModuleNodeId { id: next_id };
+                    let id = ModuleNodeId { id: next_id, workspace_id: ws_id };
                     next_id += 1;
                     node.children.push((SmolStr::new(*part), id));
                     id
@@ -888,7 +1031,6 @@ pub(crate) fn module_file_of(
     config: ConfigInput,
     module_name: SmolStr,
 ) -> Option<FileId> {
-    let index = workspace_module_index(db, workspace, config);
     let mut name = module_name.replace('\\', ".");
     // module_map rewrite rules (config order; every matching rule is applied, consistent with the old replace_module_path).
     for (pattern, replace) in config.module_replace(db) {
@@ -898,22 +1040,28 @@ pub(crate) fn module_file_of(
             name = regex.replace(&name, replace.as_str()).into_owned();
         }
     }
-    // Paths still containing `/` after module_map rewriting (`signalstrings/signalstrings.lua`)
-    // first try exact literal relative-path matching, then `?` pattern resolution.
-    if name.contains('/') {
-        if let Some(file_id) = index.resolve_literal_path(&name) {
+    let patterns = config.module_patterns(db).to_vec();
+    for ws_id in all_workspace_ids(db, workspace) {
+        let index = workspace_module_index_for(db, workspace, config, ws_id);
+        // Paths still containing `/` after module_map rewriting (`signalstrings/signalstrings.lua`)
+        // first try exact literal relative-path matching, then `?` pattern resolution.
+        if name.contains('/') {
+            if let Some(file_id) = index.resolve_literal_path(&name) {
+                return Some(file_id);
+            }
+        }
+        let normalized = name.replace('/', ".");
+        if let Some(file_id) = index.exact(&normalized) {
+            return Some(file_id);
+        }
+        if let Some(file_id) = index.fuzzy(&normalized) {
+            return Some(file_id);
+        }
+        if let Some(file_id) = index.resolve_by_pattern(&normalized, &patterns) {
             return Some(file_id);
         }
     }
-    name = name.replace('/', ".");
-    if let Some(file_id) = index.exact(&name) {
-        return Some(file_id);
-    }
-    if let Some(file_id) = index.fuzzy(&name) {
-        return Some(file_id);
-    }
-    let patterns = config.module_patterns(db).to_vec();
-    index.resolve_by_pattern(&name, &patterns)
+    None
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1178,13 +1326,23 @@ pub(crate) fn resolve_owner_set(
                 push_unique(&mut out, decl);
             }
             // Type runtime value: same-name decl in the file declaring the same-name type (`local M = {}` pattern).
-            let index = workspace_decl_index(db, workspace, config);
-            let mut runtime_decls: Vec<SemanticId> = index
-                .runtime_values
-                .iter()
-                .filter(|(_, bare_name, _)| bare_name == name.as_str())
-                .map(|(_, _, decl_id)| decl_id.clone())
-                .collect();
+            let roots = workspace.roots(db).to_vec();
+            let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
+                vec![WorkspaceId::MAIN]
+            } else {
+                roots.iter().map(|root| root.id).collect()
+            };
+            let mut runtime_decls: Vec<SemanticId> = Vec::new();
+            for ws_id in ws_ids {
+                let index = workspace_decl_index_for(db, workspace, config, ws_id);
+                runtime_decls.extend(
+                    index
+                        .runtime_values
+                        .iter()
+                        .filter(|(_, bare_name, _)| bare_name == name.as_str())
+                        .map(|(_, _, decl_id)| decl_id.clone()),
+                );
+            }
             if let Some(decl) = global_decl_by_name(db, workspace, config, name_str.clone()) {
                 runtime_decls.push(decl);
             }
@@ -1231,31 +1389,38 @@ pub(crate) fn resolve_owner_set(
         SemanticId::TypeDef(_) => {
             let mut out = vec![owner.clone()];
             // Type runtime value: same-name decl in the file that declares this type.
-            let index = workspace_decl_index(db, workspace, config);
-            if let Some((_, file_id, bare_name)) =
-                index.type_def_files.iter().find(|(id, _, _)| id == &owner)
-                && let Some(decl_id) = index.runtime_value_in(*file_id, bare_name)
-            {
-                push_unique(&mut out, decl_id);
+            let roots = workspace.roots(db).to_vec();
+            let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
+                vec![WorkspaceId::MAIN]
+            } else {
+                roots.iter().map(|root| root.id).collect()
+            };
+            let mut found: Option<(FileId, SmolStr)> = None;
+            for ws_id in ws_ids {
+                let index = workspace_decl_index_for(db, workspace, config, ws_id);
+                if let Some((_, file_id, bare_name)) =
+                    index.type_def_files.iter().find(|(id, _, _)| id == &owner)
+                {
+                    found = Some((*file_id, bare_name.clone()));
+                    if let Some(decl_id) = index.runtime_value_in(*file_id, bare_name) {
+                        push_unique(&mut out, decl_id);
+                    }
+                    break;
+                }
             }
             // `---@class A` followed by `local m = {}`: associate the runtime-value decl by owner_syntax.
-            if let Some((file_id, def)) = index
-                .type_def_files
-                .iter()
-                .find(|(id, _, _)| id == &owner)
-                .and_then(|(_, file_id, bare_name)| {
-                    let member_file = db.file_input(*file_id)?;
-                    let facts = file_facts(db, member_file, config);
-                    let def = facts.type_defs.iter().find(|def| def.name == *bare_name)?;
-                    Some((*file_id, def.owner_syntax))
-                })
-                && let Some(owner_syntax) = def
+            if let Some((file_id, bare_name)) = found
                 && let Some(member_file) = db.file_input(file_id)
             {
                 let facts = file_facts(db, member_file, config);
-                for decl in &facts.decls {
-                    if decl.owner_syntax == Some(owner_syntax) {
-                        push_unique(&mut out, decl.id.clone());
+                let def = facts.type_defs.iter().find(|def| def.name == bare_name);
+                if let Some(def) = def
+                    && let Some(owner_syntax) = def.owner_syntax
+                {
+                    for decl in &facts.decls {
+                        if decl.owner_syntax == Some(owner_syntax) {
+                            push_unique(&mut out, decl.id.clone());
+                        }
                     }
                 }
             }

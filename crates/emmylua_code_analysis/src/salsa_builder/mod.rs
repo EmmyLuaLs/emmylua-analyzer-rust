@@ -700,11 +700,14 @@ impl SalsaDatabase {
         let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        query::workspace_reference_index(self, workspace, config)
-            .decl_refs
-            .get(decl)
-            .cloned()
-            .unwrap_or_default()
+        let mut out = Vec::new();
+        for ws_id in query::all_workspace_ids(self, workspace) {
+            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            if let Some(ranges) = index.decl_refs.get(decl) {
+                out.extend(ranges.iter().copied());
+            }
+        }
+        out
     }
 
     /// All use sites of a member (Member) (cross-file, aggregated through sharded reference index).
@@ -712,11 +715,14 @@ impl SalsaDatabase {
         let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        query::workspace_reference_index(self, workspace, config)
-            .member_refs
-            .get(member)
-            .cloned()
-            .unwrap_or_default()
+        let mut out = Vec::new();
+        for ws_id in query::all_workspace_ids(self, workspace) {
+            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            if let Some(ranges) = index.member_refs.get(member) {
+                out.extend(ranges.iter().copied());
+            }
+        }
+        out
     }
 
     /// All definition sites of a member (Member) (cross-file, aggregated through sharded reference index).
@@ -724,11 +730,14 @@ impl SalsaDatabase {
         let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        query::workspace_reference_index(self, workspace, config)
-            .member_defs
-            .get(member)
-            .cloned()
-            .unwrap_or_default()
+        let mut out = Vec::new();
+        for ws_id in query::all_workspace_ids(self, workspace) {
+            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            if let Some(ranges) = index.member_defs.get(member) {
+                out.extend(ranges.iter().copied());
+            }
+        }
+        out
     }
 
     /// File → owning workspace id.
@@ -754,7 +763,8 @@ impl SalsaDatabase {
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
         let workspace = self.workspace_input()?;
         let config = self.config_input()?;
-        let index = query::workspace_module_index(self, workspace, config);
+        let ws_id = query::file_workspace_id(self, workspace, file_id).unwrap_or(WorkspaceId::REMOTE);
+        let index = query::workspace_module_index_for(self, workspace, config, ws_id);
         let mut info = index.module_info(file_id)?;
         if let Some(shell) = self.q().module_export_type(file_id) {
             info.export_type = Some(self.q().type_shell_lua(file_id, &shell));
@@ -766,15 +776,20 @@ impl SalsaDatabase {
     pub fn module_node(&self, module_path: &str) -> Option<ModuleNodeId> {
         let workspace = self.workspace_input()?;
         let config = self.config_input()?;
-        let index = query::workspace_module_index(self, workspace, config);
-        index.find_module_node(module_path)
+        for ws_id in query::all_workspace_ids(self, workspace) {
+            let index = query::workspace_module_index_for(self, workspace, config, ws_id);
+            if let Some(node_id) = index.find_module_node(module_path) {
+                return Some(node_id);
+            }
+        }
+        None
     }
 
     /// Module tree node details.
     pub fn module_node_info(&self, node_id: ModuleNodeId) -> Option<ModuleNode> {
         let workspace = self.workspace_input()?;
         let config = self.config_input()?;
-        let index = query::workspace_module_index(self, workspace, config);
+        let index = query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
         index.module_node(node_id).cloned()
     }
 
@@ -783,7 +798,7 @@ impl SalsaDatabase {
         let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        let index = query::workspace_module_index(self, workspace, config);
+        let index = query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
         index
             .module_file_ids(node_id)
             .map(|ids| ids.to_vec())

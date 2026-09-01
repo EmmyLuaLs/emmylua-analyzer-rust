@@ -4,9 +4,13 @@ use smol_str::SmolStr;
 use crate::{FileId, LuaType, ModuleVisibility, WorkspaceId};
 
 /// Module tree node id.
+///
+/// The workspace id is part of the node identity so per-workspace module indexes
+/// can be queried independently without node-id collisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleNodeId {
     pub id: u32,
+    pub workspace_id: WorkspaceId,
 }
 
 /// Module tree node (equivalent to old `LuaModuleIndex::ModuleNode`).
