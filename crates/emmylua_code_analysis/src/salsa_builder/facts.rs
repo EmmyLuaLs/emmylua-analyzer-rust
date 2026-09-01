@@ -100,6 +100,7 @@ pub struct FileFacts {
     name_use_by_start: Vec<(TextSize, usize)>,
     decl_by_range_start: Vec<(TextSize, usize)>,
     member_by_range_start: Vec<(TextSize, usize)>,
+    visible_decls_by_name: HashMap<SmolStr, Vec<VisibleDeclEntry>>,
     decl_by_name: Vec<Bucket<SmolStr>>,
     decl_by_id: HashMap<SemanticId, usize>,
     member_by_id: HashMap<SemanticId, usize>,
@@ -114,6 +115,13 @@ pub struct FileFacts {
     signature_by_closure: HashMap<LuaSyntaxId, usize>,
     operator_by_owner_name: HashMap<(SemanticId, SmolStr), usize>,
     field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VisibleDeclEntry {
+    visible_from: TextSize,
+    visibility_end: TextSize,
+    index: usize,
 }
 
 impl FileFacts {
@@ -269,15 +277,14 @@ impl FileFacts {
 
     /// Finds a declaration by name visible at `offset` (scope-aware: visible within its enclosing Block/Chunk/FuncStat/Closure).
     pub fn find_visible_decl_before_offset(&self, name: &str, offset: TextSize) -> Option<&Decl> {
-        let indices = find_bucket(&self.decl_by_name, &SmolStr::new(name))?;
-        indices
-            .iter()
-            .filter_map(|&i| self.decls.get(i as usize))
-            .filter(|decl| {
-                visible_from(&self.scopes, decl) <= offset
-                    && offset <= visibility_end(&self.scopes, decl.scope_id)
-            })
-            .max_by_key(|decl| visible_from(&self.scopes, decl))
+        let entries = self.visible_decls_by_name.get(name)?;
+        let idx = entries.partition_point(|entry| entry.visible_from <= offset);
+        for entry in entries[..idx].iter().rev() {
+            if offset <= entry.visibility_end {
+                return self.decls.get(entry.index);
+            }
+        }
+        None
     }
 
     /// All declarations lexically visible at `offset` (used by completion env provider).
@@ -722,6 +729,22 @@ impl FactsBuilder {
             .collect::<Vec<_>>();
         member_by_range_start.sort_by_key(|(start, _)| *start);
 
+        let mut visible_decls_by_name: HashMap<SmolStr, Vec<VisibleDeclEntry>> = HashMap::new();
+        for (index, decl) in self.decls.iter().enumerate() {
+            let entry = VisibleDeclEntry {
+                visible_from: visible_from(&self.scopes, decl),
+                visibility_end: visibility_end(&self.scopes, decl.scope_id),
+                index,
+            };
+            visible_decls_by_name
+                .entry(decl.name.clone())
+                .or_default()
+                .push(entry);
+        }
+        for entries in visible_decls_by_name.values_mut() {
+            entries.sort_by_key(|entry| entry.visible_from);
+        }
+
         let mut decl_entries = self
             .decls
             .iter()
@@ -835,6 +858,7 @@ impl FactsBuilder {
             name_use_by_start,
             decl_by_range_start,
             member_by_range_start,
+            visible_decls_by_name,
             decl_by_name,
             decl_by_id,
             member_by_id,

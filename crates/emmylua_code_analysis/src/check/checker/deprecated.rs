@@ -6,7 +6,6 @@
 use emmylua_parser::{LuaAst, LuaAstNode, LuaDocNameType, LuaIndexExpr};
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};
@@ -62,13 +61,8 @@ fn check_name_uses(context: &mut CheckContext<'_>, semantic_model: &SemanticMode
             // resolve_name falls back to a cross-file global declaration: if this file's facts do not have the declaration, fall through to step 2.
         }
         // 2. Cross-file global declaration (when no same-file declaration was resolved).
-        if let Some(decl_id) = semantic_model.global_decl(&use_.name)
-            && let SemanticId::Decl(decl_key) = &decl_id
-            && let Some(decl_facts) = semantic_model.file_facts_of(decl_key.file_id)
-            && let Some(decl) = decl_facts.decl_by_id(&decl_id)
-            && decl.deprecated
-        {
-            report_deprecated(context, range, &decl.name);
+        if semantic_model.is_global_deprecated(use_.name.as_str()) {
+            report_deprecated(context, range, &use_.name);
         }
     }
 }

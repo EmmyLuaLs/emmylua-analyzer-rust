@@ -167,6 +167,21 @@ impl<'db> SalsaQueries<'db> {
         config.known_doc_tags(self.db).iter().any(|tag| tag == name)
     }
 
+    /// Whether a global name is deprecated in any workspace.
+    pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
+        let (Some(workspace), Some(config)) = (self.db.workspace_input(), self.db.config_input())
+        else {
+            return false;
+        };
+        for ws_id in query::all_workspace_ids(self.db, workspace) {
+            if query::deprecated_global_names_for(self.db, workspace, config, ws_id).contains(name)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn parse_errors(&self, file_id: FileId) -> Option<Vec<LuaParseError>> {
         let tree = self.syntax_tree(file_id)?;
         let errors = tree.get_errors().to_vec();

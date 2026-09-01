@@ -2275,6 +2275,11 @@ impl<'db> SemanticModel<'db> {
         member::member_type(self, prefix_type, key)
     }
 
+    /// Whether a global name is deprecated in any workspace.
+    pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
+        self.q().is_global_deprecated(name)
+    }
+
     /// Flow-sensitive type of a decl at offset (assignment-flow aware: last assignment's RHS type / declaration initial type,
     /// branching merges take unions).
     pub fn type_of_decl_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {

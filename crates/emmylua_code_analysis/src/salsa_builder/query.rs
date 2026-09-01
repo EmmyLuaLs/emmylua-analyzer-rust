@@ -2,7 +2,7 @@
 //!
 //! Salsa's memo table acts as the index. Cross-file references use interned `TypeName`; recursive cycles converge via the native `cycle_fn`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -79,7 +79,7 @@ pub(crate) fn file_facts(
 
 use super::def::TypeScope;
 use super::def::TypeVisibility;
-use super::index::{Bucket, build_buckets, find_bucket};
+use super::index::{Bucket, build_buckets};
 use crate::WorkspaceId;
 use salsa::plumbing::AsId;
 use smol_str::SmolStr;
@@ -168,6 +168,42 @@ impl WorkspaceTypeIndex {
         };
         self.bucket_values[index].clone()
     }
+}
+
+/// Deprecated global names in a single workspace.
+///
+/// This lets checkers like `DeprecatedChecker` test whether a global name is
+/// deprecated with a hash-set lookup instead of resolving each name through the
+/// full global-declaration pipeline.
+#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn deprecated_global_names_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<HashSet<SmolStr>> {
+    let mut out = HashSet::new();
+    for file_id in workspace.file_ids(db).iter().copied() {
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let matches = if ws_id == WorkspaceId::REMOTE {
+            file_ws.is_none()
+        } else {
+            file_ws == Some(ws_id)
+        };
+        if !matches {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let facts = file_facts(db, file, config);
+        for decl in &facts.decls {
+            if matches!(decl.kind, DeclKind::Global) && decl.deprecated {
+                out.insert(decl.name.clone());
+            }
+        }
+    }
+    Arc::new(out)
 }
 
 pub(crate) fn all_workspace_ids(db: &dyn SalsaDb, workspace: WorkspaceInput) -> Vec<WorkspaceId> {
@@ -740,8 +776,13 @@ pub(crate) fn workspace_decl_index_for(
         .map(|(i, (name, _, _))| (name.clone(), i as u32))
         .collect();
     by_name_entries.sort_by(|a, b| (a.0.as_str(), a.1).cmp(&(b.0.as_str(), b.1)));
+    let global_by_name = entries
+        .iter()
+        .map(|(name, _, id)| (name.clone(), id.clone()))
+        .collect::<HashMap<_, _>>();
     WorkspaceDeclIndex {
         by_name: build_buckets(by_name_entries),
+        global_by_name,
         decls: entries
             .into_iter()
             .map(|(_, file_id, id)| (file_id, id))
@@ -755,6 +796,8 @@ pub(crate) fn workspace_decl_index_for(
 pub struct WorkspaceDeclIndex {
     /// Bare-name bucket -> global declaration index.
     by_name: Vec<Bucket<SmolStr>>,
+    /// O(1) global-name lookup.
+    global_by_name: HashMap<SmolStr, SemanticId>,
     /// Global declarations `(file_id, decl_id)`.
     decls: Vec<(FileId, SemanticId)>,
     /// Type runtime values: `(file_id, bare type name, same-name declaration id)` (`local M = {}` implementing `@class M` pattern).
@@ -765,8 +808,7 @@ pub struct WorkspaceDeclIndex {
 
 impl WorkspaceDeclIndex {
     fn global_decl_named(&self, name: &SmolStr) -> Option<SemanticId> {
-        let indices = find_bucket(&self.by_name, name)?;
-        indices.first().map(|&i| self.decls[i as usize].1.clone())
+        self.global_by_name.get(name).cloned()
     }
 
     fn runtime_value_in(&self, file_id: FileId, bare_name: &SmolStr) -> Option<SemanticId> {
@@ -1506,7 +1548,7 @@ pub(crate) fn decl_type(
             if !shell.is_unknown() {
                 // Globals cannot carry generic parameters not instantiated inside the function body (the `a` in `function f(x) a = x end` is unknown outside).
                 if matches!(decl.kind, DeclKind::Global) {
-                    let generic_names: std::collections::HashSet<&str> = facts
+                    let generic_names: HashSet<&str> = facts
                         .signatures
                         .iter()
                         .filter_map(|sig| sig.docs.as_ref())
