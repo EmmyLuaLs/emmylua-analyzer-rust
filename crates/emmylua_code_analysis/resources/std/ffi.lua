@@ -11,7 +11,7 @@
 --- @overload fun(nelem?: integer, init?: any, ...): ffi.cdata*
 local ctype
 
---- @class ffi.cdecl*: string
+--- @alias ffi.cdecl* string
 --- @class ffi.cdata*: userdata
 --- @alias ffi.ct* ffi.ctype* | ffi.cdecl* | ffi.cdata*
 --- @class ffi.cb*: ffi.cdata*

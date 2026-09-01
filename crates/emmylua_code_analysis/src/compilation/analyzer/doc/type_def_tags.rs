@@ -12,7 +12,7 @@ use super::{
 };
 use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use crate::{
-    DbIndex, LuaTypeCache, LuaTypeDeclId,
+    AnalyzeError, DbIndex, DiagnosticCode, LuaTypeCache, LuaTypeDeclId,
     compilation::analyzer::common::bind_type,
     db_index::{LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType},
 };
@@ -39,8 +39,31 @@ pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<
 
     if let Some(supers) = tag.get_supers() {
         for super_doc_type in supers.get_types() {
+            let super_range = super_doc_type.get_range();
             let super_type = infer_type(&mut analyzer.type_context, super_doc_type);
             if super_type.is_unknown() {
+                continue;
+            }
+
+            // 类不允许继承原始的基础类型
+            if is_primitive_base_type(&super_type) {
+                if !analyzer.is_meta && analyzer.workspace_id.is_main() {
+                    analyzer
+                        .type_context
+                        .db
+                        .get_diagnostic_index_mut()
+                        .add_diagnostic(
+                            analyzer.file_id,
+                            AnalyzeError {
+                                kind: DiagnosticCode::AnnotationUsageError,
+                                message: t!(
+                                    "Classes cannot inherit from primitive base types, use '@alias' instead."
+                                )
+                                .to_string(),
+                                range: super_range,
+                            },
+                        );
+                }
                 continue;
             }
 
@@ -491,4 +514,23 @@ fn comment_has_explicit_type_tag(analyzer: &DocAnalyzer) -> bool {
         .comment
         .get_doc_tags()
         .any(|tag| matches!(tag, LuaDocTag::Type(_)))
+}
+
+fn is_primitive_base_type(typ: &LuaType) -> bool {
+    matches!(
+        typ,
+        LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::DocStringConst(_)
+            | LuaType::Language(_)
+            | LuaType::Integer
+            | LuaType::IntegerConst(_)
+            | LuaType::DocIntegerConst(_)
+            | LuaType::Number
+            | LuaType::FloatConst(_)
+            | LuaType::Boolean
+            | LuaType::BooleanConst(_)
+            | LuaType::DocBooleanConst(_)
+            | LuaType::Nil
+    )
 }

@@ -129,10 +129,33 @@ mod tests {
         ws.def(
             r#"
             ---@class Animal
+            ---@field name string
             ---@class Car
+            ---@field engine string
             "#,
         );
         assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CastTypeMismatch,
+            r#"
+            ---@type Animal
+            local pet
+
+            ---@cast pet Car
+            "#
+        ));
+    }
+
+    // 无字段的类之间结构等价
+    #[test]
+    fn test_cast_empty_class_types() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Animal
+            ---@class Car
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type Animal

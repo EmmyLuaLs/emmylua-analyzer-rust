@@ -3,16 +3,12 @@ use crate::{
     semantic::type_check::error_chain::{ChainMessage, OverflowKind, not_assignable_message},
 };
 
-use super::super::relation::{
-    IntersectionState, Relater, RelationFailure, RelationOutcome, RelationResult,
-};
+use super::super::relation::{IntersectionState, Relater, RelationFailure, RelationResult};
 use super::{
     array::relate_keyed_source_to_array,
     declared::{
-        DeclaredTypeRelation, classify_declared_type_relation, declared_super_types,
-        declared_type_has_members, relate_declared_to_table_generic,
-        relate_nominal_source_to_declared_target, relate_structural_source_to_declared_target,
-        relate_to_declared_target_members,
+        relate_declared_to_table_generic, relate_nominal_source_to_declared_target,
+        relate_structural_source_to_declared_target, relate_to_declared_target_members,
     },
     object_type::relate_to_object_target,
     table_const::relate_to_table_const_target,
@@ -166,73 +162,33 @@ fn relate_generic_source_to_generic_target(
         );
     }
 
-    let source_id = source_generic.get_base_type_id_ref();
-    let target_id = target_generic.get_base_type_id_ref();
-    let nominal_relation =
-        classify_declared_type_relation(relater.db(), source_id, target_id, relater.policy());
-
-    let same_family = source_id == target_id;
-    let direct_result = 'direct: {
-        if !same_family || source_generic.get_params().len() != target_generic.get_params().len() {
-            break 'direct relater.fail(|db| not_assignable_message(db, source, target));
+    // 同族泛型按位置比较类型实参
+    if source_generic.get_base_type_id_ref() == target_generic.get_base_type_id_ref() {
+        // TODO: 理论上可以移除, 因为泛型参数在分析时要么补全为 unknown 要么将整个变量视为 any
+        if source_generic.get_params().len() != target_generic.get_params().len() {
+            return relater.fail(|db| not_assignable_message(db, source, target));
         }
 
-        match relate_same_family_generic_args(
+        return match relate_same_family_generic_args(
             relater,
             source_generic,
             target_generic,
             intersection_state,
         ) {
-            // 此时无失配报告且参数量相等, 那么认为是成功的
-            SameFamilyArgsOutcome::Related | SameFamilyArgsOutcome::Covariant => {
+            SameFamilyArgsOutcome::Related => {
                 relater.note_progress();
                 Ok(())
             }
             SameFamilyArgsOutcome::Indeterminate(kind) => Err(RelationFailure::Indeterminate(kind)),
-            SameFamilyArgsOutcome::Proceed => break 'direct Err(RelationFailure::Unrelated),
-        }
-    };
-
-    if same_family {
-        return direct_result;
-    }
-
-    let mut indeterminate = match &direct_result {
-        Err(RelationFailure::Indeterminate(kind)) => Some(*kind),
-        _ => None,
-    };
-    for super_type in declared_super_types(relater.db(), source) {
-        match relater
-            .probe_relation(&super_type, target, intersection_state)
-            .0
-        {
-            RelationOutcome::Related => {
-                relater.note_progress();
-                return Ok(());
+            // 目前协变探测并不完善, 对于错误项仍然需要交由结构检查逐成员验证.
+            SameFamilyArgsOutcome::Covariant | SameFamilyArgsOutcome::Proceed => {
+                relate_to_declared_target_members(relater, source, target, intersection_state)
             }
-            RelationOutcome::Indeterminate(kind) => {
-                indeterminate.get_or_insert(kind);
-            }
-            RelationOutcome::Unrelated => {}
-        }
+        };
     }
 
-    if let Some(kind) = indeterminate {
-        return Err(RelationFailure::Indeterminate(kind));
-    }
-
-    if nominal_relation == DeclaredTypeRelation::LegacyReverse && !target_generic.contain_tpl() {
-        relater.note_progress();
-        return Ok(());
-    }
-    if nominal_relation == DeclaredTypeRelation::Forward {
-        return direct_result;
-    }
-    if declared_type_has_members(relater.db(), target) {
-        return relate_to_declared_target_members(relater, source, target, intersection_state);
-    }
-
-    direct_result
+    // 不同族时按目标成员做结构检查
+    relate_to_declared_target_members(relater, source, target, intersection_state)
 }
 
 /// 同族泛型实参快捷比较的结果

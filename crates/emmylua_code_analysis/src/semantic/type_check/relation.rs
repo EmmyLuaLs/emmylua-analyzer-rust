@@ -35,12 +35,6 @@ pub(crate) enum RelationOutcome {
     Indeterminate(OverflowKind),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DeclaredRelationPolicy {
-    LegacyAssignable,
-    Directional,
-}
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct IntersectionState(u32);
 
@@ -74,7 +68,6 @@ struct ActiveRelation<'active> {
     source: &'active LuaType,
     target: &'active LuaType,
     intersection_state: IntersectionState,
-    policy: DeclaredRelationPolicy,
     parent: Option<&'active ActiveRelation<'active>>,
 }
 
@@ -90,7 +83,6 @@ pub(crate) struct RelationSession<'db> {
 pub(crate) struct Relater<'session, 'active, 'db> {
     session: &'session mut RelationSession<'db>,
     active_relation: Option<&'active ActiveRelation<'active>>,
-    policy: DeclaredRelationPolicy,
 }
 
 impl<'db> RelationSession<'db> {
@@ -114,7 +106,6 @@ impl<'db> RelationSession<'db> {
         let mut relater = Relater {
             session: self,
             active_relation: None,
-            policy: DeclaredRelationPolicy::LegacyAssignable,
         };
         relater.relate(source, target, intersection_state)
     }
@@ -151,10 +142,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         self.session.db
     }
 
-    pub(super) fn policy(&self) -> DeclaredRelationPolicy {
-        self.policy
-    }
-
     pub(super) fn is_explain(&self) -> bool {
         matches!(self.session.evidence, EvidenceMode::Explain)
     }
@@ -182,20 +169,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         intersection_state: IntersectionState,
     ) -> RelationResult {
         self.relate_with::<false>(source, target, intersection_state, false)
-    }
-
-    pub(super) fn relate_with_directional_policy(
-        &mut self,
-        source: &LuaType,
-        target: &LuaType,
-        intersection_state: IntersectionState,
-    ) -> RelationResult {
-        let mut relater = Relater {
-            session: &mut *self.session,
-            active_relation: self.active_relation,
-            policy: DeclaredRelationPolicy::Directional,
-        };
-        relater.relate(source, target, intersection_state)
     }
 
     /// `FIELD` 控制字段是否走快速路径
@@ -399,7 +372,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             let mut active = self.active_relation;
             while let Some(relation) = active {
                 if relation.intersection_state == intersection_state
-                    && relation.policy == self.policy
                     && relation_type_eq(relation.source, source)
                     && relation_type_eq(relation.target, target)
                 {
@@ -553,13 +525,11 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             source,
             target,
             intersection_state,
-            policy: self.policy,
             parent: self.active_relation,
         };
         let mut relater = Relater {
             session: &mut *self.session,
             active_relation: Some(&active_relation),
-            policy: self.policy,
         };
         let result = body(&mut relater);
         self.session.recursion_depth -= 1;

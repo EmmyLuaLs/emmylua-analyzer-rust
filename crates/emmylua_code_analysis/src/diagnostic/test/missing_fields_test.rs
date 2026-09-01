@@ -810,6 +810,36 @@ test(
         );
     }
 
+    // 父类赋给子类按结构对比
+    #[gtest]
+    fn test_parent_instance_to_child_reports_missing_field() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = ws.get_diagnostics(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class ParentShape
+            ---@field name string
+
+            ---@class ChildShape: ParentShape
+            ---@field extra integer
+
+            ---@type ParentShape
+            local parent
+
+            ---@type ChildShape
+            local child = parent
+            "#,
+        );
+
+        assert_that!(diagnostics.len(), eq(1));
+        assert_that!(
+            diagnostics[0].message,
+            eq(
+                "Cannot assign `ParentShape` to `ChildShape`.\n  Type `ParentShape` is missing the `extra` field from type `ChildShape`."
+            )
+        );
+    }
+
     // 缺失字段超过 4 个时只显示前 4 个属性.
     #[gtest]
     fn test_missing_fields_limits_to_four_properties() {

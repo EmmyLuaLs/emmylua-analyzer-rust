@@ -627,10 +627,11 @@ mod test {
     }
 
     #[test]
-    fn test_super() {
+    fn test_super_not_fields() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(!ws.has_no_diagnostic(
+        // 两个无字段的兄弟类结构等价
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class py.ETypeMeta
@@ -683,7 +684,7 @@ mod test {
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
-                ---@class py.SlotType: integer
+                ---@alias py.SlotType integer
 
                 ---@param a py.SlotType
                 local function test(a)
@@ -801,7 +802,7 @@ mod test {
                     COMMON = 2,
                     HERO   = 3,
                 }
-                ---@class py.AbilityType: integer
+                ---@alias py.AbilityType integer
 
                 ---@param ability_type py.AbilityType
                 local function a(ability_type) end
@@ -827,7 +828,7 @@ mod test {
                     COMMON = 2,
                     HERO   = 3,
                 }
-                ---@class py.AbilityType: integer
+                ---@alias py.AbilityType integer
 
                 ---@param ability_type py.AbilityType
                 local function a(ability_type) end
@@ -1770,9 +1771,13 @@ mod test {
         ws.def(
             r#"
             ---@class A
+            ---@field a number
             ---@class B
+            ---@field b number
             ---@class C
+            ---@field c number
             ---@class D
+            ---@field d number
 
             ---@param a A | B | C
             ---@return boolean

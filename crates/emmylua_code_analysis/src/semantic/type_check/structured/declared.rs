@@ -7,10 +7,7 @@ use crate::{
 };
 
 use super::super::{
-    relation::{
-        DeclaredRelationPolicy, IntersectionState, Relater, RelationFailure, RelationOutcome,
-        RelationResult,
-    },
+    relation::{IntersectionState, Relater, RelationResult},
     sub_type::{get_base_type_id, is_sub_type_of},
 };
 use super::{
@@ -171,7 +168,6 @@ pub(super) fn relate_base_source_to_declared_target(
     target: &LuaType,
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
-    let source_id = get_base_type_id(source)?;
     let target_id = match target {
         LuaType::Ref(target_id) | LuaType::Def(target_id) => target_id,
         LuaType::Generic(target_generic) => target_generic.get_base_type_id_ref(),
@@ -189,42 +185,19 @@ pub(super) fn relate_base_source_to_declared_target(
         ));
     }
 
-    let nominal_relation =
-        classify_declared_type_relation(relater.db(), &source_id, target_id, relater.policy());
-    let target_contains_tpl =
-        matches!(target, LuaType::Generic(target_generic) if target_generic.contain_tpl());
-    if nominal_relation == DeclaredTypeRelation::Forward
-        || nominal_relation == DeclaredTypeRelation::LegacyReverse && !target_contains_tpl
-    {
-        relater.note_progress();
-        Some(Ok(()))
-    } else {
-        Some(relater.fail(|db| not_assignable_message(db, source, target)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DeclaredTypeRelation {
-    Forward,
-    LegacyReverse,
-    Unrelated,
-}
-
-/// 统一判断声明类型的名义方向
-pub(super) fn classify_declared_type_relation(
-    db: &DbIndex,
-    source_id: &LuaTypeDeclId,
-    target_id: &LuaTypeDeclId,
-    policy: DeclaredRelationPolicy,
-) -> DeclaredTypeRelation {
-    if source_id == target_id || is_sub_type_of(db, source_id, target_id) {
-        DeclaredTypeRelation::Forward
-    } else if policy == DeclaredRelationPolicy::LegacyAssignable
-        && is_sub_type_of(db, target_id, source_id)
-    {
-        DeclaredTypeRelation::LegacyReverse
-    } else {
-        DeclaredTypeRelation::Unrelated
+    // 类不允许继承基础类型
+    match source {
+        LuaType::Userdata | LuaType::Thread | LuaType::Global => {
+            if let Some(base_id) = get_base_type_id(source)
+                && is_sub_type_of(relater.db(), target_id, &base_id)
+            {
+                relater.note_progress();
+                Some(Ok(()))
+            } else {
+                Some(relater.fail(|db| not_assignable_message(db, source, target)))
+            }
+        }
+        _ => None,
     }
 }
 
@@ -249,18 +222,12 @@ pub(super) fn relate_nominal_source_to_declared_target(
         );
     }
 
-    if classify_declared_type_relation(relater.db(), source_id, target_id, relater.policy())
-        != DeclaredTypeRelation::Unrelated
-    {
+    if source_id == target_id {
         relater.note_progress();
         return Ok(());
     }
 
-    if declared_type_has_members(relater.db(), target) {
-        return relate_to_declared_target_members(relater, source, target, intersection_state);
-    }
-
-    relater.fail(|db| not_assignable_message(db, source, target))
+    relate_to_declared_target_members(relater, source, target, intersection_state)
 }
 
 fn relate_class_source_to_generic_target(
@@ -290,51 +257,17 @@ fn relate_class_source_to_generic_target(
         return relater.relate(&completed_source, target, intersection_state);
     }
 
-    match classify_declared_type_relation(relater.db(), source_id, target_id, relater.policy()) {
-        DeclaredTypeRelation::Forward => {
-            if source_id == target_id
-                && target_generic.get_params().iter().all(|param| {
-                    param.is_any() || matches!(param, LuaType::TplRef(_) | LuaType::StrTplRef(_))
-                })
-            {
-                relater.note_progress();
-                return Ok(());
-            }
-
-            let mut indeterminate = None;
-            for super_type in declared_super_types(relater.db(), source) {
-                match relater
-                    .probe_relation(&super_type, target, intersection_state)
-                    .0
-                {
-                    RelationOutcome::Related => {
-                        relater.note_progress();
-                        return Ok(());
-                    }
-                    RelationOutcome::Indeterminate(kind) => {
-                        indeterminate.get_or_insert(kind);
-                    }
-                    RelationOutcome::Unrelated => {}
-                }
-            }
-
-            if let Some(kind) = indeterminate {
-                return Err(RelationFailure::Indeterminate(kind));
-            }
-            return relater.fail(|db| not_assignable_message(db, source, target));
-        }
-        DeclaredTypeRelation::LegacyReverse if !target_generic.contain_tpl() => {
+    if source_id == target_id {
+        if target_generic.get_params().iter().all(|param| {
+            param.is_any() || matches!(param, LuaType::TplRef(_) | LuaType::StrTplRef(_))
+        }) {
             relater.note_progress();
             return Ok(());
         }
-        DeclaredTypeRelation::LegacyReverse | DeclaredTypeRelation::Unrelated => {}
+        return relater.fail(|db| not_assignable_message(db, source, target));
     }
 
-    if declared_type_has_members(relater.db(), target) {
-        return relate_to_declared_target_members(relater, source, target, intersection_state);
-    }
-
-    relater.fail(|db| not_assignable_message(db, source, target))
+    relate_to_declared_target_members(relater, source, target, intersection_state)
 }
 
 pub(super) fn relate_structural_source_to_declared_target(
@@ -418,29 +351,15 @@ fn relate_class_source_to_simple_target(
     source_id: &LuaTypeDeclId,
     target: &LuaType,
 ) -> Option<RelationResult> {
-    let conditional_extends = false;
+    // string 在 std 内被定义为类, 因此我们需要豁免从 def -> string 的情况
     match target {
         LuaType::String | LuaType::StringConst(_) | LuaType::Integer | LuaType::IntegerConst(_) => {
         }
-        LuaType::DocStringConst(_) | LuaType::DocIntegerConst(_) if conditional_extends => {}
         _ => return None,
     }
 
-    let target_is_literal = matches!(
-        target,
-        LuaType::StringConst(_)
-            | LuaType::IntegerConst(_)
-            | LuaType::DocStringConst(_)
-            | LuaType::DocIntegerConst(_)
-    );
-    if !(conditional_extends && target_is_literal)
-        && let Some(target_base_id) = get_base_type_id(target)
-        && classify_declared_type_relation(
-            relater.db(),
-            source_id,
-            &target_base_id,
-            relater.policy(),
-        ) != DeclaredTypeRelation::Unrelated
+    if let Some(target_base_id) = get_base_type_id(target)
+        && source_id == &target_base_id
     {
         relater.note_progress();
         return Some(Ok(()));
@@ -686,89 +605,6 @@ fn resolve_instantiated_member(
         }
     }
     Some((key, member_type))
-}
-
-pub(super) fn declared_type_has_members(db: &DbIndex, typ: &LuaType) -> bool {
-    let mut visited = HashSet::new();
-    declared_type_has_members_inner(db, typ, &mut visited)
-}
-
-fn declared_type_has_members_inner(
-    db: &DbIndex,
-    typ: &LuaType,
-    visited: &mut HashSet<LuaTypeDeclId>,
-) -> bool {
-    let (type_id, generic_args) = match typ {
-        LuaType::Ref(type_id) | LuaType::Def(type_id) => (type_id.clone(), None),
-        LuaType::Generic(generic) => (generic.get_base_type_id(), Some(generic.get_params())),
-        LuaType::Object(object) => {
-            return !object.get_fields().is_empty() || !object.get_index_access().is_empty();
-        }
-        LuaType::TableGeneric(params) => return params.len() == 2,
-        LuaType::Tuple(tuple) => return !tuple.get_types().is_empty(),
-        LuaType::Array(_) => return true,
-        _ => return false,
-    };
-
-    let owner = LuaMemberOwner::Type(type_id.clone());
-    if db.get_member_index().get_member_len(&owner) > 0 {
-        return true;
-    }
-    if !visited.insert(type_id.clone()) {
-        return false;
-    }
-
-    if let Some(super_types) = db.get_type_index().get_super_types_iter(&type_id) {
-        let substitutor =
-            generic_args.map(|generic_args| TypeSubstitutor::from_type_array(generic_args.clone()));
-        for super_type in super_types {
-            let instantiated_super = substitutor
-                .as_ref()
-                .map(|substitutor| instantiate_type_generic(db, super_type, substitutor))
-                .unwrap_or_else(|| super_type.clone());
-            if declared_type_has_members_inner(db, &instantiated_super, visited) {
-                return true;
-            }
-        }
-    }
-
-    let Some(type_decl) = db.get_type_index().get_type_decl(&type_id) else {
-        return false;
-    };
-    if !type_decl.is_alias() {
-        return false;
-    }
-    let alias_substitutor = generic_args
-        .map(|generic_args| TypeSubstitutor::from_alias(generic_args.to_vec(), type_id));
-    type_decl
-        .get_alias_origin(db, alias_substitutor.as_ref())
-        .is_some_and(|origin| declared_type_has_members_inner(db, &origin, visited))
-}
-
-pub(super) fn declared_super_types(db: &DbIndex, typ: &LuaType) -> Vec<LuaType> {
-    let (type_id, substitutor) = match typ {
-        LuaType::Ref(type_id) | LuaType::Def(type_id) => (type_id.clone(), None),
-        LuaType::Generic(generic) => (
-            generic.get_base_type_id(),
-            Some(TypeSubstitutor::from_type_array(
-                generic.get_params().clone(),
-            )),
-        ),
-        _ => return Vec::new(),
-    };
-    db.get_type_index()
-        .get_super_types_iter(&type_id)
-        .map(|supers| {
-            supers
-                .map(|super_type| {
-                    substitutor
-                        .as_ref()
-                        .map(|substitutor| instantiate_type_generic(db, super_type, substitutor))
-                        .unwrap_or_else(|| super_type.clone())
-                })
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 pub(super) fn relate_declared_to_table_generic(

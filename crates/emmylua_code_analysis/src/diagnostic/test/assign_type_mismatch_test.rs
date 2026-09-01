@@ -625,6 +625,30 @@ local x = 'aaa'
             "#
         ));
 
+        // 类型系统实现的是鸭子类型, 无字段类允许相等
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+---@class A
+local a = {}
+
+---@class B
+local b = a
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+---@class A
+---@field x string
+local a = {}
+
+---@class B
+local b = a
+            "#
+        ));
+
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -632,6 +656,7 @@ local x = 'aaa'
 local a = {}
 
 ---@class B
+---@field x string
 local b = a
             "#
         ));
@@ -769,12 +794,10 @@ return t
                 "#
         ));
 
-        // 允许接受父类.
-        // TODO: 接受父类时应该检查是否具有子类的所有非可空成员.
         assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
-            ---@class Option: string
+            ---@alias Option string
 
             ---@param x Option
             local function f(x) end
@@ -1473,9 +1496,13 @@ return t
         ws.def(
             r#"
             ---@class A
+            ---@field a number
             ---@class B
+            ---@field b number
             ---@class C
+            ---@field c number
             ---@class D
+            ---@field d number
 
             ---@param a A | B | C
             ---@return boolean

@@ -19,6 +19,96 @@ mod test {
         result
     }
 
+    // 两个无字段的类结构等价
+    #[test]
+    fn test_structural_class_relation_empty_classes() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class StructuralEmptyA
+            ---@class StructuralEmptyB: StructuralEmptyA
+            "#,
+        );
+        let a = ws.ty("StructuralEmptyA");
+        let b = ws.ty("StructuralEmptyB");
+
+        assert!(ws.check_type(&a, &b));
+        assert!(ws.check_type(&b, &a));
+    }
+
+    #[test]
+    fn test_structural_class_relation_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class StructuralBaseA
+            ---@field name string
+
+            ---@class StructuralBaseB: StructuralBaseA
+            ---@field extra integer
+            "#,
+        );
+        let a = ws.ty("StructuralBaseA");
+        let b = ws.ty("StructuralBaseB");
+
+        assert!(!ws.check_type(&a, &b));
+        assert!(ws.check_type(&b, &a));
+    }
+
+    #[test]
+    fn test_child_override_field_mismatch_reports_on_child_to_parent() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class OverrideParent
+            ---@field value string
+
+            ---@class OverrideChild: OverrideParent
+            ---@field value integer
+            "#,
+        );
+        let child = ws.ty("OverrideChild");
+        let parent = ws.ty("OverrideParent");
+
+        assert!(!ws.check_type(&child, &parent));
+    }
+
+    // 原始值类型与类之间不按空结构互通.
+    #[test]
+    fn test_primitive_source_to_unrelated_class_rejected() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class PrimitiveTargetEmpty
+            ---@class PrimitiveTargetWithField
+            ---@field value string
+            "#,
+        );
+        let empty = ws.ty("PrimitiveTargetEmpty");
+        let with_field = ws.ty("PrimitiveTargetWithField");
+        assert!(!ws.check_type(&LuaType::Integer, &empty));
+        assert!(!ws.check_type(&LuaType::String, &with_field));
+    }
+
+    // TODO: 应该给这些内置类型添加一个隐式的成员而不是特例
+    // userdata | Thread | Global 这些基础类型不能按结构对比
+    #[test]
+    fn test_userdata_source_keeps_nominal_pass_to_subclass() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class UserDataChild: userdata
+            ---@field tag string
+
+            ---@class UnrelatedEmptyZ
+            "#,
+        );
+        let child = ws.ty("UserDataChild");
+        let unrelated = ws.ty("UnrelatedEmptyZ");
+        assert!(ws.check_type(&LuaType::Userdata, &child));
+        assert!(!ws.check_type(&LuaType::Userdata, &unrelated));
+    }
+
     #[test]
     fn test_string() {
         let mut ws = VirtualWorkspace::new();
@@ -382,49 +472,13 @@ mod test {
     }
 
     #[test]
-    fn test_generic_super_probe_preserves_indeterminate_outcome() {
-        // 深度超出限制时应返回无法完成, 而不是直接判定为不可赋值
-        let mut ws = VirtualWorkspace::new();
-        ws.def(
-            r#"
-            ---@class GenericProbeParent<T>
-            ---@class GenericProbeChild<T>: GenericProbeParent<T>
-            "#,
-        );
-        let mut source_param = LuaType::String;
-        let mut target_param = LuaType::Number;
-        for _ in 0..101 {
-            source_param = LuaType::Array(LuaArrayType::from_base_type(source_param).into());
-            target_param = LuaType::Array(LuaArrayType::from_base_type(target_param).into());
-        }
-        let source = LuaType::Generic(
-            LuaGenericType::new(
-                LuaTypeDeclId::global("GenericProbeChild"),
-                vec![source_param],
-            )
-            .into(),
-        );
-        let target = LuaType::Generic(
-            LuaGenericType::new(
-                LuaTypeDeclId::global("GenericProbeParent"),
-                vec![target_param],
-            )
-            .into(),
-        );
-
-        assert!(matches!(
-            probe_assignable(ws.analysis.compilation.get_db(), &source, &target,),
-            RelationOutcome::Indeterminate(_)
-        ));
-    }
-
-    #[test]
     fn test_same_family_generic_mismatch_does_not_probe_super_types() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
             ---@class GenericMismatchParent
             ---@class GenericMismatchChild<T>: GenericMismatchParent
+            ---@field value T
             "#,
         );
         let source = ws.ty("GenericMismatchChild<string>");
@@ -539,6 +593,29 @@ mod test {
     }
 
     #[test]
+    fn test_same_family_generic_class_contravariant_position() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class HandlerVarianceAnimal
+            ---@field name string
+
+            ---@class HandlerVarianceDog: HandlerVarianceAnimal
+            ---@field trick string
+
+            ---@class HandlerVarianceBox<T>
+            ---@field callback fun(value: T): boolean
+            "#,
+        );
+        let animal = ws.ty("HandlerVarianceBox<HandlerVarianceAnimal>");
+        let dog = ws.ty("HandlerVarianceBox<HandlerVarianceDog>");
+
+        // 逆变: fun(Animal) 可赋给 fun(Dog), 因此 Box<Animal> -> Box<Dog> 应通过.
+        assert!(ws.check_type(&animal, &dog));
+        assert!(!ws.check_type(&dog, &animal));
+    }
+
+    #[test]
     fn test_nullable_ref_fast_path() {
         let mut ws = VirtualWorkspace::new();
         ws.def("---@class LegacyFastPathRef");
@@ -553,7 +630,12 @@ mod test {
     #[test]
     fn test_generic_target_completes_ref_source_default_arguments() {
         let mut ws = VirtualWorkspace::new();
-        ws.def("---@class DefaultGeneric<T = string>");
+        ws.def(
+            r#"
+            ---@class DefaultGeneric<T = string>
+            ---@field value T
+            "#,
+        );
 
         let source = LuaType::Ref(LuaTypeDeclId::global("DefaultGeneric"));
         let compatible = ws.ty("DefaultGeneric<string>");
@@ -1035,7 +1117,8 @@ mod test {
         "#,
         );
 
-        assert!(!ws.has_no_diagnostic(
+        // 对齐 TS 结构化语义: Holder 无字段时, Holder<string> 与 NumberHolder 结构等价, 不再按名义实参报错.
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Holder<string>, NumberHolder

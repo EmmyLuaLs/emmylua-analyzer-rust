@@ -128,8 +128,11 @@ mod tests {
             "test.lua",
             r#"
                 ---@class Goto1
+                ---@field x1 string
                 ---@class Goto2
+                ---@field x2 string
                 ---@class Goto3
+                ---@field x3 string
 
                 ---@class T
                 ---@field func fun(a:Goto1) # 1
@@ -154,11 +157,11 @@ mod tests {
             vec![
                 Expected {
                     file: "test.lua".to_string(),
-                    line: 6,
+                    line: 9,
                 },
                 Expected {
                     file: "test.lua".to_string(),
-                    line: 7,
+                    line: 10,
                 },
             ]
         ));
@@ -172,19 +175,19 @@ mod tests {
             vec![
                 Expected {
                     file: "test.lua".to_string(),
-                    line: 6,
+                    line: 9,
                 },
                 Expected {
                     file: "test.lua".to_string(),
-                    line: 7,
-                },
-                Expected {
-                    file: "test.lua".to_string(),
-                    line: 8,
+                    line: 10,
                 },
                 Expected {
                     file: "test.lua".to_string(),
                     line: 11,
+                },
+                Expected {
+                    file: "test.lua".to_string(),
+                    line: 14,
                 },
             ]
         ));

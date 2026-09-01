@@ -516,7 +516,7 @@ mod test {
             ---@type table<integer, string>
             local t = {}
 
-            ---@class NewKey: integer
+            ---@alias NewKey integer
 
             ---@type NewKey
             local key = 1

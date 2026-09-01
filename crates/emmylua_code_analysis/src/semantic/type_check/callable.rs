@@ -185,11 +185,8 @@ fn relate_function(
                             .as_ref()
                     };
                     if let Some(remaining_target) = remaining_target {
-                        let result = relater.relate_with_directional_policy(
-                            remaining_target,
-                            source_vararg,
-                            intersection_state,
-                        );
+                        let result =
+                            relater.relate(remaining_target, source_vararg, intersection_state);
                         relater.on_unrelated(result, |_| ChainMessage::FunctionParameter {
                             index: remaining,
                         })?;
@@ -207,11 +204,7 @@ fn relate_function(
                 continue;
             }
             // 函数参数是逆变的.
-            let result = relater.relate_with_directional_policy(
-                target_type,
-                source_type,
-                intersection_state,
-            );
+            let result = relater.relate(target_type, source_type, intersection_state);
             relater.on_unrelated(result, |_| ChainMessage::FunctionParameter { index })?;
             relater.note_progress();
         }

@@ -12,6 +12,7 @@ mod test {
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
+                ---@field comp boolean
                 ---@class G.A
                 ---@class G.B: Component
 
@@ -34,6 +35,7 @@ mod test {
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
+                ---@field comp boolean
                 ---@class G.A
                 ---@class G.B: Component
 
@@ -90,6 +92,7 @@ mod test {
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
+                ---@field comp boolean
                 ---@class G.A
                 ---@class G.B: Component
 
@@ -129,6 +132,7 @@ mod test {
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@class Component
+            ---@field comp boolean
             ---@class G.A
             ---@class G.B: Component
 

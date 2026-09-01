@@ -583,7 +583,7 @@ mod tests {
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
-                ---@class key: integer
+                ---@alias key integer
 
                 ---@return key key
                 local function get()

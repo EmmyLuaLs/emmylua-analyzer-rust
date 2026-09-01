@@ -336,3 +336,6 @@ Argument of type `%{source}` is not assignable to parameter of type `%{target}`.
 'Tuple element %{index} is missing.':
   zh_CN: '元组缺少第 %{index} 个元素。'
   zh_HK: '元組缺少第 %{index} 個元素。'
+"Classes cannot inherit from primitive base types, use '@alias' instead.":
+  zh_CN: 类不能继承原始的基础类型，请改用 '@alias'。
+  zh_HK: 類不能繼承原始的基礎類型，請改用 '@alias'。

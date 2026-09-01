@@ -933,6 +933,7 @@ mod tests {
         ws.def(
             r#"
                 ---@class Component
+                ---@field comp true
                 ---@class C: Component
 
                 ---@class D: C
@@ -960,44 +961,6 @@ mod tests {
                 },
                 VirtualCompletionItem {
                     label: "\"Component\"".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "\"D\"".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-            ],
-            CompletionTriggerKind::TRIGGER_CHARACTER,
-        ));
-        Ok(())
-    }
-
-    #[gtest]
-    fn test_str_tpl_ref_4() -> Result<()> {
-        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
-        ws.def(
-            r#"
-            ---@class C: string
-
-            ---@class D: C
-            "#,
-        );
-        check!(ws.check_completion_with_kind(
-            r#"
-            ---@generic T: string
-            ---@param name `T`
-            ---@return T
-            local function new(name)
-                return name
-            end
-
-            local a = new(<??>)
-            "#,
-            vec![
-                VirtualCompletionItem {
-                    label: "\"C\"".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
