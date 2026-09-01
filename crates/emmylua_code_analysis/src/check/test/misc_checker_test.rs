@@ -11,6 +11,57 @@ fn check_with_code(source: &str, code: DiagnosticCode) -> Vec<super::Diagnostic>
     check_source_with_emmyrc(source, emmyrc)
 }
 
+/// Definition-only `---@meta` files must not produce diagnostics.
+#[test]
+fn test_meta_file_has_no_diagnostics() {
+    let diagnostics = check_source(
+        r#"
+        ---@meta
+        local undefined_global = 1
+        local x = 1
+        x = "string"
+        "#,
+    );
+    assert_eq!(
+        diagnostics.len(),
+        0,
+        "meta file must be definition-only, got: {:?}",
+        diagnostics
+    );
+}
+
+/// Library workspace files must not produce diagnostics.
+#[test]
+fn test_library_file_has_no_diagnostics() {
+    use lsp_types::Uri;
+    use std::str::FromStr;
+    use std::sync::Arc;
+
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = crate::SalsaDatabase::new();
+    db.update_config(emmyrc.clone());
+    db.add_library_workspace(&crate::WorkspaceFolder::new(
+        std::path::PathBuf::from("C:/libs/some-lib"),
+        true,
+    ));
+
+    let uri = Uri::from_str("file:///C:/libs/some-lib/def.lua").unwrap();
+    let fid = db.set_file_content(
+        &uri,
+        Some("local undefined_global = 1\nlocal x = 1\nx = \"string\"".to_string()),
+    );
+
+    let model = crate::SalsaSemanticModel::new(&db, fid).expect("model");
+    let diagnostics =
+        crate::check::check_file(&model, Arc::new(crate::check::CheckConfig::new(&emmyrc)));
+    assert_eq!(
+        diagnostics.len(),
+        0,
+        "library file must be definition-only, got: {:?}",
+        diagnostics
+    );
+}
+
 /// `assert(true)` is always true → reported.
 #[test]
 fn test_unnecessary_assert_truthy() {

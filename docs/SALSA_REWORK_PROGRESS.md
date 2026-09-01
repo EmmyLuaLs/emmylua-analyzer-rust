@@ -148,6 +148,17 @@ initializer expressions to the owning closure/member before reading `---@return_
 Previously an aliased callee resolved only to the local declaration and the cast was
 silently ignored; flow analysis now narrows through aliases as well as direct calls.
 
+### 2.7 Definition-only files and meta overloads
+
+- `check_file` now suppresses diagnostics for:
+  - files containing `---@meta`;
+  - files belonging to non-main workspaces (library/std/remote).
+- Those files remain fully indexed as definition sources, so their exported members are
+  still visible to main files.
+- A `---@meta` file may declare the same member function multiple times; the existing
+  overload collection merges callable same-key members and call inference selects the
+  matching overload by arguments.
+
 ## 3. Performance Data (real project)
 
 Workspace used for testing:
