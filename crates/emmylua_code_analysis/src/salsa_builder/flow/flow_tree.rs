@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaExpr, LuaSyntaxId};
-use rowan::TextSize;
+use rowan::{TextRange, TextSize};
 
 use super::super::def::SemanticId;
 use super::{FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind};
@@ -18,6 +18,12 @@ pub struct FlowTree {
     multiple_antecedents: Vec<Vec<FlowId>>,
     // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
     bindings: HashMap<LuaSyntaxId, FlowId>,
+    /// Sorted binding ranges; used as a fallback for offsets that are not exactly
+    /// the start of a bound syntax node.
+    binding_ranges: Vec<(TextRange, FlowId)>,
+    /// For the common case where `offset` is exactly the start of a bound node,
+    /// maps start -> flow id of the smallest range starting there.
+    binding_starts: HashMap<TextSize, FlowId>,
 }
 
 impl FlowTree {
@@ -36,6 +42,15 @@ impl FlowTree {
                 FlowNodeKind::TagCast(_) | FlowNodeKind::AsCast(_)
             )
         });
+        let mut binding_ranges: Vec<(TextRange, FlowId)> = bindings
+            .iter()
+            .map(|(syntax_id, flow_id)| (syntax_id.get_range(), *flow_id))
+            .collect();
+        binding_ranges.sort_by_key(|(range, _)| (range.start(), range.end()));
+        let mut binding_starts = HashMap::new();
+        for (range, flow_id) in &binding_ranges {
+            binding_starts.entry(range.start()).or_insert(*flow_id);
+        }
         Self {
             decl_bind_expr_ref,
             decl_multi_return_ref,
@@ -44,6 +59,8 @@ impl FlowTree {
             has_tag_cast,
             multiple_antecedents,
             bindings,
+            binding_ranges,
+            binding_starts,
         }
     }
 
@@ -53,10 +70,16 @@ impl FlowTree {
 
     /// The flow node for the deepest statement (a bindings key) containing `offset`.
     pub fn get_flow_id_at(&self, offset: TextSize) -> Option<FlowId> {
-        self.bindings
+        if let Some(flow_id) = self.binding_starts.get(&offset) {
+            return Some(*flow_id);
+        }
+        let idx = self
+            .binding_ranges
+            .partition_point(|(range, _)| range.start() <= offset);
+        self.binding_ranges[..idx]
             .iter()
-            .filter(|(syntax_id, _)| syntax_id.get_range().contains(offset))
-            .min_by_key(|(syntax_id, _)| syntax_id.get_range().len())
+            .filter(|(range, _)| range.contains(offset))
+            .min_by_key(|(range, _)| range.len())
             .map(|(_, flow_id)| *flow_id)
     }
 

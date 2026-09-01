@@ -236,7 +236,7 @@ impl SalsaDatabase {
     /// When `is_new == true`, also add the FileId to `WorkspaceInput.file_ids`;
     /// pure text/path updates only replace the VFS entry and do not touch the file set.
     fn commit_file_entry(&mut self, file_id: FileId, input: SourceFileInput, is_new: bool) {
-        self.semantic_cache.clear();
+        self.semantic_cache.clear_file(file_id);
         let Some(workspace) = self.workspace else {
             return;
         };
@@ -263,7 +263,7 @@ impl SalsaDatabase {
 
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
-        self.semantic_cache.clear();
+        self.semantic_cache.clear_file(file_id);
         let Some(workspace) = self.workspace else {
             return;
         };
@@ -556,6 +556,10 @@ impl SalsaDatabase {
         let input = self.upsert_file_input(file_id, path.clone(), uri.clone(), text);
         if is_new || metadata_changed {
             self.commit_file_entry(file_id, input, is_new);
+        } else {
+            // A pure text update does not change VFS metadata or the file set, but
+            // the old high-level per-file cache is now stale and must be dropped.
+            self.semantic_cache.clear_file(file_id);
         }
     }
 
@@ -565,6 +569,7 @@ impl SalsaDatabase {
         file_inputs: HashMap<FileId, SourceFileInput>,
     ) {
         self.cancel_snapshots();
+        self.semantic_cache.clear();
         self.ensure_workspace();
         let Some(workspace) = self.workspace else {
             return;

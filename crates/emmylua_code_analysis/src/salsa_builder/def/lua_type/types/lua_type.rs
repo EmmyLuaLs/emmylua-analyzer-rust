@@ -152,7 +152,7 @@ impl Hash for LuaType {
             LuaType::Generic(a) => (30, a.as_ref()).hash(state),
             LuaType::TableGeneric(a) => (31, a.as_ref()).hash(state),
             LuaType::TplRef(a) => (32, a.as_ref()).hash(state),
-            LuaType::StrTplRef(a) => (33, Arc::as_ptr(a)).hash(state),
+            LuaType::StrTplRef(a) => (33, a.as_ref()).hash(state),
             LuaType::Variadic(a) => (34, a.as_ref()).hash(state),
             LuaType::DocBooleanConst(a) => (35, a).hash(state),
             LuaType::Signature(a) => (36, a).hash(state),

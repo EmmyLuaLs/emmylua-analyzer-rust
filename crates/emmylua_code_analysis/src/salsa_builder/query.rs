@@ -1994,10 +1994,7 @@ pub(crate) fn resolve_name(
     offset: TextSize,
 ) -> Option<SemanticId> {
     let facts = file_facts(db, file, config);
-    let name_use = facts
-        .name_uses
-        .iter()
-        .find(|use_| use_.syntax.get_range().contains(offset))?;
+    let name_use = facts.name_use_at_offset(offset)?;
     facts
         .find_visible_decl_before_offset(&name_use.name, offset)
         .map(|decl| decl.id.clone())

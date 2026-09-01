@@ -197,11 +197,7 @@ impl<'db> SalsaQueries<'db> {
     /// `find_decl`: finds a declaration whose name token covers the given offset.
     pub fn decl_by_offset(&self, file_id: FileId, offset: TextSize) -> Option<SemanticId> {
         let facts = self.file_facts(file_id)?;
-        facts
-            .decls
-            .iter()
-            .find(|decl| decl.name_range.contains(offset))
-            .map(|d| d.id.clone())
+        facts.decl_at_offset(offset).map(|d| d.id.clone())
     }
 
     /// Type of a declaration (node-keyed, with cycle convergence; may reference members across files).

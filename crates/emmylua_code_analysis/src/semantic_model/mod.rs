@@ -266,22 +266,14 @@ impl<'db> SemanticModel<'db> {
 
         // 1. Declaration name (definition site; the `x` in `local x = 1`).
         if let Some(facts) = self.file_facts()
-            && let Some(decl) = facts
-                .decls
-                .iter()
-                .find(|decl| decl.name_range.contains(offset))
+            && let Some(decl) = facts.decl_at_offset(offset)
         {
             return Some(decl.id.clone());
         }
 
         // 1.5 Member key (definition site: the `x` in `{ x = 1 }` / `@field x` / `@field [1]` / `T.x = v`) -> Member.
         if let Some(facts) = self.file_facts()
-            && let Some(member) = facts.members.iter().find(|member| {
-                member
-                    .id
-                    .member_key_range()
-                    .is_some_and(|range| range.contains(offset))
-            })
+            && let Some(member) = facts.member_at_offset(offset)
         {
             return Some(member.id.clone());
         }
@@ -341,10 +333,7 @@ impl<'db> SemanticModel<'db> {
 
         // 1. Declaration name (definition site: `local x` / parameter / function name / for variable) -> Decl.
         if let Some(facts) = self.file_facts()
-            && let Some(decl) = facts
-                .decls
-                .iter()
-                .find(|decl| decl.name_range.contains(offset))
+            && let Some(decl) = facts.decl_at_offset(offset)
         {
             return Some(SemanticInfo {
                 typ: self.type_of_decl(&decl.id).unwrap_or(LuaType::Unknown),
@@ -354,12 +343,7 @@ impl<'db> SemanticModel<'db> {
 
         // 2. Member key (the `x` in table field `{ x = 1 }` / `@field x` / `T.x = v` at definition sites) -> Member.
         if let Some(facts) = self.file_facts()
-            && let Some(member) = facts.members.iter().find(|member| {
-                member
-                    .id
-                    .member_key_range()
-                    .is_some_and(|range| range.contains(offset))
-            })
+            && let Some(member) = facts.member_at_offset(offset)
         {
             return Some(SemanticInfo {
                 typ: self.type_of_member(&member.id).unwrap_or(LuaType::Unknown),

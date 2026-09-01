@@ -89,7 +89,7 @@ impl Ord for LuaMemberKey {
             (Name(a), Name(b)) => a.cmp(b),
             (Name(_), _) => std::cmp::Ordering::Less,
             (_, Name(_)) => std::cmp::Ordering::Greater,
-            (TypeKey(_), TypeKey(_)) => std::cmp::Ordering::Equal,
+            (TypeKey(a), TypeKey(b)) => format!("{:?}", a).cmp(&format!("{:?}", b)),
         }
     }
 }

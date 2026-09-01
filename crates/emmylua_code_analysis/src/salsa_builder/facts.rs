@@ -97,6 +97,9 @@ pub struct FileFacts {
     pub annotation_errors: Vec<AnnotationError>,
 
     // Buckets / indexes
+    name_use_by_start: Vec<(TextSize, usize)>,
+    decl_by_range_start: Vec<(TextSize, usize)>,
+    member_by_range_start: Vec<(TextSize, usize)>,
     decl_by_name: Vec<Bucket<SmolStr>>,
     decl_by_id: HashMap<SemanticId, usize>,
     member_by_id: HashMap<SemanticId, usize>,
@@ -125,6 +128,54 @@ impl FileFacts {
 
     pub fn member(&self, index: usize) -> Option<&Member> {
         self.members.get(index)
+    }
+
+    /// Finds the `NameUse` whose token range contains `offset`.
+    ///
+    /// Uses the precomputed start-sorted index instead of scanning all name uses.
+    pub fn name_use_at_offset(&self, offset: TextSize) -> Option<&NameUse> {
+        let idx = self
+            .name_use_by_start
+            .partition_point(|(start, _)| *start <= offset);
+        for (_, index) in self.name_use_by_start[..idx].iter().rev() {
+            let name_use = &self.name_uses[*index];
+            if name_use.syntax.get_range().contains(offset) {
+                return Some(name_use);
+            }
+        }
+        None
+    }
+
+    /// Finds the declaration whose name range contains `offset`.
+    pub fn decl_at_offset(&self, offset: TextSize) -> Option<&Decl> {
+        let idx = self
+            .decl_by_range_start
+            .partition_point(|(start, _)| *start <= offset);
+        for (_, index) in self.decl_by_range_start[..idx].iter().rev() {
+            let decl = &self.decls[*index];
+            if decl.name_range.contains(offset) {
+                return Some(decl);
+            }
+        }
+        None
+    }
+
+    /// Finds the member whose key range contains `offset`.
+    pub fn member_at_offset(&self, offset: TextSize) -> Option<&Member> {
+        let idx = self
+            .member_by_range_start
+            .partition_point(|(start, _)| *start <= offset);
+        for (_, index) in self.member_by_range_start[..idx].iter().rev() {
+            let member = &self.members[*index];
+            if member
+                .id
+                .member_key_range()
+                .is_some_and(|range| range.contains(offset))
+            {
+                return Some(member);
+            }
+        }
+        None
     }
 
     pub fn member_by_id(&self, id: &SemanticId) -> Option<&Member> {
@@ -647,6 +698,30 @@ impl FactsBuilder {
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
 
+        let mut name_use_by_start = self
+            .name_uses
+            .iter()
+            .enumerate()
+            .map(|(i, name_use)| (name_use.syntax.get_range().start(), i))
+            .collect::<Vec<_>>();
+        name_use_by_start.sort_by_key(|(start, _)| *start);
+
+        let mut decl_by_range_start = self
+            .decls
+            .iter()
+            .enumerate()
+            .map(|(i, decl)| (decl.name_range.start(), i))
+            .collect::<Vec<_>>();
+        decl_by_range_start.sort_by_key(|(start, _)| *start);
+
+        let mut member_by_range_start = self
+            .members
+            .iter()
+            .enumerate()
+            .filter_map(|(i, member)| member.id.member_key_range().map(|range| (range.start(), i)))
+            .collect::<Vec<_>>();
+        member_by_range_start.sort_by_key(|(start, _)| *start);
+
         let mut decl_entries = self
             .decls
             .iter()
@@ -757,6 +832,9 @@ impl FactsBuilder {
             file_diagnostic_disabled: self.file_diagnostic_disabled,
             file_diagnostic_enabled: self.file_diagnostic_enabled,
             annotation_errors: self.annotation_errors,
+            name_use_by_start,
+            decl_by_range_start,
+            member_by_range_start,
             decl_by_name,
             decl_by_id,
             member_by_id,
