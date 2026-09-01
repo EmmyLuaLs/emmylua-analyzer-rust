@@ -35,16 +35,7 @@ impl Checker for ParamTypeChecker {
             let LuaAst::LuaCallExpr(call_expr) = node else {
                 continue;
             };
-            let start = std::time::Instant::now();
             check_call(context, semantic_model, &call_expr);
-            let elapsed = start.elapsed();
-            if elapsed.as_millis() > 200 {
-                eprintln!(
-                    "SLOW CALL at {:?} elapsed={:?}",
-                    call_expr.get_range(),
-                    elapsed
-                );
-            }
         }
     }
 }
@@ -177,11 +168,7 @@ fn member_callable_candidates(
             && let LuaType::TableConst(table) = &prefix_ty
             && let Some(facts) = semantic_model.file_facts_of(table.file_id)
         {
-            for member in facts
-                .members
-                .iter()
-                .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-            {
+            for member in facts.members_named(resolved.name.as_str()) {
                 let Some(value_syntax) = member.value_syntax else {
                     continue;
                 };
@@ -206,11 +193,7 @@ fn member_callable_candidates(
             && let Some(facts) = semantic_model.file_facts_of(member_file)
         {
             let mut overloads = Vec::new();
-            for overload in facts
-                .members
-                .iter()
-                .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-            {
+            for overload in facts.members_named(resolved.name.as_str()) {
                 if let Some(ty) = semantic_model.type_of_member(&overload.id) {
                     overloads.extend(callable_functions(semantic_model, &ty));
                 }
@@ -239,11 +222,7 @@ fn member_callable_candidates(
         && let LuaType::TableConst(table) = &semantic_model.type_of_expr(prefix.get_syntax_id())
         && let Some(facts) = semantic_model.file_facts_of(table.file_id)
     {
-        for member in facts
-            .members
-            .iter()
-            .filter(|member| member.key.name() == Some(resolved.name.as_str()))
-        {
+        for member in facts.members_named(resolved.name.as_str()) {
             let Some(value_syntax) = member.value_syntax else {
                 continue;
             };
@@ -269,7 +248,6 @@ fn check_call(
     };
     let analysis = semantic_model.call_site_analysis(call_expr);
     let mut candidates = analysis.candidates;
-    eprintln!("CALL {:?} cand={}", call_expr.get_range(), candidates.len());
     // Local `---@type F1` (fun alias) declaration structure takes precedence over closure body inference.
     if let LuaExpr::NameExpr(name_expr) = &callee
         && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
@@ -541,11 +519,11 @@ fn check_candidate(
 ) -> Vec<Mismatch> {
     let params = func.get_params();
     let self_param = first_param_is_self(func);
-    let param_start = usize::from(colon_call && self_param);
+    let param_start = usize::from(colon_call && self_param).min(params.len());
     // Method definition called with dot syntax (`obj.method(obj, ...)` / `pcall(obj.method, obj, ...)`):
     // the salsa method signature contains only user parameters; the first actual argument is an explicit receiver and must be skipped.
     let dot_method_receiver = !colon_call && !self_param && func.is_colon_define();
-    let arg_offset = usize::from(dot_method_receiver);
+    let arg_offset = usize::from(dot_method_receiver).min(args.len());
 
     // Per-candidate generic binding table: bindings inferred from earlier arguments (T[]) are used for later callback parameters.
     let mut bindings = unify::TplBindings::new();

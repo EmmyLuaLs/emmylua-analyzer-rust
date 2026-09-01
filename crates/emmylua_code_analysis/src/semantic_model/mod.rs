@@ -738,8 +738,7 @@ impl<'db> SemanticModel<'db> {
         {
             let facts = self.file_facts()?;
             let same_name = facts
-                .members_of_owner(&owner)
-                .filter(|member| member.key.name() == Some(name.as_str()))
+                .members_of_owner_named(&owner, name.as_str())
                 .collect::<Vec<_>>();
             let prefer_typed = same_name
                 .iter()
@@ -1175,8 +1174,8 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub(crate) fn type_of_decl_impl(&self, decl: &SemanticId) -> Option<LuaType> {
-        if let Some(decls) = self.decls()
-            && let Some(decl) = decls.iter().find(|d| &d.id == decl)
+        if let Some(facts) = self.file_facts()
+            && let Some(decl) = facts.decl_by_id(decl)
         {
             // Implicit method `self`: type is the method owner's instance type. Once registered as a Param,
             // `type_of_decl_at` flow queries then apply narrowing like `self == ...` on top of this.
@@ -1280,10 +1279,9 @@ impl<'db> SemanticModel<'db> {
             // with the type definition even if the variable name differs from the class name. Semantically that runtime table is the class table.
             if let Some(owner_syntax) = decl.owner_syntax
                 && let Some(facts) = self.file_facts()
-                && let Some(def) = facts.type_defs.iter().find(|def| {
-                    def.owner_syntax == Some(owner_syntax)
-                        && matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum)
-                })
+                && let Some(def) = facts
+                    .type_def_by_owner_syntax(owner_syntax)
+                    .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
             {
                 return Some(self.type_def_ref(def));
             }
@@ -1381,10 +1379,10 @@ impl<'db> SemanticModel<'db> {
 
     /// Parameter declarations may lose generic constraints in `type_of_decl`'s fallback path; re-attach them here.
     fn attach_param_decl_constraint(&self, decl: &SemanticId, ty: LuaType) -> LuaType {
-        let Some(decls) = self.decls() else {
+        let Some(facts) = self.file_facts() else {
             return ty;
         };
-        let Some(decl_info) = decls.iter().find(|d| &d.id == decl) else {
+        let Some(decl_info) = facts.decl_by_id(decl) else {
             return ty;
         };
         if !matches!(decl_info.kind, DeclKind::Param) {
@@ -2023,9 +2021,9 @@ impl<'db> SemanticModel<'db> {
             SemanticId::Decl(_) => facts
                 .decl_by_id(&member.owner)
                 .and_then(|owner_decl| {
-                    facts.type_defs.iter().find(|def| {
-                        def.owner_syntax.is_some() && def.owner_syntax == owner_decl.owner_syntax
-                    })
+                    owner_decl
+                        .owner_syntax
+                        .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
                 })
                 .map(|def| def.id.clone()),
             _ => None,
@@ -2319,8 +2317,8 @@ impl<'db> SemanticModel<'db> {
             return ty;
         };
         let Some(decl) = foreign_model
-            .decls()
-            .and_then(|ds| ds.iter().find(|d| &d.id == decl))
+            .file_facts_of(key.file_id)
+            .and_then(|facts| facts.decl_by_id(decl))
         else {
             return ty;
         };
@@ -3158,6 +3156,21 @@ impl<'db> SemanticModel<'db> {
         self.q().members_of_owner(owner.clone())
     }
 
+    /// Members of an owner with a specific name.
+    pub fn members_of_owner_named(
+        &self,
+        owner: &SemanticId,
+        name: &str,
+    ) -> crate::salsa_builder::MemberList {
+        crate::salsa_builder::MemberList::from(
+            self.q()
+                .members_of_owner(owner.clone())
+                .into_iter()
+                .filter(|member| member.name == name)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     /// Constructor attributes for a type definition (`---@[constructor("init")]` from the `meta("Class")` factory).
     pub fn constructor_attribute_of_type(
         &self,
@@ -3822,9 +3835,9 @@ impl<'db> SemanticModel<'db> {
                     LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_)
                 ) && let Some(facts) = self.file_facts_of(decl.file_id)
                     && let Some(decl_info) = facts.decl_by_id(&SemanticId::Decl(decl.clone()))
-                    && let Some(def) = facts.type_defs.iter().find(|def| {
-                        def.owner_syntax.is_some() && def.owner_syntax == decl_info.owner_syntax
-                    })
+                    && let Some(def) = decl_info
+                        .owner_syntax
+                        .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
                 {
                     owner_ty = self.type_def_ref(def);
                 }

@@ -65,6 +65,16 @@ fn find_member_in_owner(
     bindings: Option<&TplBindings>,
     name_bindings: Option<&HashMap<String, LuaType>>,
 ) -> Option<MemberInfo> {
+    if let Some(name) = key.name() {
+        for member_ref in model.members_of_owner_named(owner, name) {
+            if member_ref_matches_key(model, &member_ref, key) {
+                if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+                    return Some(info);
+                }
+            }
+        }
+        return None;
+    }
     for member_ref in model.members_of_owner(owner) {
         if member_ref_matches_key(model, &member_ref, key) {
             if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {

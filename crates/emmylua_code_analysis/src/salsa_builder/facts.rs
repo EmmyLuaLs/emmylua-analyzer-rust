@@ -101,6 +101,16 @@ pub struct FileFacts {
     decl_by_id: HashMap<SemanticId, usize>,
     member_by_id: HashMap<SemanticId, usize>,
     type_def_by_id: HashMap<SemanticId, usize>,
+    members_by_owner: HashMap<SemanticId, Vec<usize>>,
+    members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>>,
+    members_by_name: HashMap<SmolStr, Vec<usize>>,
+    type_def_by_full_name: HashMap<SmolStr, usize>,
+    type_def_by_name: HashMap<SmolStr, usize>,
+    type_def_by_owner_syntax: HashMap<LuaSyntaxId, usize>,
+    decl_by_value_syntax: HashMap<LuaSyntaxId, usize>,
+    signature_by_closure: HashMap<LuaSyntaxId, usize>,
+    operator_by_owner_name: HashMap<(SemanticId, SmolStr), usize>,
+    field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize>,
 }
 
 impl FileFacts {
@@ -124,23 +134,49 @@ impl FileFacts {
 
     /// Members whose owner is `SemanticId` (in this file).
     pub fn members_of_owner(&self, owner: &SemanticId) -> impl Iterator<Item = &Member> {
-        self.members
-            .iter()
-            .filter(move |member| &member.owner == owner)
+        self.members_by_owner
+            .get(owner)
+            .into_iter()
+            .flat_map(|indices| indices.iter())
+            .filter_map(move |&index| self.members.get(index))
+    }
+
+    /// All members with a given name in this file (used for overload/same-name candidate scans).
+    pub fn members_named(&self, name: &str) -> impl Iterator<Item = &Member> {
+        self.members_by_name
+            .get(name)
+            .into_iter()
+            .flat_map(|indices| indices.iter())
+            .filter_map(move |&index| self.members.get(index))
+    }
+
+    /// Members of a specific owner with a specific field name.
+    pub fn members_of_owner_named(
+        &self,
+        owner: &SemanticId,
+        name: &str,
+    ) -> impl Iterator<Item = &Member> {
+        self.members_by_owner_name
+            .get(&(owner.clone(), SmolStr::new(name)))
+            .into_iter()
+            .flat_map(|indices| indices.iter())
+            .filter_map(move |&index| self.members.get(index))
     }
 
     /// Type operator overloads (by owner + operator name).
     pub fn operator_of(&self, owner: &SemanticId, name: &str) -> Option<&OperatorDef> {
-        self.operators
-            .iter()
-            .find(|op| &op.owner == owner && op.name == name)
+        let index = self
+            .operator_by_owner_name
+            .get(&(owner.clone(), SmolStr::new(name)))?;
+        self.operators.get(*index)
     }
 
     /// `@field` members of the named type (`TypeDef` id).
     pub fn field_members_of_type(&self, type_def_id: &SemanticId, name: &str) -> Option<&Member> {
-        self.members
-            .iter()
-            .find(|member| member.owner == *type_def_id && member.key.name() == Some(name))
+        let index = self
+            .field_member_by_type_name
+            .get(&(type_def_id.clone(), SmolStr::new(name)))?;
+        self.members.get(*index)
     }
 
     pub fn type_def_by_id(&self, id: &SemanticId) -> Option<&TypeDef> {
@@ -149,22 +185,35 @@ impl FileFacts {
     }
 
     pub fn type_def_by_full_name(&self, full_name: &str) -> Option<&TypeDef> {
-        self.type_defs.iter().find(|def| def.full_name == full_name)
+        let index = self.type_def_by_full_name.get(&SmolStr::new(full_name))?;
+        self.type_defs.get(*index)
     }
 
     pub fn type_def_by_name(&self, name: &str) -> Option<&TypeDef> {
-        self.type_defs.iter().find(|def| def.name == name)
+        let index = self.type_def_by_name.get(&SmolStr::new(name))?;
+        self.type_defs.get(*index)
+    }
+
+    pub fn type_def_by_owner_syntax(&self, owner_syntax: LuaSyntaxId) -> Option<&TypeDef> {
+        let index = self.type_def_by_owner_syntax.get(&owner_syntax)?;
+        self.type_defs.get(*index)
+    }
+
+    pub fn decl_by_value_syntax(&self, value_syntax: LuaSyntaxId) -> Option<&Decl> {
+        let index = self.decl_by_value_syntax.get(&value_syntax)?;
+        self.decls.get(*index)
     }
 
     /// Finds the first declaration by name (any kind, in this file).
     pub fn decl_named(&self, name: &str) -> Option<&Decl> {
-        self.decls.iter().find(|decl| decl.name == name)
+        let indices = find_bucket(&self.decl_by_name, &SmolStr::new(name))?;
+        let first = *indices.first()? as usize;
+        self.decls.get(first)
     }
 
     pub fn signature_by_closure(&self, closure_syntax: LuaSyntaxId) -> Option<&Signature> {
-        self.signatures
-            .iter()
-            .find(|sig| sig.closure_syntax == closure_syntax)
+        let index = self.signature_by_closure.get(&closure_syntax)?;
+        self.signatures.get(*index)
     }
 
     /// Finds a declaration by name visible at `offset` (scope-aware: visible within its enclosing Block/Chunk/FuncStat/Closure).
@@ -626,6 +675,68 @@ impl FactsBuilder {
             .map(|(i, def)| (def.id.clone(), i))
             .collect();
 
+        let mut members_by_owner: HashMap<SemanticId, Vec<usize>> = HashMap::new();
+        let mut members_by_name: HashMap<SmolStr, Vec<usize>> = HashMap::new();
+        let mut field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize> = HashMap::new();
+        let mut members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>> = HashMap::new();
+        for (index, member) in self.members.iter().enumerate() {
+            members_by_owner
+                .entry(member.owner.clone())
+                .or_default()
+                .push(index);
+            if let Some(name) = member.key.name() {
+                let name_smol = SmolStr::new(name);
+                members_by_name
+                    .entry(name_smol.clone())
+                    .or_default()
+                    .push(index);
+                members_by_owner_name
+                    .entry((member.owner.clone(), name_smol.clone()))
+                    .or_default()
+                    .push(index);
+                field_member_by_type_name
+                    .entry((member.owner.clone(), name_smol))
+                    .or_insert(index);
+            }
+        }
+
+        let type_def_by_full_name = self
+            .type_defs
+            .iter()
+            .enumerate()
+            .map(|(i, def)| (def.full_name.clone(), i))
+            .collect::<HashMap<_, _>>();
+        let type_def_by_name = self
+            .type_defs
+            .iter()
+            .enumerate()
+            .map(|(i, def)| (def.name.clone(), i))
+            .collect::<HashMap<_, _>>();
+        let signature_by_closure = self
+            .signatures
+            .iter()
+            .enumerate()
+            .map(|(i, sig)| (sig.closure_syntax, i))
+            .collect::<HashMap<_, _>>();
+        let type_def_by_owner_syntax = self
+            .type_defs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, def)| def.owner_syntax.map(|syntax| (syntax, i)))
+            .collect::<HashMap<_, _>>();
+        let decl_by_value_syntax = self
+            .decls
+            .iter()
+            .enumerate()
+            .filter_map(|(i, decl)| decl.value_expr_syntax.map(|syntax| (syntax, i)))
+            .collect::<HashMap<_, _>>();
+        let operator_by_owner_name = self
+            .operators
+            .iter()
+            .enumerate()
+            .map(|(i, op)| ((op.owner.clone(), op.name.clone()), i))
+            .collect::<HashMap<_, _>>();
+
         FileFacts {
             file_id: self.file_id,
             decls: self.decls,
@@ -650,6 +761,16 @@ impl FactsBuilder {
             decl_by_id,
             member_by_id,
             type_def_by_id,
+            members_by_owner,
+            members_by_owner_name,
+            members_by_name,
+            type_def_by_full_name,
+            type_def_by_name,
+            type_def_by_owner_syntax,
+            decl_by_value_syntax,
+            signature_by_closure,
+            operator_by_owner_name,
+            field_member_by_type_name,
         }
     }
 
