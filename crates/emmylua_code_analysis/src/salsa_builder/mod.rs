@@ -763,7 +763,8 @@ impl SalsaDatabase {
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
         let workspace = self.workspace_input()?;
         let config = self.config_input()?;
-        let ws_id = query::file_workspace_id(self, workspace, file_id).unwrap_or(WorkspaceId::REMOTE);
+        let ws_id =
+            query::file_workspace_id(self, workspace, file_id).unwrap_or(WorkspaceId::REMOTE);
         let index = query::workspace_module_index_for(self, workspace, config, ws_id);
         let mut info = index.module_info(file_id)?;
         if let Some(shell) = self.q().module_export_type(file_id) {
@@ -789,7 +790,8 @@ impl SalsaDatabase {
     pub fn module_node_info(&self, node_id: ModuleNodeId) -> Option<ModuleNode> {
         let workspace = self.workspace_input()?;
         let config = self.config_input()?;
-        let index = query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
+        let index =
+            query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
         index.module_node(node_id).cloned()
     }
 
@@ -798,7 +800,8 @@ impl SalsaDatabase {
         let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        let index = query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
+        let index =
+            query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
         index
             .module_file_ids(node_id)
             .map(|ids| ids.to_vec())

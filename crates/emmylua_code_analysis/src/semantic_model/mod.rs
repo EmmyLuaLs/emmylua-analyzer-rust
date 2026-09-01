@@ -722,12 +722,7 @@ impl<'db> SemanticModel<'db> {
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let syntax = index_expr.get_syntax_id();
         let file_id = self.file_id;
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .resolve_member
-            .get(&(file_id, syntax))
-        {
+        if let Some(cached) = self.cache.borrow().resolve_member.get(&(file_id, syntax)) {
             return cached.clone();
         }
         let result = self.resolve_member_impl(index_expr);
@@ -2070,10 +2065,10 @@ impl<'db> SemanticModel<'db> {
             return value.clone();
         }
         let value = member::member_info(self, prefix_type, key);
-        self.cache.borrow_mut().member_info.insert(
-            (prefix_type.clone(), key.clone()),
-            value.clone(),
-        );
+        self.cache
+            .borrow_mut()
+            .member_info
+            .insert((prefix_type.clone(), key.clone()), value.clone());
         value
     }
 
@@ -2306,10 +2301,10 @@ impl<'db> SemanticModel<'db> {
         }
         let ty = flow::type_of_decl_at(self, decl, offset);
         if let Some(start) = start {
-            self.cache.borrow_mut().flow_decl.insert(
-                (self.file_id, decl.clone(), start),
-                ty.clone(),
-            );
+            self.cache
+                .borrow_mut()
+                .flow_decl
+                .insert((self.file_id, decl.clone(), start), ty.clone());
         }
         self.sanitize_global_generic_decl(decl, ty)
     }
@@ -2358,19 +2353,19 @@ impl<'db> SemanticModel<'db> {
             SemanticId::Member(key) => key.file_id,
             _ => self.file_id,
         };
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .member_type_at
-            .get(&(cache_file, member.clone(), offset))
+        if let Some(cached) =
+            self.cache
+                .borrow()
+                .member_type_at
+                .get(&(cache_file, member.clone(), offset))
         {
             return cached.clone();
         }
         let ty = flow::type_of_member_at(self, member, offset);
-        self.cache.borrow_mut().member_type_at.insert(
-            (cache_file, member.clone(), offset),
-            ty.clone(),
-        );
+        self.cache
+            .borrow_mut()
+            .member_type_at
+            .insert((cache_file, member.clone(), offset), ty.clone());
         ty
     }
 
@@ -2433,10 +2428,10 @@ impl<'db> SemanticModel<'db> {
             return cached.clone();
         }
         let ty = flow::type_of_expr_at(self, expr_syntax, offset);
-        self.cache.borrow_mut().expr_type_at.insert(
-            (file_id, expr_syntax, offset),
-            ty.clone(),
-        );
+        self.cache
+            .borrow_mut()
+            .expr_type_at
+            .insert((file_id, expr_syntax, offset), ty.clone());
         ty
     }
 
@@ -3325,12 +3320,7 @@ impl<'db> SemanticModel<'db> {
 
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
         let file_id = self.file_id;
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .expr_type
-            .get(&(file_id, expr_syntax))
-        {
+        if let Some(cached) = self.cache.borrow().expr_type.get(&(file_id, expr_syntax)) {
             return cached.clone();
         }
         if self.is_expr_infer_active(expr_syntax) {
@@ -3367,10 +3357,10 @@ impl<'db> SemanticModel<'db> {
             return *cached;
         }
         let result = type_check::is_compatible(self, source, target);
-        self.cache.borrow_mut().type_check.insert(
-            (source.clone(), target.clone()),
-            result,
-        );
+        self.cache
+            .borrow_mut()
+            .type_check
+            .insert((source.clone(), target.clone()), result);
         result
     }
 

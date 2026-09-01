@@ -17,8 +17,8 @@ use crate::{
 
 use super::SalsaDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, Member, MemberRef, ModuleExport, NameUse, SalsaGenericParam,
-    Scope, SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
+    ConstructorAttribute, Decl, Member, MemberRef, ModuleExport, NameUse, SalsaGenericParam, Scope,
+    SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
 };
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;

@@ -3072,6 +3072,38 @@ n = n + 1
     }
 
     #[test]
+    fn test_return_cast_local_alias() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "test.lua",
+            r#"
+            local M = {}
+
+            --- @return boolean
+            --- @return_cast _obj function
+            function M.is_callable(_obj) end
+
+            return M
+            "#,
+        );
+        ws.def(
+            r#"
+            local test = require("test")
+            local is_callable = test.is_callable
+
+            local obj
+
+            if is_callable(obj) then
+                o = obj
+            end
+            "#,
+        );
+        let a = ws.expr_ty("o");
+        let expected = LuaType::Function;
+        assert_eq!(a, expected);
+    }
+
+    #[test]
     fn test_issue_734() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

@@ -10,7 +10,7 @@ use super::def::{
     ConstructorAttribute, DeclKind, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
     ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef, TypeDefKind,
 };
-use super::exports::{file_exports, shard_of};
+use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::{ConfigInput, SourceFileInput, TypeName, WorkspaceInput};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
@@ -98,21 +98,12 @@ pub(crate) fn workspace_type_index_for(
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
     let mut entries: Vec<(u32, TypeDef)> = Vec::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
-        }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let exports = file_exports(db, file, config);
-        for def in &exports.types {
+    for shard in 0..EXPORT_SHARDS {
+        let shard = export_shard(db, workspace, config, shard);
+        for def in &shard.types {
+            if !file_matches_workspace_id(db, workspace, def.file_id, ws_id) {
+                continue;
+            }
             let scope = match def.visibility {
                 TypeVisibility::Public => TypeScope::Global,
                 TypeVisibility::Internal => TypeScope::Internal(ws_id),
@@ -170,6 +161,37 @@ impl WorkspaceTypeIndex {
     }
 }
 
+/// A shard's deprecated global names: only files in the stable shard; editing one file recomputes one shard.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeprecatedShard {
+    names: Vec<(FileId, SmolStr)>,
+}
+
+#[salsa::tracked(returns(ref), lru = 64, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn deprecated_shard(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> DeprecatedShard {
+    let mut names = Vec::new();
+    for file_id in workspace.file_ids(db).iter().copied() {
+        if shard_of(file_id) != shard {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let facts = file_facts(db, file, config);
+        for decl in &facts.decls {
+            if matches!(decl.kind, DeclKind::Global) && decl.deprecated {
+                names.push((file_id, decl.name.clone()));
+            }
+        }
+    }
+    DeprecatedShard { names }
+}
+
 /// Deprecated global names in a single workspace.
 ///
 /// This lets checkers like `DeprecatedChecker` test whether a global name is
@@ -183,23 +205,11 @@ pub(crate) fn deprecated_global_names_for(
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
-        }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let facts = file_facts(db, file, config);
-        for decl in &facts.decls {
-            if matches!(decl.kind, DeclKind::Global) && decl.deprecated {
-                out.insert(decl.name.clone());
+    for shard in 0..EXPORT_SHARDS {
+        let shard = deprecated_shard(db, workspace, config, shard);
+        for (file_id, name) in &shard.names {
+            if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                out.insert(name.clone());
             }
         }
     }
@@ -219,6 +229,20 @@ pub(crate) fn all_workspace_ids(db: &dyn SalsaDb, workspace: WorkspaceInput) -> 
     ids
 }
 
+fn file_matches_workspace_id(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    file_id: FileId,
+    ws_id: WorkspaceId,
+) -> bool {
+    let file_ws = file_workspace_id(db, workspace, file_id);
+    if ws_id == WorkspaceId::REMOTE {
+        file_ws.is_none()
+    } else {
+        file_ws == Some(ws_id)
+    }
+}
+
 fn find_global_types(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -228,7 +252,12 @@ fn find_global_types(
     let mut out: Vec<TypeDef> = Vec::new();
     for ws_id in all_workspace_ids(db, workspace) {
         let index = workspace_type_index_for(db, workspace, config, ws_id);
-        out.extend(index.find_all(db, TypeScope::Global, full_name).iter().cloned());
+        out.extend(
+            index
+                .find_all(db, TypeScope::Global, full_name)
+                .iter()
+                .cloned(),
+        );
     }
     Arc::from(out)
 }
@@ -240,7 +269,11 @@ fn find_internal_types(
     ws: WorkspaceId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
-    workspace_type_index_for(db, workspace, config, ws).find_all(db, TypeScope::Internal(ws), full_name)
+    workspace_type_index_for(db, workspace, config, ws).find_all(
+        db,
+        TypeScope::Internal(ws),
+        full_name,
+    )
 }
 
 fn find_file_types(
@@ -251,7 +284,11 @@ fn find_file_types(
     full_name: &str,
 ) -> Arc<[TypeDef]> {
     let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
-    workspace_type_index_for(db, workspace, config, ws).find_all(db, TypeScope::File(file_id), full_name)
+    workspace_type_index_for(db, workspace, config, ws).find_all(
+        db,
+        TypeScope::File(file_id),
+        full_name,
+    )
 }
 
 /// Resolve **all definition locations** of a named type in the current file scope
@@ -398,21 +435,12 @@ pub(crate) fn workspace_member_index_for(
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
-        }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let exports = file_exports(db, file, config);
-        for member in &exports.members {
+    for shard in 0..EXPORT_SHARDS {
+        let shard = export_shard(db, workspace, config, shard);
+        for member in &shard.members {
+            if !file_matches_workspace_id(db, workspace, member.file_id, ws_id) {
+                continue;
+            }
             by_owner
                 .entry(member.owner.clone())
                 .or_default()
@@ -554,6 +582,10 @@ pub(crate) fn reference_shard(
 }
 
 /// Reference index scoped to a single workspace.
+///
+/// Built from stable shard queries (`reference_shard`) instead of re-reading every
+/// file directly. Editing one file only recomputes its shard; this function re-merges
+/// the shard results for the requested workspace.
 #[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn workspace_reference_index_for(
     db: &dyn SalsaDb,
@@ -562,37 +594,31 @@ pub(crate) fn workspace_reference_index_for(
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
     let mut out = WorkspaceReferenceIndex::default();
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
+    for shard in 0..EXPORT_SHARDS {
+        let shard = reference_shard(db, workspace, config, shard);
+        for (decl, ranges) in &shard.decl_refs {
+            let entry = out.decl_refs.entry(decl.clone()).or_default();
+            for (file_id, range) in ranges {
+                if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                    entry.push((*file_id, *range));
+                }
+            }
         }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let refs = file_references(db, file, config);
-        for (decl, ranges) in &refs.decl_refs {
-            out.decl_refs
-                .entry(decl.clone())
-                .or_default()
-                .extend(ranges.iter().map(|range| (file_id, *range)));
+        for (member, ranges) in &shard.member_refs {
+            let entry = out.member_refs.entry(member.clone()).or_default();
+            for (file_id, range) in ranges {
+                if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                    entry.push((*file_id, *range));
+                }
+            }
         }
-        for (member, ranges) in &refs.member_refs {
-            out.member_refs
-                .entry(member.clone())
-                .or_default()
-                .extend(ranges.iter().map(|range| (file_id, *range)));
-        }
-        for (member, ranges) in &refs.member_defs {
-            out.member_defs
-                .entry(member.clone())
-                .or_default()
-                .extend(ranges.iter().map(|range| (file_id, *range)));
+        for (member, ranges) in &shard.member_defs {
+            let entry = out.member_defs.entry(member.clone()).or_default();
+            for (file_id, range) in ranges {
+                if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                    entry.push((*file_id, *range));
+                }
+            }
         }
     }
     out
@@ -741,32 +767,26 @@ pub(crate) fn workspace_decl_index_for(
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
     let mut runtime_values: Vec<(FileId, SmolStr, SemanticId)> = Vec::new();
     let mut type_def_files: Vec<(SemanticId, FileId, SmolStr)> = Vec::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
-        }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let exports = file_exports(db, file, config);
-        for global in &exports.globals {
+    for shard in 0..EXPORT_SHARDS {
+        let shard = export_shard(db, workspace, config, shard);
+        for global in &shard.globals {
+            if !file_matches_workspace_id(db, workspace, global.file_id, ws_id) {
+                continue;
+            }
             entries.push((global.name.clone(), global.file_id, global.decl.clone()));
         }
-        for def in &exports.types {
+        for def in &shard.types {
+            if !file_matches_workspace_id(db, workspace, def.file_id, ws_id) {
+                continue;
+            }
             type_def_files.push((def.id.clone(), def.file_id, def.name.clone()));
         }
-        runtime_values.extend(
-            exports
-                .runtime_values
-                .iter()
-                .map(|(name, decl)| (file_id, name.clone(), decl.clone())),
-        );
+        for (file_id, name, decl) in &shard.runtime_values {
+            if !file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                continue;
+            }
+            runtime_values.push((*file_id, name.clone(), decl.clone()));
+        }
     }
     let mut entries = entries;
     entries.sort_by(|a, b| (a.0.as_str(), a.1.id).cmp(&(b.0.as_str(), b.1.id)));
@@ -833,8 +853,8 @@ pub(crate) fn global_decl_by_name(
             .global_decl_named(&name);
     }
     for root in roots {
-        if let Some(decl) = workspace_decl_index_for(db, workspace, config, root.id)
-            .global_decl_named(&name)
+        if let Some(decl) =
+            workspace_decl_index_for(db, workspace, config, root.id).global_decl_named(&name)
         {
             return Some(decl);
         }
@@ -850,12 +870,96 @@ pub(crate) fn global_decl_by_name(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModuleEntry {
     pub file_id: FileId,
+    pub path: PathBuf,
     pub full_module_name: SmolStr,
     pub name: SmolStr,
     pub workspace_id: WorkspaceId,
     pub visible: ModuleVisibility,
     pub is_meta: bool,
     pub version_conds: Vec<LuaVersionCondition>,
+}
+
+/// A shard's module entries: only files in the stable shard; editing one file recomputes one shard.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ModuleShard {
+    entries: Vec<ModuleEntry>,
+}
+
+/// Module shard query. Each file contributes a `ModuleEntry` using its owning workspace's root,
+/// so the per-workspace index can merge shards without scanning every file again.
+#[salsa::tracked(returns(ref), lru = 64, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn module_shard(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> ModuleShard {
+    let roots = workspace.roots(db).to_vec();
+    let paths: Vec<PathBuf> = if roots.is_empty() {
+        workspace
+            .file_ids(db)
+            .iter()
+            .filter_map(|&file_id| db.file_input(file_id))
+            .filter_map(|file| file.path(db).clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let fallback_root = if roots.is_empty() {
+        config
+            .main_root(db)
+            .clone()
+            .or_else(|| common_path_root(&paths))
+    } else {
+        None
+    };
+
+    let mut entries: Vec<ModuleEntry> = Vec::new();
+    for file_id in workspace.file_ids(db).iter().copied() {
+        if shard_of(file_id) != shard {
+            continue;
+        }
+        let Some(file) = db.file_input(file_id) else {
+            continue;
+        };
+        let Some(path) = file.path(db) else {
+            continue;
+        };
+        let file_ws = file_workspace_id(db, workspace, file_id);
+        let root_path = match &file_ws {
+            Some(ws) if !roots.is_empty() => roots
+                .iter()
+                .find(|root| root.id == *ws)
+                .map(|root| root.root.clone()),
+            _ if roots.is_empty() => fallback_root.clone(),
+            _ => None,
+        };
+        let Some(root_path) = root_path else {
+            continue;
+        };
+        let Some(full_module_name) = module_name_from_path(&path, Some(&root_path)) else {
+            continue;
+        };
+        let facts = file_facts(db, file, config);
+        let name = SmolStr::new(
+            full_module_name
+                .rsplit('.')
+                .next()
+                .unwrap_or(&full_module_name),
+        );
+        entries.push(ModuleEntry {
+            file_id,
+            path: path.to_path_buf(),
+            full_module_name,
+            name,
+            workspace_id: file_ws.unwrap_or(WorkspaceId::REMOTE),
+            visible: facts.module_visibility,
+            is_meta: facts.is_meta,
+            version_conds: facts.version_conds.clone(),
+        });
+    }
+
+    ModuleShard { entries }
 }
 
 /// Workspace module index: module name (relative to workspace root) -> file.
@@ -873,74 +977,24 @@ pub(crate) fn workspace_module_index_for(
         .filter(|root| root.id == ws_id)
         .map(|root| root.root.clone())
         .collect();
-    let paths: Vec<PathBuf> = workspace
-        .file_ids(db)
-        .iter()
-        .filter_map(|&file_id| db.file_input(file_id))
-        .filter_map(|file| file.path(db).clone())
-        .collect();
-    let fallback_root = if roots.is_empty() {
-        config
-            .main_root(db)
-            .clone()
-            .or_else(|| common_path_root(&paths))
-    } else {
-        None
-    };
 
     let mut entries: Vec<ModuleEntry> = Vec::new();
     let mut by_path: HashMap<PathBuf, FileId> = HashMap::new();
     let mut module_name_to_file_ids: HashMap<SmolStr, Vec<FileId>> = HashMap::new();
 
-    for file_id in workspace.file_ids(db).iter().copied() {
-        let file_ws = file_workspace_id(db, workspace, file_id);
-        let matches = if ws_id == WorkspaceId::REMOTE {
-            file_ws.is_none()
-        } else {
-            file_ws == Some(ws_id)
-        };
-        if !matches {
-            continue;
+    for shard in 0..EXPORT_SHARDS {
+        let shard = module_shard(db, workspace, config, shard);
+        for entry in &shard.entries {
+            if entry.workspace_id != ws_id {
+                continue;
+            }
+            by_path.insert(normalize_path(&entry.path), entry.file_id);
+            module_name_to_file_ids
+                .entry(entry.name.clone())
+                .or_default()
+                .push(entry.file_id);
+            entries.push(entry.clone());
         }
-        let Some(file) = db.file_input(file_id) else {
-            continue;
-        };
-        let Some(path) = file.path(db) else {
-            continue;
-        };
-        by_path.insert(normalize_path(&path), file_id);
-
-        let root_path = if !roots.is_empty() {
-            roots.iter().find(|root| root.id == ws_id).map(|root| root.root.clone())
-        } else {
-            fallback_root.clone()
-        };
-        let Some(root_path) = root_path else {
-            continue;
-        };
-        let Some(full_module_name) = module_name_from_path(&path, Some(&root_path)) else {
-            continue;
-        };
-        let facts = file_facts(db, file, config);
-        let name = SmolStr::new(
-            full_module_name
-                .rsplit('.')
-                .next()
-                .unwrap_or(&full_module_name),
-        );
-        module_name_to_file_ids
-            .entry(name.clone())
-            .or_default()
-            .push(file_id);
-        entries.push(ModuleEntry {
-            file_id,
-            full_module_name,
-            name,
-            workspace_id: ws_id,
-            visible: facts.module_visibility,
-            is_meta: facts.is_meta,
-            version_conds: facts.version_conds.clone(),
-        });
     }
 
     entries.sort_by(|a, b| {
@@ -967,8 +1021,14 @@ pub(crate) fn workspace_module_index_for(
     }
 }
 
-fn build_module_tree(entries: &[ModuleEntry], ws_id: WorkspaceId) -> (HashMap<ModuleNodeId, ModuleNode>, ModuleNodeId) {
-    let root = ModuleNodeId { id: 0, workspace_id: ws_id };
+fn build_module_tree(
+    entries: &[ModuleEntry],
+    ws_id: WorkspaceId,
+) -> (HashMap<ModuleNodeId, ModuleNode>, ModuleNodeId) {
+    let root = ModuleNodeId {
+        id: 0,
+        workspace_id: ws_id,
+    };
     let mut nodes = HashMap::new();
     nodes.insert(
         root,
@@ -994,7 +1054,10 @@ fn build_module_tree(entries: &[ModuleEntry], ws_id: WorkspaceId) -> (HashMap<Mo
                 {
                     node.children[position].1
                 } else {
-                    let id = ModuleNodeId { id: next_id, workspace_id: ws_id };
+                    let id = ModuleNodeId {
+                        id: next_id,
+                        workspace_id: ws_id,
+                    };
                     next_id += 1;
                     node.children.push((SmolStr::new(*part), id));
                     id

@@ -3270,6 +3270,54 @@ fn is_conditional_receiver(model: &SemanticModel, arg: &LuaExpr) -> bool {
     )
 }
 
+/// Follow local aliases / reexports to the declaration that actually owns the function body.
+///
+/// `return_cast` is attached to the function's signature (`---@return_cast` doc on the
+/// closure/member). If the callee is a local alias such as `local is = test.is_callable`,
+/// resolving the name alone only yields the local declaration, whose value is the `IndexExpr`,
+/// not the closure. Trace initializer expressions until we find the original closure/member.
+fn resolve_return_cast_origin(model: &SemanticModel, start: SemanticId) -> Option<SemanticId> {
+    let mut current = start;
+    let mut seen = HashSet::new();
+    for _ in 0..16 {
+        if !seen.insert(current.clone()) {
+            return None;
+        }
+        let (file_id, value_syntax) = match &current {
+            SemanticId::Decl(key) => {
+                let decl = model.file_facts_of(key.file_id)?.decl_by_id(&current)?;
+                (key.file_id, decl.value_expr_syntax?)
+            }
+            SemanticId::Member(key) => {
+                let member = model.file_facts_of(key.file_id)?.member_by_id(&current)?;
+                (key.file_id, member.value_syntax?)
+            }
+            _ => return Some(current),
+        };
+        let tree = model.syntax_tree_of(file_id)?;
+        let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
+        let expr = LuaExpr::cast(node)?;
+        match expr {
+            LuaExpr::ClosureExpr(_) => return Some(current),
+            LuaExpr::NameExpr(name) => {
+                let alias_model = model.model_for(file_id)?;
+                current = alias_model.resolve_name(name.get_position())?;
+            }
+            LuaExpr::IndexExpr(index) => {
+                let alias_model = model.model_for(file_id)?;
+                current = alias_model
+                    .resolve_member(&index)
+                    .and_then(|r| r.member_id)?;
+            }
+            // A directly-invoked function expression or an unknown initializer cannot point to a
+            // `---@return_cast` signature; keep the current id anyway so the existing lookup can
+            // report no cast instead of silently treating the initializer as a closure.
+            _ => return Some(current),
+        }
+    }
+    None
+}
+
 /// Parse `---@return_cast name Type else Fallback` at the call site.
 fn return_cast_for_call(
     model: &SemanticModel,
@@ -3291,6 +3339,7 @@ fn return_cast_for_call(
         }
         _ => return None,
     };
+    let callee_decl = resolve_return_cast_origin(model, callee_decl)?;
     let (callee_file, closure_syntax) = match &callee_decl {
         SemanticId::Decl(key) => {
             let facts = model.file_facts_of(key.file_id)?;

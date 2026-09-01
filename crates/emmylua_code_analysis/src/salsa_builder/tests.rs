@@ -10,6 +10,7 @@ use super::def::{
 };
 use super::exports::{export_shard, shard_of};
 use super::facts::FileFacts;
+use super::query::{deprecated_shard, module_shard};
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId};
 
@@ -944,6 +945,49 @@ fn test_file_exports_identity_and_shard_memo() {
     // Query the shard containing the edited file: must re-execute and see the new member.
     let edited = export_shard(&db, workspace, config, shard2);
     assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
+    assert!(
+        db.query_execution_count() > before,
+        "被编辑文件所在 shard 应重新执行"
+    );
+}
+
+#[test]
+fn test_module_and_deprecated_shard_memo() {
+    let mut db = setup();
+    let fid1 = set_test_file(
+        &mut db,
+        1,
+        "C:/ws/a.lua",
+        "---@deprecated\nOld = 1\nreturn {}",
+    );
+    let fid2 = set_test_file(
+        &mut db,
+        2,
+        "C:/ws/b.lua",
+        "---@deprecated\nNew = 1\nreturn {}",
+    );
+    assert_ne!(shard_of(fid1), shard_of(fid2));
+
+    let workspace = db.workspace_input().expect("workspace");
+    let config = db.config_input().expect("config");
+    let shard1 = shard_of(fid1);
+    let shard2 = shard_of(fid2);
+    let _ = deprecated_shard(&db, workspace, config, shard1);
+    let _ = deprecated_shard(&db, workspace, config, shard2);
+    let _ = module_shard(&db, workspace, config, shard1);
+    let _ = module_shard(&db, workspace, config, shard2);
+
+    let before = db.query_execution_count();
+    set_test_file(&mut db, 2, "C:/ws/b.lua", "return {}");
+    let _ = deprecated_shard(&db, workspace, config, shard1);
+    let _ = module_shard(&db, workspace, config, shard1);
+    assert_eq!(
+        before,
+        db.query_execution_count(),
+        "无关 shard 的 deprecated/module 查询应复用 memo"
+    );
+
+    let _ = deprecated_shard(&db, workspace, config, shard2);
     assert!(
         db.query_execution_count() > before,
         "被编辑文件所在 shard 应重新执行"

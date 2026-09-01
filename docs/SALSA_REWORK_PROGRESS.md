@@ -127,6 +127,27 @@ DeprecatedChecker:
 - Added `deprecated_global_names_for` per workspace.
 - `DeprecatedChecker` now checks a `HashSet<SmolStr>` instead of resolving every global name through `global_decl_by_name`.
 
+### 2.5 Cross-file indexes now merge shards
+
+All five per-workspace indexes now read the stable shard layer instead of rescanning
+every file's facts directly:
+
+- `workspace_type_index_for`, `workspace_member_index_for`, `workspace_decl_index_for`
+  merge `export_shard`;
+- `workspace_reference_index_for` merges `reference_shard`;
+- `workspace_module_index_for` merges the new `module_shard`;
+- `deprecated_global_names_for` merges the new `deprecated_shard`.
+
+Editing a file only recomputes the shard containing that file; the per-workspace index
+re-merges memoized shard results and filters by `WorkspaceId`.
+
+### 2.6 return_cast flows through local aliases
+
+`return_cast_for_call` now traces local aliases (`local is = mod.check`) through their
+initializer expressions to the owning closure/member before reading `---@return_cast`.
+Previously an aliased callee resolved only to the local declaration and the cast was
+silently ignored; flow analysis now narrows through aliases as well as direct calls.
+
 ## 3. Performance Data (real project)
 
 Workspace used for testing:

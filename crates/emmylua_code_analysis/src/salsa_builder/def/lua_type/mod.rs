@@ -9,4 +9,3 @@ pub use generic_param::GenericParam;
 pub use type_decl::*;
 pub use type_visit_trait::*;
 pub use types::*;
-
