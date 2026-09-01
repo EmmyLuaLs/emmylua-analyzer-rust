@@ -17,8 +17,8 @@ use crate::{
 
 use super::SalsaDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, Member, MemberRef, ModuleExport, NameUse, SalsaGenericParam, Scope,
-    SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
+    ConstructorAttribute, Decl, InternedLuaType, Member, MemberRef, ModuleExport, NameUse,
+    SalsaGenericParam, Scope, SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
 };
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
@@ -157,6 +157,46 @@ impl<'db> SalsaQueries<'db> {
 
     pub fn chunk(&self, file_id: FileId) -> Option<LuaChunk> {
         self.syntax_tree(file_id).map(|tree| tree.get_chunk_node())
+    }
+
+    /// High-level semantic expression type (salsa-tracked, replaces the shared
+    /// `SemanticCache::expr_type` map as the memoization layer).
+    pub(crate) fn semantic_expr_type(
+        &self,
+        file_id: FileId,
+        expr_syntax: LuaSyntaxId,
+    ) -> Option<LuaType> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_expr_type(self.db, file, config, expr_syntax).map(|ty| ty.into_inner())
+    }
+
+    /// High-level type compatibility check (salsa-tracked).
+    pub(crate) fn semantic_type_check(
+        &self,
+        file_id: FileId,
+        source: &LuaType,
+        target: &LuaType,
+    ) -> bool {
+        let Some((file, config)) = file_and_config(self.db, file_id) else {
+            return false;
+        };
+        query::semantic_type_check(
+            self.db,
+            file,
+            config,
+            InternedLuaType::new(source.clone()),
+            InternedLuaType::new(target.clone()),
+        )
+    }
+
+    /// High-level member resolution (salsa-tracked).
+    pub(crate) fn semantic_resolve_member(
+        &self,
+        file_id: FileId,
+        index_syntax: LuaSyntaxId,
+    ) -> Option<query::SalsaResolvedMember> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        query::semantic_resolve_member(self.db, file, config, index_syntax)
     }
 
     /// Whether a doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).

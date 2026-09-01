@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::def::{
-    ConstructorAttribute, DeclKind, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
-    ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef, TypeDefKind,
+    ConstructorAttribute, DeclKind, InternedLuaType, MemberRef, ModuleExport, ModuleInfo,
+    ModuleNode, ModuleNodeId, ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef,
+    TypeDefKind,
 };
 use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
@@ -2448,6 +2449,170 @@ fn expr_cycle_recover(
     _expr_syntax: LuaSyntaxId,
 ) -> TypeShell {
     let _ = (cycle, last);
+    value
+}
+
+/// High-level semantic expression type, memoized by salsa.
+///
+/// This is the first bridge replacement for the shared `SemanticCache::expr_type`
+/// map. It uses the existing VM inference engine, but lets salsa own the memo so
+/// repeated LSP/diagnostic queries on an unchanged workspace do not need to take a
+/// shared cache lock.
+#[salsa::tracked(returns(clone), cycle_initial = semantic_expr_cycle_initial, cycle_fn = semantic_expr_cycle_recover)]
+pub(crate) fn semantic_expr_type(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+    expr_syntax: LuaSyntaxId,
+) -> Option<InternedLuaType> {
+    let _ = config;
+    let Some(db) = db.as_any().downcast_ref::<SalsaDatabase>() else {
+        return None;
+    };
+    let file_id = file.file_id(db);
+    let Some(model) = crate::semantic_model::SemanticModel::new(db, file_id) else {
+        return None;
+    };
+    let ty = crate::semantic_model::infer::vm::infer_expr_vm(&model, expr_syntax);
+    Some(InternedLuaType::new(ty))
+}
+
+fn semantic_expr_cycle_initial(
+    _db: &dyn SalsaDb,
+    _id: salsa::Id,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _expr_syntax: LuaSyntaxId,
+) -> Option<InternedLuaType> {
+    None
+}
+
+fn semantic_expr_cycle_recover(
+    _db: &dyn SalsaDb,
+    _cycle: &salsa::Cycle,
+    _last: &Option<InternedLuaType>,
+    value: Option<InternedLuaType>,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _expr_syntax: LuaSyntaxId,
+) -> Option<InternedLuaType> {
+    value
+}
+
+/// High-level type compatibility check, memoized by salsa.
+///
+/// This replaces the shared `SemanticCache::type_check` map with a salsa-tracked
+/// query keyed by interned types.
+#[salsa::tracked(returns(copy), cycle_initial = semantic_type_check_cycle_initial, cycle_fn = semantic_type_check_cycle_recover)]
+pub(crate) fn semantic_type_check(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+    source: InternedLuaType,
+    target: InternedLuaType,
+) -> bool {
+    let _ = config;
+    let Some(db) = db.as_any().downcast_ref::<SalsaDatabase>() else {
+        return false;
+    };
+    let file_id = file.file_id(db);
+    let Some(model) = crate::semantic_model::SemanticModel::new(db, file_id) else {
+        return false;
+    };
+    crate::semantic_model::type_check::is_compatible(&model, source.as_ref(), target.as_ref())
+}
+
+fn semantic_type_check_cycle_initial(
+    _db: &dyn SalsaDb,
+    _id: salsa::Id,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _source: InternedLuaType,
+    _target: InternedLuaType,
+) -> bool {
+    false
+}
+
+fn semantic_type_check_cycle_recover(
+    _db: &dyn SalsaDb,
+    _cycle: &salsa::Cycle,
+    _last: &bool,
+    value: bool,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _source: InternedLuaType,
+    _target: InternedLuaType,
+) -> bool {
+    value
+}
+
+/// Salsa-friendly version of `ResolvedMember`.
+///
+/// `ResolvedMember` itself contains `LuaType` and `VisibilityKind`, which are not
+/// salsa values; this mirror stores interned types and a small integer visibility
+/// so the high-frequency member resolution can be memoized by salsa.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::SalsaValue)]
+pub(crate) struct SalsaResolvedMember {
+    pub(crate) member_id: Option<SemanticId>,
+    pub(crate) file_id: Option<FileId>,
+    pub(crate) owner: SemanticId,
+    pub(crate) name: SmolStr,
+    pub(crate) member_type: Option<InternedLuaType>,
+    pub(crate) visibility: Option<u8>,
+    pub(crate) is_method: bool,
+}
+
+/// High-level member resolution, memoized by salsa.
+#[salsa::tracked(returns(clone), cycle_initial = semantic_resolve_member_cycle_initial, cycle_fn = semantic_resolve_member_cycle_recover)]
+pub(crate) fn semantic_resolve_member(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+    index_syntax: LuaSyntaxId,
+) -> Option<SalsaResolvedMember> {
+    let _ = config;
+    let Some(db) = db.as_any().downcast_ref::<SalsaDatabase>() else {
+        return None;
+    };
+    let file_id = file.file_id(db);
+    let Some(model) = crate::semantic_model::SemanticModel::new(db, file_id) else {
+        return None;
+    };
+    let tree = model.syntax_tree()?;
+    let root = tree.get_red_root();
+    let node = index_syntax.to_node_from_root(&root)?;
+    let index_expr = LuaIndexExpr::cast(node)?;
+    let result = model.resolve_member_impl(&index_expr)?;
+    Some(SalsaResolvedMember {
+        member_id: result.member_id,
+        file_id: result.file_id,
+        owner: result.owner,
+        name: result.name,
+        member_type: result.member_type.map(InternedLuaType::new),
+        visibility: result.visibility.map(|v| v as u8),
+        is_method: result.is_method,
+    })
+}
+
+fn semantic_resolve_member_cycle_initial(
+    _db: &dyn SalsaDb,
+    _id: salsa::Id,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _index_syntax: LuaSyntaxId,
+) -> Option<SalsaResolvedMember> {
+    None
+}
+
+fn semantic_resolve_member_cycle_recover(
+    _db: &dyn SalsaDb,
+    _cycle: &salsa::Cycle,
+    _last: &Option<SalsaResolvedMember>,
+    value: Option<SalsaResolvedMember>,
+    _file: SourceFileInput,
+    _config: ConfigInput,
+    _index_syntax: LuaSyntaxId,
+) -> Option<SalsaResolvedMember> {
     value
 }
 

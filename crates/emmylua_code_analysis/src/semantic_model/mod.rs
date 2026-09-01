@@ -50,8 +50,6 @@ pub struct SemanticModel<'db> {
     file_id: FileId,
     /// Closure return-inference in-progress stack (replaces thread_local; scoped to each SemanticModel instance).
     closure_return_infer_stack: RefCell<Vec<LuaSyntaxId>>,
-    /// Expression inference reentry guard: prevents recursive VM rebuilds without memoizing every expression in Salsa.
-    expr_infer_guard: RefCell<Vec<LuaSyntaxId>>,
     decl_member_guard: RefCell<Vec<SemanticId>>,
 }
 
@@ -79,6 +77,27 @@ impl ResolvedMember {
     pub fn member_type(&self, model: &SemanticModel<'_>) -> Option<LuaType> {
         let member_id = self.member_id.as_ref()?;
         model.type_of_member(member_id)
+    }
+}
+
+impl From<crate::salsa_builder::query::SalsaResolvedMember> for ResolvedMember {
+    fn from(value: crate::salsa_builder::query::SalsaResolvedMember) -> Self {
+        Self {
+            member_id: value.member_id,
+            file_id: value.file_id,
+            owner: value.owner,
+            name: value.name,
+            member_type: value.member_type.map(|ty| ty.into_inner()),
+            visibility: value.visibility.and_then(|v| match v {
+                0 => Some(VisibilityKind::Public),
+                1 => Some(VisibilityKind::Protected),
+                2 => Some(VisibilityKind::Private),
+                3 => Some(VisibilityKind::Internal),
+                4 => Some(VisibilityKind::Package),
+                _ => None,
+            }),
+            is_method: value.is_method,
+        }
     }
 }
 
@@ -114,7 +133,6 @@ impl<'db> SemanticModel<'db> {
             db,
             file_id,
             closure_return_infer_stack: RefCell::new(Vec::new()),
-            expr_infer_guard: RefCell::new(Vec::new()),
             decl_member_guard: RefCell::new(Vec::new()),
         })
     }
@@ -699,16 +717,9 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
-        let syntax = index_expr.get_syntax_id();
-        let file_id = self.file_id;
-        if let Some(cached) = self.db.semantic_cache().get_resolve_member(file_id, syntax) {
-            return cached;
-        }
-        let result = self.resolve_member_impl(index_expr);
-        self.db
-            .semantic_cache()
-            .insert_resolve_member(file_id, syntax, result.clone());
-        result
+        self.q()
+            .semantic_resolve_member(self.file_id, index_expr.get_syntax_id())
+            .map(Into::into)
     }
 
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
@@ -1115,24 +1126,6 @@ impl<'db> SemanticModel<'db> {
 
     /// Type of a declaration: `---@type` annotation takes priority; closure -> `DocFunction` signature; otherwise VM infers the initializer
     /// (table identity / constants / setmetatable / require special cases); falls back to salsa shell projection when VM fails.
-    pub(crate) fn begin_expr_infer(&self, expr_syntax: LuaSyntaxId) {
-        let mut guard = self.expr_infer_guard.borrow_mut();
-        if !guard.contains(&expr_syntax) {
-            guard.push(expr_syntax);
-        }
-    }
-
-    pub(crate) fn end_expr_infer(&self, expr_syntax: LuaSyntaxId) {
-        let mut guard = self.expr_infer_guard.borrow_mut();
-        if let Some(pos) = guard.iter().rposition(|id| *id == expr_syntax) {
-            guard.remove(pos);
-        }
-    }
-
-    pub(crate) fn is_expr_infer_active(&self, expr_syntax: LuaSyntaxId) -> bool {
-        self.expr_infer_guard.borrow().contains(&expr_syntax)
-    }
-
     pub fn type_of_decl(&self, decl: &SemanticId) -> Option<LuaType> {
         let cache_file = match decl {
             SemanticId::Decl(key) => key.file_id,
@@ -3300,55 +3293,12 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
-        let file_id = self.file_id;
-        if let Some(cached) = self.db.semantic_cache().get_expr_type(file_id, expr_syntax) {
-            return cached;
-        }
-
-        // Body-level inference map: lazily store expression types under their enclosing
-        // function/closure body so a single logical body share one cache entry.
-        if let Some(body) = self.enclosing_body_syntax(expr_syntax)
-            && let Some(inference) = self.db.semantic_cache().get_body_inference(file_id, body)
-            && let Some(ty) = inference
-                .read()
-                .expect("body inference lock")
-                .get(&expr_syntax)
-                .cloned()
-        {
-            return ty;
-        }
-
-        if self.is_expr_infer_active(expr_syntax) {
-            return LuaType::Unknown;
-        }
-
-        self.begin_expr_infer(expr_syntax);
-        let ty = infer::infer_expr(self, expr_syntax);
-        self.end_expr_infer(expr_syntax);
-        self.db
-            .semantic_cache()
-            .insert_expr_type(file_id, expr_syntax, ty.clone());
-        if let Some(body) = self.enclosing_body_syntax(expr_syntax) {
-            self.db
-                .semantic_cache()
-                .get_or_create_body_inference(file_id, body)
-                .write()
-                .expect("body inference lock")
-                .insert(expr_syntax, ty.clone());
-        }
-        ty
-    }
-
-    /// Returns the nearest enclosing closure/function body syntax id, or the chunk itself
-    /// when the expression is at file scope.
-    fn enclosing_body_syntax(&self, expr_syntax: LuaSyntaxId) -> Option<LuaSyntaxId> {
-        let tree = self.syntax_tree()?;
-        let root = tree.get_red_root();
-        let node = expr_syntax.to_node_from_root(&root)?;
-        if let Some(closure) = node.ancestors().find_map(LuaClosureExpr::cast) {
-            return Some(closure.get_syntax_id());
-        }
-        self.chunk().map(|chunk| chunk.get_syntax_id())
+        // Salsa-tracked high-level expression type. This replaces the shared
+        // `SemanticCache::expr_type` / body-inference maps: salsa owns the memo,
+        // so repeated queries on an unchanged workspace do not take a cache lock.
+        self.q()
+            .semantic_expr_type(self.file_id, expr_syntax)
+            .unwrap_or(LuaType::Unknown)
     }
 
     /// Hover/display layer only: expands generic alias instances (`Pick<...>` -> `T[K]` structure).
@@ -3363,14 +3313,7 @@ impl<'db> SemanticModel<'db> {
 
     /// Type compatibility check (boolean version, mirrors the old `SemanticModel::type_check`).
     pub fn type_check(&self, source: &LuaType, target: &LuaType) -> bool {
-        if let Some(cached) = self.db.semantic_cache().get_type_check(source, target) {
-            return cached;
-        }
-        let result = type_check::is_compatible(self, source, target);
-        self.db
-            .semantic_cache()
-            .insert_type_check(source.clone(), target.clone(), result);
-        result
+        self.q().semantic_type_check(self.file_id, source, target)
     }
 
     /// Strict subtype check: union targets across all components, object field-level checks, generic alias expansion.

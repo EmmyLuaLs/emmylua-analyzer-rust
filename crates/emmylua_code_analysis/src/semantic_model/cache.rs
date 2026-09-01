@@ -23,8 +23,8 @@ use crate::salsa_builder::def::SemanticId;
 use crate::salsa_builder::flow::FlowId;
 use crate::{FileId, LuaFunctionType, LuaType};
 
+use super::CallSiteAnalysis;
 use super::member::MemberInfo;
-use super::{CallSiteAnalysis, ResolvedMember};
 
 /// Interned handle for a structurally-equal `LuaType`.
 ///
@@ -45,23 +45,19 @@ struct FileSemanticCache {
 
 #[derive(Default)]
 struct FileSemanticCacheInner {
-    expr_type: HashMap<(FileId, LuaSyntaxId), LuaType>,
     member_type: HashMap<(FileId, SemanticId), Option<LuaType>>,
     decl_type: HashMap<(FileId, SemanticId), Option<LuaType>>,
-    resolve_member: HashMap<(FileId, LuaSyntaxId), Option<ResolvedMember>>,
     expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), LuaType>,
     member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     callable_candidates: HashMap<(FileId, LuaSyntaxId), Vec<LuaFunctionType>>,
     call_site: HashMap<(FileId, LuaSyntaxId), CallSiteAnalysis>,
     flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
-    body_inference: HashMap<(FileId, LuaSyntaxId), Arc<RwLock<HashMap<LuaSyntaxId, LuaType>>>>,
 }
 
 #[derive(Default)]
 struct GlobalSemanticCache {
     member_infos: HashMap<InternedLuaType, Vec<MemberInfo>>,
     member_info: HashMap<(InternedLuaType, LuaMemberKey), Option<MemberInfo>>,
-    type_check: HashMap<(InternedLuaType, InternedLuaType), bool>,
 }
 
 impl SemanticCache {
@@ -100,25 +96,6 @@ impl SemanticCache {
             .entry(file_id)
             .or_insert_with(|| Arc::new(FileSemanticCache::default()))
             .clone()
-    }
-
-    pub(crate) fn get_expr_type(&self, file_id: FileId, syntax: LuaSyntaxId) -> Option<LuaType> {
-        self.file_cache(file_id)
-            .inner
-            .read()
-            .expect("semantic cache lock poisoned")
-            .expr_type
-            .get(&(file_id, syntax))
-            .cloned()
-    }
-
-    pub(crate) fn insert_expr_type(&self, file_id: FileId, syntax: LuaSyntaxId, ty: LuaType) {
-        self.file_cache(file_id)
-            .inner
-            .write()
-            .expect("semantic cache lock poisoned")
-            .expr_type
-            .insert((file_id, syntax), ty);
     }
 
     pub(crate) fn get_member_type(
@@ -170,34 +147,6 @@ impl SemanticCache {
             .expect("semantic cache lock poisoned")
             .decl_type
             .insert((file_id, decl), ty);
-    }
-
-    pub(crate) fn get_resolve_member(
-        &self,
-        file_id: FileId,
-        syntax: LuaSyntaxId,
-    ) -> Option<Option<ResolvedMember>> {
-        self.file_cache(file_id)
-            .inner
-            .read()
-            .expect("semantic cache lock poisoned")
-            .resolve_member
-            .get(&(file_id, syntax))
-            .cloned()
-    }
-
-    pub(crate) fn insert_resolve_member(
-        &self,
-        file_id: FileId,
-        syntax: LuaSyntaxId,
-        result: Option<ResolvedMember>,
-    ) {
-        self.file_cache(file_id)
-            .inner
-            .write()
-            .expect("semantic cache lock poisoned")
-            .resolve_member
-            .insert((file_id, syntax), result);
     }
 
     pub(crate) fn get_expr_type_at(
@@ -363,27 +312,6 @@ impl SemanticCache {
             .insert((file_id, syntax), analysis);
     }
 
-    pub(crate) fn get_type_check(&self, source: &LuaType, target: &LuaType) -> Option<bool> {
-        let source = ArcIntern::new(source.clone());
-        let target = ArcIntern::new(target.clone());
-        self.global
-            .read()
-            .expect("semantic cache lock poisoned")
-            .type_check
-            .get(&(source, target))
-            .copied()
-    }
-
-    pub(crate) fn insert_type_check(&self, source: LuaType, target: LuaType, result: bool) {
-        let source = ArcIntern::new(source);
-        let target = ArcIntern::new(target);
-        self.global
-            .write()
-            .expect("semantic cache lock poisoned")
-            .type_check
-            .insert((source, target), result);
-    }
-
     pub(crate) fn get_flow_decl(
         &self,
         file_id: FileId,
@@ -412,37 +340,5 @@ impl SemanticCache {
             .expect("semantic cache lock poisoned")
             .flow_decl
             .insert((file_id, decl, flow_id), ty);
-    }
-
-    pub(crate) fn get_body_inference(
-        &self,
-        file_id: FileId,
-        body: LuaSyntaxId,
-    ) -> Option<Arc<RwLock<HashMap<LuaSyntaxId, LuaType>>>> {
-        self.file_cache(file_id)
-            .inner
-            .read()
-            .expect("semantic cache lock poisoned")
-            .body_inference
-            .get(&(file_id, body))
-            .cloned()
-    }
-
-    pub(crate) fn get_or_create_body_inference(
-        &self,
-        file_id: FileId,
-        body: LuaSyntaxId,
-    ) -> Arc<RwLock<HashMap<LuaSyntaxId, LuaType>>> {
-        if let Some(existing) = self.get_body_inference(file_id, body) {
-            return existing;
-        }
-        let file = self.file_cache(file_id);
-        file.inner
-            .write()
-            .expect("semantic cache lock poisoned")
-            .body_inference
-            .entry((file_id, body))
-            .or_insert_with(|| Arc::new(RwLock::new(HashMap::new())))
-            .clone()
     }
 }
