@@ -4,8 +4,7 @@
 //! `SemanticModel` is a short-lived view: it is created for one file analysis,
 //! accumulates local query results, and is discarded when the analysis is done.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::collections::HashMap;
 
 use emmylua_parser::LuaSyntaxId;
 use rowan::TextSize;
@@ -27,15 +26,6 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), LuaType>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
-    /// Lazy per-file map: declaration -> flow ids where that declaration is referenced.
-    /// Built once per SemanticModel to drive forward flow precomputation.
-    pub(crate) flow_decl_uses: Option<HashMap<SemanticId, Vec<FlowId>>>,
-    /// Forward-computed flow type per declaration at its referenced flow ids.
-    pub(crate) flow_decl_forward: HashMap<SemanticId, HashMap<FlowId, LuaType>>,
-    /// Cached flow ids whose outgoing edges must be pruned (never-return calls and
-    /// statically unreachable condition branches). Built once per file for the
-    /// forward precompute.
-    pub(crate) flow_pruning: Option<Arc<(HashSet<FlowId>, HashSet<FlowId>)>>,
     pub(crate) callable_candidates: HashMap<(FileId, LuaSyntaxId), Vec<LuaFunctionType>>,
     pub(crate) call_site: HashMap<(FileId, LuaSyntaxId), CallSiteAnalysis>,
     pub(crate) call_site_signatures:

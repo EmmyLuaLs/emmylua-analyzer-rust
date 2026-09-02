@@ -54,9 +54,6 @@ pub struct SemanticModel<'db> {
     expr_infer_guard: RefCell<Vec<LuaSyntaxId>>,
     /// Declaration / member inference reentry guard.
     decl_member_guard: RefCell<Vec<SemanticId>>,
-    /// Forward flow precompute reentry guard (prevents recursion when RHS inference
-    /// asks for the same declaration while its forward table is being built).
-    flow_forward_guard: RefCell<Vec<SemanticId>>,
     /// Short-lived local query cache. This is the intended cache layer for
     /// high-frequency semantic queries; it is discarded with the model.
     cache: RefCell<cache::SemanticLocalCache>,
@@ -121,7 +118,6 @@ impl<'db> SemanticModel<'db> {
             closure_return_infer_stack: RefCell::new(Vec::new()),
             expr_infer_guard: RefCell::new(Vec::new()),
             decl_member_guard: RefCell::new(Vec::new()),
-            flow_forward_guard: RefCell::new(Vec::new()),
             cache: RefCell::new(cache::SemanticLocalCache::default()),
         })
     }
@@ -2348,32 +2344,6 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = cached {
             return self.sanitize_global_generic_decl(decl, cached);
         }
-        // Forward precompute: for files with flow, compute the answer for all referenced
-        // flow ids of this declaration once, then serve later queries by direct lookup.
-        if let Some(start) = start {
-            self.ensure_decl_flow_uses();
-            let should_build_forward = !self.cache.borrow().flow_decl_forward.contains_key(decl)
-                && self
-                    .cache
-                    .borrow()
-                    .flow_decl_uses
-                    .as_ref()
-                    .and_then(|uses| uses.get(decl))
-                    .is_some_and(|flow_ids| flow_ids.len() > 1);
-            if should_build_forward {
-                self.build_forward_decl_flow(decl);
-            }
-            if let Some(forwarded) = self
-                .cache
-                .borrow()
-                .flow_decl_forward
-                .get(decl)
-                .and_then(|table| table.get(&start))
-                .cloned()
-            {
-                return self.sanitize_global_generic_decl(decl, forwarded);
-            }
-        }
         let ty = flow::type_of_decl_at(self, decl, offset);
         if let Some(start) = start {
             self.cache
@@ -2382,52 +2352,6 @@ impl<'db> SemanticModel<'db> {
                 .insert((self.file_id, decl.clone(), start), ty.clone());
         }
         self.sanitize_global_generic_decl(decl, ty)
-    }
-
-    fn ensure_decl_flow_uses(&self) {
-        if self.cache.borrow().flow_decl_uses.is_none() {
-            let uses = flow::collect_decl_flow_uses(self);
-            self.cache.borrow_mut().flow_decl_uses = Some(uses);
-        }
-    }
-
-    fn build_forward_decl_flow(&self, decl: &SemanticId) {
-        let Some(tree) = self.flow_tree() else {
-            return;
-        };
-        if self.flow_forward_guard.borrow().contains(decl) {
-            return;
-        }
-        let pruning = if let Some(pruning) = self.cache.borrow().flow_pruning.clone() {
-            pruning
-        } else {
-            let pruning = Arc::new(flow::collect_flow_pruning(self, &tree));
-            self.cache.borrow_mut().flow_pruning = Some(pruning.clone());
-            pruning
-        };
-        self.flow_forward_guard.borrow_mut().push(decl.clone());
-        let use_ids = {
-            let cache = self.cache.borrow();
-            cache
-                .flow_decl_uses
-                .as_ref()
-                .and_then(|uses| uses.get(decl))
-                .cloned()
-                .unwrap_or_default()
-        };
-        let table = match flow::build_forward_decl_flow(
-            self, decl, &tree, &use_ids, &pruning.0, &pruning.1,
-        ) {
-            Some(table) => table,
-            // A declaration whose forward path hits unreachable control flow keeps the
-            // proven backward path. Record an empty table so we don't retry it.
-            None => HashMap::new(),
-        };
-        self.flow_forward_guard.borrow_mut().pop();
-        self.cache
-            .borrow_mut()
-            .flow_decl_forward
-            .insert(decl.clone(), table);
     }
 
     /// Global variables must not leak uninstantiated generic parameters from function bodies into the global scope
