@@ -23,9 +23,9 @@ use super::def::{
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
 use super::query::{
-    self, decl_references, decl_type, file_and_config, file_facts, file_references,
-    member_keys_of_decl, member_keys_of_type, member_type, module_export_type, parse,
-    resolve_name, resolve_type_def, signature_return, FileReferences,
+    self, FileReferences, decl_references, decl_type, file_and_config, file_facts, file_references,
+    member_keys_of_decl, member_keys_of_type, member_type, module_export_type, parse, resolve_name,
+    resolve_type_def, signature_return,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{
@@ -367,11 +367,7 @@ impl<'db> SalsaQueries<'db> {
             return MemberList::default();
         };
         MemberList::from(query::members_of_owner_named(
-            self.db,
-            workspace,
-            config,
-            owner,
-            name,
+            self.db, workspace, config, owner, name,
         ))
     }
 

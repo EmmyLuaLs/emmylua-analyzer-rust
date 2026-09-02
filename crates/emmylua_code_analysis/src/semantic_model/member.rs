@@ -13,6 +13,12 @@ use smol_str::SmolStr;
 
 use super::SemanticModel;
 
+/// Maximum inheritance/parent-type depth expanded during member lookup.
+///
+/// Normal class hierarchies are shallow. This cap prevents pathological/recursive parent
+/// chains from making `member_info` / `resolve_member` slow-path expansion unbounded.
+const MAX_MEMBER_INHERITANCE_DEPTH: usize = 16;
+
 /// Member information (an entry from a prefix-type query).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemberInfo {
@@ -93,7 +99,7 @@ fn find_type_def_member(
     name_bindings: Option<&HashMap<String, LuaType>>,
     visited: &mut Vec<SemanticId>,
 ) -> Option<MemberInfo> {
-    if visited.contains(&def.id) {
+    if visited.contains(&def.id) || visited.len() >= MAX_MEMBER_INHERITANCE_DEPTH {
         return None;
     }
     visited.push(def.id.clone());
@@ -802,7 +808,7 @@ fn collect_type_def_members(
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<MemberInfo>,
 ) {
-    if visited.contains(&def.id) {
+    if visited.contains(&def.id) || visited.len() >= MAX_MEMBER_INHERITANCE_DEPTH {
         return;
     }
     visited.push(def.id.clone());

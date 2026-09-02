@@ -243,8 +243,12 @@ impl FileSemanticIndex {
 - [x] Phase 2：`resolve_member` fast path 覆盖 Name-rooted owner 与安全的 local runtime member
 - [x] Phase 2：local fast path 排除 `---@type` / Param(`self`) / same-name doc member 等冲突场景
 - [x] Phase 2（部分）：`DeprecatedChecker` 的 NameUse 路径使用 `FileReferences.name_use_resolution`
-- [ ] Phase 2（后续）：如果继续扩大覆盖，需要把 local typed member / class field 也纳入 FileSemanticIndex
-- [ ] Phase 3：resolve_member 慢路径收敛
+- [x] Phase 2（后续）：FileSemanticIndex 已覆盖简单 `---@type` local / `---@param` class member；
+  冲突场景（同名 runtime member、nullable/generic/union 注解）仍安全地走慢路径
+- [x] Phase 3（部分）：resolve_member 慢路径收敛
+  - 慢路径中 3 / 3.5 / inherited fallback 只计算一次 `prefix_type_for_member_resolution`
+  - 成员/继承展开增加 `MAX_MEMBER_INHERITANCE_DEPTH = 16` 深度上限
+- [ ] Phase 3（后续）：profile 验证慢路径占比，继续收敛剩余场景
 - [ ] Phase 4：整体接入 checker
 
 ## 7. 实施阶段

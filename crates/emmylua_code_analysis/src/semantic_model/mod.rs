@@ -785,50 +785,6 @@ impl<'db> SemanticModel<'db> {
         result
     }
 
-    /// Whether a precomputed `resolve_member_id` result can be trusted for this owner.
-    ///
-    /// Global/name-rooted owners are unambiguous. Local declarations are trusted only
-    /// when they cannot carry an annotated class type / same-owner `@class` shadow;
-    /// otherwise the full resolver must decide between runtime member and `@field`.
-    fn can_use_precomputed_member_fast_path(&self, owner: &SemanticId, name: &str) -> bool {
-        match owner {
-            SemanticId::Name(_) => true,
-            SemanticId::Decl(key) => {
-                let Some(facts) = self.file_facts_of(key.file_id) else {
-                    return false;
-                };
-                let Some(decl) = facts.decl_by_id(owner) else {
-                    return false;
-                };
-                if decl.doc_type_syntax.is_some() {
-                    return false;
-                }
-                // Params (including method `self`) commonly have both class fields and
-                // runtime self-member assignments; the full resolver handles that split.
-                if matches!(decl.kind, DeclKind::Param) {
-                    return false;
-                }
-                if decl
-                    .owner_syntax
-                    .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
-                    .is_some()
-                {
-                    return false;
-                }
-                // If any same-name member carries its own `---@type`, the full resolver
-                // must choose the annotated definition over earlier runtime assignments.
-                if facts
-                    .members_of_owner_named(owner, name)
-                    .any(|member| member.doc_type_syntax.is_some())
-                {
-                    return false;
-                }
-                true
-            }
-            _ => false,
-        }
-    }
-
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let (owner, name) = self
             .q()
@@ -837,11 +793,9 @@ impl<'db> SemanticModel<'db> {
         // Fast path: if the per-file reference index already resolved this exact
         // `IndexExpr` to a member id, reuse it. This avoids repeating the same
         // deterministic member lookup across checkers/diagnoses.
-        // Fast path only when the owner cannot have a typed-field shadow over its
-        // runtime members. Name-rooted owners are safe; local declarations without
-        // `---@type` / same-owner class definition are also safe.
-        if self.can_use_precomputed_member_fast_path(&owner, &name)
-            && let Some(file_refs) = self.q().file_references(self.file_id)
+        // `file_references` only stores entries it can resolve unambiguously: Name-rooted
+        // owners, safe local runtime members, and the safe typed-local `---@type` subset.
+        if let Some(file_refs) = self.q().file_references(self.file_id)
             && let Some(member_id) = file_refs
                 .member_use_to_member
                 .get(&index_expr.get_syntax_id())
@@ -850,12 +804,7 @@ impl<'db> SemanticModel<'db> {
                 SemanticId::Member(key) => Some(key.file_id),
                 _ => None,
             };
-            return Some(self.resolved_member(
-                Some(member_id.clone()),
-                member_file,
-                owner,
-                name,
-            ));
+            return Some(self.resolved_member(Some(member_id.clone()), member_file, owner, name));
         }
 
         // 1. Same-file members (owner key). Members with explicit `---@type` take priority over purely inferred runtime members;
@@ -900,13 +849,17 @@ impl<'db> SemanticModel<'db> {
             return Some(self.resolved_member(Some(member_id), Some(self.file_id), owner, name));
         }
 
+        // Compute the prefix type once for the remaining slow-path stages. `resolve_member`
+        // must not repeatedly infer the same prefix expression (3 / 3.5 / inherited fallback).
+        let prefix_ty = index_expr
+            .get_prefix_expr()
+            .map(|prefix| self.prefix_type_for_member_resolution(&prefix));
+
         // 3. Prefix type is a named type -> its `@field` members (cross-file, e.g. `c.secret` where c: C).
         //    Also look up the runtime value declaration for that type (`---@class Game` + `local Game = {}`),
         //    otherwise dot access like `game.add` cannot resolve `function Game:add()`.
-        if let Some(prefix) = index_expr.get_prefix_expr() {
-            let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
-
-            let type_id = match &prefix_ty {
+        if let Some(prefix_ty) = &prefix_ty {
+            let type_id = match prefix_ty {
                 LuaType::Ref(id) | LuaType::Def(id) => Some(id),
                 LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
                 LuaType::TplRef(tpl) => match tpl.get_constraint() {
@@ -979,69 +932,66 @@ impl<'db> SemanticModel<'db> {
 
         // 3.5 Prefix type is an anonymous table (TableConst) -> its table-field members.
         //     Handles the `y` in `T.x.y` after `local T = { x = { y = 1 } }`.
-        if let Some(prefix) = index_expr.get_prefix_expr() {
-            let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
-            if let LuaType::TableConst(in_field) = &prefix_ty {
-                let table_owner = SemanticId::member(in_field.file_id, in_field.value);
-                let mut table_owners = vec![table_owner];
-                // TableConst for named local tables (`local checker = { ... }`) must also resolve
-                // members like `function checker:is_player()`, not only the synthetic owner of anonymous tables.
-                if let Some(facts) = self.file_facts_of(in_field.file_id) {
-                    for decl in &facts.decls {
-                        if decl
-                            .value_expr_syntax
-                            .is_some_and(|syntax| syntax.get_range() == in_field.value)
-                        {
-                            table_owners.push(decl.id.clone());
-                            break;
-                        }
+        if let Some(LuaType::TableConst(in_field)) = prefix_ty.as_ref() {
+            let table_owner = SemanticId::member(in_field.file_id, in_field.value);
+            let mut table_owners = vec![table_owner];
+            // TableConst for named local tables (`local checker = { ... }`) must also resolve
+            // members like `function checker:is_player()`, not only the synthetic owner of anonymous tables.
+            if let Some(facts) = self.file_facts_of(in_field.file_id) {
+                for decl in &facts.decls {
+                    if decl
+                        .value_expr_syntax
+                        .is_some_and(|syntax| syntax.get_range() == in_field.value)
+                    {
+                        table_owners.push(decl.id.clone());
+                        break;
                     }
                 }
-                for table_owner in table_owners {
-                    for member in self.members_of_owner(&table_owner) {
-                        if member.name == name {
+            }
+            for table_owner in table_owners {
+                for member in self.members_of_owner(&table_owner) {
+                    if member.name == name {
+                        return Some(self.resolved_member(
+                            Some(member.id),
+                            Some(member.file_id),
+                            owner,
+                            name,
+                        ));
+                    }
+                }
+                // Runtime members defined by `self.x = ...` in that table's method bodies are also attached to the table.
+                for method_ref in self.members_of_owner(&table_owner) {
+                    let Some(method_facts) = self.file_facts_of(method_ref.file_id) else {
+                        continue;
+                    };
+                    let Some(method_member) = method_facts.member_by_id(&method_ref.id) else {
+                        continue;
+                    };
+                    if !method_member.is_method {
+                        continue;
+                    }
+                    let Some(closure_syntax) = method_member.value_syntax else {
+                        continue;
+                    };
+                    let Some(self_decl) = method_facts
+                        .decls
+                        .iter()
+                        .find(|d| d.name == "self" && d.owner_syntax == Some(closure_syntax))
+                    else {
+                        continue;
+                    };
+                    for self_member_ref in method_facts.members_of_owner(&self_decl.id) {
+                        if self_member_ref.key.name() == Some(name.as_str()) {
+                            let file_id = match &self_member_ref.id {
+                                SemanticId::Member(key) => Some(key.file_id),
+                                _ => None,
+                            };
                             return Some(self.resolved_member(
-                                Some(member.id),
-                                Some(member.file_id),
+                                Some(self_member_ref.id.clone()),
+                                file_id,
                                 owner,
                                 name,
                             ));
-                        }
-                    }
-                    // Runtime members defined by `self.x = ...` in that table's method bodies are also attached to the table.
-                    for method_ref in self.members_of_owner(&table_owner) {
-                        let Some(method_facts) = self.file_facts_of(method_ref.file_id) else {
-                            continue;
-                        };
-                        let Some(method_member) = method_facts.member_by_id(&method_ref.id) else {
-                            continue;
-                        };
-                        if !method_member.is_method {
-                            continue;
-                        }
-                        let Some(closure_syntax) = method_member.value_syntax else {
-                            continue;
-                        };
-                        let Some(self_decl) = method_facts
-                            .decls
-                            .iter()
-                            .find(|d| d.name == "self" && d.owner_syntax == Some(closure_syntax))
-                        else {
-                            continue;
-                        };
-                        for self_member_ref in method_facts.members_of_owner(&self_decl.id) {
-                            if self_member_ref.key.name() == Some(name.as_str()) {
-                                let file_id = match &self_member_ref.id {
-                                    SemanticId::Member(key) => Some(key.file_id),
-                                    _ => None,
-                                };
-                                return Some(self.resolved_member(
-                                    Some(self_member_ref.id.clone()),
-                                    file_id,
-                                    owner,
-                                    name,
-                                ));
-                            }
                         }
                     }
                 }
@@ -1121,9 +1071,8 @@ impl<'db> SemanticModel<'db> {
 
         // Inherited/cross-class members: `member_info` projects along parent types, enabled only for class types;
         // same-name member resolution on unions is left to flow narrowing to avoid breaking dynamic field tests on `Foo|Bar`.
-        if let Some(prefix) = index_expr.get_prefix_expr() {
-            let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
-            let is_class = match &prefix_ty {
+        if let Some(prefix_ty) = &prefix_ty {
+            let is_class = match prefix_ty {
                 LuaType::Ref(id) | LuaType::Def(id) => {
                     member::type_def_of(self, id).is_some_and(|def| def.kind == TypeDefKind::Class)
                 }
@@ -1135,7 +1084,7 @@ impl<'db> SemanticModel<'db> {
             };
             if is_class {
                 let key = LuaMemberKey::Name(name.clone());
-                if let Some(info) = self.member_info(&prefix_ty, &key)
+                if let Some(info) = self.member_info(prefix_ty, &key)
                     && let Some(id) = info.id
                     && let Some(file_id) = info.file_id
                 {
@@ -3297,7 +3246,8 @@ impl<'db> SemanticModel<'db> {
         owner: &SemanticId,
         name: &str,
     ) -> crate::salsa_builder::MemberList {
-        self.q().members_of_owner_named(owner.clone(), SmolStr::new(name))
+        self.q()
+            .members_of_owner_named(owner.clone(), SmolStr::new(name))
     }
 
     /// Constructor attributes for a type definition (`---@[constructor("init")]` from the `meta("Class")` factory).

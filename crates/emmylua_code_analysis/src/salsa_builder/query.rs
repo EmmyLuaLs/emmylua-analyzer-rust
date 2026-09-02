@@ -499,8 +499,7 @@ pub(crate) fn file_references(
 
     // Name use sites -> declarations.
     for name_use in &facts.name_uses {
-        let resolved =
-            resolve_name(db, file, config, name_use.syntax.get_range().start());
+        let resolved = resolve_name(db, file, config, name_use.syntax.get_range().start());
         out.name_use_resolution.push(resolved.clone());
         if let Some(decl) = resolved {
             out.decl_refs
@@ -528,8 +527,24 @@ pub(crate) fn file_references(
         let Some(index_expr) = LuaIndexExpr::cast(node) else {
             continue;
         };
-        if let Some(member_id) = resolve_member_id(db, workspace, config, &facts, &index_expr) {
+        let Some((owner, name)) = member_ref_from_index_expr(&facts, &index_expr) else {
+            continue;
+        };
+        // Generic resolution is still used for the reference index, even when the result is
+        // ambiguous for the member fast path (typed local / parameter / class-shadow cases).
+        let generic_member_id = resolve_member_id(db, workspace, config, &facts, &index_expr);
+        // The fast path only stores unambiguous results: safe owners plus the safe typed-local
+        // subset resolved through `---@type`.
+        let trusted_member_id = if precomputed_member_owner_is_safe(&facts, &owner, name.as_str()) {
+            generic_member_id.clone()
+        } else {
+            resolve_typed_local_member_id(db, workspace, config, file, &facts, owner, name)
+        };
+        if let Some(member_id) = &trusted_member_id {
             out.member_use_to_member.insert(syntax, member_id.clone());
+        }
+        let reference_member_id = generic_member_id.or(trusted_member_id);
+        if let Some(member_id) = reference_member_id {
             let Some(key) = index_expr.get_index_key() else {
                 continue;
             };
@@ -641,6 +656,127 @@ pub(crate) fn workspace_reference_index_for(
         }
     }
     out
+}
+
+/// Whether `resolve_member_id` can be trusted directly for this owner/name pair.
+///
+/// Name-rooted owners are unambiguous. Local declarations are trusted only when they
+/// cannot carry an annotated class type / same-owner `@class` shadow / same-name doc member;
+/// otherwise the full resolver must decide between runtime member and `@field`.
+fn precomputed_member_owner_is_safe(facts: &FileFacts, owner: &SemanticId, name: &str) -> bool {
+    match owner {
+        SemanticId::Name(_) => true,
+        SemanticId::Decl(_) => {
+            let Some(decl) = facts.decl_by_id(owner) else {
+                return false;
+            };
+            if decl.doc_type_syntax.is_some() {
+                return false;
+            }
+            if matches!(decl.kind, DeclKind::Param) {
+                return false;
+            }
+            if decl
+                .owner_syntax
+                .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
+                .is_some()
+            {
+                return false;
+            }
+            if facts
+                .members_of_owner_named(owner, name)
+                .any(|member| member.doc_type_syntax.is_some())
+            {
+                return false;
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Resolve a member use through a local declaration's `---@type` annotation.
+///
+/// This is the safe subset of the typed-local fast path: only a simple named class type
+/// with no same-name runtime member on the local declaration is cached. Conflicts still
+/// go through the slow path so the full resolver can choose between runtime and `@field`.
+fn resolve_typed_local_member_id(
+    db: &dyn SalsaDb,
+    workspace: Option<WorkspaceInput>,
+    config: ConfigInput,
+    file: SourceFileInput,
+    facts: &FileFacts,
+    owner: SemanticId,
+    name: SmolStr,
+) -> Option<SemanticId> {
+    let SemanticId::Decl(_) = &owner else {
+        return None;
+    };
+    let decl = facts.decl_by_id(&owner)?;
+    // If the local also has a runtime member with this name, the slow path must decide
+    // whether the runtime value or the annotated class field wins.
+    if facts
+        .members_of_owner_named(&owner, name.as_str())
+        .next()
+        .is_some()
+    {
+        return None;
+    }
+    let type_syntax = if let Some(syntax) = decl.doc_type_syntax {
+        syntax
+    } else if matches!(decl.kind, DeclKind::Param) {
+        let closure_syntax = decl.owner_syntax?;
+        let sig = facts
+            .signatures
+            .iter()
+            .find(|sig| sig.closure_syntax == closure_syntax)?;
+        let docs = sig.docs.as_ref()?;
+        // Nullable/generic/unspecified annotations stay on the slow path.
+        if docs
+            .nullable_params
+            .iter()
+            .any(|param_name| param_name == &decl.name)
+        {
+            return None;
+        }
+        docs.param_types
+            .iter()
+            .find(|(param_name, _)| param_name == &decl.name)?
+            .1
+    } else {
+        return None;
+    };
+    let tree = parse(db, file, config);
+    let node = type_syntax.to_node_from_root(&tree.get_red_root())?;
+    let LuaDocType::Name(name_type) = LuaDocType::cast(node)? else {
+        return None;
+    };
+    let type_name = name_type.get_name_text()?;
+    let workspace = workspace?;
+    let type_def = resolve_type_def(
+        db,
+        workspace,
+        config,
+        file,
+        SmolStr::new(type_name.as_str()),
+    )?;
+    // Enums/aliases only expose their `@field` surface; runtime enum/table fields are
+    // constants, not instance members. Class types also consider the same-name runtime
+    // implementation (`---@class C` + `function C:method()`).
+    let owners = if type_def.kind == TypeDefKind::Class {
+        resolve_owner_set(db, workspace, config, type_def.id.clone())
+    } else {
+        vec![type_def.id.clone()]
+    };
+    for resolved in owners {
+        if let Some(member) = members_of_owner_named(db, workspace, config, resolved, name.clone())
+            .iter()
+            .next()
+        {
+            return Some(member.id.clone());
+        }
+    }
+    None
 }
 
 /// Query-level member resolution: owner/name -> concrete member id.
