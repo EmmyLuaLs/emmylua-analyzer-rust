@@ -43,8 +43,8 @@ fn check_name_uses(context: &mut CheckContext<'_>, semantic_model: &SemanticMode
     };
     for use_ in &facts.name_uses {
         let range = use_.syntax.get_range();
-        // 1. Same-file local/global declaration.
-        if let Some(decl_id) = semantic_model.resolve_name(range.start()) {
+        // 1. Same-file local declaration only (no global fallback here).
+        if let Some(decl_id) = semantic_model.resolve_local_name(range.start()) {
             if let Some(decl) = facts.decl_by_id(&decl_id) {
                 if decl.deprecated && range != decl.name_range {
                     report_deprecated(context, range, &decl.name);

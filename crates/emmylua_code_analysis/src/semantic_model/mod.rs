@@ -54,6 +54,9 @@ pub struct SemanticModel<'db> {
     expr_infer_guard: RefCell<Vec<LuaSyntaxId>>,
     /// Declaration / member inference reentry guard.
     decl_member_guard: RefCell<Vec<SemanticId>>,
+    /// Forward flow precompute reentry guard (prevents recursion when RHS inference
+    /// asks for the same declaration while its forward table is being built).
+    flow_forward_guard: RefCell<Vec<SemanticId>>,
     /// Short-lived local query cache. This is the intended cache layer for
     /// high-frequency semantic queries; it is discarded with the model.
     cache: RefCell<cache::SemanticLocalCache>,
@@ -108,8 +111,6 @@ pub(crate) struct CallSiteAnalysis {
     pub(crate) receiver_ty: LuaType,
     /// Explicit generic arguments written in call syntax (`f<T>(...)`).
     pub(crate) explicit_generics: Vec<LuaSyntaxId>,
-    /// Per-candidate resolved generic bindings, shared by generic-constraint checks.
-    pub(crate) signatures: Vec<(LuaFunctionType, infer::unify::TplBindings)>,
 }
 
 impl<'db> SemanticModel<'db> {
@@ -120,6 +121,7 @@ impl<'db> SemanticModel<'db> {
             closure_return_infer_stack: RefCell::new(Vec::new()),
             expr_infer_guard: RefCell::new(Vec::new()),
             decl_member_guard: RefCell::new(Vec::new()),
+            flow_forward_guard: RefCell::new(Vec::new()),
             cache: RefCell::new(cache::SemanticLocalCache::default()),
         })
     }
@@ -263,6 +265,19 @@ impl<'db> SemanticModel<'db> {
 
     pub fn resolve_name(&self, offset: TextSize) -> Option<SemanticId> {
         self.q().resolve_name(self.file_id, offset)
+    }
+
+    /// Resolve a name use to a **local** declaration only.
+    ///
+    /// Unlike `resolve_name`, this never falls back to the workspace global index.
+    /// It is useful for checkers that only need same-file declarations and then
+    /// handle cross-file cases with a cheaper precomputed structure.
+    pub(crate) fn resolve_local_name(&self, offset: TextSize) -> Option<SemanticId> {
+        let facts = self.file_facts()?;
+        let name_use = facts.name_use_at_offset(offset)?;
+        facts
+            .find_visible_decl_before_offset(&name_use.name, offset)
+            .map(|decl| decl.id.clone())
     }
 
     /// Workspace global declaration (cross-file). The `Decl` key carries the declaring file.
@@ -621,6 +636,19 @@ impl<'db> SemanticModel<'db> {
 
     /// Resolves member references in index expressions (single member resolution entry point):
     /// same-file member -> same-file class `@field` -> cross-file runtime member (resolve owner -> merge members).
+    /// Cached `callable_functions` result for a callee type.
+    pub(crate) fn callable_functions_cached(&self, ty: &LuaType) -> Vec<LuaFunctionType> {
+        if let Some(cached) = self.cache.borrow().callable_functions.get(ty) {
+            return cached.clone();
+        }
+        let value = crate::check::checker::param_count::callable_functions(self, ty);
+        self.cache
+            .borrow_mut()
+            .callable_functions
+            .insert(ty.clone(), value.clone());
+        value
+    }
+
     pub(crate) fn callable_candidates_cached(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
         let syntax = callee.get_syntax_id();
         let file_id = self.file_id;
@@ -663,7 +691,6 @@ impl<'db> SemanticModel<'db> {
                 colon_call: call_expr.is_colon_call(),
                 receiver_ty: LuaType::Unknown,
                 explicit_generics: Vec::new(),
-                signatures: Vec::new(),
             };
         };
         let candidates = self.callable_candidates_cached(&callee);
@@ -674,7 +701,6 @@ impl<'db> SemanticModel<'db> {
                 colon_call: call_expr.is_colon_call(),
                 receiver_ty: LuaType::Unknown,
                 explicit_generics: Vec::new(),
-                signatures: Vec::new(),
             };
         }
         let args = call_expr
@@ -698,25 +724,48 @@ impl<'db> SemanticModel<'db> {
             .get_call_generic_type_list()
             .map(|list| list.get_types().map(|ty| ty.get_syntax_id()).collect())
             .unwrap_or_default();
-        // Resolved signatures (+ bindings) are the only part that needs the generic-constraint
-        // machinery; it reuses the candidate cache above and is stored with the call-site analysis.
-        let signatures =
-            crate::check::checker::generic_constraint_mismatch::resolved_call_signatures(
-                self,
-                call_expr,
-                &candidates,
-                &arg_types,
-                colon_call,
-                &receiver_ty,
-            );
+        // Resolved signatures are intentionally lazy: they are only needed by the
+        // generic-constraint checker. Computing them eagerly for every call is one of
+        // the largest costs in `ParamTypeChecker`.
         CallSiteAnalysis {
             candidates,
             arg_types,
             colon_call,
             receiver_ty,
             explicit_generics,
-            signatures,
         }
+    }
+
+    /// Lazily compute and cache resolved call signatures (generic bindings per candidate).
+    pub(crate) fn call_site_signatures(
+        &self,
+        call_expr: &LuaCallExpr,
+    ) -> Vec<(LuaFunctionType, infer::unify::TplBindings)> {
+        let syntax = call_expr.get_syntax_id();
+        let file_id = self.file_id;
+        if let Some(cached) = self
+            .cache
+            .borrow()
+            .call_site_signatures
+            .get(&(file_id, syntax))
+        {
+            return cached.clone();
+        }
+        let analysis = self.call_site_analysis(call_expr);
+        let signatures =
+            crate::check::checker::generic_constraint_mismatch::resolved_call_signatures(
+                self,
+                call_expr,
+                &analysis.candidates,
+                &analysis.arg_types,
+                analysis.colon_call,
+                &analysis.receiver_ty,
+            );
+        self.cache
+            .borrow_mut()
+            .call_site_signatures
+            .insert((file_id, syntax), signatures.clone());
+        signatures
     }
 
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
@@ -2299,6 +2348,32 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = cached {
             return self.sanitize_global_generic_decl(decl, cached);
         }
+        // Forward precompute: for files with flow, compute the answer for all referenced
+        // flow ids of this declaration once, then serve later queries by direct lookup.
+        if let Some(start) = start {
+            self.ensure_decl_flow_uses();
+            let should_build_forward = !self.cache.borrow().flow_decl_forward.contains_key(decl)
+                && self
+                    .cache
+                    .borrow()
+                    .flow_decl_uses
+                    .as_ref()
+                    .and_then(|uses| uses.get(decl))
+                    .is_some_and(|flow_ids| flow_ids.len() > 1);
+            if should_build_forward {
+                self.build_forward_decl_flow(decl);
+            }
+            if let Some(forwarded) = self
+                .cache
+                .borrow()
+                .flow_decl_forward
+                .get(decl)
+                .and_then(|table| table.get(&start))
+                .cloned()
+            {
+                return self.sanitize_global_generic_decl(decl, forwarded);
+            }
+        }
         let ty = flow::type_of_decl_at(self, decl, offset);
         if let Some(start) = start {
             self.cache
@@ -2307,6 +2382,52 @@ impl<'db> SemanticModel<'db> {
                 .insert((self.file_id, decl.clone(), start), ty.clone());
         }
         self.sanitize_global_generic_decl(decl, ty)
+    }
+
+    fn ensure_decl_flow_uses(&self) {
+        if self.cache.borrow().flow_decl_uses.is_none() {
+            let uses = flow::collect_decl_flow_uses(self);
+            self.cache.borrow_mut().flow_decl_uses = Some(uses);
+        }
+    }
+
+    fn build_forward_decl_flow(&self, decl: &SemanticId) {
+        let Some(tree) = self.flow_tree() else {
+            return;
+        };
+        if self.flow_forward_guard.borrow().contains(decl) {
+            return;
+        }
+        let pruning = if let Some(pruning) = self.cache.borrow().flow_pruning.clone() {
+            pruning
+        } else {
+            let pruning = Arc::new(flow::collect_flow_pruning(self, &tree));
+            self.cache.borrow_mut().flow_pruning = Some(pruning.clone());
+            pruning
+        };
+        self.flow_forward_guard.borrow_mut().push(decl.clone());
+        let use_ids = {
+            let cache = self.cache.borrow();
+            cache
+                .flow_decl_uses
+                .as_ref()
+                .and_then(|uses| uses.get(decl))
+                .cloned()
+                .unwrap_or_default()
+        };
+        let table = match flow::build_forward_decl_flow(
+            self, decl, &tree, &use_ids, &pruning.0, &pruning.1,
+        ) {
+            Some(table) => table,
+            // A declaration whose forward path hits unreachable control flow keeps the
+            // proven backward path. Record an empty table so we don't retry it.
+            None => HashMap::new(),
+        };
+        self.flow_forward_guard.borrow_mut().pop();
+        self.cache
+            .borrow_mut()
+            .flow_decl_forward
+            .insert(decl.clone(), table);
     }
 
     /// Global variables must not leak uninstantiated generic parameters from function bodies into the global scope
@@ -2467,6 +2588,18 @@ impl<'db> SemanticModel<'db> {
 
     /// Alias target type (after projection; generic parameter references keep `TplRef`, and instantiation is substituted by the caller).
     pub fn alias_target(&self, def: &TypeDef) -> Option<LuaType> {
+        if let Some(cached) = self.cache.borrow().alias_targets.get(&def.id) {
+            return cached.clone();
+        }
+        let result = self.alias_target_uncached(def);
+        self.cache
+            .borrow_mut()
+            .alias_targets
+            .insert(def.id.clone(), result.clone());
+        result
+    }
+
+    fn alias_target_uncached(&self, def: &TypeDef) -> Option<LuaType> {
         let syntax = def.alias_type?;
         let mut ty = self
             .q()
@@ -3356,7 +3489,7 @@ impl<'db> SemanticModel<'db> {
         {
             return *cached;
         }
-        let result = type_check::is_compatible(self, source, target);
+        let result = type_check::is_compatible_uncached(self, source, target);
         self.cache
             .borrow_mut()
             .type_check
@@ -3591,30 +3724,19 @@ impl<'db> SemanticModel<'db> {
     /// and that declaration has an attached `---@class/@enum` type definition (same owner_syntax), use the type definition.
     /// Finds the owning method closure from the implicit `self` parameter declaration.
     fn method_closure_for_self_decl(&self, decl: &Decl) -> Option<LuaSyntaxId> {
-        let signatures = self.signatures()?;
-        let tree = self.syntax_tree()?;
-        let root = tree.get_red_root();
-        let offset = decl.name_range.start();
-        signatures
-            .iter()
-            .filter(|sig| sig.is_method)
-            .find_map(|sig| {
-                let node = sig.closure_syntax.to_node_from_root(&root)?;
-                let closure = LuaClosureExpr::cast(node)?;
-                if closure.get_range().contains(offset) {
-                    Some(sig.closure_syntax)
-                } else {
-                    None
-                }
-            })
+        let closure_syntax = decl.owner_syntax?;
+        let facts = self.file_facts()?;
+        let signature = facts.signature_by_closure(closure_syntax)?;
+        if signature.is_method {
+            Some(closure_syntax)
+        } else {
+            None
+        }
     }
 
     fn method_owner_type(&self, closure_syntax: LuaSyntaxId) -> Option<LuaType> {
         let facts = self.file_facts()?;
-        let member = facts
-            .members
-            .iter()
-            .find(|member| member.value_syntax == Some(closure_syntax))?;
+        let member = facts.member_by_value_syntax(closure_syntax)?;
         let owner = member.owner.clone();
         let (owner_ty, owner_value) = match &owner {
             SemanticId::Decl(decl) => (
@@ -3681,9 +3803,8 @@ impl<'db> SemanticModel<'db> {
         param_index: usize,
     ) -> Option<LuaType> {
         let is_method = self
-            .signatures()?
-            .iter()
-            .find(|sig| sig.closure_syntax == closure_syntax)
+            .file_facts()
+            .and_then(|facts| facts.signature_by_closure(closure_syntax))
             .is_some_and(|sig| sig.is_method);
         let mut types = Vec::new();
         for expected_fun in self.expected_member_signatures_for_closure(closure_syntax)? {

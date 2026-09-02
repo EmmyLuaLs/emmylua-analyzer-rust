@@ -24,6 +24,8 @@ pub struct FlowTree {
     /// For the common case where `offset` is exactly the start of a bound node,
     /// maps start -> flow id of the smallest range starting there.
     binding_starts: HashMap<TextSize, FlowId>,
+    /// Forward adjacency: for each node, the nodes that list it as an antecedent.
+    successors: Vec<Vec<FlowId>>,
 }
 
 impl FlowTree {
@@ -51,6 +53,23 @@ impl FlowTree {
         for (range, flow_id) in &binding_ranges {
             binding_starts.entry(range.start()).or_insert(*flow_id);
         }
+        let mut successors = vec![Vec::new(); flow_nodes.len()];
+        for (idx, node) in flow_nodes.iter().enumerate() {
+            let id = FlowId(idx as u32);
+            match &node.antecedent {
+                Some(FlowAntecedent::Single(prev)) => {
+                    successors[prev.0 as usize].push(id);
+                }
+                Some(FlowAntecedent::Multiple(multi_id)) => {
+                    if let Some(branches) = multiple_antecedents.get(*multi_id as usize) {
+                        for &prev in branches {
+                            successors[prev.0 as usize].push(id);
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
         Self {
             decl_bind_expr_ref,
             decl_multi_return_ref,
@@ -61,7 +80,16 @@ impl FlowTree {
             bindings,
             binding_ranges,
             binding_starts,
+            successors,
         }
+    }
+
+    /// Forward successors of a flow node (nodes whose antecedent points back to this node).
+    pub fn successors(&self, flow_id: FlowId) -> &[FlowId] {
+        self.successors
+            .get(flow_id.0 as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn get_flow_id(&self, syntax_id: LuaSyntaxId) -> Option<FlowId> {

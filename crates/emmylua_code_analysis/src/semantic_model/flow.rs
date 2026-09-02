@@ -12,7 +12,7 @@
 //! - `---@cast x +string` adds string to x's path type;
 //! - Flow type for member assignment `t.x = v` / `self.x = v` (FlowEffect::AssignMember).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use emmylua_parser::{
@@ -82,6 +82,266 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
         &mut path,
     )
     .unwrap_or_else(fallback)
+}
+
+/// Collect every flow id at which a declaration is referenced by a `LuaNameExpr`.
+///
+/// This is the query-point index used by the forward flow precompute. It is built
+/// once per `SemanticModel` and then reused for all declarations.
+pub(crate) fn collect_decl_flow_uses(model: &SemanticModel) -> HashMap<SemanticId, Vec<FlowId>> {
+    let Some(facts) = model.file_facts() else {
+        return HashMap::new();
+    };
+    let Some(tree) = model.flow_tree() else {
+        return HashMap::new();
+    };
+    let mut uses: HashMap<SemanticId, Vec<FlowId>> = HashMap::new();
+    for name_use in &facts.name_uses {
+        let Some(flow_id) = tree.get_flow_id(name_use.syntax) else {
+            continue;
+        };
+        // Only local/name-resolved declarations are collected. Globals are far less
+        // common in the hot per-file checks and can keep using the proven fallback,
+        // avoiding a workspace-global lookup for every name token.
+        let offset = name_use.syntax.get_range().start();
+        let Some(decl) = facts
+            .find_visible_decl_before_offset(&name_use.name, offset)
+            .map(|decl| decl.id.clone())
+        else {
+            continue;
+        };
+        uses.entry(decl).or_default().push(flow_id);
+    }
+    uses
+}
+
+/// Collect flow ids whose outgoing edges are statically dead.
+///
+/// Returns `(never_returning_calls, unreachable_condition_branches)`. This is built
+/// once per `SemanticModel` so the per-declaration forward scans do not repeatedly
+/// resolve call signatures for every call statement.
+pub(crate) fn collect_flow_pruning(
+    model: &SemanticModel,
+    tree: &FlowTree,
+) -> (HashSet<FlowId>, HashSet<FlowId>) {
+    let mut never_calls = HashSet::new();
+    let mut unreachable_conds = HashSet::new();
+    for i in 0..tree.node_count() {
+        let id = FlowId(i);
+        let Some(node) = tree.get_flow_node(id) else {
+            continue;
+        };
+        match &node.kind {
+            FlowNodeKind::CallExprStat(call_stat_ptr) => {
+                if call_stat_returns_never(model, call_stat_ptr) {
+                    never_calls.insert(id);
+                }
+            }
+            FlowNodeKind::TrueCondition(cond_ptr) => {
+                if flow_condition_expr(model, cond_ptr)
+                    .is_some_and(|cond| condition_branch_unreachable(model, &cond, true))
+                {
+                    unreachable_conds.insert(id);
+                }
+            }
+            FlowNodeKind::FalseCondition(cond_ptr) => {
+                if flow_condition_expr(model, cond_ptr)
+                    .is_some_and(|cond| condition_branch_unreachable(model, &cond, false))
+                {
+                    unreachable_conds.insert(id);
+                }
+            }
+            _ => {}
+        }
+    }
+    (never_calls, unreachable_conds)
+}
+
+/// Forward dataflow for a single declaration.
+///
+/// Starts from the CFG `Start` with the declaration's non-flow base type and walks
+/// forward edges once, recording the type at every flow id where this declaration is
+/// referenced. Branch merges take unions, assignments replace the current type, and
+/// `---@cast` / condition guards narrow it. This turns the per-query backward O(N)
+/// traversal into one amortized forward scan per declaration.
+pub(crate) fn build_forward_decl_flow(
+    model: &SemanticModel,
+    decl: &SemanticId,
+    tree: &FlowTree,
+    use_flow_ids: &[FlowId],
+    never_calls: &HashSet<FlowId>,
+    unreachable_conds: &HashSet<FlowId>,
+) -> Option<HashMap<FlowId, LuaType>> {
+    let node_count = tree.node_count() as usize;
+    let mut result = HashMap::new();
+    if node_count == 0 {
+        return Some(result);
+    }
+
+    let base = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
+    let use_set: HashSet<FlowId> = use_flow_ids.iter().copied().collect();
+
+    let mut states: Vec<Option<LuaType>> = vec![None; node_count];
+    // Whether a real (not statically-dead) control-flow path can reach the node.
+    // Dead branches are still walked so we can detect assignments/casts that need the
+    // backward walker's special widening; unrelated declarations are unaffected.
+    let mut reachable = vec![false; node_count];
+    let mut queued = vec![false; node_count];
+    let mut stack: Vec<FlowId> = Vec::new();
+
+    let start = FlowId(0);
+    states[0] = Some(base.clone());
+    reachable[0] = true;
+    queued[0] = true;
+    stack.push(start);
+
+    while let Some(flow_id) = stack.pop() {
+        let idx = flow_id.0 as usize;
+        queued[idx] = false;
+        let Some(entry) = states[idx].clone() else {
+            continue;
+        };
+
+        let Some(node) = tree.get_flow_node(flow_id) else {
+            continue;
+        };
+        let node_reachable = reachable[idx];
+
+        let mut exit = entry.clone();
+        match &node.kind {
+            FlowNodeKind::Assignment(_) => {
+                let assign_pos = match &node.kind {
+                    FlowNodeKind::Assignment(assign_ptr) => {
+                        assign_ptr.get_syntax_id().get_range().start()
+                    }
+                    _ => unreachable!(),
+                };
+                for effect in tree.get_flow_effects(flow_id) {
+                    if let FlowEffect::AssignDecl {
+                        decl: assigned_decl,
+                        value_syntax,
+                    } = effect
+                        && assigned_decl == decl
+                    {
+                        let base_before = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
+                        let mut value_ty = assigned_value_type(
+                            model,
+                            tree,
+                            decl,
+                            flow_id,
+                            assign_pos,
+                            *value_syntax,
+                            &exit,
+                        );
+                        value_ty = coerce_table_assign_to_narrowed(
+                            model,
+                            decl,
+                            value_ty,
+                            &exit,
+                            &base_before,
+                        );
+                        if value_ty.is_unknown() && !matches!(exit, LuaType::Unknown | LuaType::Any)
+                        {
+                            value_ty = widen_const_type(exit.clone());
+                        }
+                        exit = value_ty;
+                    }
+                }
+            }
+            FlowNodeKind::TagCast(cast_ptr) => {
+                let mut path = PathState::default();
+                collect_decl_cast(model, decl, cast_ptr, &mut path);
+                if !path.casts.is_empty() {
+                    exit = finalize(model, exit, &path);
+                }
+            }
+            FlowNodeKind::TrueCondition(cond_ptr) => {
+                if let Some(narrowing) = narrow_condition(
+                    model,
+                    tree,
+                    decl,
+                    cond_ptr,
+                    flow_id,
+                    antecedent_has_narrowing(tree, node.antecedent.clone()),
+                ) {
+                    exit = apply_narrowing(model, exit, &narrowing);
+                }
+            }
+            FlowNodeKind::FalseCondition(cond_ptr) => {
+                if let Some(narrowing) = narrow_condition_false(
+                    model,
+                    tree,
+                    decl,
+                    cond_ptr,
+                    flow_id,
+                    antecedent_has_narrowing(tree, node.antecedent.clone()),
+                ) {
+                    exit = apply_narrowing(model, exit, &narrowing);
+                }
+            }
+            _ => {}
+        }
+
+        // If this declaration is actually changed inside a statically-dead region, the
+        // backward walker has special widening semantics for the merge. Fall back for
+        // this declaration; unrelated declarations can continue using forward results.
+        if !node_reachable && exit != entry {
+            return None;
+        }
+
+        // A name bound to this flow id observes the state *after* the node's own
+        // transfer (e.g. a use in the true branch is bound to the TrueCondition node,
+        // so it sees the narrowed type). The existing backward query has the same rule.
+        if use_set.contains(&flow_id) {
+            result.insert(flow_id, exit.clone());
+        }
+
+        // Determine whether outgoing edges are live. Dead edges are still propagated
+        // (with `reachable` staying false) so we can find decl-changing effects above;
+        // they never mark later merges as reachable.
+        let successors = tree.successors(flow_id);
+        if successors.is_empty() {
+            continue;
+        }
+        let edge_live = match &node.kind {
+            FlowNodeKind::TrueCondition(_) => !unreachable_conds.contains(&flow_id),
+            FlowNodeKind::FalseCondition(_) => !unreachable_conds.contains(&flow_id),
+            FlowNodeKind::CallExprStat(_) => {
+                // A never-returning call terminates the path; don't walk its dead
+                // successors even for effect discovery.
+                !never_calls.contains(&flow_id)
+            }
+            FlowNodeKind::Unreachable => false,
+            _ => true,
+        };
+        if !edge_live && matches!(node.kind, FlowNodeKind::CallExprStat(_)) {
+            continue;
+        }
+
+        for &succ in successors {
+            let succ_idx = succ.0 as usize;
+            if node_reachable && edge_live {
+                reachable[succ_idx] = true;
+            }
+            let merged = match states[succ_idx].clone() {
+                Some(old) => merge_types(old, exit.clone()),
+                None => exit.clone(),
+            };
+            let changed = match &states[succ_idx] {
+                Some(old) => *old != merged,
+                None => true,
+            };
+            if changed {
+                states[succ_idx] = Some(merged);
+                if !queued[succ_idx] {
+                    queued[succ_idx] = true;
+                    stack.push(succ);
+                }
+            }
+        }
+    }
+
+    Some(result)
 }
 
 /// Flow-sensitive type of `decl` at a concrete CFG start node.
@@ -4920,6 +5180,10 @@ fn merge_types(left: LuaType, right: LuaType) -> LuaType {
     }
     let mut types: Vec<LuaType> = Vec::new();
     for ty in candidates {
+        // Exact duplicates should never survive a union merge.
+        if types.contains(&ty) {
+            continue;
+        }
         // Wider base types absorb their constant/narrower type subsets (`"a" | string` → `string`).
         if types.iter().any(|existing| type_is_broader(existing, &ty)) {
             continue;

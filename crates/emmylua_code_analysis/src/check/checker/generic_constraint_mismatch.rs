@@ -190,7 +190,19 @@ fn check_call(
     };
     let analysis = semantic_model.call_site_analysis(call_expr);
     let owner_constraints = owner_generic_constraints(semantic_model, &callee);
-    for (fun, bindings) in &analysis.signatures {
+    // Fast path: if neither the callee nor its owner has generic parameters, there
+    // are no generic-constraint diagnostics to produce. Avoid computing/resolving
+    // call signatures entirely for the vast majority of non-generic calls.
+    if owner_constraints.is_empty()
+        && analysis
+            .candidates
+            .iter()
+            .all(|fun| fun.get_generic_params().is_empty())
+    {
+        return;
+    }
+    let signatures = semantic_model.call_site_signatures(call_expr);
+    for (fun, bindings) in &signatures {
         // Constraints carried by the signature's generic parameters. Prefer re-projecting from the signature doc syntax using bindings:
         // `K extends keyof T` / conditional-type constraints require AST-level evaluation.
         let mut constraints: Vec<(GenericTplId, LuaType)> = Vec::new();

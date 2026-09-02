@@ -104,6 +104,7 @@ pub struct FileFacts {
     decl_by_name: Vec<Bucket<SmolStr>>,
     decl_by_id: HashMap<SemanticId, usize>,
     member_by_id: HashMap<SemanticId, usize>,
+    member_by_value_syntax: HashMap<LuaSyntaxId, usize>,
     type_def_by_id: HashMap<SemanticId, usize>,
     members_by_owner: HashMap<SemanticId, Vec<usize>>,
     members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>>,
@@ -188,6 +189,11 @@ impl FileFacts {
 
     pub fn member_by_id(&self, id: &SemanticId) -> Option<&Member> {
         let index = self.member_by_id.get(id)?;
+        self.members.get(*index)
+    }
+
+    pub fn member_by_value_syntax(&self, syntax: LuaSyntaxId) -> Option<&Member> {
+        let index = self.member_by_value_syntax.get(&syntax)?;
         self.members.get(*index)
     }
 
@@ -766,6 +772,12 @@ impl FactsBuilder {
             .enumerate()
             .map(|(i, member)| (member.id.clone(), i))
             .collect();
+        let mut member_by_value_syntax = HashMap::new();
+        for (index, member) in self.members.iter().enumerate() {
+            if let Some(syntax) = member.value_syntax {
+                member_by_value_syntax.entry(syntax).or_insert(index);
+            }
+        }
         let type_def_by_id = self
             .type_defs
             .iter()
@@ -862,6 +874,7 @@ impl FactsBuilder {
             decl_by_name,
             decl_by_id,
             member_by_id,
+            member_by_value_syntax,
             type_def_by_id,
             members_by_owner,
             members_by_owner_name,

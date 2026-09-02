@@ -56,7 +56,7 @@ fn check_call(
     let analysis = semantic_model.call_site_analysis(call_expr);
     let mut candidates = analysis.candidates;
     if candidates.is_empty() {
-        candidates = callable_functions(semantic_model, &callee_ty);
+        candidates = semantic_model.callable_functions_cached(&callee_ty);
     }
     // Higher-order generic return is not instantiated: `Mock<T>`'s T is still a TplRef, but T can be
     // inferred from the declaration initializer of `sum = fn(function(a, b) ...)`.
@@ -88,7 +88,7 @@ fn check_call(
         && let Some(member_id) = resolved.member_id
     {
         if let Some(member_ty) = semantic_model.type_of_member(&member_id) {
-            candidates = callable_functions(semantic_model, &member_ty);
+            candidates = semantic_model.callable_functions_cached(&member_ty);
         }
         if candidates.is_empty()
             && let Some(member_file) = resolved.file_id
@@ -506,7 +506,7 @@ fn table_expected_type(
 
 /// Function components within a type (`DocFunction` / `Signature` / union).
 fn function_types(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Vec<LuaFunctionType> {
-    callable_functions(semantic_model, ty)
+    semantic_model.callable_functions_cached(ty)
 }
 
 /// Fixed-length function parameter count (last parameter variadic -> None).

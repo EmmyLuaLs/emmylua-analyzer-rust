@@ -18,7 +18,7 @@ use crate::semantic_model::render::humanize_type;
 use crate::semantic_model::type_check::is_compatible;
 use crate::{DiagnosticCode, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode};
 
-use super::param_count::{callable_functions, first_param_is_self};
+use super::param_count::first_param_is_self;
 use super::{CheckContext, Checker};
 
 pub struct ParamTypeChecker;
@@ -127,7 +127,7 @@ pub(crate) fn callable_candidates_uncached(
     }
 
     let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
-    let mut candidates = callable_functions(semantic_model, &callee_ty);
+    let mut candidates = semantic_model.callable_functions_cached(&callee_ty);
     if candidates.is_empty()
         && let LuaExpr::IndexExpr(index_expr) = callee
     {
@@ -161,7 +161,7 @@ fn member_callable_candidates(
         let key = crate::LuaMemberKey::Name(resolved.name.to_string().into());
         let member_ty = semantic_model.member_type(&prefix_ty, &key);
         if let Some(ty) = member_ty {
-            candidates.extend(callable_functions(semantic_model, &ty));
+            candidates.extend(semantic_model.callable_functions_cached(&ty));
         }
         // Runtime function members (`string.rep`): find the member closure signature in the file of the prefix table identity.
         if candidates.is_empty()
@@ -186,7 +186,7 @@ fn member_callable_candidates(
         // Prefer the exact resolved member; the all-same-name scan is only needed
         // when the exact member does not produce a callable signature.
         if let Some(member_ty) = semantic_model.type_of_member(&member_id) {
-            candidates = callable_functions(semantic_model, &member_ty);
+            candidates = semantic_model.callable_functions_cached(&member_ty);
         }
         if candidates.is_empty()
             && let Some(member_file) = resolved.file_id
@@ -195,7 +195,7 @@ fn member_callable_candidates(
             let mut overloads = Vec::new();
             for overload in facts.members_named(resolved.name.as_str()) {
                 if let Some(ty) = semantic_model.type_of_member(&overload.id) {
-                    overloads.extend(callable_functions(semantic_model, &ty));
+                    overloads.extend(semantic_model.callable_functions_cached(&ty));
                 }
             }
             if !overloads.is_empty() {

@@ -34,6 +34,16 @@ pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
 /// Boolean compatibility: whether `source` is assignable to `target`.
 pub fn is_compatible(model: &SemanticModel, source: &LuaType, target: &LuaType) -> bool {
+    // Route through SemanticModel's local cache so repeated compatibility checks
+    // on the same type pair in one file diagnosis do not re-run the full checker.
+    model.type_check(source, target)
+}
+
+pub(crate) fn is_compatible_uncached(
+    model: &SemanticModel,
+    source: &LuaType,
+    target: &LuaType,
+) -> bool {
     let mut context = TypeCheckContext::new(model, false);
     check_general_type_compact(&mut context, source, target, guard::TypeCheckGuard::new()).is_ok()
 }
