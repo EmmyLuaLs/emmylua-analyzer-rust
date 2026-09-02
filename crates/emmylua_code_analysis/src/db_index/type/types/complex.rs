@@ -1,11 +1,9 @@
 use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
+use rustc_hash::FxHasher;
 use smol_str::SmolStr;
-use std::{
-    borrow::Cow, collections::hash_map::DefaultHasher, hash::Hash, hash::Hasher, ops::Deref,
-    sync::Arc,
-};
+use std::{borrow::Cow, hash::Hash, hash::Hasher, ops::Deref, sync::Arc};
 
 use crate::db_index::LuaMemberKey;
 use crate::{
@@ -356,7 +354,7 @@ impl Hash for LuaObjectType {
         state.write_usize(self.fields.len());
         let mut acc: u64 = 0;
         for (key, ty) in &self.fields {
-            let mut hasher = DefaultHasher::new();
+            let mut hasher = FxHasher::default();
             (key, ty).hash(&mut hasher);
             acc = acc.wrapping_add(hasher.finish());
         }
@@ -587,7 +585,7 @@ impl Hash for LuaUnionType {
                 state.write_usize(types.len());
                 let mut acc: u64 = 0;
                 for ty in types {
-                    let mut hasher = DefaultHasher::new();
+                    let mut hasher = FxHasher::default();
                     ty.hash(&mut hasher);
                     acc = acc.wrapping_add(hasher.finish());
                 }
@@ -963,7 +961,7 @@ impl LuaStringTplType {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct LuaMultiLineUnion {
     unions: Vec<(LuaType, Option<String>)>,
 }
@@ -1040,6 +1038,31 @@ impl<'a> IntoIterator for &'a LuaMultiLineUnion {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+/// ignore description
+impl PartialEq for LuaMultiLineUnion {
+    fn eq(&self, other: &Self) -> bool {
+        self.unions.len() == other.unions.len()
+            && self
+                .unions
+                .iter()
+                .zip(other.unions.iter())
+                .all(|(a, b)| a.0 == b.0)
+    }
+}
+
+impl Hash for LuaMultiLineUnion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_usize(self.unions.len());
+        let mut acc: u64 = 0;
+        for (ty, _) in &self.unions {
+            let mut hasher = FxHasher::default();
+            ty.hash(&mut hasher);
+            acc = acc.wrapping_add(hasher.finish());
+        }
+        acc.hash(state);
     }
 }
 

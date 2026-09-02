@@ -52,6 +52,7 @@ pub fn check_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> Ass
     RelationSession::explain(db, source, target)
 }
 
+// o(1) 复杂度
 pub fn fast_eq_check(source: &LuaType, target: &LuaType) -> bool {
     match (source, target) {
         (LuaType::Any, _) => true,
@@ -104,7 +105,9 @@ pub fn fast_eq_check(source: &LuaType, target: &LuaType) -> bool {
         (LuaType::Intersection(source), LuaType::Intersection(target)) => {
             Arc::ptr_eq(source, target)
         }
-        (LuaType::Generic(source), LuaType::Generic(target)) => source == target,
+        (LuaType::Generic(source), LuaType::Generic(target)) => {
+            Arc::ptr_eq(source, target) || source == target
+        }
         (LuaType::TableGeneric(source), LuaType::TableGeneric(target)) => {
             Arc::ptr_eq(source, target)
         }
