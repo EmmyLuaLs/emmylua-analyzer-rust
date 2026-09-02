@@ -3319,7 +3319,28 @@ fn resolve_return_cast_origin(model: &SemanticModel, start: SemanticId) -> Optio
 }
 
 /// Parse `---@return_cast name Type else Fallback` at the call site.
+///
+/// Results are cached per call syntax in the short-lived `SemanticModel`. Most calls
+/// do not have a `return_cast`, so caching the negative result avoids repeatedly
+/// resolving callees / scanning signatures for the same call during flow backtracking.
 fn return_cast_for_call(
+    model: &SemanticModel,
+    call: &emmylua_parser::LuaCallExpr,
+) -> Option<(LuaExpr, LuaType, Option<LuaType>, bool)> {
+    let key = (model.file_id(), call.get_syntax_id());
+    if let Some(cached) = model.cache.borrow().return_cast.get(&key) {
+        return cached.clone();
+    }
+    let result = return_cast_for_call_uncached(model, call);
+    model
+        .cache
+        .borrow_mut()
+        .return_cast
+        .insert(key, result.clone());
+    result
+}
+
+fn return_cast_for_call_uncached(
     model: &SemanticModel,
     call: &emmylua_parser::LuaCallExpr,
 ) -> Option<(LuaExpr, LuaType, Option<LuaType>, bool)> {

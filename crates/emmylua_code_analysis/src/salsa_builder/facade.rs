@@ -23,9 +23,9 @@ use super::def::{
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
 use super::query::{
-    self, decl_references, decl_type, file_and_config, file_facts, member_keys_of_decl,
-    member_keys_of_type, member_type, module_export_type, parse, resolve_name, resolve_type_def,
-    signature_return,
+    self, decl_references, decl_type, file_and_config, file_facts, file_references,
+    member_keys_of_decl, member_keys_of_type, member_type, module_export_type, parse,
+    resolve_name, resolve_type_def, signature_return, FileReferences,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{
@@ -257,6 +257,12 @@ impl<'db> SalsaQueries<'db> {
         decl_references(self.db, file, config, decl)
     }
 
+    /// Per-file semantic/reference index (name use + member use pre-resolved subset).
+    pub fn file_references(&self, file_id: FileId) -> Option<&'db FileReferences> {
+        let (file, config) = file_and_config(self.db, file_id)?;
+        Some(file_references(self.db, file, config))
+    }
+
     // ── Members ──
 
     /// File's exported facts (cross-file consumption entry: reads only the defining file, not its function bodies).
@@ -350,6 +356,23 @@ impl<'db> SalsaQueries<'db> {
             return MemberList::default();
         };
         MemberList::from(query::members_of_owner(self.db, workspace, config, owner))
+    }
+
+    /// Members of an owner with a specific name.
+    pub fn members_of_owner_named(&self, owner: SemanticId, name: SmolStr) -> MemberList {
+        let Some(workspace) = self.db.workspace_input() else {
+            return MemberList::default();
+        };
+        let Some(config) = self.db.config_input() else {
+            return MemberList::default();
+        };
+        MemberList::from(query::members_of_owner_named(
+            self.db,
+            workspace,
+            config,
+            owner,
+            name,
+        ))
     }
 
     /// Constructor attribute for a type definition (from `meta("Class")` factory `---@[constructor("init")]`).

@@ -277,6 +277,13 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// Workspace global declaration (cross-file). The `Decl` key carries the declaring file.
+    /// Per-file precomputed name-use resolutions (aligned with `file_facts().name_uses`).
+    pub(crate) fn file_name_use_resolutions(&self) -> Option<&'db [Option<SemanticId>]> {
+        self.q()
+            .file_references(self.file_id)
+            .map(|refs| refs.name_use_resolution.as_slice())
+    }
+
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
         self.q().global_decl(name)
     }
@@ -778,10 +785,78 @@ impl<'db> SemanticModel<'db> {
         result
     }
 
+    /// Whether a precomputed `resolve_member_id` result can be trusted for this owner.
+    ///
+    /// Global/name-rooted owners are unambiguous. Local declarations are trusted only
+    /// when they cannot carry an annotated class type / same-owner `@class` shadow;
+    /// otherwise the full resolver must decide between runtime member and `@field`.
+    fn can_use_precomputed_member_fast_path(&self, owner: &SemanticId, name: &str) -> bool {
+        match owner {
+            SemanticId::Name(_) => true,
+            SemanticId::Decl(key) => {
+                let Some(facts) = self.file_facts_of(key.file_id) else {
+                    return false;
+                };
+                let Some(decl) = facts.decl_by_id(owner) else {
+                    return false;
+                };
+                if decl.doc_type_syntax.is_some() {
+                    return false;
+                }
+                // Params (including method `self`) commonly have both class fields and
+                // runtime self-member assignments; the full resolver handles that split.
+                if matches!(decl.kind, DeclKind::Param) {
+                    return false;
+                }
+                if decl
+                    .owner_syntax
+                    .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
+                    .is_some()
+                {
+                    return false;
+                }
+                // If any same-name member carries its own `---@type`, the full resolver
+                // must choose the annotated definition over earlier runtime assignments.
+                if facts
+                    .members_of_owner_named(owner, name)
+                    .any(|member| member.doc_type_syntax.is_some())
+                {
+                    return false;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let (owner, name) = self
             .q()
             .member_ref_of_index(self.file_id, index_expr.get_syntax_id())?;
+
+        // Fast path: if the per-file reference index already resolved this exact
+        // `IndexExpr` to a member id, reuse it. This avoids repeating the same
+        // deterministic member lookup across checkers/diagnoses.
+        // Fast path only when the owner cannot have a typed-field shadow over its
+        // runtime members. Name-rooted owners are safe; local declarations without
+        // `---@type` / same-owner class definition are also safe.
+        if self.can_use_precomputed_member_fast_path(&owner, &name)
+            && let Some(file_refs) = self.q().file_references(self.file_id)
+            && let Some(member_id) = file_refs
+                .member_use_to_member
+                .get(&index_expr.get_syntax_id())
+        {
+            let member_file = match member_id {
+                SemanticId::Member(key) => Some(key.file_id),
+                _ => None,
+            };
+            return Some(self.resolved_member(
+                Some(member_id.clone()),
+                member_file,
+                owner,
+                name,
+            ));
+        }
 
         // 1. Same-file members (owner key). Members with explicit `---@type` take priority over purely inferred runtime members;
         // if only runtime members exist and the prefix type is a named type with a same-named `@field`, skip this step --
@@ -3222,13 +3297,7 @@ impl<'db> SemanticModel<'db> {
         owner: &SemanticId,
         name: &str,
     ) -> crate::salsa_builder::MemberList {
-        crate::salsa_builder::MemberList::from(
-            self.q()
-                .members_of_owner(owner.clone())
-                .into_iter()
-                .filter(|member| member.name == name)
-                .collect::<Vec<_>>(),
-        )
+        self.q().members_of_owner_named(owner.clone(), SmolStr::new(name))
     }
 
     /// Constructor attributes for a type definition (`---@[constructor("init")]` from the `meta("Class")` factory).

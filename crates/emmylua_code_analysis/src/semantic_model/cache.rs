@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use emmylua_parser::LuaSyntaxId;
+use emmylua_parser::{LuaExpr, LuaSyntaxId};
 use rowan::TextSize;
 
 use crate::member_key::LuaMemberKey;
@@ -26,6 +26,11 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), LuaType>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
+    /// Fast negative/positive cache for `---@return_cast` lookup by call syntax.
+    /// Most calls do not have `return_cast`, so caching the `None` result avoids
+    /// repeatedly resolving callees and scanning signatures for the same call.
+    pub(crate) return_cast:
+        HashMap<(FileId, LuaSyntaxId), Option<(LuaExpr, LuaType, Option<LuaType>, bool)>>,
     pub(crate) callable_candidates: HashMap<(FileId, LuaSyntaxId), Vec<LuaFunctionType>>,
     pub(crate) call_site: HashMap<(FileId, LuaSyntaxId), CallSiteAnalysis>,
     pub(crate) call_site_signatures:

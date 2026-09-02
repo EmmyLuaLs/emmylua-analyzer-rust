@@ -424,6 +424,7 @@ fn constructor_attribute_of_decl(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberIndex {
     by_owner: HashMap<SemanticId, Arc<[MemberRef]>>,
+    by_owner_name: HashMap<(SemanticId, SmolStr), Arc<[MemberRef]>>,
 }
 
 /// Member index scoped to a single workspace.
@@ -435,26 +436,36 @@ pub(crate) fn workspace_member_index_for(
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
+    let mut by_owner_name: HashMap<(SemanticId, SmolStr), Vec<MemberRef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
         let shard = export_shard(db, workspace, config, shard);
         for member in &shard.members {
             if !file_matches_workspace_id(db, workspace, member.file_id, ws_id) {
                 continue;
             }
+            let member_ref = MemberRef {
+                file_id: member.file_id,
+                id: member.member.clone(),
+                name: member.key.to_path().into(),
+            };
             by_owner
                 .entry(member.owner.clone())
                 .or_default()
-                .push(MemberRef {
-                    file_id: member.file_id,
-                    id: member.member.clone(),
-                    name: member.key.to_path().into(),
-                });
+                .push(member_ref.clone());
+            by_owner_name
+                .entry((member.owner.clone(), member_ref.name.clone()))
+                .or_default()
+                .push(member_ref);
         }
     }
     WorkspaceMemberIndex {
         by_owner: by_owner
             .into_iter()
             .map(|(owner, members)| (owner, Arc::<[MemberRef]>::from(members)))
+            .collect(),
+        by_owner_name: by_owner_name
+            .into_iter()
+            .map(|((owner, name), members)| ((owner, name), Arc::<[MemberRef]>::from(members)))
             .collect(),
     }
 }
@@ -468,6 +479,10 @@ pub struct FileReferences {
     pub member_refs: HashMap<SemanticId, Vec<rowan::TextRange>>,
     /// Member definition sites (`T.x = v` / `@field x` / table field keys / method names).
     pub member_defs: HashMap<SemanticId, Vec<rowan::TextRange>>,
+    /// Per name-use resolution aligned with `FileFacts::name_uses`.
+    pub name_use_resolution: Vec<Option<SemanticId>>,
+    /// Index expression syntax -> resolved member id (fast deterministic subset).
+    pub member_use_to_member: HashMap<LuaSyntaxId, SemanticId>,
 }
 
 /// Per-file reference index (salsa tracked).
@@ -484,7 +499,10 @@ pub(crate) fn file_references(
 
     // Name use sites -> declarations.
     for name_use in &facts.name_uses {
-        if let Some(decl) = resolve_name(db, file, config, name_use.syntax.get_range().start()) {
+        let resolved =
+            resolve_name(db, file, config, name_use.syntax.get_range().start());
+        out.name_use_resolution.push(resolved.clone());
+        if let Some(decl) = resolved {
             out.decl_refs
                 .entry(decl)
                 .or_default()
@@ -511,6 +529,7 @@ pub(crate) fn file_references(
             continue;
         };
         if let Some(member_id) = resolve_member_id(db, workspace, config, &facts, &index_expr) {
+            out.member_use_to_member.insert(syntax, member_id.clone());
             let Some(key) = index_expr.get_index_key() else {
                 continue;
             };
@@ -697,6 +716,48 @@ fn return_members_of_owner_scan(
     Arc::from(out)
 }
 
+/// Members of an owner with a specific name.
+///
+/// Uses the workspace member index's `by_owner_name` map when the owner is not a
+/// file-local `Decl`/`Member`; file-local owners still read their own `FileFacts`
+/// (which already has `members_by_owner_name`).
+pub(crate) fn members_of_owner_named(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    owner: SemanticId,
+    name: SmolStr,
+) -> Arc<[MemberRef]> {
+    let owner_file = match &owner {
+        SemanticId::Decl(key) => Some(key.file_id),
+        SemanticId::Member(key) => Some(key.file_id),
+        _ => None,
+    };
+    if let Some(owner_file) = owner_file
+        && let Some(file) = db.file_input(owner_file)
+    {
+        let facts = file_facts(db, file, config);
+        let members = facts
+            .members_of_owner_named(&owner, name.as_str())
+            .map(|member| MemberRef {
+                file_id: owner_file,
+                id: member.id.clone(),
+                name: member.key.to_path().into(),
+            })
+            .collect::<Vec<_>>();
+        return Arc::from(members);
+    }
+
+    let mut out: Vec<MemberRef> = Vec::new();
+    for ws_id in all_workspace_ids(db, workspace) {
+        let index = workspace_member_index_for(db, workspace, config, ws_id);
+        if let Some(members) = index.by_owner_name.get(&(owner.clone(), name.clone())) {
+            out.extend(members.iter().cloned());
+        }
+    }
+    Arc::from(out)
+}
+
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
 #[salsa::tracked(returns(clone))]
@@ -765,8 +826,9 @@ pub(crate) fn workspace_decl_index_for(
     ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
-    let mut runtime_values: Vec<(FileId, SmolStr, SemanticId)> = Vec::new();
-    let mut type_def_files: Vec<(SemanticId, FileId, SmolStr)> = Vec::new();
+    let mut runtime_by_name: HashMap<SmolStr, Vec<SemanticId>> = HashMap::new();
+    let mut runtime_by_file_name: HashMap<(FileId, SmolStr), SemanticId> = HashMap::new();
+    let mut type_def_by_id: HashMap<SemanticId, (FileId, SmolStr)> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
         let shard = export_shard(db, workspace, config, shard);
         for global in &shard.globals {
@@ -779,13 +841,21 @@ pub(crate) fn workspace_decl_index_for(
             if !file_matches_workspace_id(db, workspace, def.file_id, ws_id) {
                 continue;
             }
-            type_def_files.push((def.id.clone(), def.file_id, def.name.clone()));
+            type_def_by_id
+                .entry(def.id.clone())
+                .or_insert((def.file_id, def.name.clone()));
         }
         for (file_id, name, decl) in &shard.runtime_values {
             if !file_matches_workspace_id(db, workspace, *file_id, ws_id) {
                 continue;
             }
-            runtime_values.push((*file_id, name.clone(), decl.clone()));
+            runtime_by_name
+                .entry(name.clone())
+                .or_default()
+                .push(decl.clone());
+            runtime_by_file_name
+                .entry((*file_id, name.clone()))
+                .or_insert_with(|| decl.clone());
         }
     }
     let mut entries = entries;
@@ -807,8 +877,9 @@ pub(crate) fn workspace_decl_index_for(
             .into_iter()
             .map(|(_, file_id, id)| (file_id, id))
             .collect(),
-        runtime_values,
-        type_def_files,
+        runtime_by_name,
+        runtime_by_file_name,
+        type_def_by_id,
     }
 }
 
@@ -820,10 +891,12 @@ pub struct WorkspaceDeclIndex {
     global_by_name: HashMap<SmolStr, SemanticId>,
     /// Global declarations `(file_id, decl_id)`.
     decls: Vec<(FileId, SemanticId)>,
-    /// Type runtime values: `(file_id, bare type name, same-name declaration id)` (`local M = {}` implementing `@class M` pattern).
-    runtime_values: Vec<(FileId, SmolStr, SemanticId)>,
+    /// Type runtime values by bare name: `local M = {}` implementing `@class M`.
+    runtime_by_name: HashMap<SmolStr, Vec<SemanticId>>,
+    /// Type runtime values by `(file_id, bare_name)`.
+    runtime_by_file_name: HashMap<(FileId, SmolStr), SemanticId>,
     /// Type definition -> `(file_id, bare name)`.
-    type_def_files: Vec<(SemanticId, FileId, SmolStr)>,
+    type_def_by_id: HashMap<SemanticId, (FileId, SmolStr)>,
 }
 
 impl WorkspaceDeclIndex {
@@ -832,10 +905,20 @@ impl WorkspaceDeclIndex {
     }
 
     fn runtime_value_in(&self, file_id: FileId, bare_name: &SmolStr) -> Option<SemanticId> {
-        self.runtime_values
-            .iter()
-            .find(|(fid, name, _)| *fid == file_id && name == bare_name)
-            .map(|(_, _, id)| id.clone())
+        self.runtime_by_file_name
+            .get(&(file_id, bare_name.clone()))
+            .cloned()
+    }
+
+    fn runtime_decls_named(&self, bare_name: &SmolStr) -> &[SemanticId] {
+        self.runtime_by_name
+            .get(bare_name)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn type_def_location(&self, id: &SemanticId) -> Option<(FileId, SmolStr)> {
+        self.type_def_by_id.get(id).cloned()
     }
 }
 
@@ -1440,13 +1523,7 @@ pub(crate) fn resolve_owner_set(
             let mut runtime_decls: Vec<SemanticId> = Vec::new();
             for ws_id in ws_ids {
                 let index = workspace_decl_index_for(db, workspace, config, ws_id);
-                runtime_decls.extend(
-                    index
-                        .runtime_values
-                        .iter()
-                        .filter(|(_, bare_name, _)| bare_name == name.as_str())
-                        .map(|(_, _, decl_id)| decl_id.clone()),
-                );
+                runtime_decls.extend(index.runtime_decls_named(&name_str).iter().cloned());
             }
             if let Some(decl) = global_decl_by_name(db, workspace, config, name_str.clone()) {
                 runtime_decls.push(decl);
@@ -1503,11 +1580,9 @@ pub(crate) fn resolve_owner_set(
             let mut found: Option<(FileId, SmolStr)> = None;
             for ws_id in ws_ids {
                 let index = workspace_decl_index_for(db, workspace, config, ws_id);
-                if let Some((_, file_id, bare_name)) =
-                    index.type_def_files.iter().find(|(id, _, _)| id == &owner)
-                {
-                    found = Some((*file_id, bare_name.clone()));
-                    if let Some(decl_id) = index.runtime_value_in(*file_id, bare_name) {
+                if let Some((file_id, bare_name)) = index.type_def_location(&owner) {
+                    found = Some((file_id, bare_name.clone()));
+                    if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name) {
                         push_unique(&mut out, decl_id);
                     }
                     break;
