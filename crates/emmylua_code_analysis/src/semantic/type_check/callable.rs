@@ -22,7 +22,6 @@ pub(crate) fn relate_callable(
                 if candidates.is_empty() {
                     relater.fail(|db| not_assignable_message(db, source, target))
                 } else {
-                    relater.note_progress();
                     Ok(())
                 }
             });
@@ -51,7 +50,6 @@ pub(crate) fn relate_callable(
     }
 
     if matches!(target, LuaType::Function) {
-        relater.note_progress();
         return Some(Ok(()));
     }
 
@@ -78,17 +76,16 @@ fn relate_to_callable_targets(
     target_candidates: &[LuaType],
     intersection_state: IntersectionState,
 ) -> RelationResult {
+    // TODO: 全失败时应使用算法来选出最佳匹配
     let mut best = None;
     let mut indeterminate = None;
     let mut has_unrelated_target = false;
     for (target_index, target_candidate) in target_candidates.iter().enumerate() {
         let mut target_related = false;
         let mut target_indeterminate = None;
-        let mut target_best = None;
+        let mut first_unrelated = None;
         for (source_index, source_candidate) in source_candidates.iter().enumerate() {
-            let (outcome, progress) =
-                relater.probe_relation(source_candidate, target_candidate, intersection_state);
-            match outcome {
+            match relater.probe_relation(source_candidate, target_candidate, intersection_state) {
                 RelationOutcome::Related => {
                     target_related = true;
                     break;
@@ -97,12 +94,7 @@ fn relate_to_callable_targets(
                     target_indeterminate.get_or_insert(kind);
                 }
                 RelationOutcome::Unrelated => {
-                    if target_best
-                        .map(|(_, best_progress)| progress > best_progress)
-                        .unwrap_or(true)
-                    {
-                        target_best = Some((source_index, progress));
-                    }
+                    first_unrelated.get_or_insert(source_index);
                 }
             }
         }
@@ -116,12 +108,10 @@ fn relate_to_callable_targets(
         }
 
         has_unrelated_target = true;
-        if let Some((source_index, progress)) = target_best
-            && best
-                .map(|(_, _, best_progress)| progress > best_progress)
-                .unwrap_or(true)
+        if let Some(source_index) = first_unrelated
+            && best.is_none()
         {
-            best = Some((source_index, target_index, progress));
+            best = Some((source_index, target_index));
         }
         if !relater.is_explain() {
             return Err(RelationFailure::Unrelated);
@@ -129,7 +119,7 @@ fn relate_to_callable_targets(
     }
 
     if has_unrelated_target {
-        let Some((source_index, target_index, _)) = best else {
+        let Some((source_index, target_index)) = best else {
             return relater.fail(|db| not_assignable_message(db, source, target));
         };
         return relater.relate(
@@ -200,13 +190,11 @@ fn relate_function(
         }
         if let (Some(source_type), Some(target_type)) = (source_type, target_type) {
             if source_type.is_self_infer() || target_type.is_self_infer() {
-                relater.note_progress();
                 continue;
             }
             // 函数参数是逆变的.
             let result = relater.relate(target_type, source_type, intersection_state);
             relater.on_unrelated(result, |_| ChainMessage::FunctionParameter { index })?;
-            relater.note_progress();
         }
     }
 

@@ -82,23 +82,19 @@ fn relate_source_intersection(
 ) -> RelationResult {
     let constituent_state = IntersectionState::SOURCE;
 
+    // TODO: 全失败时应使用算法来选出最佳匹配
     let mut best = None;
     let mut indeterminate = None;
     let mut related = false;
     for (index, member) in source_intersection.get_types().iter().enumerate() {
-        let (outcome, progress) = relater.probe_relation(member, target, constituent_state);
+        let outcome = relater.probe_relation(member, target, constituent_state);
         match outcome {
             RelationOutcome::Related => related = true,
             RelationOutcome::Indeterminate(kind) => {
                 indeterminate.get_or_insert(kind);
             }
             RelationOutcome::Unrelated => {
-                if best
-                    .map(|(_, current_progress)| progress > current_progress)
-                    .unwrap_or(true)
-                {
-                    best = Some((index, progress));
-                }
+                best.get_or_insert(index);
             }
         }
     }
@@ -113,7 +109,7 @@ fn relate_source_intersection(
     if let Some(kind) = indeterminate {
         return Err(RelationFailure::Indeterminate(kind));
     }
-    let Some((best_index, _)) = best else {
+    let Some(best_index) = best else {
         return relater.fail(|db| not_assignable_message(db, source, target));
     };
     if !relater.is_explain() {

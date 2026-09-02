@@ -76,7 +76,6 @@ pub(crate) struct RelationSession<'db> {
     evidence: EvidenceMode,
     relation_budget: u32,
     recursion_depth: u16,
-    progress: u32,
     error_chain: Option<ErrorChain>,
 }
 
@@ -92,7 +91,6 @@ impl<'db> RelationSession<'db> {
             evidence,
             relation_budget: 20_000,
             recursion_depth: 0,
-            progress: 0,
             error_chain: None,
         }
     }
@@ -146,10 +144,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         matches!(self.session.evidence, EvidenceMode::Explain)
     }
 
-    pub(super) fn note_progress(&mut self) {
-        self.session.progress = self.session.progress.saturating_add(1);
-    }
-
     pub(super) fn remaining_relation_budget(&self) -> usize {
         self.session.relation_budget as usize
     }
@@ -194,7 +188,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         intersection_state: IntersectionState,
     ) -> RelationResult {
         if relate_semantic_accept(source, target) {
-            self.note_progress();
             return Ok(());
         }
 
@@ -288,7 +281,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                     _ => false,
                 };
                 if exact_member {
-                    self.note_progress();
                     return Ok(());
                 }
                 (false, false)
@@ -375,7 +367,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
                     && relation_type_eq(relation.source, source)
                     && relation_type_eq(relation.target, target)
                 {
-                    self.note_progress();
                     return Ok(());
                 }
                 active = relation.parent;
@@ -401,7 +392,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             && normalized != *source
         {
             if matches!(source, LuaType::Ref(_)) && normalized == *target {
-                self.note_progress();
                 return Ok(());
             }
             return self.relate(&normalized, target, intersection_state);
@@ -410,14 +400,12 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
             && normalized != *target
         {
             if matches!(target, LuaType::Ref(_)) && *source == normalized {
-                self.note_progress();
                 return Ok(());
             }
             return self.relate(source, &normalized, intersection_state);
         }
 
         if matches!(target, LuaType::ModuleRef(_)) {
-            self.note_progress();
             return Ok(());
         }
 
@@ -453,7 +441,6 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
 
         if matches!(source, LuaType::Never) {
             if matches!(target, LuaType::Never) {
-                self.note_progress();
                 return Ok(());
             }
             return self.fail(|db| not_assignable_message(db, source, target));
@@ -542,21 +529,16 @@ impl<'session, 'active, 'db> Relater<'session, 'active, 'db> {
         source: &LuaType,
         target: &LuaType,
         intersection_state: IntersectionState,
-    ) -> (RelationOutcome, u32) {
+    ) -> RelationOutcome {
         let evidence = self.session.evidence;
-        let progress = self.session.progress;
         self.session.evidence = EvidenceMode::Silent;
-        self.session.progress = 0;
         let result = self.relate(source, target, intersection_state);
-        let candidate_progress = self.session.progress;
-        self.session.progress = progress;
         self.session.evidence = evidence;
-        let outcome = match result {
+        match result {
             Ok(()) => RelationOutcome::Related,
             Err(RelationFailure::Unrelated) => RelationOutcome::Unrelated,
             Err(RelationFailure::Indeterminate(kind)) => RelationOutcome::Indeterminate(kind),
-        };
-        (outcome, candidate_progress)
+        }
     }
 
     /// 在叶子失败时调用, 用于构建具体的错误

@@ -63,7 +63,6 @@ fn relate_enum_source(
 ) -> RelationResult {
     if matches!(target, LuaType::Ref(target_id) | LuaType::Def(target_id) if target_id == source_id)
     {
-        relater.note_progress();
         return Ok(());
     }
 
@@ -71,7 +70,6 @@ fn relate_enum_source(
     if matches!(source, LuaType::Def(_)) {
         match target {
             LuaType::Table => {
-                relater.note_progress();
                 return Ok(());
             }
             LuaType::TableGeneric(target_params) => {
@@ -154,10 +152,7 @@ fn relate_class_source(
             target_generic,
             intersection_state,
         )),
-        LuaType::Table | LuaType::Userdata => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table | LuaType::Userdata => Some(Ok(())),
         _ => relate_class_source_to_simple_target(relater, source, source_id, target),
     }
 }
@@ -191,7 +186,6 @@ pub(super) fn relate_base_source_to_declared_target(
             if let Some(base_id) = get_base_type_id(source)
                 && is_sub_type_of(relater.db(), target_id, &base_id)
             {
-                relater.note_progress();
                 Some(Ok(()))
             } else {
                 Some(relater.fail(|db| not_assignable_message(db, source, target)))
@@ -223,7 +217,6 @@ pub(super) fn relate_nominal_source_to_declared_target(
     }
 
     if source_id == target_id {
-        relater.note_progress();
         return Ok(());
     }
 
@@ -261,7 +254,6 @@ fn relate_class_source_to_generic_target(
         if target_generic.get_params().iter().all(|param| {
             param.is_any() || matches!(param, LuaType::TplRef(_) | LuaType::StrTplRef(_))
         }) {
-            relater.note_progress();
             return Ok(());
         }
         return relater.fail(|db| not_assignable_message(db, source, target));
@@ -316,7 +308,6 @@ pub(super) fn resolve_declared_target_alias_or_enum(
             _ => *origin_type == *source,
         };
         if origin_contains_source {
-            relater.note_progress();
             return Some(Ok(()));
         }
         return Some(relater.relate(source, &origin_type, intersection_state));
@@ -335,7 +326,6 @@ pub(super) fn resolve_declared_target_alias_or_enum(
                 .all(|typ| matches!(typ, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
             && matches!(source, LuaType::Integer)
         {
-            relater.note_progress();
             return Some(Ok(()));
         }
 
@@ -361,7 +351,6 @@ fn relate_class_source_to_simple_target(
     if let Some(target_base_id) = get_base_type_id(target)
         && source_id == &target_base_id
     {
-        relater.note_progress();
         return Some(Ok(()));
     }
 

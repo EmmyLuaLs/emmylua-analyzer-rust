@@ -27,10 +27,7 @@ pub(super) fn relate_table_const_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     match target {
-        LuaType::Table => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table => Some(Ok(())),
         LuaType::Object(target_object) => Some(relate_to_object_target(
             relater,
             source,
@@ -102,7 +99,6 @@ pub(super) fn relate_table_const_to_tuple(
         };
         let result = relater.relate(&source_type, target_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -136,7 +132,6 @@ pub(super) fn relate_table_const_to_array(
         let result = relater.relate(&source_type, &target_base, intersection_state);
         relater.on_unrelated(result, |_| property_message(key))?;
         checked = true;
-        relater.note_progress();
         Ok(())
     })?;
 

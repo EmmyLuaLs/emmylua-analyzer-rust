@@ -25,10 +25,7 @@ pub(super) fn relate_tuple_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     match target {
-        LuaType::Table => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table => Some(Ok(())),
         LuaType::Tuple(target_tuple) => Some(relate_tuple_to_tuple(
             relater,
             source_tuple,
@@ -133,7 +130,6 @@ pub(super) fn relate_tuple_to_tuple(
 
         let result = relater.relate(source_type, target_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
 
     Ok(())
@@ -157,7 +153,6 @@ pub(super) fn relate_tuple_to_array(
                         relater.on_unrelated(result, |_| ChainMessage::TupleElement {
                             index: index + offset,
                         })?;
-                        relater.note_progress();
                     }
                     continue;
                 }
@@ -166,7 +161,6 @@ pub(super) fn relate_tuple_to_array(
         };
         let result = relater.relate(source_type, &target_base, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -189,7 +183,6 @@ pub(super) fn relate_tuple_to_table_generic(
         relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
         let value_result = relater.relate(source_type, &target_params[1], intersection_state);
         relater.on_unrelated(value_result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
         Ok(())
     })
 }
@@ -261,7 +254,6 @@ pub(super) fn relate_keyed_source_to_tuple(
         };
         let result = relater.relate(&source_type, target_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -297,7 +289,6 @@ fn relate_tuple_to_object(
         relater.consume_relation_budget()?;
         let result = relater.relate(source_type, target_member_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
 
     if !intersection_state.contains(IntersectionState::TARGET) {
@@ -309,7 +300,6 @@ fn relate_tuple_to_object(
                 let value_result =
                     relater.relate(source_type, target_value_type, intersection_state);
                 relater.on_unrelated(value_result, |_| ChainMessage::TupleElement { index })?;
-                relater.note_progress();
                 Ok(())
             })?;
         }
@@ -367,7 +357,6 @@ fn relate_tuple_to_declared_target(
                     let result =
                         relater.relate(source_type, target_member_type, intersection_state);
                     relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-                    relater.note_progress();
                     Ok(())
                 }
                 LuaMemberKey::TypeKey(target_key_type) => {

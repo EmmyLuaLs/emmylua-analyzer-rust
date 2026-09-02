@@ -28,10 +28,7 @@ pub(super) fn relate_object_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     match target {
-        LuaType::Table => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table => Some(Ok(())),
         LuaType::Object(target_object) => Some(relate_object_to_object(
             relater,
             source,
@@ -98,7 +95,6 @@ pub(super) fn relate_object_to_tuple(
         };
         let result = relater.relate(source_type, target_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -121,7 +117,6 @@ pub(super) fn relate_object_to_array(
         let result = relater.relate(source_type, &target_base, intersection_state);
         relater.on_unrelated(result, |_| property_message(&key))?;
         checked = true;
-        relater.note_progress();
     }
     for (source_key, source_type) in source_object.get_index_access() {
         if !source_key.is_integer() {
@@ -131,7 +126,6 @@ pub(super) fn relate_object_to_array(
         let result = relater.relate(source_type, &target_base, intersection_state);
         relater.on_unrelated(result, |db| index_message(db, source_key))?;
         checked = true;
-        relater.note_progress();
     }
 
     if checked {
@@ -168,7 +162,6 @@ pub(super) fn relate_object_to_table_generic(
         relater.on_unrelated(key_result, |db| index_message(db, source_key_type))?;
         let value_result = relater.relate(source_type, &target_params[1], intersection_state);
         relater.on_unrelated(value_result, |db| index_message(db, source_key_type))?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -188,7 +181,6 @@ pub(super) fn relate_member_to_table_generic(
     relater.on_unrelated(key_result, |db| index_message(db, &source_key_type))?;
     let value_result = relater.relate(source_value_type, &target_params[1], intersection_state);
     relater.on_unrelated(value_result, |_| property_message(key))?;
-    relater.note_progress();
     Ok(())
 }
 
@@ -278,7 +270,6 @@ pub(super) fn relate_object_to_object(
             relater.relate_field_types(source_member_type, target_member_type, intersection_state);
         let result = relater.on_unrelated(field_result, |_| property_message(target_key));
         result?;
-        relater.note_progress();
     }
 
     if !intersection_state.contains(IntersectionState::TARGET) {

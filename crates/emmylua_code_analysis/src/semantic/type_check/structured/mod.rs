@@ -40,10 +40,7 @@ pub(super) fn relate_structured(
             | LuaType::Tuple(_)
             | LuaType::Array(_)
             | LuaType::TableGeneric(_)
-            | LuaType::TableConst(_) => {
-                relater.note_progress();
-                Some(Ok(()))
-            }
+            | LuaType::TableConst(_) => Some(Ok(())),
             LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => {
                 let target_decl = match target {
                     LuaType::Ref(target_id) | LuaType::Def(target_id) => {
@@ -67,7 +64,6 @@ pub(super) fn relate_structured(
                         intersection_state,
                     ))
                 } else {
-                    relater.note_progress();
                     Some(Ok(()))
                 }
             }

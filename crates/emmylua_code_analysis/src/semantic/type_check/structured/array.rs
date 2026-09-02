@@ -22,10 +22,7 @@ pub(super) fn relate_array_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     match target {
-        LuaType::Table => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table => Some(Ok(())),
         LuaType::Array(target_array) => Some(relate_array_to_array(
             relater,
             source_array,
@@ -153,7 +150,6 @@ pub(super) fn relate_array_to_tuple(
         };
         let result = relater.relate(source_array.get_base(), target_type, intersection_state);
         relater.on_unrelated(result, |_| ChainMessage::TupleElement { index })?;
-        relater.note_progress();
     }
     Ok(())
 }
@@ -172,14 +168,12 @@ pub(super) fn relate_array_to_table_generic(
 
     let key_result = relater.relate(&LuaType::Integer, &target_params[0], intersection_state);
     relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
-    relater.note_progress();
     let value_result = relater.relate(
         source_array.get_base(),
         &target_params[1],
         intersection_state,
     );
     relater.on_unrelated(value_result, |_| ChainMessage::GenericArgument { index: 1 })?;
-    relater.note_progress();
     Ok(())
 }
 
@@ -205,7 +199,6 @@ pub(super) fn relate_keyed_source_to_array(
     };
     let result = relater.relate(&source_type, &target_base, intersection_state);
     relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
-    relater.note_progress();
     Ok(())
 }
 
@@ -231,7 +224,6 @@ fn relate_array_to_object(
                 relater.consume_relation_budget()?;
                 let result = relater.relate(&source_member_type, member_type, intersection_state);
                 relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
-                relater.note_progress();
             }
             _ => {
                 if !member_type.is_optional() {
@@ -252,7 +244,6 @@ fn relate_array_to_object(
                 intersection_state,
             );
             relater.on_unrelated(value_result, |_| ChainMessage::ArrayElement)?;
-            relater.note_progress();
         }
     }
 
@@ -294,7 +285,6 @@ fn relate_array_to_declared_target(
                     let result =
                         relater.relate(&source_member_type, target_member_type, intersection_state);
                     relater.on_unrelated(result, |_| ChainMessage::ArrayElement)?;
-                    relater.note_progress();
                     Ok(())
                 }
                 LuaMemberKey::TypeKey(target_key_type) => {

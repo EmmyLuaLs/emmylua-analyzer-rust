@@ -135,10 +135,7 @@ fn relate_source_union_members<'a>(
 ) -> RelationResult {
     let mut first_indeterminate = None;
     for member in members {
-        match relater
-            .probe_relation(&member, target, intersection_state)
-            .0
-        {
+        match relater.probe_relation(&member, target, intersection_state) {
             RelationOutcome::Related => {}
             RelationOutcome::Indeterminate(kind) => {
                 first_indeterminate.get_or_insert(kind);
@@ -168,10 +165,7 @@ fn relate_to_target_union_candidates<'a>(
     let mut failed_candidates = Vec::new();
 
     for candidate in candidates {
-        match relater
-            .probe_relation(source, &candidate, intersection_state)
-            .0
-        {
+        match relater.probe_relation(source, &candidate, intersection_state) {
             RelationOutcome::Related => return Ok(()),
             RelationOutcome::Indeterminate(kind) => {
                 indeterminate.get_or_insert(kind);

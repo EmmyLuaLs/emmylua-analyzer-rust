@@ -19,10 +19,7 @@ pub(super) fn relate_table_generic_source(
     intersection_state: IntersectionState,
 ) -> Option<RelationResult> {
     match target {
-        LuaType::Table => {
-            relater.note_progress();
-            Some(Ok(()))
-        }
+        LuaType::Table => Some(Ok(())),
         LuaType::TableGeneric(target_params) => Some(relate_table_generic_to_table_generic(
             relater,
             source,
@@ -79,10 +76,8 @@ pub(super) fn relate_table_generic_to_table_generic(
 
     let key_result = relater.relate(&source_params[0], &target_params[0], intersection_state);
     relater.on_unrelated(key_result, |_| ChainMessage::GenericArgument { index: 0 })?;
-    relater.note_progress();
     let value_result = relater.relate(&source_params[1], &target_params[1], intersection_state);
     relater.on_unrelated(value_result, |_| ChainMessage::GenericArgument { index: 1 })?;
-    relater.note_progress();
     Ok(())
 }
 

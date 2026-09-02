@@ -44,11 +44,7 @@ pub(super) fn relate_keyed_member(
 
     let field_result =
         relater.relate_field_types(&source_member_type, target_member_type, intersection_state);
-    let result = relater.on_unrelated(field_result, |_| property_message(key));
-    if result.is_ok() {
-        relater.note_progress();
-    }
-    result
+    relater.on_unrelated(field_result, |_| property_message(key))
 }
 
 pub(super) fn find_source_member_type(
@@ -86,10 +82,7 @@ pub(super) fn find_source_member_type(
             let Some(source_key_type) = key.to_index_type() else {
                 return Ok(None);
             };
-            match relater
-                .probe_relation(&source_key_type, &source_params[0], intersection_state)
-                .0
-            {
+            match relater.probe_relation(&source_key_type, &source_params[0], intersection_state) {
                 RelationOutcome::Related => Some(source_params[1].clone()),
                 RelationOutcome::Unrelated => None,
                 RelationOutcome::Indeterminate(kind) => {
@@ -121,15 +114,11 @@ pub(super) fn relate_index_member(
                         require_compatible_key: bool|
      -> RelationResult {
         relater.consume_relation_budget()?;
-        match relater
-            .probe_relation(source_key_type, target_key_type, intersection_state)
-            .0
-        {
+        match relater.probe_relation(source_key_type, target_key_type, intersection_state) {
             RelationOutcome::Related => {
                 let result =
                     relater.relate(source_value_type, target_value_type, intersection_state);
                 relater.on_unrelated(result, |db| index_message(db, source_key_type))?;
-                relater.note_progress();
                 Ok(())
             }
             RelationOutcome::Unrelated if !require_compatible_key => Ok(()),

@@ -125,10 +125,7 @@ pub(super) fn relate_generic_source(
                 target_generic,
                 intersection_state,
             )),
-            LuaType::Table | LuaType::Userdata => {
-                relater.note_progress();
-                Some(Ok(()))
-            }
+            LuaType::Table | LuaType::Userdata => Some(Ok(())),
             _ => None,
         }
     } else {
@@ -175,10 +172,7 @@ fn relate_generic_source_to_generic_target(
             target_generic,
             intersection_state,
         ) {
-            SameFamilyArgsOutcome::Related => {
-                relater.note_progress();
-                Ok(())
-            }
+            SameFamilyArgsOutcome::Related => Ok(()),
             SameFamilyArgsOutcome::Indeterminate(kind) => Err(RelationFailure::Indeterminate(kind)),
             // 目前协变探测并不完善, 对于错误项仍然需要交由结构检查逐成员验证.
             SameFamilyArgsOutcome::Covariant | SameFamilyArgsOutcome::Proceed => {
@@ -246,7 +240,6 @@ fn relate_same_family_generic_args(
     }
 
     if all_trivial {
-        relater.note_progress();
         SameFamilyArgsOutcome::Related
     } else {
         SameFamilyArgsOutcome::Covariant
