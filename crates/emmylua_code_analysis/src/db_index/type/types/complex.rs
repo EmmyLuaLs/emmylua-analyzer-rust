@@ -2,7 +2,10 @@ use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
-use std::{borrow::Cow, ops::Deref, sync::Arc};
+use std::{
+    borrow::Cow, collections::hash_map::DefaultHasher, hash::Hash, hash::Hasher, ops::Deref,
+    sync::Arc,
+};
 
 use crate::db_index::LuaMemberKey;
 use crate::{
@@ -348,6 +351,23 @@ impl LuaObjectType {
     }
 }
 
+impl Hash for LuaObjectType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_usize(self.fields.len());
+        let mut acc: u64 = 0;
+        for (key, ty) in &self.fields {
+            let mut hasher = DefaultHasher::new();
+            (key, ty).hash(&mut hasher);
+            acc = acc.wrapping_add(hasher.finish());
+        }
+        acc.hash(state);
+        state.write_usize(self.index_access.len());
+        for (key, ty) in &self.index_access {
+            (key, ty).hash(state);
+        }
+    }
+}
+
 impl From<LuaObjectType> for LuaType {
     fn from(t: LuaObjectType) -> Self {
         LuaType::Object(t.into())
@@ -553,6 +573,26 @@ impl PartialEq for LuaUnionType {
                 a_set.is_empty()
             }
             _ => false,
+        }
+    }
+}
+
+impl Hash for LuaUnionType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            LuaUnionType::Basic(basic) => (0u8, basic).hash(state),
+            LuaUnionType::Nullable(ty) => (1u8, ty).hash(state),
+            LuaUnionType::Multi(types) => {
+                state.write_u8(2u8);
+                state.write_usize(types.len());
+                let mut acc: u64 = 0;
+                for ty in types {
+                    let mut hasher = DefaultHasher::new();
+                    ty.hash(&mut hasher);
+                    acc = acc.wrapping_add(hasher.finish());
+                }
+                acc.hash(state);
+            }
         }
     }
 }
@@ -876,7 +916,7 @@ impl GenericTpl {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaStringTplType {
     prefix: ArcIntern<String>,
     tpl_id: GenericTplId,
