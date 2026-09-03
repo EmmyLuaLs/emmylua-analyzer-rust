@@ -1783,6 +1783,7 @@ impl FactsBuilder {
         // signature docs are still looked up from the outer statement.
         let mut name = None;
         let mut is_method = false;
+        let mut self_range = None;
         if let Some(func_stat) = closure.get_parent::<LuaFuncStat>() {
             if let Some(func_name) = func_stat.get_func_name() {
                 match func_name {
@@ -1790,9 +1791,12 @@ impl FactsBuilder {
                         name = name_expr.get_name_text().map(Into::into);
                     }
                     LuaVarExpr::IndexExpr(index_expr) => {
-                        is_method = index_expr
-                            .get_index_token()
-                            .is_some_and(|token| token.is_colon());
+                        if let Some(index_token) = index_expr.get_index_token() {
+                            is_method = index_token.is_colon();
+                            if is_method {
+                                self_range = Some(index_token.syntax().text_range());
+                            }
+                        }
                         name = index_expr
                             .get_index_key()
                             .map(|k| k.get_path_part())
@@ -1823,13 +1827,12 @@ impl FactsBuilder {
             .unwrap_or_default();
 
         // Register the implicit `self` in methods as a closure-scope parameter so it can participate in flow narrowing.
-        // Use a zero-width range at the closure start to avoid shadowing other declarations inside the closure.
-        if is_method {
-            self.add_decl(
-                SmolStr::new("self"),
-                DeclKind::Param,
-                TextRange::empty(closure.get_range().start()),
-            );
+        // Point the declaration at the method colon: this also lets the unused-self diagnostic grey out the colon
+        // (instead of an invisible/zero-width range inside the parameter list).
+        if is_method
+            && let Some(self_range) = self_range
+        {
+            self.add_implicit_self_decl(SmolStr::new("self"), self_range);
         }
 
         let mut docs = doc_owner.and_then(|owner| self.signature_doc_map.remove(&owner));
@@ -1853,6 +1856,14 @@ impl FactsBuilder {
 
     fn add_decl(&mut self, name: SmolStr, kind: DeclKind, name_range: TextRange) -> SemanticId {
         self.add_decl_with_value(name, kind, name_range, None)
+    }
+
+    fn add_implicit_self_decl(&mut self, name: SmolStr, name_range: TextRange) -> SemanticId {
+        let id = self.add_decl(name, DeclKind::Param, name_range);
+        if let Some(decl) = self.decls.last_mut() {
+            decl.is_implicit_self = true;
+        }
+        id
     }
 
     fn add_decl_with_value(

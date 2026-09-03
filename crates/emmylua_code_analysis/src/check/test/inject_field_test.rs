@@ -254,4 +254,42 @@ mod test {
             "#,
         ));
     }
+
+    #[test]
+    fn test_alias_unknown_allows_field_injection() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+                ---@alias Anything unknown
+
+                ---@type Anything
+                local a
+                a.foo = 1
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_object_and_unknown_table_initializers() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+                ---@alias Anything unknown
+
+                ---@type Anything
+                local a = { foo = 1 }
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+                ---@alias Obj { x: number }
+
+                ---@type Obj
+                local a = { x = 1 }
+            "#
+        ));
+    }
 }

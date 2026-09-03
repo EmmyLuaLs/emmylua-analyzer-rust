@@ -903,6 +903,26 @@ impl<'db> SemanticModel<'db> {
                         }
                     }
                 }
+                // Alias types have no `@field` surface of their own. Resolve through the alias
+                // target so `---@type SomeAlias` values can still find class/table members.
+                if def.kind == TypeDefKind::Alias
+                    && let Some(info) = self.member_info(
+                        prefix_ty,
+                        &LuaMemberKey::Name(name.clone()),
+                    )
+                    && let Some(member_id) = info.id
+                {
+                    let file_id = match &member_id {
+                        SemanticId::Member(key) => Some(key.file_id),
+                        _ => None,
+                    };
+                    return Some(self.resolved_member(
+                        Some(member_id),
+                        file_id,
+                        owner,
+                        name,
+                    ));
+                }
             }
         }
 
@@ -2583,6 +2603,16 @@ impl<'db> SemanticModel<'db> {
                     mapped.is_optional,
                 )));
             }
+        }
+        // `unknown` is a valid alias target. Do not discard it just because Unknown is also
+        // used as the failure sentinel for unresolved type names.
+        if matches!(ty, LuaType::Unknown)
+            && let Some(tree) = self.syntax_tree_of(def.file_id)
+            && let Some(node) = syntax.to_node_from_root(&tree.get_red_root())
+            && let Some(LuaDocType::Name(name)) = LuaDocType::cast(node)
+            && name.get_name_text().as_deref() == Some("unknown")
+        {
+            return Some(LuaType::Unknown);
         }
         (!matches!(ty, LuaType::Unknown)).then_some(ty)
     }

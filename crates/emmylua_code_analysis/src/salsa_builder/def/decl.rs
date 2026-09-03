@@ -42,6 +42,9 @@ pub struct Decl {
     pub doc_type_index: Option<usize>,
     /// Owning statement (uniquely identified by `LuaSyntaxId`; doc-comment ownership key).
     pub owner_syntax: Option<LuaSyntaxId>,
+    /// True for the implicit `self` parameter of colon-defined methods.
+    /// Its name range points at the colon so unused-self diagnostics can grey out the colon.
+    pub is_implicit_self: bool,
     /// `---@type` annotation type node (uniquely identified by `LuaSyntaxId`).
     pub doc_type_syntax: Option<LuaSyntaxId>,
     /// Module name from `---@module "name"` (resolved as ModuleRef type).
@@ -72,6 +75,7 @@ impl Decl {
             doc_type_index: None,
             owner_syntax: None,
             doc_type_syntax: None,
+            is_implicit_self: false,
             module_path: None,
             deprecated: false,
             readonly: false,

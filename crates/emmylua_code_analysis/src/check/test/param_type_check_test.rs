@@ -1848,4 +1848,21 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_unknown_alias_param_accepts() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@alias Anything unknown
+                ---@param s string
+                local function f(s) end
+
+                ---@type Anything
+                local a
+                f(a)
+            "#
+        ));
+    }
 }

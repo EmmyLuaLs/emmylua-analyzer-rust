@@ -472,9 +472,23 @@ fn build_call_expr_param_hint(
             LuaExpr::IndexExpr(index_expr) => {
                 let resolved = model.resolve_member(index_expr)?;
                 let member_id = resolved.member_id?;
-                match model.type_of_member(&member_id)? {
-                    LuaType::DocFunction(fun) => fun.as_ref().clone(),
+                let member_file = match &member_id {
+                    SemanticId::Member(key) => key.file_id,
                     _ => return None,
+                };
+                // Most stdlib/doc members already resolve to `DocFunction`. Runtime members such
+                // as `function string.format(fmt, ...) end` resolve to plain `Function`; for those,
+                // fall back to the closure signature so parameter inlay hints still work.
+                if let LuaType::DocFunction(fun) = model.type_of_member(&member_id)? {
+                    fun.as_ref().clone()
+                } else if let Some(facts) = model.file_facts_of(member_file)
+                    && let Some(member) = facts.member_by_id(&member_id)
+                    && let Some(value_syntax) = member.value_syntax
+                    && let Some(sig) = model.type_of_signature_in_file(member_file, value_syntax)
+                {
+                    sig
+                } else {
+                    return None;
                 }
             }
             _ => return None,

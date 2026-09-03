@@ -101,6 +101,10 @@ fn check_index_assign(
         let Some(key) = static_member_key(semantic_model, &index_key) else {
             continue;
         };
+        // Aliases must be expanded before deciding whether a field can be injected:
+        // `---@alias Anything unknown` should allow `a.foo = 1`, while a class alias should
+        // use the underlying class member surface.
+        let prefix_ty = expand_alias_type(semantic_model, &prefix_ty).unwrap_or(prefix_ty);
         // `---@type { [number]: number }`: keys outside the object's index signature report injection errors.
         if let LuaType::Object(object) = &prefix_ty {
             if object.get_field(&key).is_none()
@@ -153,6 +157,28 @@ fn check_index_assign(
                 field = index_key.get_path_part()
             ),
         );
+    }
+}
+
+/// Follows alias definitions until a non-alias type is reached. Returns `None` when the
+/// input is not an alias (or an alias cycle/unresolved target prevents expansion).
+fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaType> {
+    let mut current = ty.clone();
+    let mut visited = Vec::new();
+    loop {
+        let id = match &current {
+            LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
+            _ => return if visited.is_empty() { None } else { Some(current) },
+        };
+        let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
+        if def.kind != crate::salsa_builder::def::TypeDefKind::Alias {
+            return if visited.is_empty() { None } else { Some(current) };
+        }
+        if visited.contains(&id) {
+            return None;
+        }
+        visited.push(id.clone());
+        current = semantic_model.alias_target(&def)?;
     }
 }
 
@@ -325,6 +351,12 @@ fn check_against_type(
     target: &LuaType,
     table: &LuaTableExpr,
 ) {
+    // Expand aliases before checking table literals against them. This makes alias-to-object,
+    // alias-to-class and alias-to-unknown behave like their target types.
+    if let Some(expanded) = expand_alias_type(semantic_model, target) {
+        check_against_type(context, semantic_model, &expanded, table);
+        return;
+    }
     match target {
         LuaType::Intersection(intersection) => {
             for component in intersection.get_types() {

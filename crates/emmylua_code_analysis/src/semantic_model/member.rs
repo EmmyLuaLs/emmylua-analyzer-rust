@@ -155,6 +155,32 @@ fn find_type_def_member(
     None
 }
 
+/// Follows alias references until reaching a non-alias named type/object/array/string.
+/// A local visited set prevents recursive aliases (`A -> B -> A`) from looping forever.
+fn direct_member_info_alias(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key: &LuaMemberKey,
+) -> Option<MemberInfo> {
+    let mut current = prefix_type.clone();
+    let mut visited = Vec::new();
+    loop {
+        let id = match &current {
+            LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
+            _ => return direct_member_info(model, &current, key),
+        };
+        if visited.contains(&id) {
+            return None;
+        }
+        let def = type_def_of(model, &id)?;
+        if def.kind != crate::salsa_builder::def::TypeDefKind::Alias {
+            return direct_member_info(model, &current, key);
+        }
+        visited.push(id.clone());
+        current = model.alias_target(&def)?;
+    }
+}
+
 fn direct_member_info(
     model: &SemanticModel,
     prefix_type: &LuaType,
@@ -163,6 +189,9 @@ fn direct_member_info(
     match prefix_type {
         LuaType::Ref(id) | LuaType::Def(id) => {
             let def = type_def_of(model, id)?;
+            if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+                return direct_member_info_alias(model, prefix_type, key);
+            }
             let mut visited = Vec::new();
             // Bare generic type (`Box`) uses its declared defaults/constraints for member lookup.
             let mut bindings = TplBindings::new();
@@ -200,6 +229,10 @@ fn direct_member_info(
         }
         LuaType::Generic(generic) => {
             let def = type_def_of(model, &generic.get_base_type_id())?;
+            if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+                let expanded = crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
+                return direct_member_info(model, &expanded, key);
+            }
             let bindings: TplBindings = generic
                 .get_params()
                 .iter()
@@ -528,6 +561,19 @@ fn collect_members(
         // Named type: @field + inheritance + runtime value members.
         LuaType::Ref(decl_id) | LuaType::Def(decl_id) => {
             if let Some(def) = type_def_of(model, decl_id) {
+                // Alias: collect members of the alias target instead of looking for `@field` on the alias
+                // definition itself. The visited set also guards recursive aliases.
+                if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+                    if visited.contains(&def.id) {
+                        return;
+                    }
+                    visited.push(def.id.clone());
+                    if let Some(target) = model.alias_target(&def) {
+                        collect_members(model, &target, bindings, name_bindings, visited, out);
+                    }
+                    visited.pop();
+                    return;
+                }
                 // Bare generic types (`Box`) fill in default generic arguments on member access,
                 // so inherited fields from `Box<T = string>`'s `Parent<T>` resolve to `string`.
                 if bindings.is_none() && !def.generic_params.is_empty() {
@@ -575,6 +621,14 @@ fn collect_members(
         }
         // Generic instance: base type members + argument substitution.
         LuaType::Generic(generic) => {
+            if let Some(def) = type_def_of(model, &generic.get_base_type_id())
+                && def.kind == crate::salsa_builder::def::TypeDefKind::Alias
+            {
+                let expanded =
+                    crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
+                collect_members(model, &expanded, None, None, visited, out);
+                return;
+            }
             let def = type_def_of(model, &generic.get_base_type_id());
             let params = generic.get_params().to_vec();
             let bindings: TplBindings = params

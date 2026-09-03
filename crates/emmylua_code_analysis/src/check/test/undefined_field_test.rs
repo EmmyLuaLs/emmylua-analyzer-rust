@@ -1046,4 +1046,98 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_alias_member_lookup_class_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class Foo
+                ---@field x number
+
+                ---@alias FooAlias Foo
+
+                ---@type FooAlias
+                local foo
+                local _ = foo.x
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_member_lookup_object_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@alias ObjAlias { x: number }
+
+                ---@type ObjAlias
+                local foo
+                local _ = foo.x
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_member_lookup_reports_missing() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class Foo
+                ---@field x number
+
+                ---@alias FooAlias Foo
+
+                ---@type FooAlias
+                local foo
+                local _ = foo.missing
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_member_lookup_unknown_any() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@alias Anything unknown
+
+                ---@type Anything
+                local a
+                local _ = a.foo
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@alias Anything any
+
+                ---@type Anything
+                local a
+                local _ = a.foo
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_member_lookup_generic_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class Box
+                ---@field value string
+
+                ---@alias GenericBox<T> Box
+
+                ---@type GenericBox<number>
+                local box
+                local _ = box.value
+            "#
+        ));
+    }
 }

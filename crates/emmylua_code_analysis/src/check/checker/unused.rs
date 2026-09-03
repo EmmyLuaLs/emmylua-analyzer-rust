@@ -20,11 +20,19 @@ impl Checker for UnusedChecker {
                 continue;
             }
             if semantic_model.decl_references(&decl.id).is_empty() {
-                context.add_diagnostic(
-                    DiagnosticCode::Unused,
-                    decl.name_range,
-                    t!("%{name} is never used, if this is intentional, prefix it with an underscore: _%{name}", name = decl.name),
-                );
+                if decl.is_implicit_self {
+                    context.add_diagnostic(
+                        DiagnosticCode::Unused,
+                        decl.name_range,
+                        t!("Implicit self is never used, if this is intentional, please use '.' instead of ':' to define the method"),
+                    );
+                } else {
+                    context.add_diagnostic(
+                        DiagnosticCode::Unused,
+                        decl.name_range,
+                        t!("%{name} is never used, if this is intentional, prefix it with an underscore: _%{name}", name = decl.name),
+                    );
+                }
             }
         }
     }

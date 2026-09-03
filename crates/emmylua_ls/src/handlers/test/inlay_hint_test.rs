@@ -393,4 +393,26 @@ mod tests {
         ));
         Ok(())
     }
+    #[gtest]
+    fn test_stdlib_member_param_hint_string_format() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_inlay_hint(
+            r#"local a = string.format("%s", 1)"#,
+            vec![
+                VirtualInlayHint {
+                    label: "fmt:".to_string(),
+                    line: 0,
+                    pos: 24,
+                    ref_file: Some("".to_string()),
+                },
+                VirtualInlayHint {
+                    label: "var0:".to_string(),
+                    line: 0,
+                    pos: 30,
+                    ref_file: Some("".to_string()),
+                },
+            ]
+        ));
+        Ok(())
+    }
 }

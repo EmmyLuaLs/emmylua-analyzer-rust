@@ -111,6 +111,28 @@ fn is_invalid_prefix_type(ty: &LuaType) -> bool {
     }
 }
 
+/// Follows alias definitions until a non-alias type is reached. Returns `None` when the
+/// input is not an alias (or when an alias cycle/unresolved target prevents expansion).
+fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaType> {
+    let mut current = ty.clone();
+    let mut visited = Vec::new();
+    loop {
+        let id = match &current {
+            LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
+            _ => return if visited.is_empty() { None } else { Some(current) },
+        };
+        let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
+        if def.kind != TypeDefKind::Alias {
+            return if visited.is_empty() { None } else { Some(current) };
+        }
+        if visited.contains(&id) {
+            return None;
+        }
+        visited.push(id.clone());
+        current = semantic_model.alias_target(&def)?;
+    }
+}
+
 fn is_valid_member(
     semantic_model: &SemanticModel<'_>,
     prefix_ty: &LuaType,
@@ -118,6 +140,11 @@ fn is_valid_member(
     index_expr: &LuaIndexExpr,
     index_key: &LuaIndexKey,
 ) -> bool {
+    // Aliases do not have their own member surface; expand before checking so an alias to
+    // `unknown`/`any`/`table`/a class/object behaves like the target type.
+    if let Some(expanded) = expand_alias_type(semantic_model, prefix_ty) {
+        return is_valid_member(semantic_model, &expanded, prefix, index_expr, index_key);
+    }
     match prefix_ty {
         LuaType::TableConst(table) => {
             let Some((decl, def)) = table_binding(semantic_model, table.file_id, table.value)
