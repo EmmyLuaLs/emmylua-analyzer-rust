@@ -29,7 +29,9 @@ pub use crate::salsa_builder::def::{
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
 pub use crate::salsa_builder::{DocumentView, SalsaDatabase};
-pub use check::{DiagnosticCode, get_default_severity, is_code_default_enable};
+pub use check::{
+    CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
+};
 pub use config::*;
 pub use locale::get_locale_code;
 use lsp_types::Uri;
@@ -282,7 +284,7 @@ impl EmmyLuaAnalysis {
     pub fn diagnose_salsa(
         &self,
         file_id: FileId,
-        config: Arc<check::CheckConfig>,
+        config: Arc<CheckConfig>,
     ) -> Option<Vec<lsp_types::Diagnostic>> {
         let model = self.semantic_model(file_id)?;
         let diagnostics = check::check_file(&model, config);

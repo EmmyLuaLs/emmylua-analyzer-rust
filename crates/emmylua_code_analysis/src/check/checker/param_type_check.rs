@@ -567,13 +567,20 @@ fn check_candidate(
         return mismatches;
     }
 
+    // When a colon-defined method is invoked with dot syntax, the explicit receiver is
+    // part of `args` but not part of the user-facing parameter list. Slice `arg_types` too;
+    // otherwise cached argument types are shifted and the wrong argument is type-checked.
+    let dot_arg_types = arg_types.map(|types| {
+        let offset = arg_offset.min(types.len());
+        &types[offset..]
+    });
     check_arg_pairs(
         semantic_model,
         &params[param_start..],
         &args[arg_offset..],
         func.is_variadic(),
         &mut bindings,
-        arg_types,
+        dot_arg_types,
     )
 }
 

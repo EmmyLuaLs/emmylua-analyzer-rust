@@ -1865,4 +1865,39 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_dot_call_colon_defined_method_uses_correct_arg_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field value number
+                local Foo = {}
+
+                ---@param x number
+                function Foo:method(x) end
+
+                ---@type Foo
+                local foo
+                Foo.method(foo, 1)
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field value number
+                local Foo = {}
+
+                ---@param x Foo
+                function Foo:method(x) end
+
+                ---@type Foo
+                local foo
+                Foo.method(foo, 1)
+            "#
+        ));
+    }
 }

@@ -2,7 +2,9 @@
 //!
 //! Determines whether each candidate diagnostic is reported and at what severity. The checker does not emit directly — it passes through this configuration first.
 
-use std::collections::HashSet;
+use std::collections::{HashMap as StdHashMap, HashSet};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use hashbrown::HashMap;
 use lsp_types::DiagnosticSeverity;
@@ -14,6 +16,30 @@ use crate::{
     check::{DiagnosticCode, get_default_severity, is_code_default_enable},
 };
 use emmylua_parser::LuaLanguageLevel;
+
+/// Per-checker timing collector used by `--profile` runs.
+#[derive(Debug, Default)]
+pub struct CheckProfile {
+    checker_times: Mutex<StdHashMap<&'static str, Duration>>,
+}
+
+impl CheckProfile {
+    pub fn record(&self, checker: &'static str, elapsed: Duration) {
+        if let Ok(mut times) = self.checker_times.lock() {
+            *times.entry(checker).or_default() += elapsed;
+        }
+    }
+
+    pub fn snapshot(&self) -> Vec<(&'static str, Duration)> {
+        let mut times = match self.checker_times.lock() {
+            Ok(times) => times.clone(),
+            Err(_) => StdHashMap::new(),
+        };
+        let mut out: Vec<_> = times.drain().collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out
+    }
+}
 
 /// Diagnostic filtering and display configuration.
 #[derive(Debug, Clone, Default)]
@@ -30,6 +56,8 @@ pub struct CheckConfig {
     global_disable_glob: Vec<Regex>,
     /// Lua language level (determines `is_code_default_enable`).
     level: LuaLanguageLevel,
+    /// Optional per-checker timing collector for `--profile` runs.
+    pub(crate) profile: Option<Arc<CheckProfile>>,
 }
 
 impl CheckConfig {
@@ -64,7 +92,17 @@ impl CheckConfig {
             global_disable_set,
             global_disable_glob,
             level: emmyrc.get_language_level(),
+            profile: None,
         }
+    }
+
+    pub fn with_profile(mut self, profile: Arc<CheckProfile>) -> Self {
+        self.profile = Some(profile);
+        self
+    }
+
+    pub fn profile(&self) -> Option<&Arc<CheckProfile>> {
+        self.profile.as_ref()
     }
 
     /// Whether a diagnostic code is enabled (mirrors the old `is_checker_enable_by_code` default chain):

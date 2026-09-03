@@ -167,14 +167,11 @@ impl<'a> CheckContext<'a> {
 fn run_checked<T: Checker>(context: &mut CheckContext<'_>, semantic_model: &SemanticModel<'_>) {
     let start = std::time::Instant::now();
     run_check::<T>(context, semantic_model);
+    let elapsed = start.elapsed();
 
-    log::info!(
-        "[profile] file={} path={:?} checker {}: {:?}",
-        semantic_model.file_id().id,
-        semantic_model.file_path(),
-        std::any::type_name::<T>(),
-        start.elapsed()
-    );
+    if let Some(profile) = context.config.profile() {
+        profile.record(std::any::type_name::<T>(), elapsed);
+    }
 }
 
 /// Definition-only files never produce diagnostics.

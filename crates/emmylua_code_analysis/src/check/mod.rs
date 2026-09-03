@@ -16,6 +16,6 @@ mod test;
 /// Entry point that runs all checks on a single file (filtered by configuration).
 pub use checker::check_file;
 /// Diagnostic filtering configuration.
-pub use config::CheckConfig;
+pub use config::{CheckConfig, CheckProfile};
 pub use diagnostic_code::{DiagnosticCode, get_default_severity, is_code_default_enable};
 pub use lua_diagnostic::LuaDiagnostic;

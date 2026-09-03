@@ -9,6 +9,7 @@ use std::{error::Error, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 use crate::init::setup_logger;
+use emmylua_code_analysis::{CheckConfig, CheckProfile};
 
 pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + Send>> {
     setup_logger(cmd_args.verbose);
@@ -50,6 +51,17 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     let db = &analysis.salsa;
     let need_check_files = db.main_workspace_file_ids();
 
+    // Optional `--profile`: collect per-checker timings while running all files.
+    let profile_state = if cmd_args.profile {
+        let collector = Arc::new(CheckProfile::default());
+        let config = CheckConfig::new(analysis.get_emmyrc().as_ref())
+            .with_profile(collector.clone());
+        Some((collector, Arc::new(config)))
+    } else {
+        None
+    };
+    let profile_task = profile_state.clone();
+
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
     let analysis = Arc::new(analysis);
     let total_count = need_check_files.len();
@@ -61,7 +73,11 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     tokio::spawn(async move {
         for file_id in need_check_files {
             let cancel_token = CancellationToken::new();
-            let diagnostics = task_analysis.diagnose_file(file_id, cancel_token);
+            let diagnostics = if let Some((_, config)) = &profile_task {
+                task_analysis.diagnose_salsa(file_id, config.clone())
+            } else {
+                task_analysis.diagnose_file(file_id, cancel_token)
+            };
             if sender_for_task.send((file_id, diagnostics)).await.is_err() {
                 break;
             }
@@ -83,10 +99,27 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     )
     .await;
 
+    if let Some((collector, _)) = &profile_state {
+        print_profile_summary(collector, total_count);
+    }
+
     if exit_code != 0 {
         return Err(format!("exit code: {}", exit_code).into());
     }
 
     eprintln!("Check finished");
     Ok(())
+}
+
+fn print_profile_summary(profile: &CheckProfile, file_count: usize) {
+    eprintln!("
+==== Checker profile ({} files) ====", file_count);
+    eprintln!("{:<44} {:>12} {:>10}", "checker", "total", "avg/file");
+    for (name, duration) in profile.snapshot() {
+        let short_name = name.rsplit("::").next().unwrap_or(name);
+        let total_ms = duration.as_secs_f64() * 1000.0;
+        let avg_ms = total_ms / file_count.max(1) as f64;
+        eprintln!("{:<44} {:>9.3}ms {:>9.3}ms", short_name, total_ms, avg_ms);
+    }
+    eprintln!("=====================================");
 }
