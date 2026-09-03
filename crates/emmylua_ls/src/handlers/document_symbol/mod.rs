@@ -41,6 +41,21 @@ pub async fn on_document_symbol(
     .await
 }
 
+fn non_empty_symbol_name(raw: String, fallback: impl FnOnce() -> String) -> String {
+    let name = raw.trim();
+    if name.is_empty() {
+        let fallback = fallback();
+        let fallback = fallback.trim();
+        if fallback.is_empty() {
+            "(anonymous)".to_string()
+        } else {
+            fallback.to_string()
+        }
+    } else {
+        name.to_string()
+    }
+}
+
 fn build_document_symbol(
     model: &SalsaSemanticModel<'_>,
     document: &emmylua_code_analysis::DocumentView,
@@ -58,8 +73,13 @@ fn build_document_symbol(
                 let Some(lsp_range) = document.to_lsp_range(func_name.get_range()) else {
                     continue;
                 };
+                let raw_name = func_name.get_access_path().unwrap_or_default();
+                let name = non_empty_symbol_name(
+                    raw_name,
+                    || func_name.syntax().text().to_string().trim().to_string(),
+                );
                 Some(DocumentSymbol {
-                    name: func_name.get_access_path().unwrap_or_default(),
+                    name,
                     detail: None,
                     kind: SymbolKind::FUNCTION,
                     range: lsp_range,
@@ -77,10 +97,13 @@ fn build_document_symbol(
                 let Some(lsp_range) = document.to_lsp_range(func_name.get_range()) else {
                     continue;
                 };
-                let name = func_name
-                    .get_name_token()
-                    .map(|t| t.get_name_text().to_string())
-                    .unwrap_or_default();
+                let name = non_empty_symbol_name(
+                    func_name
+                        .get_name_token()
+                        .map(|t| t.get_name_text().to_string())
+                        .unwrap_or_default(),
+                    || func_name.syntax().text().to_string().trim().to_string(),
+                );
                 Some(DocumentSymbol {
                     name,
                     detail: None,

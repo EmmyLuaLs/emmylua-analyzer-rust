@@ -1140,4 +1140,23 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_alias_member_lookup_cross_file() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "types.lua",
+            "---@class Foo
+---@field x number
+---@alias FooAlias Foo",
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@type FooAlias
+                local foo
+                local _ = foo.x
+            "#
+        ));
+    }
 }

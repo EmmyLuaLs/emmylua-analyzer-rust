@@ -2859,4 +2859,49 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_alias_member_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_completion(
+            r#"
+                ---@class Foo
+                ---@field x number
+
+                ---@alias FooAlias Foo
+
+                ---@type FooAlias
+                local foo
+                foo.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "x".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+                ..Default::default()
+            }],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_doc_alias_type_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "alias.lua",
+            "---@alias FooAlias Foo
+---@class Foo
+---@field x number",
+        );
+        check!(ws.check_completion(
+            r#"
+                ---@type FooAl<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "FooAlias".to_string(),
+                kind: CompletionItemKind::STRUCT,
+                ..Default::default()
+            }],
+        ));
+        Ok(())
+    }
 }

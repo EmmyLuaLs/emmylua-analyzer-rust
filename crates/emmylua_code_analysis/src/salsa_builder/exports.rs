@@ -50,7 +50,7 @@ pub struct MemberExport {
 }
 
 /// Per-file export facts (collects identities only, no type precomputation; invalidates precisely on text changes).
-#[salsa::tracked(returns(ref), lru = 2048)]
+#[salsa::tracked(returns(ref), lru = 512)]
 pub(crate) fn file_exports(
     db: &dyn SalsaDb,
     file: SourceFileInput,

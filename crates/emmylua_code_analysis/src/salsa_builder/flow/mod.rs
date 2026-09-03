@@ -42,7 +42,7 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
 }
 
 /// Per-file control flow graph (salsa query, automatically invalidated on file changes).
-#[salsa::tracked(returns(ref), lru = 2048)]
+#[salsa::tracked(returns(ref), lru = 512)]
 pub(crate) fn flow_tree_of(
     db: &dyn SalsaDb,
     file: SourceFileInput,

@@ -52,22 +52,27 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
 
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
     let analysis = Arc::new(analysis);
-    let db = &analysis.salsa;
-    for file_id in need_check_files.clone() {
-        let sender = sender.clone();
-        let analysis = analysis.clone();
-        tokio::spawn(async move {
+    let total_count = need_check_files.len();
+    let task_analysis = analysis.clone();
+    // Run the files sequentially in one worker. Salsa's database is shared and
+    // concurrent diagnose calls on the same database are not safe here; sequential
+    // execution is also a more accurate representation of the single-core LS path.
+    let sender_for_task = sender.clone();
+    tokio::spawn(async move {
+        for file_id in need_check_files {
             let cancel_token = CancellationToken::new();
-            let diagnostics = analysis.diagnose_file(file_id, cancel_token);
-            sender.send((file_id, diagnostics)).await.unwrap();
-        });
-    }
-    // Drop the original sender so the receiver can detect when all spawned
-    // tasks have finished and their cloned senders are dropped.
+            let diagnostics = task_analysis.diagnose_file(file_id, cancel_token);
+            if sender_for_task.send((file_id, diagnostics)).await.is_err() {
+                break;
+            }
+        }
+    });
+    // Drop the original sender so the receiver can detect when the worker has finished.
     drop(sender);
+    let db = &analysis.salsa;
 
     let exit_code = output_result(
-        need_check_files.len(),
+        total_count,
         db,
         main_path,
         receiver,

@@ -25,7 +25,7 @@ use rowan::{NodeCache, TextSize};
 
 /// Parse. `LuaSyntaxTree` isn't a SalsaValue, so use the `no_eq` + `non_salsa_values` escape hatch
 /// (equivalent to rust-analyzer's `parse`: unchanged text -> unchanged input -> no recomputation; `no_eq` has no side effects).
-#[salsa::tracked(returns(ref), lru = 2048, no_eq, unsafe(non_salsa_values))]
+#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn parse(db: &dyn SalsaDb, file: SourceFileInput, config: ConfigInput) -> LuaSyntaxTree {
     let text = file.text(db);
     let mut node_cache = NodeCache::default();
@@ -34,14 +34,14 @@ pub(crate) fn parse(db: &dyn SalsaDb, file: SourceFileInput, config: ConfigInput
 }
 
 /// Per-file line index. Cached as a salsa derived query; no recomputation when the text is unchanged.
-#[salsa::tracked(returns(ref), lru = 2048, no_eq, unsafe(non_salsa_values))]
+#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn line_index(db: &dyn SalsaDb, file: SourceFileInput) -> Arc<LineIndex> {
     let text = file.text(db);
     Arc::new(LineIndex::parse(text))
 }
 
 /// Per-file document view. Cached as a salsa derived query; contains URI/Path/Text/LineIndex.
-#[salsa::tracked(returns(ref), lru = 2048, no_eq, unsafe(non_salsa_values))]
+#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn document(db: &dyn SalsaDb, file: SourceFileInput) -> Arc<DocumentView> {
     let file_id = file.file_id(db);
     let path = file.path(db).clone();
@@ -58,7 +58,7 @@ pub(crate) fn document(db: &dyn SalsaDb, file: SourceFileInput) -> Arc<DocumentV
 }
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
-#[salsa::tracked(returns(ref), lru = 2048)]
+#[salsa::tracked(returns(ref), lru = 512)]
 pub(crate) fn file_facts(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -325,7 +325,7 @@ fn find_file_types(
 
 /// Resolve **all definition locations** of a named type in the current file scope
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_type_def_locations(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -374,7 +374,7 @@ pub(crate) fn resolve_type_def_locations(
 /// Resolve a named type in the current file scope (mirrors the old `find_type_decl` order):
 /// 1. file namespace qualification (Internal -> Global); 2. `@using` qualification (Internal -> Global);
 /// 3. bare name (**same-file Private** -> Internal -> Global).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_type_def(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -392,7 +392,7 @@ pub(crate) fn resolve_type_def(
 /// Class tables are usually created by factory functions like `meta("ClassName")` with `---@[constructor("init")]`;
 /// the attribute belongs to the factory function signature. Here we trace back from the runtime value declaration
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn constructor_attribute_of_type(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -503,7 +503,7 @@ pub struct FileReferences {
 }
 
 /// Per-file reference index (salsa tracked).
-#[salsa::tracked(returns(ref), lru = 2048, no_eq, unsafe(non_salsa_values))]
+#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn file_references(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -685,7 +685,7 @@ fn resolve_member_id(
 }
 
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn members_of_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -783,7 +783,7 @@ pub(crate) fn members_of_owner_named(
 
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -806,7 +806,7 @@ pub(crate) fn member_keys_of_owner(
 }
 
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn type_defs_in_scope(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -822,7 +822,7 @@ pub(crate) fn type_defs_in_scope(
 }
 
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn global_type_by_name(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -946,7 +946,7 @@ impl WorkspaceDeclIndex {
 }
 
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn global_decl_by_name(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1235,7 +1235,7 @@ pub(crate) fn file_workspace_id(
 }
 
 /// Module name -> file. Resolution order: module_map rewrite -> exact match -> require pattern (`?.lua`/`?/init.lua`).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn module_file_of(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1458,7 +1458,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 /// Phase 2 association: resolve `Name("a.b")` to a real definition (type/variable/member chain).
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
-#[salsa::tracked(returns(clone), cycle_initial = owner_cycle_initial, cycle_fn = owner_cycle_recover)]
+#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = owner_cycle_initial, cycle_fn = owner_cycle_recover)]
 pub(crate) fn resolve_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1516,7 +1516,7 @@ fn owner_cycle_recover(
 /// Phase 2 association: resolve an owner to an **identity set** (dual identity: same-name type + runtime value).
 /// `Name("M")` -> `{TypeDef(M), Decl(M)}`; member lookup uses the union across sets.
 /// For name chains (`a.b`), recursively take members along each head identity.
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_owner_set(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1646,7 +1646,7 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 /// Type of a declaration. Recursive dependencies (mutual references) converge via salsa's native fixed point.
 /// Priority: `---@type` annotation -> initializer expression.
 /// Keyed by file: when an initializer references cross-file members, dependence on `workspace_input` keeps memoization stable.
-#[salsa::tracked(returns(clone), lru = 4096, cycle_initial = type_cycle_initial, cycle_fn = type_cycle_recover)]
+#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = type_cycle_initial, cycle_fn = type_cycle_recover)]
 pub(crate) fn decl_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2158,7 +2158,7 @@ fn type_cycle_recover(
 // ──────────────────────────────────────────────
 
 /// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by salsa's native fixed point.
-#[salsa::tracked(returns(clone), lru = 4096, cycle_initial = member_cycle_initial, cycle_fn = member_cycle_recover)]
+#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = member_cycle_initial, cycle_fn = member_cycle_recover)]
 pub(crate) fn member_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2235,7 +2235,7 @@ fn member_cycle_recover(
 }
 
 /// Direct member names of a local declaration (completion candidates).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_decl(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2255,7 +2255,7 @@ pub(crate) fn member_keys_of_decl(
 }
 
 /// Member keys of a named type (including parent types, completion candidates). `type_def` is a global type id.
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2354,7 +2354,7 @@ fn collect_type_keys(
 // ──────────────────────────────────────────────
 
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
-#[salsa::tracked(returns(clone), lru = 4096)]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_name(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2373,7 +2373,7 @@ pub(crate) fn resolve_name(
 }
 
 /// All references to a declaration (name use sites).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn decl_references(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2405,7 +2405,7 @@ pub(crate) fn decl_references(
 /// Per-slot function return types. Doc annotations take priority (one slot per `---@return`);
 /// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via salsa fixed point.
 #[salsa::tracked(
-    returns(clone), lru = 4096,
+    returns(clone), lru = 1024,
     cycle_initial = sig_returns_cycle_initial,
     cycle_fn = sig_returns_cycle_recover
 )]
@@ -2601,7 +2601,7 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 
 /// Function return type (merged view, compatible with old consumers). Doc annotations take priority; otherwise scan the function body's `return` statements.
 /// Mutual recursion (`foo`->`bar`->`foo`) converges via salsa's native fixed point.
-#[salsa::tracked(returns(clone), lru = 4096, cycle_initial = sig_cycle_initial, cycle_fn = sig_cycle_recover)]
+#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = sig_cycle_initial, cycle_fn = sig_cycle_recover)]
 pub(crate) fn signature_return(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2616,7 +2616,7 @@ pub(crate) fn signature_return(
 }
 
 /// Type of the function's `param_index`-th parameter (`---@param` annotation + generic binding).
-#[salsa::tracked(returns(clone), lru = 4096)]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn param_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2721,7 +2721,7 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 // ──────────────────────────────────────────────
 
 /// Value type exported by a module (type of `return M` / table literal, etc.).
-#[salsa::tracked(returns(clone))]
+#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn module_export_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2780,7 +2780,7 @@ pub(crate) fn find_expr_by_syntax_id(
 }
 
 /// Type of an expression (by syntax position, node-keyed). Entry point for the semantic/infer layer.
-#[salsa::tracked(returns(clone), lru = 4096, cycle_initial = expr_cycle_initial, cycle_fn = expr_cycle_recover)]
+#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = expr_cycle_initial, cycle_fn = expr_cycle_recover)]
 pub(crate) fn expr_type_of(
     db: &dyn SalsaDb,
     file: SourceFileInput,
