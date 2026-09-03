@@ -952,54 +952,6 @@ fn test_file_exports_identity_and_shard_memo() {
 }
 
 #[test]
-fn test_file_references_precomputes_typed_local_member() {
-    let mut db = setup();
-    set_test_file(
-        &mut db,
-        1,
-        "C:/ws/def.lua",
-        "---@class C\n---@field value string\nC = {}",
-    );
-    let fid_use = set_test_file(
-        &mut db,
-        2,
-        "C:/ws/use.lua",
-        "local c ---@type C\nlocal x = c.value",
-    );
-    db.update_main_root(PathBuf::from("C:/ws"));
-
-    let refs = db.q().file_references(fid_use).expect("refs");
-    assert!(
-        !refs.member_use_to_member.is_empty(),
-        "typed local class member should be precomputed by FileSemanticIndex"
-    );
-}
-
-#[test]
-fn test_file_references_precomputes_typed_param_member() {
-    let mut db = setup();
-    set_test_file(
-        &mut db,
-        1,
-        "C:/ws/def.lua",
-        "---@class C\n---@field value string\nC = {}",
-    );
-    let fid_use = set_test_file(
-        &mut db,
-        2,
-        "C:/ws/use.lua",
-        "---@param c C\nlocal function f(c)\n    local x = c.value\nend",
-    );
-    db.update_main_root(PathBuf::from("C:/ws"));
-
-    let refs = db.q().file_references(fid_use).expect("refs");
-    assert!(
-        !refs.member_use_to_member.is_empty(),
-        "typed param class member should be precomputed by FileSemanticIndex"
-    );
-}
-
-#[test]
 fn test_module_and_deprecated_shard_memo() {
     let mut db = setup();
     let fid1 = set_test_file(

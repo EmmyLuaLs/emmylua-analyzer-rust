@@ -277,13 +277,6 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// Workspace global declaration (cross-file). The `Decl` key carries the declaring file.
-    /// Per-file precomputed name-use resolutions (aligned with `file_facts().name_uses`).
-    pub(crate) fn file_name_use_resolutions(&self) -> Option<&'db [Option<SemanticId>]> {
-        self.q()
-            .file_references(self.file_id)
-            .map(|refs| refs.name_use_resolution.as_slice())
-    }
-
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
         self.q().global_decl(name)
     }
@@ -789,23 +782,6 @@ impl<'db> SemanticModel<'db> {
         let (owner, name) = self
             .q()
             .member_ref_of_index(self.file_id, index_expr.get_syntax_id())?;
-
-        // Fast path: if the per-file reference index already resolved this exact
-        // `IndexExpr` to a member id, reuse it. This avoids repeating the same
-        // deterministic member lookup across checkers/diagnoses.
-        // `file_references` only stores entries it can resolve unambiguously: Name-rooted
-        // owners, safe local runtime members, and the safe typed-local `---@type` subset.
-        if let Some(file_refs) = self.q().file_references(self.file_id)
-            && let Some(member_id) = file_refs
-                .member_use_to_member
-                .get(&index_expr.get_syntax_id())
-        {
-            let member_file = match member_id {
-                SemanticId::Member(key) => Some(key.file_id),
-                _ => None,
-            };
-            return Some(self.resolved_member(Some(member_id.clone()), member_file, owner, name));
-        }
 
         // 1. Same-file members (owner key). Members with explicit `---@type` take priority over purely inferred runtime members;
         // if only runtime members exist and the prefix type is a named type with a same-named `@field`, skip this step --

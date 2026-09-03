@@ -41,17 +41,10 @@ fn check_name_uses(context: &mut CheckContext<'_>, semantic_model: &SemanticMode
     let Some(facts) = semantic_model.file_facts() else {
         return;
     };
-    let name_use_resolutions = semantic_model.file_name_use_resolutions();
-    for (index, use_) in facts.name_uses.iter().enumerate() {
+    for use_ in &facts.name_uses {
         let range = use_.syntax.get_range();
-        // 1. Same-file declaration only. Prefer the per-file precomputed resolution;
-        // fall back to the direct resolver when the index is unavailable.
-        let resolved_local = name_use_resolutions
-            .and_then(|resolutions| resolutions.get(index))
-            .cloned()
-            .flatten()
-            .or_else(|| semantic_model.resolve_local_name(range.start()));
-        if let Some(decl_id) = resolved_local {
+        // 1. Same-file local declaration only (no global fallback here).
+        if let Some(decl_id) = semantic_model.resolve_local_name(range.start()) {
             if let Some(decl) = facts.decl_by_id(&decl_id) {
                 if decl.deprecated && range != decl.name_range {
                     report_deprecated(context, range, &decl.name);

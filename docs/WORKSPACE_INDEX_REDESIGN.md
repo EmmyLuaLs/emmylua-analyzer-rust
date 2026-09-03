@@ -235,16 +235,10 @@ impl FileSemanticIndex {
 
 ## 6.1 当前进度
 
-- [x] Phase 1（部分）：`WorkspaceMemberIndex` 增加 `by_owner_name`
-- [x] Phase 1：`WorkspaceDeclIndex` 增加 `runtime_by_name` / `runtime_by_file_name` / `type_def_by_id`
+- [x] Phase 1（部分）：`WorkspaceDeclIndex` 增加 `runtime_by_name` / `runtime_by_file_name` / `type_def_by_id`
 - [x] Phase 1：`resolve_owner_set` 不再线性扫描 `runtime_values` / `type_def_files`
-- [x] Phase 1：`members_of_owner_named` 使用 `by_owner_name` 直查
-- [x] Phase 2（部分）：`FileReferences` 增加 `name_use_resolution` / `member_use_to_member`
-- [x] Phase 2：`resolve_member` fast path 覆盖 Name-rooted owner 与安全的 local runtime member
-- [x] Phase 2：local fast path 排除 `---@type` / Param(`self`) / same-name doc member 等冲突场景
-- [x] Phase 2（部分）：`DeprecatedChecker` 的 NameUse 路径使用 `FileReferences.name_use_resolution`
-- [x] Phase 2（后续）：FileSemanticIndex 已覆盖简单 `---@type` local / `---@param` class member；
-  冲突场景（同名 runtime member、nullable/generic/union 注解）仍安全地走慢路径
+- [x] Phase 1：`WorkspaceMemberIndex` 增加低内存 `by_owner_name_indices`（只存 u32 索引，不复制 MemberRef）
+- [ ] Phase 2：`FileReferences` member 预计算 fast path 曾实现但因跨文件/重载/冒号定义误报已回退
 - [x] Phase 3（部分）：resolve_member 慢路径收敛
   - 慢路径中 3 / 3.5 / inherited fallback 只计算一次 `prefix_type_for_member_resolution`
   - 成员/继承展开增加 `MAX_MEMBER_INHERITANCE_DEPTH = 16` 深度上限
