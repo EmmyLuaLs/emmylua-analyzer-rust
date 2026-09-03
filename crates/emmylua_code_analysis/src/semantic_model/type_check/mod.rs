@@ -313,12 +313,9 @@ fn check_general_type_compact(
             }
             Err(context.mismatch(source, compact_type))
         }
-        LuaType::Never => {
-            if compact_type.is_never() {
-                return Ok(());
-            }
-            Err(context.mismatch(source, compact_type))
-        }
+        // `never` is the bottom type: no value can inhabit it, so it is compatible
+        // with every target (the same way `unknown`/`any` accept every source).
+        LuaType::Never => Ok(()),
         LuaType::ModuleRef(_) => Ok(()),
         _ => Err(context.mismatch(source, compact_type)),
     }

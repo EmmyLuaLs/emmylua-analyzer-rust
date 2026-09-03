@@ -82,6 +82,16 @@ fn test_primitives_and_consts() {
 }
 
 #[test]
+fn test_never_is_bottom() {
+    use LuaType as LT;
+    assert!(ok(&LT::Never, &LT::String));
+    assert!(ok(&LT::Never, &LT::Number));
+    assert!(ok(&LT::Never, &LT::Nil));
+    assert!(ok(&LT::Never, &LT::Table));
+    assert!(!ok(&LT::String, &LT::Never));
+}
+
+#[test]
 fn test_union_intersection() {
     use LuaType as LT;
     // Target union: source matches any one component.

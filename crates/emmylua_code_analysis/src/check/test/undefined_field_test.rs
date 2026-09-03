@@ -1159,4 +1159,32 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_global_runtime_class_members_cross_file() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "player_api.lua",
+            "---@meta
+---@class _KLuaPlayer
+_KLuaPlayer = {}
+---@param szMsg string
+function _KLuaPlayer.Msg(szMsg) end",
+        );
+        ws.def_file("alias.lua", "---@alias KLuaPlayer _KLuaPlayer");
+        ws.def_file(
+            "kplayer.lua",
+            "---@class KPlayer
+KPlayer = {}
+---@return KLuaPlayer
+function KPlayer.GetPlayerObjById() end",
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                local pPlayer = KPlayer.GetPlayerObjById()
+                pPlayer.Msg("hello")
+            "#
+        ));
+    }
 }

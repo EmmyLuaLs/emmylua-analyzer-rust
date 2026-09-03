@@ -857,15 +857,13 @@ impl<'db> SemanticModel<'db> {
                     vec![def.id.clone()]
                 };
                 for resolved in owners {
-                    for member_ref in self.members_of_owner(&resolved) {
-                        if member_ref.name == name {
-                            return Some(self.resolved_member(
-                                Some(member_ref.id),
-                                Some(member_ref.file_id),
-                                owner,
-                                name,
-                            ));
-                        }
+                    for member_ref in self.members_of_owner_named(&resolved, name.as_str()) {
+                        return Some(self.resolved_member(
+                            Some(member_ref.id),
+                            Some(member_ref.file_id),
+                            owner,
+                            name,
+                        ));
                     }
                     // Runtime members from `self.x = ...` in method bodies: attach members on the implicit self parameter
                     // to the class/runtime owner of that method (fields assigned in `function T:init`,
@@ -887,19 +885,20 @@ impl<'db> SemanticModel<'db> {
                         else {
                             continue;
                         };
-                        for self_member_ref in method_facts.members_of_owner(&self_decl.id) {
-                            if self_member_ref.key.name() == Some(name.as_str()) {
-                                let file_id = match &self_member_ref.id {
-                                    SemanticId::Member(key) => Some(key.file_id),
-                                    _ => None,
-                                };
-                                return Some(self.resolved_member(
-                                    Some(self_member_ref.id.clone()),
-                                    file_id,
-                                    owner,
-                                    name,
-                                ));
-                            }
+                        let self_members = method_facts
+                            .members_of_owner_named(&self_decl.id, name.as_str())
+                            .collect::<Vec<_>>();
+                        for self_member_ref in self_members {
+                            let file_id = match &self_member_ref.id {
+                                SemanticId::Member(key) => Some(key.file_id),
+                                _ => None,
+                            };
+                            return Some(self.resolved_member(
+                                Some(self_member_ref.id.clone()),
+                                file_id,
+                                owner,
+                                name,
+                            ));
                         }
                     }
                 }
@@ -945,15 +944,13 @@ impl<'db> SemanticModel<'db> {
                 }
             }
             for table_owner in table_owners {
-                for member in self.members_of_owner(&table_owner) {
-                    if member.name == name {
-                        return Some(self.resolved_member(
-                            Some(member.id),
-                            Some(member.file_id),
-                            owner,
-                            name,
-                        ));
-                    }
+                for member in self.members_of_owner_named(&table_owner, name.as_str()) {
+                    return Some(self.resolved_member(
+                        Some(member.id),
+                        Some(member.file_id),
+                        owner,
+                        name,
+                    ));
                 }
                 // Runtime members defined by `self.x = ...` in that table's method bodies are also attached to the table.
                 for method_ref in self.members_of_owner(&table_owner) {
@@ -976,19 +973,20 @@ impl<'db> SemanticModel<'db> {
                     else {
                         continue;
                     };
-                    for self_member_ref in method_facts.members_of_owner(&self_decl.id) {
-                        if self_member_ref.key.name() == Some(name.as_str()) {
-                            let file_id = match &self_member_ref.id {
-                                SemanticId::Member(key) => Some(key.file_id),
-                                _ => None,
-                            };
-                            return Some(self.resolved_member(
-                                Some(self_member_ref.id.clone()),
-                                file_id,
-                                owner,
-                                name,
-                            ));
-                        }
+                    let self_members = method_facts
+                        .members_of_owner_named(&self_decl.id, name.as_str())
+                        .collect::<Vec<_>>();
+                    for self_member_ref in self_members {
+                        let file_id = match &self_member_ref.id {
+                            SemanticId::Member(key) => Some(key.file_id),
+                            _ => None,
+                        };
+                        return Some(self.resolved_member(
+                            Some(self_member_ref.id.clone()),
+                            file_id,
+                            owner,
+                            name,
+                        ));
                     }
                 }
             }

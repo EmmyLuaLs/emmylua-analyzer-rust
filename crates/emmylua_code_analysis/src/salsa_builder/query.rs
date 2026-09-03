@@ -456,6 +456,8 @@ fn constructor_attribute_of_decl(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberIndex {
     by_owner: HashMap<SemanticId, Arc<[MemberRef]>>,
+    /// Low-memory owner+name index: values are indices into the owner's `by_owner` slice.
+    by_owner_name: HashMap<(SemanticId, SmolStr), Arc<[u32]>>,
 }
 
 /// Member index scoped to a single workspace.
@@ -483,10 +485,24 @@ pub(crate) fn workspace_member_index_for(
                 });
         }
     }
+    let mut by_owner_name: HashMap<(SemanticId, SmolStr), Vec<u32>> = HashMap::new();
+    for (owner, members) in &by_owner {
+        for (index, member) in members.iter().enumerate() {
+            by_owner_name
+                .entry((owner.clone(), member.name.clone()))
+                .or_default()
+                .push(index as u32);
+        }
+    }
+
     WorkspaceMemberIndex {
         by_owner: by_owner
             .into_iter()
             .map(|(owner, members)| (owner, Arc::<[MemberRef]>::from(members)))
+            .collect(),
+        by_owner_name: by_owner_name
+            .into_iter()
+            .map(|(key, indices)| (key, Arc::<[u32]>::from(indices)))
             .collect(),
     }
 }
@@ -770,12 +786,9 @@ pub(crate) fn members_of_owner_named(
     for ws_id in all_workspace_ids(db, workspace) {
         let index = workspace_member_index_for(db, workspace, config, ws_id);
         if let Some(members) = index.by_owner.get(&owner) {
-            out.extend(
-                members
-                    .iter()
-                    .filter(|member| member.name == name)
-                    .cloned(),
-            );
+            if let Some(indices) = index.by_owner_name.get(&(owner.clone(), name.clone())) {
+                out.extend(indices.iter().map(|&i| members[i as usize].clone()));
+            }
         }
     }
     Arc::from(out)
@@ -1606,7 +1619,26 @@ pub(crate) fn resolve_owner_set(
                 if let Some((file_id, bare_name)) = index.type_def_location(&owner) {
                     found = Some((file_id, bare_name.clone()));
                     if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name) {
-                        push_unique(&mut out, decl_id);
+                        push_unique(&mut out, decl_id.clone());
+                        // Main-workspace `---@meta` API files use global runtime tables
+                        // (`M = {}`) as a pure type surface. Their methods are declared under
+                        // `Name("M")`; include that Name owner so `@class M` + `function M.foo()`
+                        // can be found through the class type. This is deliberately limited to
+                        // main-workspace meta files so std/remote/library meta definitions keep
+                        // their existing resolution behavior.
+                        let ws_id = file_workspace_id(db, workspace, file_id);
+                        if ws_id.is_some_and(|ws| ws.is_main())
+                            && let Some(file) = db.file_input(file_id)
+                        {
+                            let facts = file_facts(db, file, config);
+                            if facts.is_meta
+                                && facts.decl_by_id(&decl_id).is_some_and(|decl| {
+                                    matches!(decl.kind, DeclKind::Global)
+                                })
+                            {
+                                push_unique(&mut out, SemanticId::name(bare_name.clone()));
+                            }
+                        }
                     }
                     break;
                 }

@@ -1883,7 +1883,7 @@ mod test {
     }
 
     #[test]
-    fn test_distributed_extract_rejects_removed_union_member() {
+    fn test_distributed_extract_never_is_assignable() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
@@ -1899,7 +1899,9 @@ mod test {
             "#,
         );
 
-        assert!(!ws.has_no_diagnostic(
+        // `Extract<integer, string|nil>` reduces to `never`. `never` is the bottom type,
+        // so passing it to any parameter must not be reported as a type mismatch.
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@type integer
