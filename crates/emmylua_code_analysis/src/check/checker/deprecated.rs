@@ -73,6 +73,14 @@ fn check_index_expr(
     semantic_model: &SemanticModel<'_>,
     index_expr: &LuaIndexExpr,
 ) {
+    // Fast negative: if no deprecated member with this key name exists anywhere
+    // in the workspace, there is no need to run the full semantic member resolver.
+    let Some(name) = index_expr.get_index_key().map(|key| key.get_path_part()) else {
+        return;
+    };
+    if !semantic_model.is_deprecated_member_name(name.as_str()) {
+        return;
+    }
     let Some(resolved) = semantic_model.resolve_member(index_expr) else {
         return;
     };

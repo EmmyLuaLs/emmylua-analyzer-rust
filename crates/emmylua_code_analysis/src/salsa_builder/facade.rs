@@ -182,6 +182,22 @@ impl<'db> SalsaQueries<'db> {
         false
     }
 
+    pub(crate) fn is_deprecated_member_name(&self, name: &str) -> bool {
+        let (Some(workspace), Some(config)) = (self.db.workspace_input(), self.db.config_input())
+        else {
+            return false;
+        };
+        let key = SmolStr::new(name);
+        for ws_id in query::all_workspace_ids(self.db, workspace) {
+            if query::deprecated_member_names_for(self.db, workspace, config, ws_id)
+                .contains(&key)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn parse_errors(&self, file_id: FileId) -> Option<Vec<LuaParseError>> {
         let tree = self.syntax_tree(file_id)?;
         let errors = tree.get_errors().to_vec();

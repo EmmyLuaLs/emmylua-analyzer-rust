@@ -24,6 +24,26 @@ mod test {
     }
 
     #[test]
+    fn test_any_unknown_accept_any_target() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param x number
+            local function f(x) end
+
+            ---@type any
+            local a
+            f(a)
+
+            ---@type unknown
+            local b
+            f(b)
+            "#
+        ));
+    }
+
+    #[test]
     fn test_lambda_callback_no_mismatch() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

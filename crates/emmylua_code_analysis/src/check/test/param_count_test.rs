@@ -77,6 +77,91 @@ fn test_param_count_colon_call_missing() {
     );
 }
 
+/// Colon-defined method called with colon: the implicit self must not be counted as an extra argument.
+#[test]
+fn test_param_count_colon_define_colon_call_ok() {
+    let diagnostics = check_source(
+        "---@class C
+local C = {}
+---@param a number
+function C:name(a) end
+C:name(1)",
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::RedundantParameter),
+        0
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::MissingParameter),
+        0
+    );
+}
+
+/// Colon-defined method called with too many args should still report redundant.
+#[test]
+fn test_param_count_colon_define_colon_call_redundant() {
+    let diagnostics = check_source(
+        "---@class C
+local C = {}
+---@param a number
+function C:name(a) end
+C:name(1, 2)",
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::RedundantParameter),
+        1
+    );
+}
+
+/// Colon-defined method called with dot and explicit self should be valid.
+#[test]
+fn test_param_count_colon_define_dot_call_with_self_ok() {
+    let diagnostics = check_source(
+        "---@class C
+local C = {}
+---@param a number
+function C:name(a) end
+C.name(C, 1)",
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::RedundantParameter),
+        0
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::MissingParameter),
+        0
+    );
+}
+
+#[test]
+fn test_table_insert_overload_accepts_both_forms() {
+    let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::RedundantParameter,
+        r#"
+        local t = {}
+        table.insert(t, 1)
+        table.insert(t, 1, 2)
+        "#
+    ));
+}
+
+/// Colon-defined method called with dot but missing the explicit self should report missing.
+#[test]
+fn test_param_count_colon_define_dot_call_missing_self() {
+    let diagnostics = check_source(
+        "---@class C
+local C = {}
+---@param a number
+function C:name(a) end
+C.name(1)",
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::MissingParameter),
+        1
+    );
+}
+
 /// `@return` annotates 2 values but only 1 is returned → MissingReturnValue.
 #[test]
 fn test_return_count_missing_value() {

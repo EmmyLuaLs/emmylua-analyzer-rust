@@ -46,6 +46,7 @@ pub struct MemberExport {
     pub owner: SemanticId,
     pub key: LuaMemberKey,
     pub member: SemanticId,
+    pub deprecated: bool,
 }
 
 /// Per-file export facts (collects identities only, no type precomputation; invalidates precisely on text changes).
@@ -79,6 +80,7 @@ pub(crate) fn file_exports(
             owner: member.owner.clone(),
             key: member.key.clone(),
             member: member.id.clone(),
+            deprecated: member.deprecated,
         })
         .collect();
 

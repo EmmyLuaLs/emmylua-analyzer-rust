@@ -120,7 +120,7 @@ fn check_call(
 
     for candidate in &candidates {
         let range = param_count_range(semantic_model, candidate, colon_call);
-        let colon_extra = usize::from(colon_call && !first_param_is_self(candidate));
+        let colon_extra = usize::from(colon_call && !candidate.is_colon_define() && !first_param_is_self(candidate));
         let call_min = arg_range.min + colon_extra;
         let call_max = arg_range.max.map(|max| max + colon_extra);
         let enough = call_max.is_none_or(|max| max >= range.min);
@@ -134,7 +134,7 @@ fn check_call(
     let mut best: Option<(usize, bool, usize, usize, usize)> = None; // (mismatch, is_missing, expected, found, colon_extra)
     for candidate in &candidates {
         let range = param_count_range(semantic_model, candidate, colon_call);
-        let colon_extra = usize::from(colon_call && !first_param_is_self(candidate));
+        let colon_extra = usize::from(colon_call && !candidate.is_colon_define() && !first_param_is_self(candidate));
         let call_min = arg_range.min + colon_extra;
         let call_max = arg_range.max.map(|max| max + colon_extra);
         let candidate = if call_max.is_some_and(|max| max < range.min) {

@@ -165,6 +165,7 @@ impl WorkspaceTypeIndex {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DeprecatedShard {
     names: Vec<(FileId, SmolStr)>,
+    member_keys: Vec<(FileId, SemanticId, SmolStr)>,
 }
 
 #[salsa::tracked(returns(ref), lru = 64, no_eq, unsafe(non_salsa_values))]
@@ -175,6 +176,7 @@ pub(crate) fn deprecated_shard(
     shard: u8,
 ) -> DeprecatedShard {
     let mut names = Vec::new();
+    let mut member_keys = Vec::new();
     for file_id in workspace.file_ids(db).iter().copied() {
         if shard_of(file_id) != shard {
             continue;
@@ -188,8 +190,14 @@ pub(crate) fn deprecated_shard(
                 names.push((file_id, decl.name.clone()));
             }
         }
+        for member in &facts.members {
+            if member.deprecated {
+                let key: SmolStr = member.key.to_path().into();
+                member_keys.push((file_id, member.owner.clone(), key));
+            }
+        }
     }
-    DeprecatedShard { names }
+    DeprecatedShard { names, member_keys }
 }
 
 /// Deprecated global names in a single workspace.
@@ -210,6 +218,30 @@ pub(crate) fn deprecated_global_names_for(
         for (file_id, name) in &shard.names {
             if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
                 out.insert(name.clone());
+            }
+        }
+    }
+    Arc::new(out)
+}
+
+/// Deprecated member key names in a single workspace.
+///
+/// This is intentionally owner-independent: the fast-negative check only wants to
+/// know whether *any* deprecated member with this key exists. If it does, the caller
+/// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
+#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
+pub(crate) fn deprecated_member_names_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<HashSet<SmolStr>> {
+    let mut out = HashSet::new();
+    for shard in 0..EXPORT_SHARDS {
+        let shard = deprecated_shard(db, workspace, config, shard);
+        for (file_id, _owner, key) in &shard.member_keys {
+            if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
+                out.insert(key.clone());
             }
         }
     }

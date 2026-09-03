@@ -1648,6 +1648,22 @@ impl FactsBuilder {
         let Some(owner) = self.resolve_member_owner(prefix, &mut segments) else {
             return;
         };
+        // `_G.name = value` / `_ENV.name = value` also defines a real global declaration.
+        if let Some(LuaExpr::NameExpr(prefix_name)) = index_expr.get_prefix_expr()
+            && matches!(prefix_name.get_name_text().as_deref(), Some("_G" | "_ENV"))
+            && let LuaMemberKey::Name(global_name) = &member_key
+            && let Some(range) = index_expr.get_index_key().and_then(|key| key.get_range())
+            && self
+                .find_visible_decl_before_offset(global_name.as_str(), range.start())
+                .is_none()
+        {
+            self.add_decl_with_value(
+                global_name.clone(),
+                DeclKind::Global,
+                range,
+                value_syntax,
+            );
+        }
         let mut member = Member::new(
             self.file_id,
             member_key_range(index_expr),
