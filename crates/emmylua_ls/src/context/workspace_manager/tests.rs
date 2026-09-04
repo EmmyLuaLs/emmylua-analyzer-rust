@@ -137,12 +137,13 @@ fn recv_publish_diagnostics_for_uri(
 }
 
 async fn file_text(snapshot: &ServerContextSnapshot, uri: &Uri) -> Option<String> {
-    let analysis = snapshot.analysis().snapshot();
-    let file_id = analysis.get_file_id(uri)?;
-    analysis
-        .salsa
-        .get_file_text(file_id)
-        .map(|text| text.to_string())
+    snapshot.analysis().try_with_snapshot(|analysis| {
+        let file_id = analysis.get_file_id(uri)?;
+        analysis
+            .salsa
+            .get_file_text(file_id)
+            .map(|text| text.to_string())
+    })
 }
 
 // Run the same initialization path that startup uses for a single workspace root.
