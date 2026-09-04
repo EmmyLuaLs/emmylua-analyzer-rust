@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use emmylua_parser::LuaChunk;
 
-use super::SalsaDb;
+use super::SalsaDatabase;
 use super::inputs::{ConfigInput, SourceFileInput};
 use super::query::file_facts;
 
@@ -43,7 +43,7 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
 
 /// Per-file control flow graph. Plain lazy cache backed by `SalsaDatabase::flow_trees`.
 pub(crate) fn flow_tree_of(
-    db: &dyn SalsaDb,
+    db: &SalsaDatabase,
     file: SourceFileInput,
     config: ConfigInput,
 ) -> &Arc<FlowTree> {

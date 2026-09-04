@@ -128,45 +128,6 @@ impl fmt::Debug for DocumentView {
     }
 }
 
-pub(crate) trait SalsaDb {
-    /// Cross-file lookup: FileId → file input. When called inside tracked query bodies, salsa records dependency on the file input.
-    fn file_input(&self, file_id: FileId) -> Option<SourceFileInput>;
-    /// Raw per-file input data (plain map).
-    fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData>;
-    /// Raw config data.
-    fn config_data(&self) -> Option<&ConfigInputData>;
-    /// Raw workspace data.
-    fn workspace_data(&self) -> Option<&WorkspaceInputData>;
-    /// Current workspace input (stable id, in-place content updates → revision bumps on any file change).
-    fn workspace_input(&self) -> Option<WorkspaceInput>;
-    /// Returns the lazy per-file facts cell. The map is kept in sync with `file_input`;
-    /// the fallback cell is only a defensive measure and should never be used.
-    fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>>;
-    /// Returns the lazy per-file flow-tree cell.
-    fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>>;
-    /// Returns the lazy per-file syntax-tree cell.
-    fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>>;
-    /// Returns the lazy per-file line-index cell.
-    fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>>;
-    /// Returns the lazy per-file document cell.
-    fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>>;
-    /// Returns the lazy per-file exports cell.
-    fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<Arc<exports::FileExports>>;
-    /// Returns the lazy export-shard cell.
-    fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>>;
-    /// Returns the lazy per-file references cell.
-    fn file_references_cell(&self, file_id: FileId) -> &OnceLock<Arc<query::FileReferences>>;
-    /// Returns the lazy deprecated-shard cell.
-    fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::DeprecatedShard>>;
-    /// Returns the lazy module-shard cell.
-    fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>>;
-    /// Returns the lazy reference-shard cell.
-    fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>>;
-    /// Returns the plain workspace index cache. The indexes are not Salsa queries;
-    /// tracked consumers read `WorkspaceInput.revision` for invalidation.
-    fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache>;
-}
-
 #[derive(Clone)]
 pub struct SalsaDatabase {
     // ── Plain config/data ──
@@ -241,30 +202,30 @@ impl Default for SalsaDatabase {
     }
 }
 
-impl SalsaDb for SalsaDatabase {
-    fn file_input(&self, file_id: FileId) -> Option<SourceFileInput> {
+impl SalsaDatabase {
+    pub(crate) fn file_input(&self, file_id: FileId) -> Option<SourceFileInput> {
         self.file_inputs
             .contains_key(&file_id)
             .then(|| SourceFileInput::new(file_id))
     }
 
-    fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData> {
+    pub(crate) fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData> {
         self.file_inputs.get(&file_id)
     }
 
-    fn config_data(&self) -> Option<&ConfigInputData> {
+    pub(crate) fn config_data(&self) -> Option<&ConfigInputData> {
         self.config.as_ref()
     }
 
-    fn workspace_data(&self) -> Option<&WorkspaceInputData> {
+    pub(crate) fn workspace_data(&self) -> Option<&WorkspaceInputData> {
         self.workspace.as_ref()
     }
 
-    fn workspace_input(&self) -> Option<WorkspaceInput> {
+    pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
         self.workspace.is_some().then_some(WorkspaceInput)
     }
 
-    fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>> {
+    pub(crate) fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>> {
         self.file_facts.get(&file_id).unwrap_or_else(|| {
             // Every public file-mutation path inserts/removes a cell in `file_facts`
             // alongside `file_inputs`. This static fallback is only to keep the trait
@@ -274,81 +235,80 @@ impl SalsaDb for SalsaDatabase {
         })
     }
 
-    fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>> {
+    pub(crate) fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>> {
         self.flow_trees.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<flow::FlowTree>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>> {
+    pub(crate) fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>> {
         self.syntax_trees.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<LuaSyntaxTree>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>> {
+    pub(crate) fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>> {
         self.line_indexes.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<LineIndex>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>> {
+    pub(crate) fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>> {
         self.documents.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<DocumentView>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<Arc<exports::FileExports>> {
+    pub(crate) fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<Arc<exports::FileExports>> {
         self.file_exports.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<exports::FileExports>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>> {
+    pub(crate) fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>> {
         self.export_shards.get(&shard).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<exports::ExportShard>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn file_references_cell(&self, file_id: FileId) -> &OnceLock<Arc<query::FileReferences>> {
+    pub(crate) fn file_references_cell(&self, file_id: FileId) -> &OnceLock<Arc<query::FileReferences>> {
         self.file_references.get(&file_id).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<query::FileReferences>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::DeprecatedShard>> {
+    pub(crate) fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::DeprecatedShard>> {
         self.deprecated_shards.get(&shard).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<query::DeprecatedShard>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>> {
+    pub(crate) fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>> {
         self.module_shards.get(&shard).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<query::ModuleShard>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>> {
+    pub(crate) fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>> {
         self.reference_shards.get(&shard).unwrap_or_else(|| {
             static MISSING: OnceLock<Arc<query::ReferenceShard>> = OnceLock::new();
             &MISSING
         })
     }
 
-    fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache> {
+    pub(crate) fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache> {
         &self.workspace_index
     }
 }
-
 impl fmt::Debug for SalsaDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SalsaDatabase")
@@ -1035,10 +995,6 @@ impl SalsaDatabase {
 
     pub(crate) fn config_input(&self) -> Option<ConfigInput> {
         self.config.is_some().then_some(ConfigInput)
-    }
-
-    pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
-        self.workspace.is_some().then_some(WorkspaceInput)
     }
 
     /// Actual execution count of tracked query bodies (diagnostic invalidation granularity).

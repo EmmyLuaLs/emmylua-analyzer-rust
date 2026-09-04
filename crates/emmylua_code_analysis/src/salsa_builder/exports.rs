@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::FileId;
 use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
 
-use super::SalsaDb;
+use super::SalsaDatabase;
 use super::inputs::{ConfigInput, SourceFileInput};
 use super::query::file_facts;
 
@@ -52,7 +52,7 @@ pub struct MemberExport {
 
 /// Per-file export facts (collects identities only, no type precomputation).
 pub(crate) fn file_exports(
-    db: &dyn SalsaDb,
+    db: &SalsaDatabase,
     file: SourceFileInput,
     config: ConfigInput,
 ) -> &FileExports {
@@ -64,7 +64,7 @@ pub(crate) fn file_exports(
 }
 
 fn build_file_exports(
-    db: &dyn SalsaDb,
+    db: &SalsaDatabase,
     file: SourceFileInput,
     config: ConfigInput,
     file_id: FileId,
@@ -133,7 +133,7 @@ pub fn shard_of(file_id: FileId) -> u8 {
 
 /// A shard's export facts (plain cache: depends only on `file_exports` of files in this shard).
 pub(crate) fn export_shard(
-    db: &dyn SalsaDb,
+    db: &SalsaDatabase,
     workspace: super::inputs::WorkspaceInput,
     config: ConfigInput,
     shard: u8,
@@ -145,7 +145,7 @@ pub(crate) fn export_shard(
 }
 
 fn build_export_shard(
-    db: &dyn SalsaDb,
+    db: &SalsaDatabase,
     workspace: super::inputs::WorkspaceInput,
     config: ConfigInput,
     shard: u8,

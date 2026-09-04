@@ -14,7 +14,7 @@ use smol_str::SmolStr;
 
 use crate::{Emmyrc, FileId, WorkspaceImport};
 
-use super::SalsaDb;
+use super::SalsaDatabase;
 use super::def::WorkspaceId;
 
 // ──────────────────────────────────────────────
@@ -47,25 +47,25 @@ impl SourceFileInput {
         Self { file_id }
     }
 
-    pub(crate) fn text<'a>(&self, db: &'a dyn SalsaDb) -> &'a str {
+    pub(crate) fn text<'a>(&self, db: &'a SalsaDatabase) -> &'a str {
         db.source_file_data(self.file_id)
             .map(|data| data.text.as_ref())
             .unwrap_or("")
     }
 
-    pub(crate) fn path<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<PathBuf> {
+    pub(crate) fn path<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<PathBuf> {
         db.source_file_data(self.file_id)
             .map(|data| &data.path)
             .unwrap_or(&NO_PATH)
     }
 
-    pub(crate) fn uri<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<Uri> {
+    pub(crate) fn uri<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<Uri> {
         db.source_file_data(self.file_id)
             .map(|data| &data.uri)
             .unwrap_or(&NO_URI)
     }
 
-    pub(crate) fn file_id(&self, _db: &dyn SalsaDb) -> FileId {
+    pub(crate) fn file_id(&self, _db: &SalsaDatabase) -> FileId {
         self.file_id
     }
 }
@@ -147,43 +147,43 @@ impl ConfigInputData {
 }
 
 impl ConfigInput {
-    pub(crate) fn language_level(&self, db: &dyn SalsaDb) -> LanguageLevel {
+    pub(crate) fn language_level(&self, db: &SalsaDatabase) -> LanguageLevel {
         db.config_data()
             .map(|data| data.language_level)
             .unwrap_or(LanguageLevel(LuaLanguageLevel::Lua51))
     }
 
-    pub(crate) fn special_like<'a>(&self, db: &'a dyn SalsaDb) -> &'a [(SmolStr, SpecialFn)] {
+    pub(crate) fn special_like<'a>(&self, db: &'a SalsaDatabase) -> &'a [(SmolStr, SpecialFn)] {
         db.config_data()
             .map(|data| data.special_like.as_slice())
             .unwrap_or(&[])
     }
 
-    pub(crate) fn non_std_symbols<'a>(&self, db: &'a dyn SalsaDb) -> &'a [LuaFeatures] {
+    pub(crate) fn non_std_symbols<'a>(&self, db: &'a SalsaDatabase) -> &'a [LuaFeatures] {
         db.config_data()
             .map(|data| data.non_std_symbols.as_slice())
             .unwrap_or(&[])
     }
 
-    pub(crate) fn module_patterns<'a>(&self, db: &'a dyn SalsaDb) -> &'a [SmolStr] {
+    pub(crate) fn module_patterns<'a>(&self, db: &'a SalsaDatabase) -> &'a [SmolStr] {
         db.config_data()
             .map(|data| data.module_patterns.as_slice())
             .unwrap_or(&[])
     }
 
-    pub(crate) fn module_replace<'a>(&self, db: &'a dyn SalsaDb) -> &'a [(SmolStr, SmolStr)] {
+    pub(crate) fn module_replace<'a>(&self, db: &'a SalsaDatabase) -> &'a [(SmolStr, SmolStr)] {
         db.config_data()
             .map(|data| data.module_replace.as_slice())
             .unwrap_or(&[])
     }
 
-    pub(crate) fn known_doc_tags<'a>(&self, db: &'a dyn SalsaDb) -> &'a [SmolStr] {
+    pub(crate) fn known_doc_tags<'a>(&self, db: &'a SalsaDatabase) -> &'a [SmolStr] {
         db.config_data()
             .map(|data| data.known_doc_tags.as_slice())
             .unwrap_or(&[])
     }
 
-    pub(crate) fn main_root<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<PathBuf> {
+    pub(crate) fn main_root<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<PathBuf> {
         db.config_data()
             .map(|data| &data.main_root)
             .unwrap_or(&NO_PATH)
@@ -276,7 +276,7 @@ impl ConfigInput {
 
     pub(crate) fn to_parse_config<'a>(
         &self,
-        db: &dyn SalsaDb,
+        db: &SalsaDatabase,
         node_cache: &'a mut NodeCache,
     ) -> ParserConfig<'a> {
         let mut special_like = StdHashMap::new();
@@ -327,19 +327,19 @@ impl WorkspaceInputData {
 }
 
 impl WorkspaceInput {
-    pub(crate) fn file_ids<'a>(&self, db: &'a dyn SalsaDb) -> &'a Arc<[FileId]> {
+    pub(crate) fn file_ids<'a>(&self, db: &'a SalsaDatabase) -> &'a Arc<[FileId]> {
         db.workspace_data()
             .map(|data| &data.file_ids)
             .unwrap_or(&*EMPTY_FILE_IDS)
     }
 
-    pub(crate) fn roots<'a>(&self, db: &'a dyn SalsaDb) -> &'a Arc<[WorkspaceRoot]> {
+    pub(crate) fn roots<'a>(&self, db: &'a SalsaDatabase) -> &'a Arc<[WorkspaceRoot]> {
         db.workspace_data()
             .map(|data| &data.roots)
             .unwrap_or(&*EMPTY_ROOTS)
     }
 
-    pub(crate) fn revision(&self, db: &dyn SalsaDb) -> u64 {
+    pub(crate) fn revision(&self, db: &SalsaDatabase) -> u64 {
         db.workspace_data().map(|data| data.revision).unwrap_or(0)
     }
 }
