@@ -230,7 +230,8 @@ fn direct_member_info(
         LuaType::Generic(generic) => {
             let def = type_def_of(model, &generic.get_base_type_id())?;
             if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
-                let expanded = crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
+                let expanded =
+                    crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
                 return direct_member_info(model, &expanded, key);
             }
             let bindings: TplBindings = generic

@@ -40,9 +40,7 @@ mod tests {
 
     #[test]
     fn test_used_implicit_self_no_diagnostic() {
-        let diags = super::super::check_source(
-            "local C = {}\nfunction C:bar() return self end\n",
-        );
+        let diags = super::super::check_source("local C = {}\nfunction C:bar() return self end\n");
         assert_eq!(count_by_code(&diags, DiagnosticCode::Unused), 0);
     }
 }

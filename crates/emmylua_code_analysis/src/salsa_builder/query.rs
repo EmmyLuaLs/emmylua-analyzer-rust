@@ -1632,9 +1632,9 @@ pub(crate) fn resolve_owner_set(
                         {
                             let facts = file_facts(db, file, config);
                             if facts.is_meta
-                                && facts.decl_by_id(&decl_id).is_some_and(|decl| {
-                                    matches!(decl.kind, DeclKind::Global)
-                                })
+                                && facts
+                                    .decl_by_id(&decl_id)
+                                    .is_some_and(|decl| matches!(decl.kind, DeclKind::Global))
                             {
                                 push_unique(&mut out, SemanticId::name(bare_name.clone()));
                             }

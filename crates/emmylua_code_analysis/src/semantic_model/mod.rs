@@ -857,9 +857,12 @@ impl<'db> SemanticModel<'db> {
                     vec![def.id.clone()]
                 };
                 for resolved in owners {
-                    for member_ref in self.members_of_owner_named(&resolved, name.as_str()) {
+                    if let Some(member_ref) = self
+                        .members_of_owner_named(&resolved, name.as_str())
+                        .first()
+                    {
                         return Some(self.resolved_member(
-                            Some(member_ref.id),
+                            Some(member_ref.id.clone()),
                             Some(member_ref.file_id),
                             owner,
                             name,
@@ -888,7 +891,7 @@ impl<'db> SemanticModel<'db> {
                         let self_members = method_facts
                             .members_of_owner_named(&self_decl.id, name.as_str())
                             .collect::<Vec<_>>();
-                        for self_member_ref in self_members {
+                        if let Some(self_member_ref) = self_members.into_iter().next() {
                             let file_id = match &self_member_ref.id {
                                 SemanticId::Member(key) => Some(key.file_id),
                                 _ => None,
@@ -905,22 +908,15 @@ impl<'db> SemanticModel<'db> {
                 // Alias types have no `@field` surface of their own. Resolve through the alias
                 // target so `---@type SomeAlias` values can still find class/table members.
                 if def.kind == TypeDefKind::Alias
-                    && let Some(info) = self.member_info(
-                        prefix_ty,
-                        &LuaMemberKey::Name(name.clone()),
-                    )
+                    && let Some(info) =
+                        self.member_info(prefix_ty, &LuaMemberKey::Name(name.clone()))
                     && let Some(member_id) = info.id
                 {
                     let file_id = match &member_id {
                         SemanticId::Member(key) => Some(key.file_id),
                         _ => None,
                     };
-                    return Some(self.resolved_member(
-                        Some(member_id),
-                        file_id,
-                        owner,
-                        name,
-                    ));
+                    return Some(self.resolved_member(Some(member_id), file_id, owner, name));
                 }
             }
         }
@@ -944,9 +940,12 @@ impl<'db> SemanticModel<'db> {
                 }
             }
             for table_owner in table_owners {
-                for member in self.members_of_owner_named(&table_owner, name.as_str()) {
+                if let Some(member) = self
+                    .members_of_owner_named(&table_owner, name.as_str())
+                    .first()
+                {
                     return Some(self.resolved_member(
-                        Some(member.id),
+                        Some(member.id.clone()),
                         Some(member.file_id),
                         owner,
                         name,
@@ -976,7 +975,7 @@ impl<'db> SemanticModel<'db> {
                     let self_members = method_facts
                         .members_of_owner_named(&self_decl.id, name.as_str())
                         .collect::<Vec<_>>();
-                    for self_member_ref in self_members {
+                    if let Some(self_member_ref) = self_members.into_iter().next() {
                         let file_id = match &self_member_ref.id {
                             SemanticId::Member(key) => Some(key.file_id),
                             _ => None,

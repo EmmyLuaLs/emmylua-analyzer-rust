@@ -39,20 +39,14 @@ mod tests {
     fn test_cross_file_global_defined_via_g() {
         let mut ws = VirtualWorkspace::new();
         ws.def("_G.GetTime = function() end");
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::UndefinedGlobal,
-            "local t = GetTime()"
-        ));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::UndefinedGlobal, "local t = GetTime()"));
     }
 
     #[test]
     fn test_cross_file_global_function_defined() {
         let mut ws = VirtualWorkspace::new();
         ws.def("function GetTime() end");
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::UndefinedGlobal,
-            "local t = GetTime()"
-        ));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::UndefinedGlobal, "local t = GetTime()"));
     }
 
     /// `emmyrc.diagnostics.globals_regex`: names matching the regex are not reported.

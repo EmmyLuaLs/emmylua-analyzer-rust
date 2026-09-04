@@ -1657,12 +1657,7 @@ impl FactsBuilder {
                 .find_visible_decl_before_offset(global_name.as_str(), range.start())
                 .is_none()
         {
-            self.add_decl_with_value(
-                global_name.clone(),
-                DeclKind::Global,
-                range,
-                value_syntax,
-            );
+            self.add_decl_with_value(global_name.clone(), DeclKind::Global, range, value_syntax);
         }
         let mut member = Member::new(
             self.file_id,
@@ -1829,9 +1824,7 @@ impl FactsBuilder {
         // Register the implicit `self` in methods as a closure-scope parameter so it can participate in flow narrowing.
         // Point the declaration at the method colon: this also lets the unused-self diagnostic grey out the colon
         // (instead of an invisible/zero-width range inside the parameter list).
-        if is_method
-            && let Some(self_range) = self_range
-        {
+        if is_method && let Some(self_range) = self_range {
             self.add_implicit_self_decl(SmolStr::new("self"), self_range);
         }
 

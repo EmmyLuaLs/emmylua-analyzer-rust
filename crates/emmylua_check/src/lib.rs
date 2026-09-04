@@ -54,8 +54,8 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     // Optional `--profile`: collect per-checker timings while running all files.
     let profile_state = if cmd_args.profile {
         let collector = Arc::new(CheckProfile::default());
-        let config = CheckConfig::new(analysis.get_emmyrc().as_ref())
-            .with_profile(collector.clone());
+        let config =
+            CheckConfig::new(analysis.get_emmyrc().as_ref()).with_profile(collector.clone());
         Some((collector, Arc::new(config)))
     } else {
         None
@@ -112,8 +112,11 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
 }
 
 fn print_profile_summary(profile: &CheckProfile, file_count: usize) {
-    eprintln!("
-==== Checker profile ({} files) ====", file_count);
+    eprintln!(
+        "
+==== Checker profile ({} files) ====",
+        file_count
+    );
     eprintln!("{:<44} {:>12} {:>10}", "checker", "total", "avg/file");
     for (name, duration) in profile.snapshot() {
         let short_name = name.rsplit("::").next().unwrap_or(name);

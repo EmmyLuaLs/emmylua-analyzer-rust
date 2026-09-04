@@ -119,11 +119,21 @@ fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option
     loop {
         let id = match &current {
             LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
-            _ => return if visited.is_empty() { None } else { Some(current) },
+            _ => {
+                return if visited.is_empty() {
+                    None
+                } else {
+                    Some(current)
+                };
+            }
         };
         let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
         if def.kind != TypeDefKind::Alias {
-            return if visited.is_empty() { None } else { Some(current) };
+            return if visited.is_empty() {
+                None
+            } else {
+                Some(current)
+            };
         }
         if visited.contains(&id) {
             return None;

@@ -74,10 +74,9 @@ fn build_document_symbol(
                     continue;
                 };
                 let raw_name = func_name.get_access_path().unwrap_or_default();
-                let name = non_empty_symbol_name(
-                    raw_name,
-                    || func_name.syntax().text().to_string().trim().to_string(),
-                );
+                let name = non_empty_symbol_name(raw_name, || {
+                    func_name.syntax().text().to_string().trim().to_string()
+                });
                 Some(DocumentSymbol {
                     name,
                     detail: None,

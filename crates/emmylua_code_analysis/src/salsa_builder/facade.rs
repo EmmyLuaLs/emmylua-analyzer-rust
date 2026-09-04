@@ -189,8 +189,7 @@ impl<'db> SalsaQueries<'db> {
         };
         let key = SmolStr::new(name);
         for ws_id in query::all_workspace_ids(self.db, workspace) {
-            if query::deprecated_member_names_for(self.db, workspace, config, ws_id)
-                .contains(&key)
+            if query::deprecated_member_names_for(self.db, workspace, config, ws_id).contains(&key)
             {
                 return true;
             }

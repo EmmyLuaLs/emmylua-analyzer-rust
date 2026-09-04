@@ -36,7 +36,7 @@ impl CheckProfile {
             Err(_) => StdHashMap::new(),
         };
         let mut out: Vec<_> = times.drain().collect();
-        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out.sort_by_key(|b| std::cmp::Reverse(b.1));
         out
     }
 }
