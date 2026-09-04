@@ -114,7 +114,7 @@ pub enum TypeCandidate {
 }
 
 /// Sorted, deduplicated candidate set — the carrier for fixed-point convergence.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, salsa::SalsaValue)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeShell {
     pub candidates: Vec<TypeCandidate>,
 }

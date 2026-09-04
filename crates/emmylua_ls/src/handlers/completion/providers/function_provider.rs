@@ -611,7 +611,7 @@ fn dispatch_type_visited(
 }
 
 fn enum_is_key_def(builder: &CompletionBuilder, def: &emmylua_code_analysis::TypeDef) -> bool {
-    let Some(document) = builder.semantic_model.db().document(def.file_id) else {
+    let Some(document) = builder.semantic_model.document(def.file_id) else {
         return false;
     };
     let range = rowan::TextRange::up_to(def.name_range.start());
@@ -711,10 +711,9 @@ fn add_str_tpl_ref_completion(
     let prefix = str_tpl.get_prefix();
     let suffix = str_tpl.get_suffix();
     let constraint = str_tpl.get_constraint();
-    let db = builder.semantic_model.db();
     let mut names = Vec::new();
-    for file_id in db.file_ids() {
-        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+    for file_id in builder.semantic_model.file_ids() {
+        let Some(model) = builder.semantic_model.model_for(file_id) else {
             continue;
         };
         let Some(facts) = model.file_facts() else {

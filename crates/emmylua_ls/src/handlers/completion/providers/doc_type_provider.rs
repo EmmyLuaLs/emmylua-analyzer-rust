@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{SalsaSemanticModel, TypeDefKind};
+use emmylua_code_analysis::TypeDefKind;
 use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionItemKind};
 
@@ -64,11 +64,10 @@ pub fn complete_types_by_prefix(
 ) {
     let partial = builder.partial_name();
     let mut seen = HashSet::new();
-    let db = builder.semantic_model.db();
-    let mut file_ids = db.main_workspace_file_ids();
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+        let Some(model) = builder.semantic_model.model_for(file_id) else {
             continue;
         };
         let Some(exports) = model.file_exports_current() else {

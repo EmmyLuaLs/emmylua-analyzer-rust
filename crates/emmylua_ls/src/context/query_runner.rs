@@ -17,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 pub enum CancelSource {
     /// Client `$/cancelRequest`, or a newer same-key request replacing the old one.
     Client,
-    /// Query cancelled by salsa's `cancel_others()`.
+    /// Legacy Salsa cancellation (kept for API compatibility; no Salsa remains).
+    #[allow(dead_code)]
     Salsa,
 }
 

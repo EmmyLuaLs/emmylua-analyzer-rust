@@ -187,7 +187,6 @@ fn should_skip_diagnostics(semantic_model: &SemanticModel<'_>) -> bool {
         return true;
     }
     semantic_model
-        .db()
         .workspace_id_of(semantic_model.file_id())
         .is_none_or(|ws_id| !ws_id.is_main())
 }

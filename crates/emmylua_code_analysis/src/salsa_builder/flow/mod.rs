@@ -41,21 +41,23 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
     label
 }
 
-/// Per-file control flow graph (salsa query, automatically invalidated on file changes).
-#[salsa::tracked(returns(ref), lru = 512)]
+/// Per-file control flow graph. Plain lazy cache backed by `SalsaDatabase::flow_trees`.
 pub(crate) fn flow_tree_of(
     db: &dyn SalsaDb,
     file: SourceFileInput,
     config: ConfigInput,
-) -> Arc<FlowTree> {
-    let facts = file_facts(db, file, config);
+) -> &Arc<FlowTree> {
     let file_id = file.file_id(db);
-    let tree = super::query::parse(db, file, config);
-    let chunk: LuaChunk = tree.get_chunk_node();
-    let mut binder = FlowBinder::new(file_id, facts);
-    let start = binder.start;
-    if let Some(block) = chunk.get_block() {
-        engine::run_bind_block(&mut binder, block, start);
-    }
-    Arc::new(binder.finish())
+    let _ = file.text(db);
+    db.flow_tree_cell(file_id).get_or_init(|| {
+        let facts = file_facts(db, file, config);
+        let tree = super::query::parse(db, file, config);
+        let chunk: LuaChunk = tree.get_chunk_node();
+        let mut binder = FlowBinder::new(file_id, facts);
+        let start = binder.start;
+        if let Some(block) = chunk.get_block() {
+            engine::run_bind_block(&mut binder, block, start);
+        }
+        Arc::new(binder.finish())
+    })
 }

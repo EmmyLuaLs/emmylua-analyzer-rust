@@ -353,7 +353,7 @@ impl DocModel {
 
             let locations = defs
                 .iter()
-                .filter_map(|def| make_loc(salsa, &file_paths, def.file_id, def.name_range))
+                .filter_map(|def| make_loc(&model, &file_paths, def.file_id, def.name_range))
                 .collect();
 
             let property = properties
@@ -405,7 +405,7 @@ impl DocModel {
                     .get(&DocOwner::Decl(decl.id.clone()))
                     .cloned()
                     .unwrap_or_default(),
-                loc: make_loc(salsa, &file_paths, *file_id, decl.name_range),
+                loc: make_loc(&model, &file_paths, *file_id, decl.name_range),
                 signature: decl
                     .value_expr_syntax
                     .and_then(|syntax| signatures.get(&syntax).cloned()),
@@ -637,18 +637,17 @@ fn type_visibility(visibility: TypeVisibility) -> Option<VisibilityKind> {
 }
 
 fn make_loc(
-    salsa: &emmylua_code_analysis::SalsaDatabase,
+    model: &SalsaSemanticModel<'_>,
     file_paths: &HashMap<FileId, PathBuf>,
     file_id: FileId,
     range: TextRange,
 ) -> Option<DocLoc> {
     let file = file_paths.get(&file_id)?.clone();
-    let line = match (salsa.line_index(file_id), salsa.get_file_text(file_id)) {
-        (Some(index), Some(text)) => index
-            .get_line_col(range.start(), text)
-            .map(|(line, _)| line + 1),
-        _ => None,
-    };
+    let line = model.document(file_id).and_then(|document| {
+        document
+            .get_line_col(range.start())
+            .map(|(line, _)| line + 1)
+    });
     Some(DocLoc {
         file,
         line: line.unwrap_or_default(),
@@ -681,7 +680,7 @@ fn project_member(
             deprecated: member.deprecated,
         },
         is_method: member.is_method,
-        loc: make_loc(model.db(), file_paths, file_id, key_range),
+        loc: make_loc(model, file_paths, file_id, key_range),
         signature: signature.cloned(),
     }
 }

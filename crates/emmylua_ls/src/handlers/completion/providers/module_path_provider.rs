@@ -66,9 +66,8 @@ pub fn add_modules(
     prefix_content: &str,
     text_edit_range: Option<lsp_types::Range>,
 ) -> Option<()> {
-    let db = builder.semantic_model.db();
     let current_file = builder.semantic_model.file_id();
-    let mut file_ids = db.main_workspace_file_ids();
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
 
     // `a.b.cd` → parent path `a.b` + current segment prefix `cd`.
@@ -89,7 +88,7 @@ pub fn add_modules(
         // let Some(model) = SalsaSemanticModel::new(db, file_id) else {
         //     continue;
         // };
-        let Some(module_name) = db.module_name_of(file_id) else {
+        let Some(module_name) = builder.semantic_model.module_name_of(file_id) else {
             continue;
         };
         if module_name == module_path {
@@ -131,7 +130,12 @@ pub fn add_modules(
             lsp_types::CompletionItemKind::FOLDER
         };
         let detail = is_file
-            .then(|| db.file_uri(file_id).map(|uri| uri.to_string()))
+            .then(|| {
+                builder
+                    .semantic_model
+                    .file_uri_of(file_id)
+                    .map(|uri| uri.to_string())
+            })
             .flatten();
         completions.push(CompletionItem {
             label: segment.to_string(),

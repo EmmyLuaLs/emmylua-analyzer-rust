@@ -27,6 +27,7 @@ use emmylua_parser::{
 use rowan::TextSize;
 use smol_str::SmolStr;
 
+use crate::DocumentView;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
@@ -42,6 +43,7 @@ use crate::{
     AsyncState, FileExports, FileFacts, FileId, GenericParam, GenericTpl, GenericTplId,
     LuaAliasCallKind, LuaAliasCallType, LuaFunctionType, LuaIntersectionType, LuaObjectType,
     LuaTupleStatus, LuaTupleType, LuaTypeDeclId, LuaUnionType, SalsaGenericParam, VariadicType,
+    WorkspaceId,
 };
 
 /// Semantic model: a per-file access handle, only through the salsa analysis layer.
@@ -159,17 +161,12 @@ impl<'db> SemanticModel<'db> {
             .contains(&closure_syntax)
     }
 
-    /// Underlying salsa database (escape hatch for cross-file model construction / queries).
-    pub fn db(&self) -> &'db SalsaDatabase {
-        self.db
-    }
-
     /// Currently configured runtime version (used for `---@version` visibility checks).
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.db.lua_version()
     }
 
-    /// A model for any file on the same database (replaces scattered `SemanticModel::new(model.db(), ...)` calls).
+    /// A model for any file on the same analysis database.
     pub fn model_for(&self, file_id: FileId) -> Option<Self> {
         SemanticModel::new(self.db, file_id)
     }
@@ -180,6 +177,50 @@ impl<'db> SemanticModel<'db> {
 
     pub fn file_path(&self) -> Option<std::path::PathBuf> {
         self.db.file_path(self.file_id)
+    }
+
+    pub fn document(&self, file_id: FileId) -> Option<Arc<DocumentView>> {
+        self.db.document(file_id)
+    }
+
+    pub fn document_current(&self) -> Option<Arc<DocumentView>> {
+        self.document(self.file_id)
+    }
+
+    pub fn strict_array_index(&self) -> bool {
+        self.db.strict_array_index()
+    }
+
+    pub fn file_ids(&self) -> Vec<FileId> {
+        self.db.file_ids()
+    }
+
+    pub fn main_workspace_file_ids(&self) -> Vec<FileId> {
+        self.db.main_workspace_file_ids()
+    }
+
+    pub fn file_path_of(&self, file_id: FileId) -> Option<std::path::PathBuf> {
+        self.db.file_path(file_id)
+    }
+
+    pub fn file_uri_of(&self, file_id: FileId) -> Option<lsp_types::Uri> {
+        self.db.file_uri(file_id)
+    }
+
+    pub fn module_name_of(&self, file_id: FileId) -> Option<String> {
+        self.db.module_name_of(file_id)
+    }
+
+    pub fn workspace_id_of(&self, file_id: FileId) -> Option<WorkspaceId> {
+        self.db.workspace_id_of(file_id)
+    }
+
+    pub fn is_std_file(&self, file_id: FileId) -> bool {
+        self.db.is_std_file(file_id)
+    }
+
+    pub fn is_main_file(&self, file_id: FileId) -> bool {
+        self.db.is_main_file(file_id)
     }
 
     fn q(&self) -> SalsaQueries<'db> {
@@ -260,7 +301,16 @@ impl<'db> SemanticModel<'db> {
     // -- Names / references --
 
     pub fn resolve_name(&self, offset: TextSize) -> Option<SemanticId> {
-        self.q().resolve_name(self.file_id, offset)
+        let key = (self.file_id, offset);
+        if let Some(cached) = self.cache.borrow().resolve_name.get(&key) {
+            return cached.clone();
+        }
+        let result = self.q().resolve_name(self.file_id, offset);
+        self.cache
+            .borrow_mut()
+            .resolve_name
+            .insert(key, result.clone());
+        result
     }
 
     /// Resolve a name use to a **local** declaration only.
@@ -3244,7 +3294,15 @@ impl<'db> SemanticModel<'db> {
 
     /// Members whose owner is a `SemanticId` (cross-file).
     pub fn members_of_owner(&self, owner: &SemanticId) -> crate::salsa_builder::MemberList {
-        self.q().members_of_owner(owner.clone())
+        if let Some(cached) = self.cache.borrow().members_of_owner.get(owner) {
+            return cached.clone();
+        }
+        let result = self.q().members_of_owner(owner.clone());
+        self.cache
+            .borrow_mut()
+            .members_of_owner
+            .insert(owner.clone(), result.clone());
+        result
     }
 
     /// Members of an owner with a specific name.
@@ -3253,8 +3311,18 @@ impl<'db> SemanticModel<'db> {
         owner: &SemanticId,
         name: &str,
     ) -> crate::salsa_builder::MemberList {
-        self.q()
-            .members_of_owner_named(owner.clone(), SmolStr::new(name))
+        let key = (owner.clone(), SmolStr::new(name));
+        if let Some(cached) = self.cache.borrow().members_of_owner_named.get(&key) {
+            return cached.clone();
+        }
+        let result = self
+            .q()
+            .members_of_owner_named(owner.clone(), SmolStr::new(name));
+        self.cache
+            .borrow_mut()
+            .members_of_owner_named
+            .insert(key, result.clone());
+        result
     }
 
     /// Constructor attributes for a type definition (`---@[constructor("init")]` from the `meta("Class")` factory).
@@ -3382,6 +3450,18 @@ impl<'db> SemanticModel<'db> {
 
     pub fn resolve_owner(&self, owner: &SemanticId) -> Option<SemanticId> {
         self.q().resolve_owner(owner.clone())
+    }
+
+    pub(crate) fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
+        if let Some(cached) = self.cache.borrow().resolve_owner_set.get(&owner) {
+            return cached.clone();
+        }
+        let result = self.q().resolve_owner_set(owner.clone());
+        self.cache
+            .borrow_mut()
+            .resolve_owner_set
+            .insert(owner, result.clone());
+        result
     }
 
     pub fn module_export(&self) -> Option<&'db ModuleExport> {

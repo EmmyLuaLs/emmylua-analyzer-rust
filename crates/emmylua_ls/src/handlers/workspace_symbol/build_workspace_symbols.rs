@@ -24,7 +24,7 @@ pub fn build_workspace_symbols(
         if cancel_token.is_cancelled() {
             return;
         }
-        let Some(document) = model.db().document(file_id) else {
+        let Some(document) = model.document(file_id) else {
             return;
         };
         let Some(uri) = document.get_uri() else {

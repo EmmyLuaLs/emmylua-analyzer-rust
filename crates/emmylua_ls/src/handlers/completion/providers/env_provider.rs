@@ -103,10 +103,10 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
 }
 
 fn has_std_library(model: &SalsaSemanticModel<'_>) -> bool {
-    let db = model.db();
-    db.file_ids()
+    model
+        .file_ids()
         .iter()
-        .filter_map(|file_id| db.file_path(*file_id))
+        .filter_map(|file_id| model.file_path_of(*file_id))
         .any(|path| {
             let text = path.to_string_lossy();
             text.contains("resources") || text.contains("std")
@@ -175,13 +175,12 @@ pub fn add_global_env(
     duplicated_name: &mut HashSet<String>,
 ) -> Option<()> {
     let trigger_text = builder.get_trigger_text();
-    let db = builder.semantic_model.db();
     // Global env includes the standard library (`table`/`any` etc. from std `---@class` / global declarations).
-    let mut file_ids = db.file_ids();
+    let mut file_ids = builder.semantic_model.file_ids();
     file_ids.sort();
     let mut globals = Vec::new();
     for file_id in file_ids {
-        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+        let Some(model) = builder.semantic_model.model_for(file_id) else {
             continue;
         };
         let Some(exports) = model.file_exports_current() else {

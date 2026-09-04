@@ -176,7 +176,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
                 LuaType::DocFunction(_) | LuaType::Signature(_) | LuaType::Function
             ) {
                 base
-            } else if semantic_model.db().strict_array_index() || base.is_nullable() {
+            } else if semantic_model.strict_array_index() || base.is_nullable() {
                 LuaType::Union(std::sync::Arc::new(LuaUnionType::from_vec(vec![
                     base,
                     LuaType::Nil,
@@ -192,7 +192,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
                 if let LuaType::Array(array) = component {
                     let base = array.get_base().clone();
                     found = true;
-                    if semantic_model.db().strict_array_index() || base.is_nullable() {
+                    if semantic_model.strict_array_index() || base.is_nullable() {
                         types.push(base);
                         types.push(LuaType::Nil);
                     } else {

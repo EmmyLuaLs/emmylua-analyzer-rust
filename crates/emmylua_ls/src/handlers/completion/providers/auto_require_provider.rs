@@ -44,9 +44,8 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let db = builder.semantic_model.db();
     let current_file = builder.semantic_model.file_id();
-    let mut file_ids = db.main_workspace_file_ids();
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
 
     let document = builder.get_document();
@@ -58,15 +57,16 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         if file_id == current_file {
             continue;
         }
-        let Some(module_name) = db.module_name_of(file_id) else {
+        let Some(module_name) = builder.semantic_model.module_name_of(file_id) else {
             continue;
         };
         let Some(exports) = builder.semantic_model.file_exports(file_id) else {
             continue;
         };
 
-        let module_label = db
-            .file_path(file_id)
+        let module_label = builder
+            .semantic_model
+            .file_path_of(file_id)
             .as_deref()
             .and_then(|path| path.file_stem())
             .map(|stem| stem.to_string_lossy().to_string())
@@ -235,10 +235,9 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
             }
         }
     }
-    let db = builder.semantic_model.db();
     let mut seen_modules = std::collections::HashSet::new();
-    for file_id in db.main_workspace_file_ids() {
-        let Some(module_name) = db.module_name_of(file_id) else {
+    for file_id in builder.semantic_model.main_workspace_file_ids() {
+        let Some(module_name) = builder.semantic_model.module_name_of(file_id) else {
             continue;
         };
         let Some(exports) = builder.semantic_model.file_exports(file_id) else {
@@ -259,8 +258,9 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         {
             continue;
         }
-        let stem = db
-            .file_path(file_id)
+        let stem = builder
+            .semantic_model
+            .file_path_of(file_id)
             .as_deref()
             .and_then(|path| path.file_stem())
             .map(|stem| stem.to_string_lossy().to_string())

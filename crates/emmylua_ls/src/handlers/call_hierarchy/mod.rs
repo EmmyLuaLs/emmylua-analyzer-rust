@@ -77,7 +77,6 @@ pub async fn on_incoming_calls_handler(
     let Ok(data) = serde_json::from_value::<CallHierarchyItemData>(data.clone()) else {
         return RequestOutcome::Missing;
     };
-    let file_id = emmylua_code_analysis::FileId::new(data.file_id);
     let Some(semantic_decl) = data.semantic_decl.to_semantic_id() else {
         return RequestOutcome::Missing;
     };
@@ -85,10 +84,7 @@ pub async fn on_incoming_calls_handler(
         context.analysis(),
         CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         cancel_token,
-        move |analysis| {
-            let model = analysis.semantic_model(file_id)?;
-            build_incoming_hierarchy(&model, &semantic_decl)
-        },
+        move |analysis| build_incoming_hierarchy(&analysis.salsa, &semantic_decl),
     )
     .await
 }

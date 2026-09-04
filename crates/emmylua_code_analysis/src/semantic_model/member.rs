@@ -141,7 +141,7 @@ fn find_type_def_member(
         }
     }
 
-    for owner in model.q().resolve_owner_set(def.id.clone()) {
+    for owner in model.resolve_owner_set(def.id.clone()) {
         if owner == def.id {
             continue;
         }
@@ -498,7 +498,7 @@ pub(crate) fn table_metatable_index_info(
 /// Cross-file supported: iterates files in the workspace and aggregates owners from type definitions/local declarations.
 pub fn find_self_return_cast_member(model: &SemanticModel, name: &str) -> Option<SemanticId> {
     let mut seen = std::collections::HashSet::new();
-    for file_id in model.db().file_ids() {
+    for file_id in model.file_ids() {
         let Some(facts) = model.file_facts_of(file_id) else {
             continue;
         };
@@ -903,7 +903,7 @@ fn collect_type_def_members(
     }
 
     // 3. Runtime value members: members of the type's runtime value decl (same-file same-name `local M = {}`) (`M.x = 1`).
-    for owner in model.q().resolve_owner_set(def.id.clone()) {
+    for owner in model.resolve_owner_set(def.id.clone()) {
         if owner == def.id {
             continue;
         }
@@ -983,11 +983,7 @@ fn is_class_table_member(
 
 /// Determines whether a file belongs to the STD workspace.
 fn is_std_file(model: &SemanticModel<'_>, file_id: FileId) -> bool {
-    let Some(workspace) = model.db().workspace_input() else {
-        return false;
-    };
-    crate::salsa_builder::query::file_workspace_id(model.db(), workspace, file_id)
-        == Some(WorkspaceId::STD)
+    model.is_std_file(file_id)
 }
 
 /// Member reference → member info (type projection + generic substitution).

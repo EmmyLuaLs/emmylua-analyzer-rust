@@ -204,7 +204,7 @@ pub async fn on_emmy_gutter_detail_handler(
                 let Some(facts) = model.file_facts() else {
                     return;
                 };
-                let Some(document) = model.db().document(file_id) else {
+                let Some(document) = model.document(file_id) else {
                     return;
                 };
                 let Some(uri) = document.get_uri() else {

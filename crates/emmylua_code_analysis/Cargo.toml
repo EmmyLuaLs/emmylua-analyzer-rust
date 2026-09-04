@@ -51,7 +51,6 @@ include_dir.workspace = true
 itertools.workspace = true
 luars.workspace = true
 hashbrown.workspace = true
-salsa.workspace = true
 
 [features]
 default = []

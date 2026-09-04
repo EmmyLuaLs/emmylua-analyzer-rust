@@ -9,22 +9,23 @@ pub(crate) mod query;
 #[cfg(test)]
 mod tests;
 pub(crate) mod types;
-pub(crate) mod vfs_snapshot;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
-use emmylua_parser::LineIndex;
+use emmylua_parser::{LineIndex, LuaSyntaxTree};
 use lsp_types::Uri;
 
+use crate::analysis_state::VfsState;
 use crate::vfs::file_path_to_uri;
 use crate::{Emmyrc, FileId, WorkspaceFolder, WorkspaceImport};
 pub use def::*;
-use inputs::{ConfigInput, SourceFileInput, WorkspaceInput, WorkspaceRoot};
-use salsa::{Database, Setter};
-use vfs_snapshot::{FileEntry, VfsSnapshot};
+use inputs::{
+    ConfigInput, ConfigInputData, SourceFileInput, SourceFileInputData, WorkspaceInput,
+    WorkspaceInputData, WorkspaceRoot,
+};
 
 pub(crate) use facade::SalsaQueries;
 pub use facade::{MemberList, TypeDefList};
@@ -127,26 +128,83 @@ impl fmt::Debug for DocumentView {
     }
 }
 
-#[salsa::db]
-pub(crate) trait SalsaDb: Database {
+pub(crate) trait SalsaDb {
     /// Cross-file lookup: FileId → file input. When called inside tracked query bodies, salsa records dependency on the file input.
     fn file_input(&self, file_id: FileId) -> Option<SourceFileInput>;
+    /// Raw per-file input data (plain map).
+    fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData>;
+    /// Raw config data.
+    fn config_data(&self) -> Option<&ConfigInputData>;
+    /// Raw workspace data.
+    fn workspace_data(&self) -> Option<&WorkspaceInputData>;
     /// Current workspace input (stable id, in-place content updates → revision bumps on any file change).
     fn workspace_input(&self) -> Option<WorkspaceInput>;
+    /// Returns the lazy per-file facts cell. The map is kept in sync with `file_input`;
+    /// the fallback cell is only a defensive measure and should never be used.
+    fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>>;
+    /// Returns the lazy per-file flow-tree cell.
+    fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>>;
+    /// Returns the lazy per-file syntax-tree cell.
+    fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>>;
+    /// Returns the lazy per-file line-index cell.
+    fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>>;
+    /// Returns the lazy per-file document cell.
+    fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>>;
+    /// Returns the lazy per-file exports cell.
+    fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<Arc<exports::FileExports>>;
+    /// Returns the lazy export-shard cell.
+    fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>>;
+    /// Returns the lazy per-file references cell.
+    fn file_references_cell(&self, file_id: FileId) -> &OnceLock<Arc<query::FileReferences>>;
+    /// Returns the lazy deprecated-shard cell.
+    fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::DeprecatedShard>>;
+    /// Returns the lazy module-shard cell.
+    fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>>;
+    /// Returns the lazy reference-shard cell.
+    fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>>;
+    /// Returns the plain workspace index cache. The indexes are not Salsa queries;
+    /// tracked consumers read `WorkspaceInput.revision` for invalidation.
+    fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache>;
 }
 
-#[salsa::db]
 #[derive(Clone)]
 pub struct SalsaDatabase {
-    storage: salsa::Storage<Self>,
+    // ── Plain config/data ──
+    config: Option<ConfigInputData>,
+    /// File-set data (only stores a lightweight FileId list).
+    workspace: Option<WorkspaceInputData>,
 
-    // ── Salsa inputs ──
-    config: Option<ConfigInput>,
-    /// File-set input (only stores a lightweight FileId list).
-    workspace: Option<WorkspaceInput>,
+    /// Plain VFS state independent of Salsa inputs.
+    vfs: Arc<VfsState>,
 
-    /// Stable VFS mount point: immutable snapshot, Arc-shared on clone.
-    vfs: Arc<VfsSnapshot>,
+    /// Plain per-file input data, kept separate from VFS.
+    file_inputs: Arc<HashMap<FileId, SourceFileInputData>>,
+
+    /// Plain per-file facts cache. Unlike Salsa's tracked `file_facts`, this is a
+    /// normal lazy cache; file writes invalidate only the affected entry (or all
+    /// entries when config/workspace roots change).
+    file_facts: Arc<HashMap<FileId, OnceLock<Arc<facts::FileFacts>>>>,
+
+    /// Plain per-file control-flow graph cache (same invalidation as `file_facts`).
+    flow_trees: Arc<HashMap<FileId, OnceLock<Arc<flow::FlowTree>>>>,
+
+    /// Plain per-file syntax/line-index/document caches.
+    syntax_trees: Arc<HashMap<FileId, OnceLock<Arc<LuaSyntaxTree>>>>,
+    line_indexes: Arc<HashMap<FileId, OnceLock<Arc<LineIndex>>>>,
+    documents: Arc<HashMap<FileId, OnceLock<Arc<DocumentView>>>>,
+
+    /// Plain per-file exports / shard caches.
+    file_exports: Arc<HashMap<FileId, OnceLock<Arc<exports::FileExports>>>>,
+    export_shards: Arc<HashMap<u8, OnceLock<Arc<exports::ExportShard>>>>,
+
+    /// Plain per-file references and remaining shard caches.
+    file_references: Arc<HashMap<FileId, OnceLock<Arc<query::FileReferences>>>>,
+    deprecated_shards: Arc<HashMap<u8, OnceLock<Arc<query::DeprecatedShard>>>>,
+    module_shards: Arc<HashMap<u8, OnceLock<Arc<query::ModuleShard>>>>,
+    reference_shards: Arc<HashMap<u8, OnceLock<Arc<query::ReferenceShard>>>>,
+
+    /// Plain merged workspace indexes (type/member/decl/module/reference).
+    workspace_index: Arc<Mutex<query::WorkspaceIndexCache>>,
 
     /// Next FileId to allocate.
     next_file_id: u32,
@@ -158,17 +216,23 @@ pub struct SalsaDatabase {
 impl Default for SalsaDatabase {
     fn default() -> Self {
         let executed_queries = Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let counter = executed_queries.clone();
-        let storage = salsa::Storage::new(Some(Box::new(move |event| {
-            if matches!(event.kind, salsa::EventKind::WillExecute { .. }) {
-                counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
-        })));
         let mut db = Self {
-            storage,
             config: None,
             workspace: None,
-            vfs: Arc::new(VfsSnapshot::empty()),
+            vfs: Arc::new(VfsState::new()),
+            file_inputs: Arc::new(HashMap::new()),
+            file_facts: Arc::new(HashMap::new()),
+            flow_trees: Arc::new(HashMap::new()),
+            syntax_trees: Arc::new(HashMap::new()),
+            line_indexes: Arc::new(HashMap::new()),
+            documents: Arc::new(HashMap::new()),
+            file_exports: Arc::new(HashMap::new()),
+            export_shards: Arc::new(HashMap::new()),
+            file_references: Arc::new(HashMap::new()),
+            deprecated_shards: Arc::new(HashMap::new()),
+            module_shards: Arc::new(HashMap::new()),
+            reference_shards: Arc::new(HashMap::new()),
+            workspace_index: Arc::new(Mutex::new(query::WorkspaceIndexCache::new())),
             next_file_id: 0,
             executed_queries,
         };
@@ -177,24 +241,118 @@ impl Default for SalsaDatabase {
     }
 }
 
-#[salsa::db]
-impl Database for SalsaDatabase {}
-
-#[salsa::db]
 impl SalsaDb for SalsaDatabase {
     fn file_input(&self, file_id: FileId) -> Option<SourceFileInput> {
-        self.vfs.file_entry(file_id).map(|entry| entry.salsa_input)
+        self.file_inputs
+            .contains_key(&file_id)
+            .then(|| SourceFileInput::new(file_id))
+    }
+
+    fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData> {
+        self.file_inputs.get(&file_id)
+    }
+
+    fn config_data(&self) -> Option<&ConfigInputData> {
+        self.config.as_ref()
+    }
+
+    fn workspace_data(&self) -> Option<&WorkspaceInputData> {
+        self.workspace.as_ref()
     }
 
     fn workspace_input(&self) -> Option<WorkspaceInput> {
-        self.workspace
+        self.workspace.is_some().then_some(WorkspaceInput)
+    }
+
+    fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>> {
+        self.file_facts.get(&file_id).unwrap_or_else(|| {
+            // Every public file-mutation path inserts/removes a cell in `file_facts`
+            // alongside `file_inputs`. This static fallback is only to keep the trait
+            // object signature total if an internal invariant is ever violated.
+            static MISSING: OnceLock<Arc<facts::FileFacts>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>> {
+        self.flow_trees.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<flow::FlowTree>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>> {
+        self.syntax_trees.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<LuaSyntaxTree>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>> {
+        self.line_indexes.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<LineIndex>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>> {
+        self.documents.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<DocumentView>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<Arc<exports::FileExports>> {
+        self.file_exports.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<exports::FileExports>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>> {
+        self.export_shards.get(&shard).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<exports::ExportShard>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn file_references_cell(&self, file_id: FileId) -> &OnceLock<Arc<query::FileReferences>> {
+        self.file_references.get(&file_id).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<query::FileReferences>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::DeprecatedShard>> {
+        self.deprecated_shards.get(&shard).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<query::DeprecatedShard>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>> {
+        self.module_shards.get(&shard).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<query::ModuleShard>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>> {
+        self.reference_shards.get(&shard).unwrap_or_else(|| {
+            static MISSING: OnceLock<Arc<query::ReferenceShard>> = OnceLock::new();
+            &MISSING
+        })
+    }
+
+    fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache> {
+        &self.workspace_index
     }
 }
 
 impl fmt::Debug for SalsaDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SalsaDatabase")
-            .field("file_count", &self.vfs.files().len())
+            .field("file_count", &self.vfs.len())
             .field("has_config", &self.config.is_some())
             .finish()
     }
@@ -211,66 +369,200 @@ impl SalsaDatabase {
     /// calling this explicitly before any `&mut self` write path ensures no readers during writes.
     #[inline]
     fn cancel_snapshots(&mut self) {
-        self.trigger_cancellation();
+        // No Salsa snapshots remain; kept as no-op for call-site compatibility.
     }
 
     /// Ensure the workspace input exists (create an empty salsa input on first write).
     fn ensure_workspace(&mut self) {
         if self.workspace.is_none() {
-            self.workspace = Some(WorkspaceInput::new(
-                self,
+            self.workspace = Some(WorkspaceInputData::new(
                 Arc::from(Vec::<FileId>::new()),
                 Arc::from(Vec::<WorkspaceRoot>::new()),
+                0,
             ));
         }
+    }
+
+    /// Bump the global workspace revision. Every file/config/root mutation that can
+    /// change any merged workspace index must call this so Salsa consumers of the
+    /// plain `WorkspaceIndexCache` are invalidated.
+    fn bump_workspace_revision(&mut self) {
+        let Some(workspace) = self.workspace.as_ref() else {
+            return;
+        };
+        let revision = workspace.revision.saturating_add(1);
+        self.workspace = Some(WorkspaceInputData::new(
+            workspace.file_ids.clone(),
+            workspace.roots.clone(),
+            revision,
+        ));
+    }
+
+    fn set_workspace_file_ids(&mut self, file_ids: Arc<[FileId]>) {
+        let Some(workspace) = self.workspace.as_ref() else {
+            return;
+        };
+        self.workspace = Some(WorkspaceInputData::new(
+            file_ids,
+            workspace.roots.clone(),
+            workspace.revision,
+        ));
+    }
+
+    fn set_workspace_roots(&mut self, roots: Arc<[WorkspaceRoot]>) {
+        let Some(workspace) = self.workspace.as_ref() else {
+            return;
+        };
+        self.workspace = Some(WorkspaceInputData::new(
+            workspace.file_ids.clone(),
+            roots,
+            workspace.revision,
+        ));
+    }
+
+    /// Drop all lazily built per-file facts and recreate empty cells for current files.
+    ///
+    /// Called after configuration or workspace-root changes, where every file's facts
+    /// may need to be rebuilt because parser features or workspace identity changed.
+    fn reset_export_shards(&mut self) {
+        self.export_shards = Arc::new(
+            (0..exports::EXPORT_SHARDS)
+                .map(|shard| (shard, OnceLock::new()))
+                .collect(),
+        );
+    }
+
+    fn reset_other_shard_caches(&mut self) {
+        let shards = 0..exports::EXPORT_SHARDS;
+        self.deprecated_shards = Arc::new(
+            shards
+                .clone()
+                .map(|shard| (shard, OnceLock::new()))
+                .collect(),
+        );
+        self.module_shards = Arc::new(
+            shards
+                .clone()
+                .map(|shard| (shard, OnceLock::new()))
+                .collect(),
+        );
+        self.reference_shards = Arc::new(shards.map(|shard| (shard, OnceLock::new())).collect());
+    }
+
+    fn reset_file_facts_cache(&mut self) {
+        let file_ids = self.vfs.file_ids();
+        self.file_facts = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.flow_trees = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.syntax_trees = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.line_indexes = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.documents = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.file_exports = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.file_references = Arc::new(
+            file_ids
+                .iter()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.reset_export_shards();
+        self.reset_other_shard_caches();
+    }
+
+    /// Mark one file's facts/flow-tree/syntax caches stale. The actual build stays lazy.
+    fn invalidate_file_facts(&mut self, file_id: FileId) {
+        Arc::make_mut(&mut self.file_facts).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.flow_trees).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.syntax_trees).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.line_indexes).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.documents).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.file_exports).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.file_references).insert(file_id, OnceLock::new());
+        // Shards aggregate multiple files; reset them on any file change for simplicity.
+        self.reset_export_shards();
+        self.reset_other_shard_caches();
     }
 
     /// Insert or update one file entry in the VFS snapshot.
     ///
     /// When `is_new == true`, also add the FileId to `WorkspaceInput.file_ids`;
     /// pure text/path updates only replace the VFS entry and do not touch the file set.
-    fn commit_file_entry(&mut self, file_id: FileId, input: SourceFileInput, is_new: bool) {
-        let Some(workspace) = self.workspace else {
-            return;
-        };
-        let entry = FileEntry {
-            path: input.path(self).clone(),
-            uri: input.uri(self).clone(),
-            salsa_input: input,
-        };
-
-        let vfs = Arc::make_mut(&mut self.vfs);
-        vfs.insert_entry(file_id, entry);
+    fn commit_file_entry(&mut self, file_id: FileId, input: SourceFileInputData, is_new: bool) {
+        let text = input.text.to_string();
+        let path = input.path.clone();
+        let uri = input.uri.clone();
+        Arc::make_mut(&mut self.vfs).insert_at(file_id, uri, path, text);
+        Arc::make_mut(&mut self.file_inputs).insert(file_id, input);
+        Arc::make_mut(&mut self.file_facts).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.flow_trees).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.syntax_trees).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.line_indexes).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.documents).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.file_exports).insert(file_id, OnceLock::new());
+        Arc::make_mut(&mut self.file_references).insert(file_id, OnceLock::new());
+        self.reset_export_shards();
+        self.reset_other_shard_caches();
+        self.bump_workspace_revision();
 
         if is_new {
-            let mut file_ids = vfs.file_ids().to_vec();
-            if !file_ids.contains(&file_id) {
-                file_ids.push(file_id);
-                file_ids.sort_unstable();
-                let file_ids: Arc<[FileId]> = Arc::from(file_ids);
-                vfs.set_file_ids(file_ids.clone());
-                workspace.set_file_ids(self).to(file_ids);
-            }
+            let file_ids = self.vfs.file_ids();
+            let file_ids: Arc<[FileId]> = Arc::from(file_ids);
+            self.set_workspace_file_ids(file_ids);
         }
     }
 
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
-        let Some(workspace) = self.workspace else {
-            return;
-        };
-        let vfs = Arc::make_mut(&mut self.vfs);
-        vfs.remove_entry(file_id);
+        Arc::make_mut(&mut self.vfs).remove(file_id);
+        Arc::make_mut(&mut self.file_inputs).remove(&file_id);
+        Arc::make_mut(&mut self.file_facts).remove(&file_id);
+        Arc::make_mut(&mut self.flow_trees).remove(&file_id);
+        Arc::make_mut(&mut self.syntax_trees).remove(&file_id);
+        Arc::make_mut(&mut self.line_indexes).remove(&file_id);
+        Arc::make_mut(&mut self.documents).remove(&file_id);
+        Arc::make_mut(&mut self.file_exports).remove(&file_id);
+        Arc::make_mut(&mut self.file_references).remove(&file_id);
+        self.reset_export_shards();
+        self.reset_other_shard_caches();
+        self.bump_workspace_revision();
 
-        let file_ids: Vec<FileId> = vfs
-            .file_ids()
-            .iter()
-            .copied()
-            .filter(|&id| id != file_id)
-            .collect();
-        let file_ids: Arc<[FileId]> = Arc::from(file_ids);
-        vfs.set_file_ids(file_ids.clone());
-        workspace.set_file_ids(self).to(file_ids);
+        let file_ids: Arc<[FileId]> = Arc::from(self.vfs.file_ids());
+        self.set_workspace_file_ids(file_ids);
     }
 
     // ---- Config ----
@@ -286,8 +578,7 @@ impl SalsaDatabase {
             known_doc_tags,
             strict_array_index,
         ) = ConfigInput::parts_from_emmyrc(&emmyrc);
-        self.config = Some(ConfigInput::new(
-            self,
+        self.config = Some(ConfigInputData::new(
             language_level,
             special_like,
             non_std_symbols,
@@ -297,24 +588,39 @@ impl SalsaDatabase {
             strict_array_index,
             None,
         ));
+        self.reset_file_facts_cache();
+        self.bump_workspace_revision();
     }
 
     /// Main workspace root (used for require module name derivation).
     pub fn update_main_root(&mut self, root: PathBuf) {
         self.cancel_snapshots();
-        if let Some(config) = self.config {
-            config.set_main_root(self).to(Some(root));
+        if let Some(config) = &self.config {
+            let main_root = Some(root);
+            self.config = Some(ConfigInputData::new(
+                config.language_level,
+                config.special_like.clone(),
+                config.non_std_symbols.clone(),
+                config.module_patterns.clone(),
+                config.module_replace.clone(),
+                config.known_doc_tags.clone(),
+                config.strict_array_index,
+                main_root,
+            ));
         }
+        self.bump_workspace_revision();
     }
 
     pub fn main_root(&self) -> Option<PathBuf> {
         self.config
-            .and_then(|config| config.main_root(self).clone())
+            .as_ref()
+            .and_then(|config| config.main_root.clone())
     }
 
     pub(crate) fn strict_array_index(&self) -> bool {
         self.config
-            .map(|config| config.strict_array_index(self))
+            .as_ref()
+            .map(|config| config.strict_array_index)
             .unwrap_or(true)
     }
 
@@ -345,17 +651,19 @@ impl SalsaDatabase {
     pub fn add_std_workspace(&mut self, root: PathBuf) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace else {
+        let Some(workspace_input) = self.workspace.as_ref() else {
             return;
         };
-        let mut roots = workspace_input.roots(self).to_vec();
+        let mut roots = workspace_input.roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_std());
         roots.push(WorkspaceRoot {
             id: WorkspaceId::STD,
             root,
             import: WorkspaceImport::All,
         });
-        workspace_input.set_roots(self).to(Arc::from(roots));
+        self.set_workspace_roots(Arc::from(roots));
+        self.reset_file_facts_cache();
+        self.bump_workspace_revision();
     }
 
     /// Register or replace the main workspace root.
@@ -363,27 +671,29 @@ impl SalsaDatabase {
         self.cancel_snapshots();
         self.update_main_root(root.clone());
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace else {
+        let Some(workspace_input) = self.workspace.as_ref() else {
             return;
         };
-        let mut roots = workspace_input.roots(self).to_vec();
+        let mut roots = workspace_input.roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_main());
         roots.push(WorkspaceRoot {
             id: WorkspaceId::MAIN,
             root,
             import: WorkspaceImport::All,
         });
-        workspace_input.set_roots(self).to(Arc::from(roots));
+        self.set_workspace_roots(Arc::from(roots));
+        self.reset_file_facts_cache();
+        self.bump_workspace_revision();
     }
 
     /// Register a library workspace (allocates a new `WorkspaceId`).
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace else {
+        let Some(workspace_input) = self.workspace.as_ref() else {
             return;
         };
-        let mut roots = workspace_input.roots(self).to_vec();
+        let mut roots = workspace_input.roots.to_vec();
         let id = WorkspaceId {
             id: self.next_library_workspace_id(&roots),
         };
@@ -392,30 +702,35 @@ impl SalsaDatabase {
             root: workspace.root.clone(),
             import: workspace.import.clone(),
         });
-        workspace_input.set_roots(self).to(Arc::from(roots));
+        self.set_workspace_roots(Arc::from(roots));
+        self.reset_file_facts_cache();
+        self.bump_workspace_revision();
     }
 
     /// Keep only the std workspace (clear main/library before reload).
     pub fn clear_non_std_workspaces(&mut self) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace else {
+        let Some(workspace_input) = self.workspace.as_ref() else {
             return;
         };
         let roots: Vec<WorkspaceRoot> = workspace_input
-            .roots(self)
+            .roots
             .iter()
             .filter(|root_entry| root_entry.id.is_std())
             .cloned()
             .collect();
-        workspace_input.set_roots(self).to(Arc::from(roots));
+        self.set_workspace_roots(Arc::from(roots));
+        self.reset_file_facts_cache();
+        self.bump_workspace_revision();
     }
 
     /// Currently registered workspace roots.
     #[allow(unused)]
     pub(crate) fn workspace_roots(&self) -> Arc<[WorkspaceRoot]> {
         self.workspace
-            .map(|workspace| workspace.roots(self).clone())
+            .as_ref()
+            .map(|workspace| workspace.roots.clone())
             .unwrap_or_default()
     }
 
@@ -432,43 +747,40 @@ impl SalsaDatabase {
     pub fn add_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let mut set = self.vfs.protected_paths().as_ref().clone();
+        let mut set = self.vfs.protected_paths().clone();
         set.extend(paths);
-        Arc::make_mut(&mut self.vfs).set_protected_paths(Arc::new(set));
+        Arc::make_mut(&mut self.vfs).set_protected_paths(set);
     }
 
     /// Currently protected paths (loaded std lib etc.).
     pub fn protected_paths(&self) -> Arc<HashSet<PathBuf>> {
-        self.vfs.protected_paths().clone()
+        Arc::new(self.vfs.protected_paths().clone())
     }
 
     /// Current configured runtime version (used for `---@version` visibility).
     pub fn lua_version(&self) -> Option<emmylua_parser::LuaVersionNumber> {
         self.config
-            .map(|config| config.language_level(self).to_lua_version_number())
+            .as_ref()
+            .map(|config| config.language_level.to_lua_version_number())
     }
 
     // ---- URI / FileId mapping ----
 
     pub fn lookup_file_id(&self, uri: &Uri) -> Option<FileId> {
         if let Some(path) = uri_to_file_path(uri)
-            && let Some(id) = self.vfs.path_to_file_id().get(&path).copied()
+            && let Some(id) = self.vfs.lookup_by_path(&path)
         {
             return Some(id);
         }
-        self.vfs.uri_to_file_id().get(uri).copied()
+        self.vfs.lookup_by_uri(uri)
     }
 
     pub fn file_uri(&self, file_id: FileId) -> Option<Uri> {
-        self.vfs
-            .file_entry(file_id)
-            .and_then(|entry| entry.uri.clone())
+        self.vfs.file(file_id).and_then(|file| file.uri.clone())
     }
 
     pub fn file_path(&self, file_id: FileId) -> Option<PathBuf> {
-        self.vfs
-            .file_entry(file_id)
-            .and_then(|entry| entry.path.clone())
+        self.vfs.file(file_id).and_then(|file| file.path.clone())
     }
 
     // ---- File management ----
@@ -497,27 +809,14 @@ impl SalsaDatabase {
 
     pub(crate) fn upsert_file_input(
         &mut self,
-        file_id: FileId,
+        _file_id: FileId,
         path: Option<PathBuf>,
         uri: Option<Uri>,
         text: String,
-    ) -> SourceFileInput {
+    ) -> SourceFileInputData {
         self.ensure_workspace();
-        let existing = self.vfs.file_entry(file_id).map(|entry| entry.salsa_input);
-
         let text: Arc<str> = Arc::from(text);
-        if let Some(input) = existing {
-            if input.path(self) != &path {
-                input.set_path(self).to(path.clone());
-            }
-            if input.uri(self) != &uri {
-                input.set_uri(self).to(uri.clone());
-            }
-            input.set_text(self).to(text.clone());
-            input
-        } else {
-            SourceFileInput::new(self, text.clone(), path.clone(), uri.clone(), file_id)
-        }
+        SourceFileInputData::new(text, path, uri)
     }
 
     fn set_file_inner(
@@ -528,58 +827,109 @@ impl SalsaDatabase {
         text: String,
     ) {
         self.ensure_workspace();
-        let old = self.vfs.file_entry(file_id);
+        let old = self.vfs.file(file_id);
         let is_new = old.is_none();
-        let metadata_changed = old.is_some_and(|entry| {
-            entry.path.as_ref() != path.as_ref() || entry.uri.as_ref() != uri.as_ref()
+        let metadata_changed = old.is_some_and(|file| {
+            file.path.as_ref() != path.as_ref() || file.uri.as_ref() != uri.as_ref()
         });
         let input = self.upsert_file_input(file_id, path.clone(), uri.clone(), text);
         if is_new || metadata_changed {
             self.commit_file_entry(file_id, input, is_new);
         } else {
             // A pure text update does not change VFS metadata or the file set, but
-            // the old high-level per-file cache is now stale and must be dropped.
+            // the stored input data and per-file caches are now stale.
+            Arc::make_mut(&mut self.file_inputs).insert(file_id, input);
+            self.invalidate_file_facts(file_id);
+            self.bump_workspace_revision();
         }
     }
 
     /// Replace the whole workspace file set in one salsa write.
     pub(crate) fn replace_workspace_files(
         &mut self,
-        file_inputs: HashMap<FileId, SourceFileInput>,
+        file_inputs: HashMap<FileId, SourceFileInputData>,
     ) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace) = self.workspace else {
-            return;
-        };
 
-        let mut files = HashMap::with_capacity(file_inputs.len());
+        let protected_paths = self
+            .vfs
+            .protected_paths()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut vfs = VfsState::new();
+        vfs.set_protected_paths(protected_paths);
+        let mut new_file_inputs = HashMap::with_capacity(file_inputs.len());
         for (file_id, input) in file_inputs {
-            let entry = FileEntry {
-                path: input.path(self).clone(),
-                uri: input.uri(self).clone(),
-                salsa_input: input,
-            };
-            files.insert(file_id, entry);
+            let text = input.text.to_string();
+            let path = input.path.clone();
+            let uri = input.uri.clone();
+            vfs.insert_at(file_id, uri, path, text);
+            new_file_inputs.insert(file_id, input);
         }
-        let mut file_ids: Vec<FileId> = files.keys().copied().collect();
-        file_ids.sort_unstable();
 
-        self.vfs = Arc::new(VfsSnapshot::from_parts(
-            files,
-            Arc::from(file_ids.clone()),
-            self.vfs.protected_paths().clone(),
-        ));
-        workspace.set_file_ids(self).to(Arc::from(file_ids));
+        let file_ids: Arc<[FileId]> = Arc::from(vfs.file_ids());
+        self.vfs = Arc::new(vfs);
+        self.file_inputs = Arc::new(new_file_inputs);
+        self.file_facts = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.flow_trees = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.syntax_trees = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.line_indexes = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.documents = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.file_exports = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.file_references = Arc::new(
+            self.file_inputs
+                .keys()
+                .copied()
+                .map(|file_id| (file_id, OnceLock::new()))
+                .collect(),
+        );
+        self.reset_export_shards();
+        self.reset_other_shard_caches();
+        self.bump_workspace_revision();
+        self.set_workspace_file_ids(file_ids);
     }
 
-    /// Current workspace file map (FileId -> SourceFileInput).
-    pub(crate) fn file_input_map(&self) -> HashMap<FileId, SourceFileInput> {
-        self.vfs
-            .files()
-            .iter()
-            .map(|(&file_id, entry)| (file_id, entry.salsa_input))
-            .collect()
+    /// Current workspace file map (FileId -> source data).
+    pub(crate) fn file_input_map(&self) -> HashMap<FileId, SourceFileInputData> {
+        self.file_inputs.as_ref().clone()
     }
 
     /// Allocate a fresh FileId.
@@ -601,14 +951,26 @@ impl SalsaDatabase {
     pub fn clear(&mut self) {
         self.cancel_snapshots();
         self.workspace = None;
-        self.vfs = Arc::new(VfsSnapshot::empty());
+        self.vfs = Arc::new(VfsState::new());
+        self.file_inputs = Arc::new(HashMap::new());
+        self.file_facts = Arc::new(HashMap::new());
+        self.flow_trees = Arc::new(HashMap::new());
+        self.syntax_trees = Arc::new(HashMap::new());
+        self.line_indexes = Arc::new(HashMap::new());
+        self.documents = Arc::new(HashMap::new());
+        self.file_exports = Arc::new(HashMap::new());
+        self.reset_export_shards();
+        self.file_references = Arc::new(HashMap::new());
+        self.reset_other_shard_caches();
+        self.workspace_index = Arc::new(Mutex::new(query::WorkspaceIndexCache::new()));
         self.next_file_id = 0;
         self.ensure_workspace();
+        self.bump_workspace_revision();
     }
 
     /// Current VFS snapshot (immutable, shareable across threads).
     #[allow(dead_code)]
-    pub(crate) fn vfs(&self) -> &Arc<VfsSnapshot> {
+    pub(crate) fn vfs(&self) -> &Arc<VfsState> {
         &self.vfs
     }
 
@@ -654,8 +1016,7 @@ impl SalsaDatabase {
     }
 
     pub fn get_file_text(&self, file_id: FileId) -> Option<&str> {
-        let input = self.file_input(file_id)?;
-        Some(input.text(self))
+        self.vfs.file(file_id).map(|file| file.text.as_ref())
     }
 
     /// Per-file line index, memoized as a salsa derived query.
@@ -673,11 +1034,11 @@ impl SalsaDatabase {
     // ── Input accessors (for tracked layer / facade) ──
 
     pub(crate) fn config_input(&self) -> Option<ConfigInput> {
-        self.config
+        self.config.is_some().then_some(ConfigInput)
     }
 
     pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
-        self.workspace
+        self.workspace.is_some().then_some(WorkspaceInput)
     }
 
     /// Actual execution count of tracked query bodies (diagnostic invalidation granularity).

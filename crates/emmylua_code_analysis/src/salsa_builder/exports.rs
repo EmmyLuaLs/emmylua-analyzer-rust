@@ -9,6 +9,7 @@
 //! Currently holds: all TypeDefs, global declaration identities, member identities, module export identities.
 
 use smol_str::SmolStr;
+use std::sync::Arc;
 
 use crate::FileId;
 use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
@@ -18,7 +19,7 @@ use super::inputs::{ConfigInput, SourceFileInput};
 use super::query::file_facts;
 
 /// Export identities visible from a single file.
-#[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileExports {
     pub file_id: FileId,
     /// Types defined in this file (including private ones; shard index uses scope).
@@ -33,14 +34,14 @@ pub struct FileExports {
     pub module: Option<ModuleExport>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalExport {
     pub file_id: FileId,
     pub name: SmolStr,
     pub decl: SemanticId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberExport {
     pub file_id: FileId,
     pub owner: SemanticId,
@@ -49,14 +50,25 @@ pub struct MemberExport {
     pub deprecated: bool,
 }
 
-/// Per-file export facts (collects identities only, no type precomputation; invalidates precisely on text changes).
-#[salsa::tracked(returns(ref), lru = 512)]
+/// Per-file export facts (collects identities only, no type precomputation).
 pub(crate) fn file_exports(
     db: &dyn SalsaDb,
     file: SourceFileInput,
     config: ConfigInput,
-) -> FileExports {
+) -> &FileExports {
     let file_id = file.file_id(db);
+    let _ = file.text(db);
+    db.file_exports_cell(file_id)
+        .get_or_init(|| Arc::new(build_file_exports(db, file, config, file_id)))
+        .as_ref()
+}
+
+fn build_file_exports(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+    file_id: FileId,
+) -> FileExports {
     let facts = file_facts(db, file, config);
 
     let types = facts.type_defs.clone();
@@ -119,9 +131,20 @@ pub fn shard_of(file_id: FileId) -> u8 {
     (file_id.id % EXPORT_SHARDS as u32) as u8
 }
 
-/// A shard's export facts (salsa tracked: depends only on `file_exports` of files in this shard).
-#[salsa::tracked(returns(ref))]
+/// A shard's export facts (plain cache: depends only on `file_exports` of files in this shard).
 pub(crate) fn export_shard(
+    db: &dyn SalsaDb,
+    workspace: super::inputs::WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> &ExportShard {
+    let _ = workspace.revision(db);
+    db.export_shard_cell(shard)
+        .get_or_init(|| Arc::new(build_export_shard(db, workspace, config, shard)))
+        .as_ref()
+}
+
+fn build_export_shard(
     db: &dyn SalsaDb,
     workspace: super::inputs::WorkspaceInput,
     config: ConfigInput,
@@ -162,7 +185,7 @@ pub(crate) fn export_shard(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportShard {
     pub types: Vec<TypeDef>,
     pub globals: Vec<GlobalExport>,

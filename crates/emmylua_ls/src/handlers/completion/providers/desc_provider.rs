@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaMemberKey, SalsaSemanticModel, TypeDefKind};
+use emmylua_code_analysis::{LuaMemberKey, TypeDefKind};
 use emmylua_parser::{LuaAstNode, LuaComment, LuaDocDescription, LuaNameExpr};
 use lsp_types::{CompletionItem, CompletionItemKind};
 use rowan::TextRange;
@@ -68,7 +68,6 @@ fn detect_path(
     let offset = builder.position_offset;
     let workspace_id = builder
         .semantic_model
-        .db()
         .workspace_id_of(builder.semantic_model.file_id())
         .unwrap_or(emmylua_code_analysis::WorkspaceId::MAIN);
     let items = crate::util::parse_desc(
@@ -155,11 +154,10 @@ fn add_desc_types_by_prefix(
     seen: &mut HashSet<String>,
 ) {
     let partial = builder.partial_name();
-    let db = builder.semantic_model.db();
-    let mut file_ids = db.main_workspace_file_ids();
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+        let Some(model) = builder.semantic_model.model_for(file_id) else {
             continue;
         };
         let Some(exports) = model.file_exports_current() else {
@@ -206,11 +204,10 @@ fn add_desc_types_by_prefix(
 
 /// Workspace global declarations (GLOBAL etc.; no trigger-word filtering in desc reference context).
 fn add_desc_globals(builder: &mut CompletionBuilder, seen: &mut HashSet<String>) {
-    let db = builder.semantic_model.db();
-    let mut file_ids = db.file_ids();
+    let mut file_ids = builder.semantic_model.file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+        let Some(model) = builder.semantic_model.model_for(file_id) else {
             continue;
         };
         let Some(exports) = model.file_exports_current() else {
@@ -249,19 +246,22 @@ fn add_desc_files_by_prefix(
 ) {
     let partial = builder.partial_name();
     let mut seen_files = HashSet::new();
-    let db = builder.semantic_model.db();
-    let mut file_ids = db.main_workspace_file_ids();
+
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let module_name = db.module_name_of(file_id);
+        let module_name = builder.semantic_model.module_name_of(file_id);
         // Virtual/unrooted files can get drive-letter names like `C:`; fall back to the file stem.
         let name = module_name
             .filter(|name| !name.contains(':') && !name.contains('/') && !name.contains('\\'))
             .or_else(|| {
-                db.file_path(file_id).and_then(|path| {
-                    path.file_stem()
-                        .map(|stem| stem.to_string_lossy().to_string())
-                })
+                builder
+                    .semantic_model
+                    .file_path_of(file_id)
+                    .and_then(|path| {
+                        path.file_stem()
+                            .map(|stem| stem.to_string_lossy().to_string())
+                    })
             });
         let Some(name) = name else {
             continue;

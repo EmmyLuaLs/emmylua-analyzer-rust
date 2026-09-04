@@ -1,6 +1,5 @@
 //! `--- @see <??>`: type name and workspace file/module name completion.
 
-use emmylua_code_analysis::SalsaSemanticModel;
 use lsp_types::{CompletionItem, CompletionItemKind};
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
@@ -20,12 +19,11 @@ impl CompletionProvider for SeeCompletionProvider {
 
     fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
         let partial = builder.get_trigger_text();
-        let db = builder.semantic_model.db();
         let mut names = Vec::new();
 
         // Global type definitions.
-        for file_id in db.file_ids() {
-            if let Some(model) = SalsaSemanticModel::new(db, file_id)
+        for file_id in builder.semantic_model.file_ids() {
+            if let Some(model) = builder.semantic_model.model_for(file_id)
                 && let Some(exports) = model.file_exports_current()
             {
                 for def in &exports.types {
@@ -40,8 +38,8 @@ impl CompletionProvider for SeeCompletionProvider {
 
         // Workspace files (module/file candidates from the old desc provider).
         let mut files = Vec::new();
-        for file_id in db.file_ids() {
-            if let Some(path) = db.file_path(file_id) {
+        for file_id in builder.semantic_model.file_ids() {
+            if let Some(path) = builder.semantic_model.file_path_of(file_id) {
                 if let Some(stem) = path
                     .file_stem()
                     .map(|stem| stem.to_string_lossy().to_string())

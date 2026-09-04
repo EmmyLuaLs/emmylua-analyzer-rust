@@ -42,7 +42,7 @@ pub struct SignatureKey {
 }
 
 /// Global semantic identity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SemanticId {
     Decl(ArcIntern<DeclKey>),
     Member(ArcIntern<MemberDeclKey>),

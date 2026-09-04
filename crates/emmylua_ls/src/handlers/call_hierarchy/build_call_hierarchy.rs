@@ -111,10 +111,9 @@ pub fn build_call_hierarchy_item(
 }
 
 pub fn build_incoming_hierarchy(
-    model: &SalsaSemanticModel<'_>,
+    salsa: &SalsaDatabase,
     semantic_decl: &SemanticId,
 ) -> Option<Vec<CallHierarchyIncomingCall>> {
-    let salsa = model.db();
     let mut result = vec![];
     let ranges = match semantic_decl {
         SemanticId::Decl(_) => decl_reference_ranges(salsa, semantic_decl, true),

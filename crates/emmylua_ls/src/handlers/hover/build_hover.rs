@@ -1211,7 +1211,7 @@ fn member_class_key_display(
     if !member.is_index_signature {
         return None;
     }
-    let document = model.db().document(key.file_id)?;
+    let document = model.document(key.file_id)?;
     let raw = document.get_text_slice(range).trim().to_string();
     Some(format!(
         "[{}]",
@@ -1950,7 +1950,7 @@ fn raw_type_text(
     file_id: emmylua_code_analysis::FileId,
     syntax: emmylua_parser::LuaSyntaxId,
 ) -> Option<String> {
-    let document = model.db().document(file_id)?;
+    let document = model.document(file_id)?;
     Some(
         document
             .get_text_slice(syntax.get_range())

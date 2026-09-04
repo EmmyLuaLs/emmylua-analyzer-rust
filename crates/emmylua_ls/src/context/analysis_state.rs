@@ -10,12 +10,11 @@
 //! - `update()` holds the write lock and performs the mutation. `cancel_others` only waits for snapshots
 //!   actually in flight; no resident copy blocks it.
 
-use std::{panic::AssertUnwindSafe, sync::Mutex};
+use std::sync::Mutex;
 
 use emmylua_code_analysis::EmmyLuaAnalysis;
-use salsa::Cancelled;
 
-use crate::context::{CancelSource, RequestOutcome};
+use crate::context::RequestOutcome;
 
 pub struct AnalysisState {
     inner: Mutex<EmmyLuaAnalysis>,
@@ -37,23 +36,20 @@ impl AnalysisState {
     /// If a pending write cancels the query, return `None` instead of propagating the panic.
     pub fn with_snapshot<T>(&self, f: impl FnOnce(&EmmyLuaAnalysis) -> T) -> Option<T> {
         let analysis = self.snapshot();
-        Cancelled::catch(AssertUnwindSafe(|| f(&analysis))).ok()
+        Some(f(&analysis))
     }
 
     /// Run a query that may return `None` on a snapshot, catching salsa cancellation.
     pub fn try_with_snapshot<R>(&self, f: impl FnOnce(&EmmyLuaAnalysis) -> Option<R>) -> Option<R> {
         let analysis = self.snapshot();
-        Cancelled::catch(AssertUnwindSafe(|| f(&analysis)))
-            .ok()
-            .flatten()
+        f(&analysis)
     }
 
     pub fn query<R>(&self, f: impl FnOnce(&EmmyLuaAnalysis) -> Option<R>) -> RequestOutcome<R> {
         let analysis = self.snapshot();
-        match Cancelled::catch(AssertUnwindSafe(|| f(&analysis))) {
-            Ok(Some(value)) => RequestOutcome::Ready(value),
-            Ok(None) => RequestOutcome::Missing,
-            Err(_) => RequestOutcome::Cancelled(CancelSource::Salsa),
+        match f(&analysis) {
+            Some(value) => RequestOutcome::Ready(value),
+            None => RequestOutcome::Missing,
         }
     }
 

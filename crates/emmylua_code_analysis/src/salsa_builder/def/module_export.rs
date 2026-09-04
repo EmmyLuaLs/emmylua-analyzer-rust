@@ -5,7 +5,7 @@ use smol_str::SmolStr;
 
 use super::SemanticId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModuleExport {
     /// Returns a declaration (`return M`).
     Decl { decl: SemanticId, name: SmolStr },

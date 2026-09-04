@@ -1,10 +1,10 @@
-//! Salsa inputs and globally interned identities.
+//! Salsa inputs.
 
 use lsp_types::Uri;
 use std::collections::HashMap as StdHashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use emmylua_parser::{
     LuaFeatures, LuaFeaturesSet, LuaLanguageLevel, LuaVersionNumber, ParserConfig, SpecialFunction,
@@ -15,25 +15,59 @@ use smol_str::SmolStr;
 use crate::{Emmyrc, FileId, WorkspaceImport};
 
 use super::SalsaDb;
-use super::def::{TypeScope, WorkspaceId};
+use super::def::WorkspaceId;
 
 // ──────────────────────────────────────────────
 // Inputs
 // ──────────────────────────────────────────────
 
-#[salsa::input(debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct SourceFileInput {
-    #[returns(deref)]
+    file_id: FileId,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SourceFileInputData {
     pub(crate) text: Arc<str>,
-
-    #[returns(ref)]
     pub(crate) path: Option<PathBuf>,
-
-    #[returns(ref)]
     pub(crate) uri: Option<Uri>,
+}
 
-    #[returns(copy)]
-    pub(crate) file_id: FileId,
+impl SourceFileInputData {
+    pub(crate) fn new(text: Arc<str>, path: Option<PathBuf>, uri: Option<Uri>) -> Self {
+        Self { text, path, uri }
+    }
+}
+
+static NO_PATH: Option<PathBuf> = None;
+static NO_URI: Option<Uri> = None;
+
+impl SourceFileInput {
+    pub(crate) fn new(file_id: FileId) -> Self {
+        Self { file_id }
+    }
+
+    pub(crate) fn text<'a>(&self, db: &'a dyn SalsaDb) -> &'a str {
+        db.source_file_data(self.file_id)
+            .map(|data| data.text.as_ref())
+            .unwrap_or("")
+    }
+
+    pub(crate) fn path<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<PathBuf> {
+        db.source_file_data(self.file_id)
+            .map(|data| &data.path)
+            .unwrap_or(&NO_PATH)
+    }
+
+    pub(crate) fn uri<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<Uri> {
+        db.source_file_data(self.file_id)
+            .map(|data| &data.uri)
+            .unwrap_or(&NO_URI)
+    }
+
+    pub(crate) fn file_id(&self, _db: &dyn SalsaDb) -> FileId {
+        self.file_id
+    }
 }
 
 /// `LuaLanguageLevel` lacks `Hash`; salsa fields require Eq+Hash, so a newtype supplies it.
@@ -72,40 +106,90 @@ impl Hash for SpecialFn {
     }
 }
 
-#[salsa::input(debug)]
-pub(crate) struct ConfigInput {
-    #[returns(copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConfigInput;
+
+#[derive(Debug, Clone)]
+pub(crate) struct ConfigInputData {
     pub(crate) language_level: LanguageLevel,
-
-    #[returns(ref)]
     pub(crate) special_like: Vec<(SmolStr, SpecialFn)>,
-
-    #[returns(ref)]
     pub(crate) non_std_symbols: Vec<LuaFeatures>,
-
-    /// require resolution patterns (e.g. `?.lua`, `?/init.lua`).
-    #[returns(ref)]
     pub(crate) module_patterns: Vec<SmolStr>,
-
-    /// require name rewrite rules (`(pattern, replace)`, from `workspace.module_map`).
-    #[returns(ref)]
     pub(crate) module_replace: Vec<(SmolStr, SmolStr)>,
-
-    /// `emmyrc.doc.known_tags`: additional known doc tags (used by unknown_doc_tag checks).
-    #[returns(ref)]
     pub(crate) known_doc_tags: Vec<SmolStr>,
-
-    /// `emmyrc.strict.array_index`: whether array indexes are treated as nullable (strict nil checks).
-    #[returns(copy)]
     pub(crate) strict_array_index: bool,
-
-    /// Main workspace root directory (used to derive require module names; set by `add_main_workspace`).
-    #[returns(ref)]
     pub(crate) main_root: Option<PathBuf>,
 }
 
+impl ConfigInputData {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        language_level: LanguageLevel,
+        special_like: Vec<(SmolStr, SpecialFn)>,
+        non_std_symbols: Vec<LuaFeatures>,
+        module_patterns: Vec<SmolStr>,
+        module_replace: Vec<(SmolStr, SmolStr)>,
+        known_doc_tags: Vec<SmolStr>,
+        strict_array_index: bool,
+        main_root: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            language_level,
+            special_like,
+            non_std_symbols,
+            module_patterns,
+            module_replace,
+            known_doc_tags,
+            strict_array_index,
+            main_root,
+        }
+    }
+}
+
 impl ConfigInput {
-    /// Extract configuration from `Emmyrc` (salsa inputs must be built with `ConfigInput::new`).
+    pub(crate) fn language_level(&self, db: &dyn SalsaDb) -> LanguageLevel {
+        db.config_data()
+            .map(|data| data.language_level)
+            .unwrap_or(LanguageLevel(LuaLanguageLevel::Lua51))
+    }
+
+    pub(crate) fn special_like<'a>(&self, db: &'a dyn SalsaDb) -> &'a [(SmolStr, SpecialFn)] {
+        db.config_data()
+            .map(|data| data.special_like.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn non_std_symbols<'a>(&self, db: &'a dyn SalsaDb) -> &'a [LuaFeatures] {
+        db.config_data()
+            .map(|data| data.non_std_symbols.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn module_patterns<'a>(&self, db: &'a dyn SalsaDb) -> &'a [SmolStr] {
+        db.config_data()
+            .map(|data| data.module_patterns.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn module_replace<'a>(&self, db: &'a dyn SalsaDb) -> &'a [(SmolStr, SmolStr)] {
+        db.config_data()
+            .map(|data| data.module_replace.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn known_doc_tags<'a>(&self, db: &'a dyn SalsaDb) -> &'a [SmolStr] {
+        db.config_data()
+            .map(|data| data.known_doc_tags.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn main_root<'a>(&self, db: &'a dyn SalsaDb) -> &'a Option<PathBuf> {
+        db.config_data()
+            .map(|data| &data.main_root)
+            .unwrap_or(&NO_PATH)
+    }
+
+    /// Extract configuration from `Emmyrc`.
     #[allow(clippy::type_complexity)]
     pub(crate) fn parts_from_emmyrc(
         emmyrc: &Emmyrc,
@@ -215,41 +299,50 @@ impl ConfigInput {
 ///
 /// File sets remain managed by `WorkspaceInput.file_ids`; workspace_id is derived by
 /// matching path prefixes against `roots`, while `import` controls which relative paths participate in module indexing.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::SalsaValue)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct WorkspaceRoot {
     pub(crate) id: WorkspaceId,
     pub(crate) root: PathBuf,
     pub(crate) import: WorkspaceImport,
 }
 
-// `WorkspaceImport` is pure `'static` data and is safe for salsa to retain.
-unsafe impl salsa::SalsaValue for WorkspaceImport {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct WorkspaceInput;
 
-/// Workspace file-set input. Refreshed as files are added or removed.
-///
-/// This is the core file-list input on the salsa side; it only stores a lightweight `FileId` set and
-/// workspace root metadata, while `FileId -> SourceFileInput` mappings and URI/Path indexes
-/// are handled by `VfsSnapshot`. Thus file-set changes only replace one `Arc<[FileId]>`,
-/// without copying a large HashMap.
-#[salsa::input(debug)]
-pub(crate) struct WorkspaceInput {
-    #[returns(ref)]
+#[derive(Debug, Clone)]
+pub(crate) struct WorkspaceInputData {
     pub(crate) file_ids: Arc<[FileId]>,
-
-    #[returns(ref)]
     pub(crate) roots: Arc<[WorkspaceRoot]>,
+    pub(crate) revision: u64,
 }
 
-// ──────────────────────────────────────────────
-// Globally interned identities
-// ──────────────────────────────────────────────
-
-/// Named types (`---@class Foo` etc.). Interned by `(scope, full_name)`, sharing the same id across files.
-#[salsa::interned(debug)]
-pub struct TypeName<'db> {
-    #[returns(copy)]
-    pub scope: TypeScope,
-
-    #[returns(deref)]
-    pub name: SmolStr,
+impl WorkspaceInputData {
+    pub(crate) fn new(file_ids: Arc<[FileId]>, roots: Arc<[WorkspaceRoot]>, revision: u64) -> Self {
+        Self {
+            file_ids,
+            roots,
+            revision,
+        }
+    }
 }
+
+impl WorkspaceInput {
+    pub(crate) fn file_ids<'a>(&self, db: &'a dyn SalsaDb) -> &'a Arc<[FileId]> {
+        db.workspace_data()
+            .map(|data| &data.file_ids)
+            .unwrap_or(&*EMPTY_FILE_IDS)
+    }
+
+    pub(crate) fn roots<'a>(&self, db: &'a dyn SalsaDb) -> &'a Arc<[WorkspaceRoot]> {
+        db.workspace_data()
+            .map(|data| &data.roots)
+            .unwrap_or(&*EMPTY_ROOTS)
+    }
+
+    pub(crate) fn revision(&self, db: &dyn SalsaDb) -> u64 {
+        db.workspace_data().map(|data| data.revision).unwrap_or(0)
+    }
+}
+
+static EMPTY_FILE_IDS: LazyLock<Arc<[FileId]>> = LazyLock::new(|| Arc::from([]));
+static EMPTY_ROOTS: LazyLock<Arc<[WorkspaceRoot]>> = LazyLock::new(|| Arc::from([]));

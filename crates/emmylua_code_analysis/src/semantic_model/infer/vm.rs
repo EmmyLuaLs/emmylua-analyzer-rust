@@ -26,7 +26,7 @@ use crate::{
     AsyncState, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind, LuaArrayType,
     LuaFunctionType, LuaGenericType, LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType,
     LuaType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, TypeDef, TypeDefKind, TypeScope,
-    TypeVisibility, VariadicType, WorkspaceId, query,
+    TypeVisibility, VariadicType,
 };
 
 use super::super::SemanticModel;
@@ -480,7 +480,7 @@ impl<'a> InferVm<'a> {
                         && let LuaType::Array(array) = &owner_value.ty
                     {
                         let base = array.get_base().clone();
-                        let ty = if self.model.db().strict_array_index() {
+                        let ty = if self.model.strict_array_index() {
                             LuaType::from_vec(vec![base, LuaType::Nil])
                         } else {
                             base
@@ -784,10 +784,7 @@ impl<'a> InferVm<'a> {
 
     /// Whether the file belongs to the STD workspace.
     fn is_std_file(model: &SemanticModel<'_>, file_id: FileId) -> bool {
-        let Some(workspace) = model.db().workspace_input() else {
-            return false;
-        };
-        query::file_workspace_id(model.db(), workspace, file_id) == Some(WorkspaceId::STD)
+        model.is_std_file(file_id)
     }
 
     fn index_member_dynamic(&mut self, owner: Value, key: Value) -> Value {
@@ -798,7 +795,7 @@ impl<'a> InferVm<'a> {
             LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) => {
                 if let LuaType::Array(array) = &owner.ty {
                     let base = array.get_base().clone();
-                    return Value::plain(if self.model.db().strict_array_index() {
+                    return Value::plain(if self.model.strict_array_index() {
                         LuaType::from_vec(vec![base, LuaType::Nil])
                     } else {
                         base
@@ -845,7 +842,7 @@ impl<'a> InferVm<'a> {
                             .any(|ty| matches!(ty, LuaType::Nil) || ty == array.get_base())
                     {
                         types.push(array.get_base().clone());
-                        if self.model.db().strict_array_index() {
+                        if self.model.strict_array_index() {
                             types.push(LuaType::Nil);
                         }
                     }
@@ -897,7 +894,7 @@ impl<'a> InferVm<'a> {
             LuaType::Number | LuaType::Integer | LuaType::FloatConst(_) => {
                 if let LuaType::Array(array) = &owner.ty {
                     let base = array.get_base().clone();
-                    return Value::plain(if self.model.db().strict_array_index() {
+                    return Value::plain(if self.model.strict_array_index() {
                         LuaType::from_vec(vec![base, LuaType::Nil])
                     } else {
                         base

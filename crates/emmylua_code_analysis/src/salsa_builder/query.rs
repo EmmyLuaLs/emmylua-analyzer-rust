@@ -1,7 +1,8 @@
 //! # Node-keyed derived query layer
 //!
-//! Salsa's memo table acts as the index. Cross-file references use interned `TypeName`; recursive cycles converge via the native `cycle_fn`.
+//! Salsa-tracked node queries plus plain workspace indexes. Recursive cycles converge via the native `cycle_fn`.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use super::def::{
 };
 use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
-use super::inputs::{ConfigInput, SourceFileInput, TypeName, WorkspaceInput};
+use super::inputs::{ConfigInput, SourceFileInput, WorkspaceInput};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use super::{DocumentView, SalsaDatabase, SalsaDb};
 use crate::FileId;
@@ -23,81 +24,129 @@ use emmylua_parser::{
 };
 use rowan::{NodeCache, TextSize};
 
-/// Parse. `LuaSyntaxTree` isn't a SalsaValue, so use the `no_eq` + `non_salsa_values` escape hatch
-/// (equivalent to rust-analyzer's `parse`: unchanged text -> unchanged input -> no recomputation; `no_eq` has no side effects).
-#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
-pub(crate) fn parse(db: &dyn SalsaDb, file: SourceFileInput, config: ConfigInput) -> LuaSyntaxTree {
-    let text = file.text(db);
-    let mut node_cache = NodeCache::default();
-    let parse_config = config.to_parse_config(db, &mut node_cache);
-    LuaParser::parse(text, parse_config)
-}
-
-/// Per-file line index. Cached as a salsa derived query; no recomputation when the text is unchanged.
-#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
-pub(crate) fn line_index(db: &dyn SalsaDb, file: SourceFileInput) -> Arc<LineIndex> {
-    let text = file.text(db);
-    Arc::new(LineIndex::parse(text))
-}
-
-/// Per-file document view. Cached as a salsa derived query; contains URI/Path/Text/LineIndex.
-#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
-pub(crate) fn document(db: &dyn SalsaDb, file: SourceFileInput) -> Arc<DocumentView> {
+/// Parse. Plain lazy cache in `SalsaDatabase::syntax_trees`.
+pub(crate) fn parse(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+) -> &LuaSyntaxTree {
     let file_id = file.file_id(db);
-    let path = file.path(db).clone();
-    let text: Arc<str> = Arc::from(file.text(db));
-    let line_index = line_index(db, file).clone();
-    let uri = file.uri(db).clone();
-    Arc::new(DocumentView {
-        file_id,
-        path,
-        uri,
-        text,
-        line_index,
+    let _ = file.text(db);
+    let _ = config.language_level(db);
+    let _ = config.special_like(db);
+    let _ = config.non_std_symbols(db);
+    db.syntax_tree_cell(file_id)
+        .get_or_init(|| {
+            let text = file.text(db);
+            let mut node_cache = NodeCache::default();
+            let parse_config = config.to_parse_config(db, &mut node_cache);
+            Arc::new(LuaParser::parse(text, parse_config))
+        })
+        .as_ref()
+}
+
+/// Per-file line index. Plain lazy cache.
+pub(crate) fn line_index(db: &dyn SalsaDb, file: SourceFileInput) -> &Arc<LineIndex> {
+    let file_id = file.file_id(db);
+    let _ = file.text(db);
+    db.line_index_cell(file_id)
+        .get_or_init(|| Arc::new(LineIndex::parse(file.text(db))))
+}
+
+/// Per-file document view. Plain lazy cache; contains URI/Path/Text/LineIndex.
+pub(crate) fn document(db: &dyn SalsaDb, file: SourceFileInput) -> &Arc<DocumentView> {
+    let file_id = file.file_id(db);
+    let _ = file.text(db);
+    let _ = file.path(db);
+    let _ = file.uri(db);
+    db.document_cell(file_id).get_or_init(|| {
+        let path = file.path(db).clone();
+        let text: Arc<str> = Arc::from(file.text(db));
+        let line_index = line_index(db, file).clone();
+        let uri = file.uri(db).clone();
+        Arc::new(DocumentView {
+            file_id,
+            path,
+            uri,
+            text,
+            line_index,
+        })
     })
 }
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
-#[salsa::tracked(returns(ref), lru = 512)]
+///
+/// This is no longer a Salsa tracked query: results are cached in the plain
+/// `SalsaDatabase::file_facts` map and invalidated by file/config/workspace writes.
+/// It still touches the same Salsa input fields here so callers inside tracked
+/// queries are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn file_facts(
     db: &dyn SalsaDb,
     file: SourceFileInput,
     config: ConfigInput,
-) -> FileFacts {
-    let tree = parse(db, file, config);
-    let chunk = tree.get_chunk_node();
-    let workspace_id = db
-        .workspace_input()
-        .and_then(|workspace| file_workspace_id(db, workspace, file.file_id(db)))
-        .unwrap_or(WorkspaceId::MAIN);
-    FactsBuilder::new(file.file_id(db), workspace_id).build(&chunk, file.text(db))
+) -> &FileFacts {
+    let file_id = file.file_id(db);
+    let text = file.text(db);
+    let _ = file.path(db);
+
+    // Record Salsa dependencies on every input that used to feed the old tracked
+    // `file_facts` query (parse config + workspace identity).
+    let _ = config.language_level(db);
+    let _ = config.special_like(db);
+    let _ = config.non_std_symbols(db);
+    if let Some(workspace) = db.workspace_input() {
+        let _ = workspace.roots(db);
+    }
+
+    db.file_facts_cell(file_id)
+        .get_or_init(|| {
+            let workspace_id = db
+                .workspace_input()
+                .and_then(|workspace| file_workspace_id(db, workspace, file_id))
+                .unwrap_or(WorkspaceId::MAIN);
+            let tree = parse(db, file, config);
+            let chunk = tree.get_chunk_node();
+            Arc::new(FactsBuilder::new(file_id, workspace_id).build(&chunk, text))
+        })
+        .as_ref()
 }
 
 // ──────────────────────────────────────────────
-// Cross-file: interned TypeName (types are scoped! identity = (scope, full_name))
+// Plain workspace type index (scope + full_name → definitions)
 // ──────────────────────────────────────────────
 
 use super::def::TypeScope;
 use super::def::TypeVisibility;
 use super::index::{Bucket, build_buckets};
 use crate::WorkspaceId;
-use salsa::plumbing::AsId;
 use smol_str::SmolStr;
 
-/// Workspace type index: interned `TypeName` (scope+full_name) internal index -> definition.
-/// Interning happens at build time; queries binary-search by internal index (interned ids have no `Ord`, so sort by `as_id().index()`).
-/// Type index scoped to a single workspace.
+/// Workspace type index: plain `(scope, full_name)` -> all type definitions.
 ///
-/// Like `workspace_decl_index_for`, this keeps std / library / main type indexes
-/// independent so editing one workspace does not rebuild another.
-#[salsa::tracked(returns(ref), lru = 16)]
-pub(crate) fn workspace_type_index_for(
+/// This is not a Salsa query. It is stored in `WorkspaceIndexCache` and rebuilt from
+/// export shards when `WorkspaceInput.revision` changes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkspaceTypeIndex {
+    by_scope_name: HashMap<(TypeScope, SmolStr), Arc<[TypeDef]>>,
+}
+
+impl WorkspaceTypeIndex {
+    /// **All** definitions in the bucket (same-name definitions in multiple places, used by duplicate-type checks).
+    fn find_all(&self, scope: TypeScope, full_name: &str) -> Arc<[TypeDef]> {
+        self.by_scope_name
+            .get(&(scope, SmolStr::new(full_name)))
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+fn build_workspace_type_index(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
-    let mut entries: Vec<(u32, TypeDef)> = Vec::new();
+    let mut by_scope_name: HashMap<(TypeScope, SmolStr), Vec<TypeDef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
         let shard = export_shard(db, workspace, config, shard);
         for def in &shard.types {
@@ -109,56 +158,41 @@ pub(crate) fn workspace_type_index_for(
                 TypeVisibility::Internal => TypeScope::Internal(ws_id),
                 TypeVisibility::Private => TypeScope::File(def.file_id),
             };
-            let id = TypeName::new(db, scope, def.full_name.clone());
-            entries.push((id.as_id().index(), def.clone()));
+            by_scope_name
+                .entry((scope, def.full_name.clone()))
+                .or_default()
+                .push(def.clone());
         }
-    }
-    entries.sort_by_key(|(index, _)| *index);
-    let mut grouped: Vec<(u32, Vec<TypeDef>)> = Vec::new();
-    for (index, def) in entries {
-        if let Some(last) = grouped.last_mut()
-            && last.0 == index
-        {
-            last.1.push(def);
-        } else {
-            grouped.push((index, vec![def]));
-        }
-    }
-    let mut buckets: Vec<Bucket<u32>> = Vec::new();
-    let mut bucket_values: Vec<Arc<[TypeDef]>> = Vec::new();
-    for (index, defs) in grouped {
-        let len = defs.len() as u32;
-        bucket_values.push(Arc::from(defs));
-        buckets.push(Bucket {
-            key: index,
-            indices: (0..len).collect(),
-        });
     }
     WorkspaceTypeIndex {
-        by_index: buckets,
-        bucket_values,
+        by_scope_name: by_scope_name
+            .into_iter()
+            .map(|(key, defs)| (key, Arc::from(defs)))
+            .collect(),
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::SalsaValue)]
-pub struct WorkspaceTypeIndex {
-    by_index: Vec<Bucket<u32>>,
-    bucket_values: Vec<Arc<[TypeDef]>>,
-}
-
-impl WorkspaceTypeIndex {
-    /// **All** definitions in the bucket (same-name definitions in multiple places, used by duplicate-type checks).
-    fn find_all(&self, db: &dyn SalsaDb, scope: TypeScope, full_name: &str) -> Arc<[TypeDef]> {
-        let id = TypeName::new(db, scope, SmolStr::new(full_name));
-        let key = id.as_id().index();
-        let Ok(index) = self
-            .by_index
-            .binary_search_by(|bucket| bucket.key.cmp(&key))
-        else {
-            return Arc::from([]);
-        };
-        self.bucket_values[index].clone()
+pub(crate) fn workspace_type_index_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<WorkspaceTypeIndex> {
+    let revision = workspace.revision(db);
+    let cache = db.workspace_index_cache();
+    if let Some(index) = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_type(revision, ws_id)
+    {
+        return index;
     }
+    let index = Arc::new(build_workspace_type_index(db, workspace, config, ws_id));
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_type(revision, ws_id, index.clone());
+    index
 }
 
 /// A shard's deprecated global names: only files in the stable shard; editing one file recomputes one shard.
@@ -168,8 +202,19 @@ pub(crate) struct DeprecatedShard {
     member_keys: Vec<(FileId, SemanticId, SmolStr)>,
 }
 
-#[salsa::tracked(returns(ref), lru = 64, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn deprecated_shard(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> &DeprecatedShard {
+    let _ = workspace.revision(db);
+    db.deprecated_shard_cell(shard)
+        .get_or_init(|| Arc::new(build_deprecated_shard(db, workspace, config, shard)))
+        .as_ref()
+}
+
+fn build_deprecated_shard(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -205,7 +250,6 @@ pub(crate) fn deprecated_shard(
 /// This lets checkers like `DeprecatedChecker` test whether a global name is
 /// deprecated with a hash-set lookup instead of resolving each name through the
 /// full global-declaration pipeline.
-#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn deprecated_global_names_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -229,7 +273,6 @@ pub(crate) fn deprecated_global_names_for(
 /// This is intentionally owner-independent: the fast-negative check only wants to
 /// know whether *any* deprecated member with this key exists. If it does, the caller
 /// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
-#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn deprecated_member_names_for(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -284,12 +327,7 @@ fn find_global_types(
     let mut out: Vec<TypeDef> = Vec::new();
     for ws_id in all_workspace_ids(db, workspace) {
         let index = workspace_type_index_for(db, workspace, config, ws_id);
-        out.extend(
-            index
-                .find_all(db, TypeScope::Global, full_name)
-                .iter()
-                .cloned(),
-        );
+        out.extend(index.find_all(TypeScope::Global, full_name).iter().cloned());
     }
     Arc::from(out)
 }
@@ -301,11 +339,7 @@ fn find_internal_types(
     ws: WorkspaceId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
-    workspace_type_index_for(db, workspace, config, ws).find_all(
-        db,
-        TypeScope::Internal(ws),
-        full_name,
-    )
+    workspace_type_index_for(db, workspace, config, ws).find_all(TypeScope::Internal(ws), full_name)
 }
 
 fn find_file_types(
@@ -316,16 +350,12 @@ fn find_file_types(
     full_name: &str,
 ) -> Arc<[TypeDef]> {
     let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
-    workspace_type_index_for(db, workspace, config, ws).find_all(
-        db,
-        TypeScope::File(file_id),
-        full_name,
-    )
+    workspace_type_index_for(db, workspace, config, ws)
+        .find_all(TypeScope::File(file_id), full_name)
 }
 
 /// Resolve **all definition locations** of a named type in the current file scope
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_type_def_locations(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -374,7 +404,6 @@ pub(crate) fn resolve_type_def_locations(
 /// Resolve a named type in the current file scope (mirrors the old `find_type_decl` order):
 /// 1. file namespace qualification (Internal -> Global); 2. `@using` qualification (Internal -> Global);
 /// 3. bare name (**same-file Private** -> Internal -> Global).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_type_def(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -392,7 +421,6 @@ pub(crate) fn resolve_type_def(
 /// Class tables are usually created by factory functions like `meta("ClassName")` with `---@[constructor("init")]`;
 /// the attribute belongs to the factory function signature. Here we trace back from the runtime value declaration
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn constructor_attribute_of_type(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -461,8 +489,7 @@ pub struct WorkspaceMemberIndex {
 }
 
 /// Member index scoped to a single workspace.
-#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
-pub(crate) fn workspace_member_index_for(
+fn build_workspace_member_index(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -507,6 +534,29 @@ pub(crate) fn workspace_member_index_for(
     }
 }
 
+pub(crate) fn workspace_member_index_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<WorkspaceMemberIndex> {
+    let revision = workspace.revision(db);
+    let cache = db.workspace_index_cache();
+    if let Some(index) = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_member(revision, ws_id)
+    {
+        return index;
+    }
+    let index = Arc::new(build_workspace_member_index(db, workspace, config, ws_id));
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_member(revision, ws_id, index.clone());
+    index
+}
+
 /// Per-file reference index: only collects reference points in this file that can resolve to cross-file identities.
 ///
 /// This is the L1 layer of the reference index: each file computes independently and is memoized; editing one file recomputes one file.
@@ -518,9 +568,20 @@ pub struct FileReferences {
     pub member_defs: HashMap<SemanticId, Vec<rowan::TextRange>>,
 }
 
-/// Per-file reference index (salsa tracked).
-#[salsa::tracked(returns(ref), lru = 512, no_eq, unsafe(non_salsa_values))]
+/// Per-file reference index.
 pub(crate) fn file_references(
+    db: &dyn SalsaDb,
+    file: SourceFileInput,
+    config: ConfigInput,
+) -> &FileReferences {
+    let file_id = file.file_id(db);
+    let _ = file.text(db);
+    db.file_references_cell(file_id)
+        .get_or_init(|| Arc::new(build_file_references(db, file, config)))
+        .as_ref()
+}
+
+fn build_file_references(
     db: &dyn SalsaDb,
     file: SourceFileInput,
     config: ConfigInput,
@@ -591,8 +652,19 @@ pub struct WorkspaceReferenceIndex {
     pub member_defs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
 }
 
-#[salsa::tracked(returns(ref), no_eq, unsafe(non_salsa_values))]
 pub(crate) fn reference_shard(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> &ReferenceShard {
+    let _ = workspace.revision(db);
+    db.reference_shard_cell(shard)
+        .get_or_init(|| Arc::new(build_reference_shard(db, workspace, config, shard)))
+        .as_ref()
+}
+
+fn build_reference_shard(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -634,8 +706,7 @@ pub(crate) fn reference_shard(
 /// Built from stable shard queries (`reference_shard`) instead of re-reading every
 /// file directly. Editing one file only recomputes its shard; this function re-merges
 /// the shard results for the requested workspace.
-#[salsa::tracked(returns(ref), lru = 16, no_eq, unsafe(non_salsa_values))]
-pub(crate) fn workspace_reference_index_for(
+fn build_workspace_reference_index(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -672,6 +743,31 @@ pub(crate) fn workspace_reference_index_for(
     out
 }
 
+pub(crate) fn workspace_reference_index_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<WorkspaceReferenceIndex> {
+    let revision = workspace.revision(db);
+    let cache = db.workspace_index_cache();
+    if let Some(index) = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_reference(revision, ws_id)
+    {
+        return index;
+    }
+    let index = Arc::new(build_workspace_reference_index(
+        db, workspace, config, ws_id,
+    ));
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_reference(revision, ws_id, index.clone());
+    index
+}
+
 /// Whether `resolve_member_id` can be trusted directly for this owner/name pair.
 ///
 /// Name-rooted owners are unambiguous. Local declarations are trusted only when they
@@ -701,7 +797,6 @@ fn resolve_member_id(
 }
 
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn members_of_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -796,7 +891,6 @@ pub(crate) fn members_of_owner_named(
 
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -819,7 +913,6 @@ pub(crate) fn member_keys_of_owner(
 }
 
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn type_defs_in_scope(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -835,7 +928,6 @@ pub(crate) fn type_defs_in_scope(
 }
 
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn global_type_by_name(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -854,8 +946,7 @@ pub(crate) fn global_type_by_name(
 /// This is the key isolation layer: `std` / library / main workspaces are indexed
 /// separately, so editing main workspace files does not rebuild the std/library
 /// indexes.
-#[salsa::tracked(returns(ref), lru = 16)]
-pub(crate) fn workspace_decl_index_for(
+fn build_workspace_decl_index(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -919,6 +1010,29 @@ pub(crate) fn workspace_decl_index_for(
     }
 }
 
+pub(crate) fn workspace_decl_index_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<WorkspaceDeclIndex> {
+    let revision = workspace.revision(db);
+    let cache = db.workspace_index_cache();
+    if let Some(index) = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_decl(revision, ws_id)
+    {
+        return index;
+    }
+    let index = Arc::new(build_workspace_decl_index(db, workspace, config, ws_id));
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_decl(revision, ws_id, index.clone());
+    index
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceDeclIndex {
     /// Bare-name bucket -> global declaration index.
@@ -959,7 +1073,6 @@ impl WorkspaceDeclIndex {
 }
 
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn global_decl_by_name(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1006,8 +1119,19 @@ pub(crate) struct ModuleShard {
 
 /// Module shard query. Each file contributes a `ModuleEntry` using its owning workspace's root,
 /// so the per-workspace index can merge shards without scanning every file again.
-#[salsa::tracked(returns(ref), lru = 64, no_eq, unsafe(non_salsa_values))]
 pub(crate) fn module_shard(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    shard: u8,
+) -> &ModuleShard {
+    let _ = workspace.revision(db);
+    db.module_shard_cell(shard)
+        .get_or_init(|| Arc::new(build_module_shard(db, workspace, config, shard)))
+        .as_ref()
+}
+
+fn build_module_shard(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -1083,8 +1207,7 @@ pub(crate) fn module_shard(
 
 /// Workspace module index: module name (relative to workspace root) -> file.
 /// Module index scoped to a single workspace.
-#[salsa::tracked(returns(ref), lru = 16)]
-pub(crate) fn workspace_module_index_for(
+fn build_workspace_module_index(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
     config: ConfigInput,
@@ -1138,6 +1261,29 @@ pub(crate) fn workspace_module_index_for(
         nodes,
         root,
     }
+}
+
+pub(crate) fn workspace_module_index_for(
+    db: &dyn SalsaDb,
+    workspace: WorkspaceInput,
+    config: ConfigInput,
+    ws_id: WorkspaceId,
+) -> Arc<ModuleIndex> {
+    let revision = workspace.revision(db);
+    let cache = db.workspace_index_cache();
+    if let Some(index) = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_module(revision, ws_id)
+    {
+        return index;
+    }
+    let index = Arc::new(build_workspace_module_index(db, workspace, config, ws_id));
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_module(revision, ws_id, index.clone());
+    index
 }
 
 fn build_module_tree(
@@ -1232,7 +1378,6 @@ pub(crate) fn find_workspace_root(
 }
 
 /// File -> its workspace.
-#[salsa::tracked(returns(copy))]
 pub(crate) fn file_workspace_id(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1248,7 +1393,6 @@ pub(crate) fn file_workspace_id(
 }
 
 /// Module name -> file. Resolution order: module_map rewrite -> exact match -> require pattern (`?.lua`/`?/init.lua`).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn module_file_of(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1416,6 +1560,114 @@ impl ModuleIndex {
     }
 }
 
+/// Plain merged workspace indexes.
+///
+/// This is the Phase 3 replacement for the Salsa-tracked `workspace_*_index_for`
+/// queries. It is just a cache keyed by `WorkspaceInput.revision`; the actual
+/// per-shard Salsa queries are still used to rebuild each merged index when needed.
+#[derive(Debug)]
+pub(crate) struct WorkspaceIndexCache {
+    revision: u64,
+    types: HashMap<WorkspaceId, Arc<WorkspaceTypeIndex>>,
+    members: HashMap<WorkspaceId, Arc<WorkspaceMemberIndex>>,
+    decls: HashMap<WorkspaceId, Arc<WorkspaceDeclIndex>>,
+    modules: HashMap<WorkspaceId, Arc<ModuleIndex>>,
+    references: HashMap<WorkspaceId, Arc<WorkspaceReferenceIndex>>,
+}
+
+impl WorkspaceIndexCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            revision: u64::MAX,
+            types: HashMap::new(),
+            members: HashMap::new(),
+            decls: HashMap::new(),
+            modules: HashMap::new(),
+            references: HashMap::new(),
+        }
+    }
+
+    fn ensure_revision(&mut self, revision: u64) {
+        if self.revision != revision {
+            self.revision = revision;
+            self.types.clear();
+            self.members.clear();
+            self.decls.clear();
+            self.modules.clear();
+            self.references.clear();
+        }
+    }
+
+    fn get_type(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceTypeIndex>> {
+        (self.revision == revision)
+            .then(|| self.types.get(&ws_id).cloned())
+            .flatten()
+    }
+
+    fn insert_type(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<WorkspaceTypeIndex>) {
+        self.ensure_revision(revision);
+        self.types.insert(ws_id, index);
+    }
+
+    fn get_member(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceMemberIndex>> {
+        (self.revision == revision)
+            .then(|| self.members.get(&ws_id).cloned())
+            .flatten()
+    }
+
+    fn insert_member(
+        &mut self,
+        revision: u64,
+        ws_id: WorkspaceId,
+        index: Arc<WorkspaceMemberIndex>,
+    ) {
+        self.ensure_revision(revision);
+        self.members.insert(ws_id, index);
+    }
+
+    fn get_decl(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceDeclIndex>> {
+        (self.revision == revision)
+            .then(|| self.decls.get(&ws_id).cloned())
+            .flatten()
+    }
+
+    fn insert_decl(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<WorkspaceDeclIndex>) {
+        self.ensure_revision(revision);
+        self.decls.insert(ws_id, index);
+    }
+
+    fn get_module(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<ModuleIndex>> {
+        (self.revision == revision)
+            .then(|| self.modules.get(&ws_id).cloned())
+            .flatten()
+    }
+
+    fn insert_module(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<ModuleIndex>) {
+        self.ensure_revision(revision);
+        self.modules.insert(ws_id, index);
+    }
+
+    fn get_reference(
+        &self,
+        revision: u64,
+        ws_id: WorkspaceId,
+    ) -> Option<Arc<WorkspaceReferenceIndex>> {
+        (self.revision == revision)
+            .then(|| self.references.get(&ws_id).cloned())
+            .flatten()
+    }
+
+    fn insert_reference(
+        &mut self,
+        revision: u64,
+        ws_id: WorkspaceId,
+        index: Arc<WorkspaceReferenceIndex>,
+    ) {
+        self.ensure_revision(revision);
+        self.references.insert(ws_id, index);
+    }
+}
+
 /// File path -> module name: relative to workspace root, strip `.lua`, `init.lua` -> parent dir, `/` -> `.`.
 pub(crate) fn module_name_from_path(path: &Path, root: Option<&Path>) -> Option<SmolStr> {
     let rel = match root {
@@ -1471,7 +1723,6 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 /// Phase 2 association: resolve `Name("a.b")` to a real definition (type/variable/member chain).
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
-#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = owner_cycle_initial, cycle_fn = owner_cycle_recover)]
 pub(crate) fn resolve_owner(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1504,32 +1755,9 @@ pub(crate) fn resolve_owner(
     }
 }
 
-fn owner_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _workspace: WorkspaceInput,
-    _config: ConfigInput,
-    _owner: SemanticId,
-) -> Option<SemanticId> {
-    None
-}
-
-fn owner_cycle_recover(
-    _db: &dyn SalsaDb,
-    _cycle: &salsa::Cycle,
-    _last: &Option<SemanticId>,
-    _value: Option<SemanticId>,
-    _workspace: WorkspaceInput,
-    _config: ConfigInput,
-    _owner: SemanticId,
-) -> Option<SemanticId> {
-    None
-}
-
 /// Phase 2 association: resolve an owner to an **identity set** (dual identity: same-name type + runtime value).
 /// `Name("M")` -> `{TypeDef(M), Decl(M)}`; member lookup uses the union across sets.
 /// For name chains (`a.b`), recursively take members along each head identity.
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_owner_set(
     db: &dyn SalsaDb,
     workspace: WorkspaceInput,
@@ -1678,7 +1906,6 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 /// Type of a declaration. Recursive dependencies (mutual references) converge via salsa's native fixed point.
 /// Priority: `---@type` annotation -> initializer expression.
 /// Keyed by file: when an initializer references cross-file members, dependence on `workspace_input` keeps memoization stable.
-#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = type_cycle_initial, cycle_fn = type_cycle_recover)]
 pub(crate) fn decl_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -1735,29 +1962,26 @@ pub(crate) fn decl_type(
     }
 
     if let Some(value_expr_syntax) = decl.value_expr_syntax {
-        let tree = parse(db, file, config);
-        if let Some(expr) = find_expr_by_syntax_id(&tree, &value_expr_syntax) {
-            let shell = expr_type(db, &facts, workspace, file, config, expr);
-            if !shell.is_unknown() {
-                // Globals cannot carry generic parameters not instantiated inside the function body (the `a` in `function f(x) a = x end` is unknown outside).
-                if matches!(decl.kind, DeclKind::Global) {
-                    let generic_names: HashSet<&str> = facts
-                        .signatures
-                        .iter()
-                        .filter_map(|sig| sig.docs.as_ref())
-                        .flat_map(|docs| docs.generic_params.iter().map(|g| g.name.as_str()))
-                        .collect();
-                    if shell.candidates.iter().any(|candidate| {
-                        matches!(
-                            candidate,
-                            TypeCandidate::Generic(name) if generic_names.contains(name.as_str())
-                        )
-                    }) {
-                        return TypeShell::unknown();
-                    }
+        let shell = expr_type_of(db, file, config, value_expr_syntax);
+        if !shell.is_unknown() {
+            // Globals cannot carry generic parameters not instantiated inside the function body (the `a` in `function f(x) a = x end` is unknown outside).
+            if matches!(decl.kind, DeclKind::Global) {
+                let generic_names: HashSet<&str> = facts
+                    .signatures
+                    .iter()
+                    .filter_map(|sig| sig.docs.as_ref())
+                    .flat_map(|docs| docs.generic_params.iter().map(|g| g.name.as_str()))
+                    .collect();
+                if shell.candidates.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        TypeCandidate::Generic(name) if generic_names.contains(name.as_str())
+                    )
+                }) {
+                    return TypeShell::unknown();
                 }
-                return shell;
             }
+            return shell;
         }
     }
 
@@ -2162,35 +2386,11 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
     Some(TypeShell::from_primitive(primitive))
 }
 
-fn type_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _decl: SemanticId,
-) -> TypeShell {
-    TypeShell::unknown()
-}
-
-fn type_cycle_recover(
-    _db: &dyn SalsaDb,
-    cycle: &salsa::Cycle,
-    last: &TypeShell,
-    value: TypeShell,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _decl: SemanticId,
-) -> TypeShell {
-    let _ = (cycle, last);
-    value
-}
-
 // ──────────────────────────────────────────────
 // L3 semantics: member types (with cycle convergence)
 // ──────────────────────────────────────────────
 
 /// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by salsa's native fixed point.
-#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = member_cycle_initial, cycle_fn = member_cycle_recover)]
 pub(crate) fn member_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2225,12 +2425,9 @@ pub(crate) fn member_type(
                 }
             }
             _ => {
-                let tree = parse(db, file, config);
-                if let Some(expr) = find_expr_by_syntax_id(&tree, &value_syntax) {
-                    let shell = expr_type(db, &facts, workspace, file, config, expr);
-                    if !shell.is_unknown() {
-                        return shell;
-                    }
+                let shell = expr_type_of(db, file, config, value_syntax);
+                if !shell.is_unknown() {
+                    return shell;
                 }
             }
         }
@@ -2243,31 +2440,7 @@ pub(crate) fn member_type(
     TypeShell::unknown()
 }
 
-fn member_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _member: SemanticId,
-) -> TypeShell {
-    TypeShell::unknown()
-}
-
-fn member_cycle_recover(
-    _db: &dyn SalsaDb,
-    cycle: &salsa::Cycle,
-    last: &TypeShell,
-    value: TypeShell,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _member: SemanticId,
-) -> TypeShell {
-    let _ = (cycle, last);
-    value
-}
-
 /// Direct member names of a local declaration (completion candidates).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_decl(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2287,7 +2460,6 @@ pub(crate) fn member_keys_of_decl(
 }
 
 /// Member keys of a named type (including parent types, completion candidates). `type_def` is a global type id.
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn member_keys_of_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2386,7 +2558,6 @@ fn collect_type_keys(
 // ──────────────────────────────────────────────
 
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn resolve_name(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2405,7 +2576,6 @@ pub(crate) fn resolve_name(
 }
 
 /// All references to a declaration (name use sites).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn decl_references(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2436,11 +2606,6 @@ pub(crate) fn decl_references(
 
 /// Per-slot function return types. Doc annotations take priority (one slot per `---@return`);
 /// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via salsa fixed point.
-#[salsa::tracked(
-    returns(clone), lru = 1024,
-    cycle_initial = sig_returns_cycle_initial,
-    cycle_fn = sig_returns_cycle_recover
-)]
 pub(crate) fn signature_returns(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2546,7 +2711,7 @@ pub(crate) fn signature_returns(
                 }
                 _ => None,
             }
-            .unwrap_or_else(|| expr_type(db, &facts, workspace, file, config, expr));
+            .unwrap_or_else(|| expr_type_of(db, file, config, expr.get_syntax_id()));
             if let Some(slot) = slots.get_mut(index) {
                 slot.merge(&shell);
             } else {
@@ -2633,7 +2798,6 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 
 /// Function return type (merged view, compatible with old consumers). Doc annotations take priority; otherwise scan the function body's `return` statements.
 /// Mutual recursion (`foo`->`bar`->`foo`) converges via salsa's native fixed point.
-#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = sig_cycle_initial, cycle_fn = sig_cycle_recover)]
 pub(crate) fn signature_return(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2648,7 +2812,6 @@ pub(crate) fn signature_return(
 }
 
 /// Type of the function's `param_index`-th parameter (`---@param` annotation + generic binding).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn param_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2681,52 +2844,6 @@ pub(crate) fn param_type(
     )
 }
 
-fn sig_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _closure_syntax: LuaSyntaxId,
-) -> TypeShell {
-    TypeShell::unknown()
-}
-
-fn sig_cycle_recover(
-    _db: &dyn SalsaDb,
-    cycle: &salsa::Cycle,
-    last: &TypeShell,
-    value: TypeShell,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _closure_syntax: LuaSyntaxId,
-) -> TypeShell {
-    let _ = (cycle, last);
-    value
-}
-
-fn sig_returns_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _closure_syntax: LuaSyntaxId,
-) -> Vec<TypeShell> {
-    Vec::new()
-}
-
-fn sig_returns_cycle_recover(
-    _db: &dyn SalsaDb,
-    cycle: &salsa::Cycle,
-    last: &Vec<TypeShell>,
-    value: Vec<TypeShell>,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _closure_syntax: LuaSyntaxId,
-) -> Vec<TypeShell> {
-    let _ = (cycle, last);
-    value
-}
-
 /// Call target -> its function body (closure) `LuaSyntaxId`.
 fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntaxId> {
     match callee {
@@ -2753,7 +2870,6 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 // ──────────────────────────────────────────────
 
 /// Value type exported by a module (type of `return M` / table literal, etc.).
-#[salsa::tracked(returns(clone), lru = 1024)]
 pub(crate) fn module_export_type(
     db: &dyn SalsaDb,
     file: SourceFileInput,
@@ -2811,14 +2927,49 @@ pub(crate) fn find_expr_by_syntax_id(
     LuaExpr::cast(node)
 }
 
+thread_local! {
+    static EXPR_TYPE_IN_PROGRESS: RefCell<Vec<(FileId, LuaSyntaxId)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+struct ExprTypeGuard {
+    key: (FileId, LuaSyntaxId),
+}
+
+impl ExprTypeGuard {
+    fn enter(key: (FileId, LuaSyntaxId)) -> Self {
+        EXPR_TYPE_IN_PROGRESS.with(|stack| stack.borrow_mut().push(key.clone()));
+        Self { key }
+    }
+}
+
+impl Drop for ExprTypeGuard {
+    fn drop(&mut self) {
+        EXPR_TYPE_IN_PROGRESS.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if let Some(pos) = stack.iter().rposition(|key| key == &self.key) {
+                stack.remove(pos);
+            }
+        });
+    }
+}
+
 /// Type of an expression (by syntax position, node-keyed). Entry point for the semantic/infer layer.
-#[salsa::tracked(returns(clone), lru = 1024, cycle_initial = expr_cycle_initial, cycle_fn = expr_cycle_recover)]
+///
+/// Salsa's tracked memo/cycle handling is replaced by a per-thread in-progress guard:
+/// re-entering the same expression while it is still being inferred returns `Unknown`,
+/// which matches the previous Salsa `cycle_initial` behavior.
 pub(crate) fn expr_type_of(
     db: &dyn SalsaDb,
     file: SourceFileInput,
     config: ConfigInput,
     expr_syntax: LuaSyntaxId,
 ) -> TypeShell {
+    let key = (file.file_id(db), expr_syntax);
+    if EXPR_TYPE_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
+        return TypeShell::unknown();
+    }
+    let _guard = ExprTypeGuard::enter(key);
     let facts = file_facts(db, file, config);
     let workspace = db.workspace_input();
     let tree = parse(db, file, config);
@@ -2826,29 +2977,6 @@ pub(crate) fn expr_type_of(
         return TypeShell::unknown();
     };
     expr_type(db, &facts, workspace, file, config, expr)
-}
-
-fn expr_cycle_initial(
-    _db: &dyn SalsaDb,
-    _id: salsa::Id,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _expr_syntax: LuaSyntaxId,
-) -> TypeShell {
-    TypeShell::unknown()
-}
-
-fn expr_cycle_recover(
-    _db: &dyn SalsaDb,
-    cycle: &salsa::Cycle,
-    last: &TypeShell,
-    value: TypeShell,
-    _file: SourceFileInput,
-    _config: ConfigInput,
-    _expr_syntax: LuaSyntaxId,
-) -> TypeShell {
-    let _ = (cycle, last);
-    value
 }
 
 fn expr_type(

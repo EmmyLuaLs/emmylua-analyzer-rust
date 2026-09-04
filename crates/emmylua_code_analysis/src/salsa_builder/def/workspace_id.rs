@@ -17,7 +17,7 @@ impl Workspace {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::SalsaValue)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkspaceId {
     pub id: u32,
 }

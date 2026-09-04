@@ -60,6 +60,31 @@ fn test_file_facts_extracts_decls_and_scopes() {
 }
 
 #[test]
+fn test_file_facts_cache_invalidates_on_text_and_metadata_update() {
+    let mut db = setup();
+    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    assert_eq!(db.q().file_facts(fid).expect("facts").decls.len(), 1);
+
+    // Pure text update reuses the VFS state but must still invalidate per-file facts.
+    set_test_file(
+        &mut db,
+        1,
+        "C:/ws/a.lua",
+        "local a = 1
+local b = 2",
+    );
+    let facts = db.q().file_facts(fid).expect("facts after text update");
+    assert_eq!(facts.decls.len(), 2);
+    assert!(facts.decls.iter().any(|decl| decl.name == "b"));
+
+    // Path/metadata update publishes a new VFS state and also replaces the facts cell.
+    set_test_file(&mut db, 1, "C:/ws/b.lua", "local c = 3");
+    let facts = db.q().file_facts(fid).expect("facts after metadata update");
+    assert_eq!(facts.decls.len(), 1);
+    assert!(facts.decls.iter().any(|decl| decl.name == "c"));
+}
+
+#[test]
 fn test_decl_type_from_literal_initializer() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
@@ -160,6 +185,31 @@ fn test_resolve_type_def_public_cross_file() {
     assert_eq!(def.visibility, TypeVisibility::Public);
     assert!(db.q().resolve_type_def(FileId::new(2), "Bar").is_none());
     assert!(db.q().resolve_type_def(FileId::new(2), "Missing").is_none());
+}
+
+#[test]
+fn test_workspace_type_index_invalidates_after_text_update() {
+    let mut db = setup();
+    set_test_file(
+        &mut db,
+        1,
+        "C:/ws/def.lua",
+        "---@class Foo
+local Foo = {}",
+    );
+    set_test_file(&mut db, 2, "C:/ws/other.lua", "local x = 1");
+
+    assert!(
+        db.q().resolve_type_def(FileId::new(2), "Foo").is_some(),
+        "Foo should resolve before the text update"
+    );
+
+    // Pure text update removes the class; the plain workspace index must refresh.
+    set_test_file(&mut db, 1, "C:/ws/def.lua", "local x = 1");
+    assert!(
+        db.q().resolve_type_def(FileId::new(2), "Foo").is_none(),
+        "Foo should no longer resolve after the text update"
+    );
 }
 
 #[test]
@@ -887,29 +937,18 @@ fn test_invalidation_granularity_cross_file_decl_reexecutes() {
         PrimitiveType::Number,
     );
 
-    let _before = db.query_execution_count();
-    // Warm up the workspace member query first.
-    let _ = db.q().members_of_owner(SemanticId::name(SmolStr::new("M")));
-    let warmed = db.query_execution_count();
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 's'");
-    let _ = db.q().members_of_owner(SemanticId::name(SmolStr::new("M")));
-    let after_members = db.query_execution_count();
-    let _y_after = db.q().decl_type(fid, y.clone()).expect("y");
-    let after_y = db.query_execution_count();
-    // Cross-file decl depends on workspace (backdate fallback) → must re-execute after editing B and update the value correctly.
+    // 所有相关查询已经是普通函数，这里只验证跨文件编辑后结果确实刷新为 String。
+    set_test_file(
+        &mut db,
+        2,
+        "C:/ws/b.lua",
+        "M = {}
+M.x = 's'",
+    );
+    let y_after = db.q().decl_type(fid, y.clone()).expect("y");
+    assert_primitive(&y_after, PrimitiveType::String);
+    // 再次读取仍是 String（普通函数每次都会基于最新 workspace 索引计算结果）。
     assert_primitive(&db.q().decl_type(fid, y).expect("y"), PrimitiveType::String);
-    assert!(
-        after_members > warmed,
-        "workspace 成员查询应随编辑重算（warmed={}, after={}）",
-        warmed,
-        after_members
-    );
-    assert!(
-        after_y > after_members,
-        "跨文件 decl_type 应随 workspace 变化重算（after_members={}, after_y={}）",
-        after_members,
-        after_y
-    );
 }
 
 #[test]
@@ -932,23 +971,17 @@ fn test_file_exports_identity_and_shard_memo() {
     let _ = export_shard(&db, workspace, config, shard1);
     let _ = export_shard(&db, workspace, config, shard2);
 
-    // Edit a shard2 file, then re-query shard1: should hit memo without running any tracked query.
-    let before = db.query_execution_count();
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}\nN.y = 2");
-    let _ = export_shard(&db, workspace, config, shard1);
-    assert_eq!(
-        before,
-        db.query_execution_count(),
-        "无关 shard 的导出查询应复用 memo"
+    // export_shard 已经是普通缓存，不再通过 query_execution_count 观察 memo。
+    set_test_file(
+        &mut db,
+        2,
+        "C:/ws/b.lua",
+        "N = {}
+N.y = 2",
     );
-
-    // Query the shard containing the edited file: must re-execute and see the new member.
+    let _ = export_shard(&db, workspace, config, shard1);
     let edited = export_shard(&db, workspace, config, shard2);
     assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
-    assert!(
-        db.query_execution_count() > before,
-        "被编辑文件所在 shard 应重新执行"
-    );
 }
 
 #[test]
@@ -977,21 +1010,12 @@ fn test_module_and_deprecated_shard_memo() {
     let _ = module_shard(&db, workspace, config, shard1);
     let _ = module_shard(&db, workspace, config, shard2);
 
-    let before = db.query_execution_count();
+    // module_shard/deprecated_shard 已是普通缓存，这里只验证编辑后仍可正常读取。
     set_test_file(&mut db, 2, "C:/ws/b.lua", "return {}");
     let _ = deprecated_shard(&db, workspace, config, shard1);
     let _ = module_shard(&db, workspace, config, shard1);
-    assert_eq!(
-        before,
-        db.query_execution_count(),
-        "无关 shard 的 deprecated/module 查询应复用 memo"
-    );
-
     let _ = deprecated_shard(&db, workspace, config, shard2);
-    assert!(
-        db.query_execution_count() > before,
-        "被编辑文件所在 shard 应重新执行"
-    );
+    let _ = module_shard(&db, workspace, config, shard2);
 }
 
 #[test]
@@ -2113,28 +2137,28 @@ fn test_vfs_snapshot_shared_between_clones_and_stable_across_metadata_change() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1");
 
-    // Clones share the same VFS snapshot
+    // Clones share the same VFS state
     let snapshot = db.clone();
     assert!(Arc::ptr_eq(db.vfs(), snapshot.vfs()));
     drop(snapshot);
 
-    // Text-only update: don't replace the VFS snapshot, avoiding an O(n) VFS clone per keystroke
+    // Text-only update: don't replace the VFS state, avoiding an O(n) VFS clone per keystroke
     let old_vfs = db.vfs().clone();
     set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 2");
     assert!(
         Arc::ptr_eq(&old_vfs, db.vfs()),
-        "text edit should reuse the same VFS snapshot"
+        "text edit should reuse the same VFS state"
     );
 
-    // Path/URI update: publish a new VFS snapshot; the old snapshot keeps the old mount info
+    // Path/URI update: publish a new VFS state; the old state keeps the old mount info
     set_test_file(&mut db, 1, "C:/ws/b.lua", "local x = 2");
     assert!(!Arc::ptr_eq(&old_vfs, db.vfs()));
     assert_eq!(
-        old_vfs.file_entry(fid).unwrap().path.as_deref(),
+        old_vfs.file(fid).unwrap().path.as_deref(),
         Some(std::path::Path::new("C:/ws/a.lua"))
     );
     assert_eq!(
-        db.vfs().file_entry(fid).unwrap().path.as_deref(),
+        db.vfs().file(fid).unwrap().path.as_deref(),
         Some(std::path::Path::new("C:/ws/b.lua"))
     );
 }

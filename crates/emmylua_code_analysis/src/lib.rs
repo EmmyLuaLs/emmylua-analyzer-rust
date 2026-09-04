@@ -8,6 +8,7 @@
     )
 )]
 
+mod analysis_state;
 mod check;
 mod config;
 mod locale;
@@ -29,6 +30,7 @@ pub use crate::salsa_builder::def::{
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
 pub use crate::salsa_builder::{DocumentView, SalsaDatabase};
+pub use analysis_state::{AnalysisState, FileData, VfsState, WorkspaceIndex};
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };
@@ -197,7 +199,7 @@ impl EmmyLuaAnalysis {
         let stale_uris: Vec<Uri> = old_files
             .values()
             .filter_map(|input| {
-                let path = input.path(&self.salsa).as_ref()?;
+                let path = input.path.as_ref()?;
                 if kept_paths.contains(path) {
                     None
                 } else {
@@ -211,7 +213,7 @@ impl EmmyLuaAnalysis {
         let mut path_to_id: HashMap<PathBuf, FileId> = new_files
             .iter()
             .filter_map(|(id, input)| {
-                let path = input.path(&self.salsa).as_ref()?.clone();
+                let path = input.path.as_ref()?.clone();
                 Some((path, *id))
             })
             .collect();
