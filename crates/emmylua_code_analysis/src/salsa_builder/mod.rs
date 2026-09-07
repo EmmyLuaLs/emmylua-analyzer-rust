@@ -143,25 +143,25 @@ pub struct SalsaDatabase {
     /// Plain per-file facts cache. Unlike Salsa's tracked `file_facts`, this is a
     /// normal lazy cache; file writes invalidate only the affected entry (or all
     /// entries when config/workspace roots change).
-    file_facts: HashMap<FileId, OnceLock<Arc<facts::FileFacts>>>,
+    file_facts: HashMap<FileId, OnceLock<facts::FileFacts>>,
 
     /// Plain per-file control-flow graph cache (same invalidation as `file_facts`).
     flow_trees: HashMap<FileId, OnceLock<Arc<flow::FlowTree>>>,
 
     /// Plain per-file syntax/line-index/document caches.
-    syntax_trees: HashMap<FileId, OnceLock<Arc<LuaSyntaxTree>>>,
+    syntax_trees: HashMap<FileId, OnceLock<LuaSyntaxTree>>,
     line_indexes: HashMap<FileId, OnceLock<Arc<LineIndex>>>,
     documents: HashMap<FileId, OnceLock<Arc<DocumentView>>>,
 
     /// Plain per-file exports / shard caches.
-    file_exports: HashMap<FileId, OnceLock<Arc<exports::FileExports>>>,
-    export_shards: HashMap<u8, OnceLock<Arc<exports::ExportShard>>>,
+    file_exports: HashMap<FileId, OnceLock<exports::FileExports>>,
+    export_shards: HashMap<u8, OnceLock<exports::ExportShard>>,
 
     /// Plain per-file references and remaining shard caches.
-    file_references: HashMap<FileId, OnceLock<Arc<query::FileReferences>>>,
-    deprecated_shards: HashMap<u8, OnceLock<Arc<query::DeprecatedShard>>>,
-    module_shards: HashMap<u8, OnceLock<Arc<query::ModuleShard>>>,
-    reference_shards: HashMap<u8, OnceLock<Arc<query::ReferenceShard>>>,
+    file_references: HashMap<FileId, OnceLock<query::FileReferences>>,
+    deprecated_shards: HashMap<u8, OnceLock<query::DeprecatedShard>>,
+    module_shards: HashMap<u8, OnceLock<query::ModuleShard>>,
+    reference_shards: HashMap<u8, OnceLock<query::ReferenceShard>>,
 
     /// Plain merged workspace indexes (type/member/decl/module/reference).
     workspace_index: Mutex<query::WorkspaceIndexCache>,
@@ -224,12 +224,12 @@ impl SalsaDatabase {
         self.workspace.is_some().then_some(WorkspaceInput)
     }
 
-    pub(crate) fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<Arc<facts::FileFacts>> {
+    pub(crate) fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<facts::FileFacts> {
         self.file_facts.get(&file_id).unwrap_or_else(|| {
             // Every public file-mutation path inserts/removes a cell in `file_facts`
             // alongside `file_inputs`. This static fallback is only to keep the trait
             // object signature total if an internal invariant is ever violated.
-            static MISSING: OnceLock<Arc<facts::FileFacts>> = OnceLock::new();
+            static MISSING: OnceLock<facts::FileFacts> = OnceLock::new();
             &MISSING
         })
     }
@@ -241,9 +241,9 @@ impl SalsaDatabase {
         })
     }
 
-    pub(crate) fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<LuaSyntaxTree>> {
+    pub(crate) fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<LuaSyntaxTree> {
         self.syntax_trees.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<LuaSyntaxTree>> = OnceLock::new();
+            static MISSING: OnceLock<LuaSyntaxTree> = OnceLock::new();
             &MISSING
         })
     }
@@ -262,53 +262,44 @@ impl SalsaDatabase {
         })
     }
 
-    pub(crate) fn file_exports_cell(
-        &self,
-        file_id: FileId,
-    ) -> &OnceLock<Arc<exports::FileExports>> {
+    pub(crate) fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<exports::FileExports> {
         self.file_exports.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<exports::FileExports>> = OnceLock::new();
+            static MISSING: OnceLock<exports::FileExports> = OnceLock::new();
             &MISSING
         })
     }
 
-    pub(crate) fn export_shard_cell(&self, shard: u8) -> &OnceLock<Arc<exports::ExportShard>> {
+    pub(crate) fn export_shard_cell(&self, shard: u8) -> &OnceLock<exports::ExportShard> {
         self.export_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<exports::ExportShard>> = OnceLock::new();
+            static MISSING: OnceLock<exports::ExportShard> = OnceLock::new();
             &MISSING
         })
     }
 
-    pub(crate) fn file_references_cell(
-        &self,
-        file_id: FileId,
-    ) -> &OnceLock<Arc<query::FileReferences>> {
+    pub(crate) fn file_references_cell(&self, file_id: FileId) -> &OnceLock<query::FileReferences> {
         self.file_references.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<query::FileReferences>> = OnceLock::new();
+            static MISSING: OnceLock<query::FileReferences> = OnceLock::new();
             &MISSING
         })
     }
 
-    pub(crate) fn deprecated_shard_cell(
-        &self,
-        shard: u8,
-    ) -> &OnceLock<Arc<query::DeprecatedShard>> {
+    pub(crate) fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<query::DeprecatedShard> {
         self.deprecated_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<query::DeprecatedShard>> = OnceLock::new();
+            static MISSING: OnceLock<query::DeprecatedShard> = OnceLock::new();
             &MISSING
         })
     }
 
-    pub(crate) fn module_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ModuleShard>> {
+    pub(crate) fn module_shard_cell(&self, shard: u8) -> &OnceLock<query::ModuleShard> {
         self.module_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<query::ModuleShard>> = OnceLock::new();
+            static MISSING: OnceLock<query::ModuleShard> = OnceLock::new();
             &MISSING
         })
     }
 
-    pub(crate) fn reference_shard_cell(&self, shard: u8) -> &OnceLock<Arc<query::ReferenceShard>> {
+    pub(crate) fn reference_shard_cell(&self, shard: u8) -> &OnceLock<query::ReferenceShard> {
         self.reference_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<query::ReferenceShard>> = OnceLock::new();
+            static MISSING: OnceLock<query::ReferenceShard> = OnceLock::new();
             &MISSING
         })
     }

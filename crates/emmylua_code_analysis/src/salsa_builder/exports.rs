@@ -9,7 +9,6 @@
 //! Currently holds: all TypeDefs, global declaration identities, member identities, module export identities.
 
 use smol_str::SmolStr;
-use std::sync::Arc;
 
 use crate::FileId;
 use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
@@ -59,8 +58,7 @@ pub(crate) fn file_exports(
     let file_id = file.file_id(db);
     let _ = file.text(db);
     db.file_exports_cell(file_id)
-        .get_or_init(|| Arc::new(build_file_exports(db, file, config, file_id)))
-        .as_ref()
+        .get_or_init(|| build_file_exports(db, file, config, file_id))
 }
 
 fn build_file_exports(
@@ -140,8 +138,7 @@ pub(crate) fn export_shard(
 ) -> &ExportShard {
     let _ = workspace.revision(db);
     db.export_shard_cell(shard)
-        .get_or_init(|| Arc::new(build_export_shard(db, workspace, config, shard)))
-        .as_ref()
+        .get_or_init(|| build_export_shard(db, workspace, config, shard))
 }
 
 fn build_export_shard(

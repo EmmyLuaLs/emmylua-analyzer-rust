@@ -35,14 +35,12 @@ pub(crate) fn parse(
     let _ = config.language_level(db);
     let _ = config.special_like(db);
     let _ = config.non_std_symbols(db);
-    db.syntax_tree_cell(file_id)
-        .get_or_init(|| {
-            let text = file.text(db);
-            let mut node_cache = NodeCache::default();
-            let parse_config = config.to_parse_config(db, &mut node_cache);
-            Arc::new(LuaParser::parse(text, parse_config))
-        })
-        .as_ref()
+    db.syntax_tree_cell(file_id).get_or_init(|| {
+        let text = file.text(db);
+        let mut node_cache = NodeCache::default();
+        let parse_config = config.to_parse_config(db, &mut node_cache);
+        LuaParser::parse(text, parse_config)
+    })
 }
 
 /// Per-file line index. Plain lazy cache.
@@ -98,17 +96,15 @@ pub(crate) fn file_facts(
         let _ = workspace.roots(db);
     }
 
-    db.file_facts_cell(file_id)
-        .get_or_init(|| {
-            let workspace_id = db
-                .workspace_input()
-                .and_then(|workspace| file_workspace_id(db, workspace, file_id))
-                .unwrap_or(WorkspaceId::MAIN);
-            let tree = parse(db, file, config);
-            let chunk = tree.get_chunk_node();
-            Arc::new(FactsBuilder::new(file_id, workspace_id).build(&chunk, text))
-        })
-        .as_ref()
+    db.file_facts_cell(file_id).get_or_init(|| {
+        let workspace_id = db
+            .workspace_input()
+            .and_then(|workspace| file_workspace_id(db, workspace, file_id))
+            .unwrap_or(WorkspaceId::MAIN);
+        let tree = parse(db, file, config);
+        let chunk = tree.get_chunk_node();
+        FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
+    })
 }
 
 // ──────────────────────────────────────────────
@@ -210,8 +206,7 @@ pub(crate) fn deprecated_shard(
 ) -> &DeprecatedShard {
     let _ = workspace.revision(db);
     db.deprecated_shard_cell(shard)
-        .get_or_init(|| Arc::new(build_deprecated_shard(db, workspace, config, shard)))
-        .as_ref()
+        .get_or_init(|| build_deprecated_shard(db, workspace, config, shard))
 }
 
 fn build_deprecated_shard(
@@ -577,8 +572,7 @@ pub(crate) fn file_references(
     let file_id = file.file_id(db);
     let _ = file.text(db);
     db.file_references_cell(file_id)
-        .get_or_init(|| Arc::new(build_file_references(db, file, config)))
-        .as_ref()
+        .get_or_init(|| build_file_references(db, file, config))
 }
 
 fn build_file_references(
@@ -660,8 +654,7 @@ pub(crate) fn reference_shard(
 ) -> &ReferenceShard {
     let _ = workspace.revision(db);
     db.reference_shard_cell(shard)
-        .get_or_init(|| Arc::new(build_reference_shard(db, workspace, config, shard)))
-        .as_ref()
+        .get_or_init(|| build_reference_shard(db, workspace, config, shard))
 }
 
 fn build_reference_shard(
@@ -1127,8 +1120,7 @@ pub(crate) fn module_shard(
 ) -> &ModuleShard {
     let _ = workspace.revision(db);
     db.module_shard_cell(shard)
-        .get_or_init(|| Arc::new(build_module_shard(db, workspace, config, shard)))
-        .as_ref()
+        .get_or_init(|| build_module_shard(db, workspace, config, shard))
 }
 
 fn build_module_shard(
