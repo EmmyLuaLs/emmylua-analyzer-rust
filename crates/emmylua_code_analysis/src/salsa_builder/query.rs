@@ -13,7 +13,7 @@ use super::def::{
 };
 use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
-use super::inputs::{ConfigInput, SourceFileInput, WorkspaceInput};
+use super::inputs::{ConfigInputData, WorkspaceInput};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use super::{DocumentView, SalsaDatabase};
 use crate::FileId;
@@ -25,32 +25,28 @@ use emmylua_parser::{
 use rowan::{NodeCache, TextSize};
 
 /// Parse. Pure lookup in the write-time built `SalsaDatabase::syntax_trees`.
-pub(crate) fn parse(
-    db: &SalsaDatabase,
-    file: SourceFileInput,
-    _config: ConfigInput,
-) -> &LuaSyntaxTree {
+pub(crate) fn parse(db: &SalsaDatabase, file: FileId) -> &LuaSyntaxTree {
     db.syntax_tree_of(file.file_id(db))
 }
 
 /// Pure syntax-tree construction used by the write-time cache builder.
 pub(crate) fn build_syntax_tree(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     text: &str,
 ) -> LuaSyntaxTree {
     let _ = file.text(db);
-    let _ = config.language_level(db);
-    let _ = config.special_like(db);
-    let _ = config.non_std_symbols(db);
+    let _ = config.language_level();
+    let _ = config.special_like();
+    let _ = config.non_std_symbols();
     let mut node_cache = NodeCache::default();
-    let parse_config = config.to_parse_config(db, &mut node_cache);
+    let parse_config = config.to_parse_config(&mut node_cache);
     LuaParser::parse(text, parse_config)
 }
 
 /// Pure document construction used by the write-time cache builder.
-pub(crate) fn build_document(db: &SalsaDatabase, file: SourceFileInput) -> DocumentView {
+pub(crate) fn build_document(db: &SalsaDatabase, file: FileId) -> DocumentView {
     let file_id = file.file_id(db);
     let path = file.path(db).clone();
     let text: Arc<str> = Arc::from(file.text(db));
@@ -73,8 +69,8 @@ pub(crate) fn build_document(db: &SalsaDatabase, file: SourceFileInput) -> Docum
 /// queries are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn build_file_facts(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
     file_id: FileId,
     text: &str,
 ) -> FileFacts {
@@ -82,17 +78,12 @@ pub(crate) fn build_file_facts(
         .workspace_input()
         .and_then(|workspace| file_workspace_id(db, workspace, file_id))
         .unwrap_or(WorkspaceId::MAIN);
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let chunk = tree.get_chunk_node();
     FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
 }
 
-pub(crate) fn file_facts(
-    db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
-) -> &FileFacts {
-    let _ = config;
+pub(crate) fn file_facts(db: &SalsaDatabase, file: FileId) -> &FileFacts {
     db.file_facts_map()
         .get(&file.file_id(db))
         .expect("file facts must be built before read")
@@ -103,7 +94,7 @@ pub(crate) fn file_facts(
 /// This is the only place where the per-file and shard caches are populated.
 /// Read-side query functions perform pure map lookups and never call `get_or_init`.
 pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
-    let Some(config) = db.config_input() else {
+    let Some(config) = db.config_input().cloned() else {
         db.file_facts.clear();
         db.flow_trees.clear();
         db.syntax_trees.clear();
@@ -116,6 +107,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
         db.reference_shards.clear();
         return;
     };
+    let config = &config;
     let Some(workspace) = db.workspace_input() else {
         return;
     };
@@ -128,7 +120,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
         let Some(data) = db.source_file_data(file_id) else {
             continue;
         };
-        let file = SourceFileInput::new(file_id);
+        let file = file_id;
         syntax_trees.insert(file_id, build_syntax_tree(db, file, config, &data.text));
     }
     db.syntax_trees = syntax_trees;
@@ -139,7 +131,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
         let Some(data) = db.source_file_data(file_id) else {
             continue;
         };
-        let file = SourceFileInput::new(file_id);
+        let file = file_id;
         let facts = build_file_facts(db, file, config, file_id, &data.text);
         file_facts.insert(file_id, facts);
     }
@@ -149,7 +141,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
     let mut documents = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
         if db.source_file_data(file_id).is_some() {
-            let file = SourceFileInput::new(file_id);
+            let file = file_id;
             documents.insert(file_id, build_document(db, file));
         }
     }
@@ -159,7 +151,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
     let mut flow_trees = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
         if db.source_file_data(file_id).is_some() {
-            let file = SourceFileInput::new(file_id);
+            let file = file_id;
             flow_trees.insert(file_id, super::flow::build_flow_tree(db, file, config));
         }
     }
@@ -310,12 +302,12 @@ impl WorkspaceTypeIndex {
 fn build_workspace_type_index(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
     let mut by_scope_name: HashMap<(TypeScope, SmolStr), Vec<TypeDef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, workspace, config, shard);
+        let shard = export_shard(db, workspace, shard);
         for def in &shard.types {
             if !file_matches_workspace_id(db, workspace, def.file_id, ws_id) {
                 continue;
@@ -342,7 +334,6 @@ fn build_workspace_type_index(
 pub(crate) fn workspace_type_index_for(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> &WorkspaceTypeIndex {
     db.workspace_index_cache()
@@ -361,7 +352,6 @@ pub(crate) struct DeprecatedShard {
 pub(crate) fn deprecated_shard(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     shard: u8,
 ) -> &DeprecatedShard {
     db.deprecated_shard_of(shard)
@@ -369,20 +359,20 @@ pub(crate) fn deprecated_shard(
 
 fn build_deprecated_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: &ConfigInputData,
     shard: u8,
 ) -> DeprecatedShard {
     let mut names = Vec::new();
     let mut member_keys = Vec::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
+    for file_id in db.workspace_file_ids().iter().copied() {
         if shard_of(file_id) != shard {
             continue;
         }
         let Some(file) = db.file_input(file_id) else {
             continue;
         };
-        let facts = file_facts(db, file, config);
+        let facts = file_facts(db, file);
         for decl in &facts.decls {
             if matches!(decl.kind, DeclKind::Global) && decl.deprecated {
                 names.push((file_id, decl.name.clone()));
@@ -406,12 +396,12 @@ fn build_deprecated_shard(
 pub(crate) fn deprecated_global_names_for(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
     for shard in 0..EXPORT_SHARDS {
-        let shard = deprecated_shard(db, workspace, config, shard);
+        let shard = deprecated_shard(db, workspace, shard);
         for (file_id, name) in &shard.names {
             if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
                 out.insert(name.clone());
@@ -429,12 +419,12 @@ pub(crate) fn deprecated_global_names_for(
 pub(crate) fn deprecated_member_names_for(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
     for shard in 0..EXPORT_SHARDS {
-        let shard = deprecated_shard(db, workspace, config, shard);
+        let shard = deprecated_shard(db, workspace, shard);
         for (file_id, _owner, key) in &shard.member_keys {
             if file_matches_workspace_id(db, workspace, *file_id, ws_id) {
                 out.insert(key.clone());
@@ -444,8 +434,11 @@ pub(crate) fn deprecated_member_names_for(
     Arc::new(out)
 }
 
-pub(crate) fn all_workspace_ids(db: &SalsaDatabase, workspace: WorkspaceInput) -> Vec<WorkspaceId> {
-    let roots = workspace.roots(db).to_vec();
+pub(crate) fn all_workspace_ids(
+    db: &SalsaDatabase,
+    _workspace: WorkspaceInput,
+) -> Vec<WorkspaceId> {
+    let roots = db.workspace_roots().to_vec();
     let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
         vec![WorkspaceId::MAIN]
     } else {
@@ -474,12 +467,12 @@ fn file_matches_workspace_id(
 fn find_global_types(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
     let mut out: Vec<TypeDef> = Vec::new();
     for ws_id in all_workspace_ids(db, workspace) {
-        let index = workspace_type_index_for(db, workspace, config, ws_id);
+        let index = workspace_type_index_for(db, workspace, ws_id);
         out.extend(index.find_all(TypeScope::Global, full_name).iter().cloned());
     }
     Arc::from(out)
@@ -488,23 +481,22 @@ fn find_global_types(
 fn find_internal_types(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws: WorkspaceId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
-    workspace_type_index_for(db, workspace, config, ws).find_all(TypeScope::Internal(ws), full_name)
+    workspace_type_index_for(db, workspace, ws).find_all(TypeScope::Internal(ws), full_name)
 }
 
 fn find_file_types(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     file_id: FileId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
     let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
-    workspace_type_index_for(db, workspace, config, ws)
-        .find_all(TypeScope::File(file_id), full_name)
+    workspace_type_index_for(db, workspace, ws).find_all(TypeScope::File(file_id), full_name)
 }
 
 /// Resolve **all definition locations** of a named type in the current file scope
@@ -512,12 +504,12 @@ fn find_file_types(
 pub(crate) fn resolve_type_def_locations(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
-    file: SourceFileInput,
+    config: &ConfigInputData,
+    file: FileId,
     bare_name: SmolStr,
 ) -> Arc<[TypeDef]> {
     let file_id = file.file_id(db);
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let ws = file_workspace_id(db, workspace, file_id).unwrap_or(WorkspaceId::MAIN);
 
     if let Some(ns) = &facts.namespace {
@@ -560,8 +552,8 @@ pub(crate) fn resolve_type_def_locations(
 pub(crate) fn resolve_type_def(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
-    file: SourceFileInput,
+    config: &ConfigInputData,
+    file: FileId,
     bare_name: SmolStr,
 ) -> Option<TypeDef> {
     resolve_type_def_locations(db, workspace, config, file, bare_name)
@@ -577,7 +569,7 @@ pub(crate) fn resolve_type_def(
 pub(crate) fn constructor_attribute_of_type(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     type_def: SemanticId,
 ) -> Option<ConstructorAttribute> {
     for resolved in resolve_owner_set(db, workspace, config, type_def.clone()) {
@@ -592,7 +584,7 @@ pub(crate) fn constructor_attribute_of_type(
 
 fn constructor_attribute_of_decl(
     db: &SalsaDatabase,
-    config: ConfigInput,
+    config: &ConfigInputData,
     decl: SemanticId,
 ) -> Option<ConstructorAttribute> {
     let key = match &decl {
@@ -600,10 +592,10 @@ fn constructor_attribute_of_decl(
         _ => return None,
     };
     let file = db.file_input(key.file_id)?;
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let decl = facts.decl_by_id(&decl)?;
     let value_syntax = decl.value_expr_syntax?;
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
     let call = LuaCallExpr::cast(node)?;
     let prefix = call.get_prefix_expr()?;
@@ -616,7 +608,7 @@ fn constructor_attribute_of_decl(
         _ => return None,
     };
     let callee_input = db.file_input(callee_file)?;
-    let callee_facts = file_facts(db, callee_input, config);
+    let callee_facts = file_facts(db, callee_input);
     let callee = callee_facts.decl_by_id(&callee_decl)?;
     let callee_closure = callee.value_expr_syntax?;
     let signature = callee_facts.signature_by_closure(callee_closure)?;
@@ -645,12 +637,12 @@ pub struct WorkspaceMemberIndex {
 fn build_workspace_member_index(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, workspace, config, shard);
+        let shard = export_shard(db, workspace, shard);
         for member in &shard.members {
             if !file_matches_workspace_id(db, workspace, member.file_id, ws_id) {
                 continue;
@@ -690,7 +682,6 @@ fn build_workspace_member_index(
 pub(crate) fn workspace_member_index_for(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> &WorkspaceMemberIndex {
     db.workspace_index_cache()
@@ -711,21 +702,17 @@ pub struct FileReferences {
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
-pub(crate) fn file_references(
-    db: &SalsaDatabase,
-    file: SourceFileInput,
-    _config: ConfigInput,
-) -> &FileReferences {
+pub(crate) fn file_references(db: &SalsaDatabase, file: FileId) -> &FileReferences {
     db.file_references_of(file.file_id(db))
 }
 
 fn build_file_references(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
 ) -> FileReferences {
-    let facts = file_facts(db, file, config);
-    let tree = parse(db, file, config);
+    let facts = file_facts(db, file);
+    let tree = parse(db, file);
     let workspace = db.workspace_input();
     let mut out = FileReferences::default();
 
@@ -793,7 +780,6 @@ pub struct WorkspaceReferenceIndex {
 pub(crate) fn reference_shard(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     shard: u8,
 ) -> &ReferenceShard {
     db.reference_shard_of(shard)
@@ -801,19 +787,19 @@ pub(crate) fn reference_shard(
 
 fn build_reference_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: &ConfigInputData,
     shard: u8,
 ) -> ReferenceShard {
     let mut out = ReferenceShard::default();
-    for file_id in workspace.file_ids(db).iter().copied() {
+    for file_id in db.workspace_file_ids().iter().copied() {
         if shard_of(file_id) != shard {
             continue;
         }
         let Some(file) = db.file_input(file_id) else {
             continue;
         };
-        let refs = file_references(db, file, config);
+        let refs = file_references(db, file);
         for (decl, ranges) in &refs.decl_refs {
             out.decl_refs
                 .entry(decl.clone())
@@ -844,12 +830,12 @@ fn build_reference_shard(
 fn build_workspace_reference_index(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
     let mut out = WorkspaceReferenceIndex::default();
     for shard in 0..EXPORT_SHARDS {
-        let shard = reference_shard(db, workspace, config, shard);
+        let shard = reference_shard(db, workspace, shard);
         for (decl, ranges) in &shard.decl_refs {
             let entry = out.decl_refs.entry(decl.clone()).or_default();
             for (file_id, range) in ranges {
@@ -881,7 +867,6 @@ fn build_workspace_reference_index(
 pub(crate) fn workspace_reference_index_for(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> &WorkspaceReferenceIndex {
     db.workspace_index_cache()
@@ -899,7 +884,7 @@ pub(crate) fn workspace_reference_index_for(
 fn resolve_member_id(
     db: &SalsaDatabase,
     workspace: Option<WorkspaceInput>,
-    config: ConfigInput,
+    config: &ConfigInputData,
     facts: &FileFacts,
     index_expr: &LuaIndexExpr,
 ) -> Option<SemanticId> {
@@ -922,7 +907,7 @@ fn resolve_member_id(
 pub(crate) fn members_of_owner(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
     // An owner with a file-local identity (Decl/Member) only has members in its declaring file:
@@ -936,7 +921,7 @@ pub(crate) fn members_of_owner(
         return return_members_of_owner_scan(db, workspace, config, owner);
     };
     if let Some(file) = db.file_input(owner_file) {
-        let facts = file_facts(db, file, config);
+        let facts = file_facts(db, file);
         let members = facts
             .members_of_owner(&owner)
             .map(|member| MemberRef {
@@ -954,12 +939,12 @@ pub(crate) fn members_of_owner(
 fn return_members_of_owner_scan(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
     let mut out: Vec<MemberRef> = Vec::new();
     for ws_id in all_workspace_ids(db, workspace) {
-        let index = workspace_member_index_for(db, workspace, config, ws_id);
+        let index = workspace_member_index_for(db, workspace, ws_id);
         if let Some(members) = index.by_owner.get(&owner) {
             out.extend(members.iter().cloned());
         }
@@ -975,7 +960,7 @@ fn return_members_of_owner_scan(
 pub(crate) fn members_of_owner_named(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     owner: SemanticId,
     name: SmolStr,
 ) -> Arc<[MemberRef]> {
@@ -987,7 +972,7 @@ pub(crate) fn members_of_owner_named(
     if let Some(owner_file) = owner_file
         && let Some(file) = db.file_input(owner_file)
     {
-        let facts = file_facts(db, file, config);
+        let facts = file_facts(db, file);
         let members = facts
             .members_of_owner_named(&owner, name.as_str())
             .map(|member| MemberRef {
@@ -1001,7 +986,7 @@ pub(crate) fn members_of_owner_named(
 
     let mut out: Vec<MemberRef> = Vec::new();
     for ws_id in all_workspace_ids(db, workspace) {
-        let index = workspace_member_index_for(db, workspace, config, ws_id);
+        let index = workspace_member_index_for(db, workspace, ws_id);
         if let Some(members) = index.by_owner.get(&owner) {
             if let Some(indices) = index.by_owner_name.get(&(owner.clone(), name.clone())) {
                 out.extend(indices.iter().map(|&i| members[i as usize].clone()));
@@ -1016,7 +1001,7 @@ pub(crate) fn members_of_owner_named(
 pub(crate) fn member_keys_of_owner(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: SemanticId,
 ) -> Vec<SmolStr> {
     let mut keys: Vec<SmolStr> = Vec::new();
@@ -1038,7 +1023,7 @@ pub(crate) fn member_keys_of_owner(
 pub(crate) fn type_defs_in_scope(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     scope: TypeScope,
     full_name: SmolStr,
 ) -> Arc<[TypeDef]> {
@@ -1053,7 +1038,7 @@ pub(crate) fn type_defs_in_scope(
 pub(crate) fn global_type_by_name(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     full_name: SmolStr,
 ) -> Option<SemanticId> {
     find_global_types(db, workspace, config, &full_name)
@@ -1071,7 +1056,7 @@ pub(crate) fn global_type_by_name(
 fn build_workspace_decl_index(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
@@ -1079,7 +1064,7 @@ fn build_workspace_decl_index(
     let mut runtime_by_file_name: HashMap<(FileId, SmolStr), SemanticId> = HashMap::new();
     let mut type_def_by_id: HashMap<SemanticId, (FileId, SmolStr)> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, workspace, config, shard);
+        let shard = export_shard(db, workspace, shard);
         for global in &shard.globals {
             if !file_matches_workspace_id(db, workspace, global.file_id, ws_id) {
                 continue;
@@ -1135,7 +1120,6 @@ fn build_workspace_decl_index(
 pub(crate) fn workspace_decl_index_for(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> &WorkspaceDeclIndex {
     db.workspace_index_cache()
@@ -1187,17 +1171,16 @@ impl WorkspaceDeclIndex {
 pub(crate) fn global_decl_by_name(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     name: SmolStr,
 ) -> Option<SemanticId> {
-    let roots = workspace.roots(db).to_vec();
+    let roots = db.workspace_roots().to_vec();
     if roots.is_empty() {
-        return workspace_decl_index_for(db, workspace, config, WorkspaceId::MAIN)
-            .global_decl_named(&name);
+        return workspace_decl_index_for(db, workspace, WorkspaceId::MAIN).global_decl_named(&name);
     }
     for root in roots {
         if let Some(decl) =
-            workspace_decl_index_for(db, workspace, config, root.id).global_decl_named(&name)
+            workspace_decl_index_for(db, workspace, root.id).global_decl_named(&name)
         {
             return Some(decl);
         }
@@ -1233,7 +1216,6 @@ pub(crate) struct ModuleShard {
 pub(crate) fn module_shard(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     shard: u8,
 ) -> &ModuleShard {
     db.module_shard_of(shard)
@@ -1242,13 +1224,12 @@ pub(crate) fn module_shard(
 fn build_module_shard(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     shard: u8,
 ) -> ModuleShard {
-    let roots = workspace.roots(db).to_vec();
+    let roots = db.workspace_roots().to_vec();
     let paths: Vec<PathBuf> = if roots.is_empty() {
-        workspace
-            .file_ids(db)
+        db.workspace_file_ids()
             .iter()
             .filter_map(|&file_id| db.file_input(file_id))
             .filter_map(|file| file.path(db).clone())
@@ -1258,7 +1239,7 @@ fn build_module_shard(
     };
     let fallback_root = if roots.is_empty() {
         config
-            .main_root(db)
+            .main_root()
             .clone()
             .or_else(|| common_path_root(&paths))
     } else {
@@ -1266,7 +1247,7 @@ fn build_module_shard(
     };
 
     let mut entries: Vec<ModuleEntry> = Vec::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
+    for file_id in db.workspace_file_ids().iter().copied() {
         if shard_of(file_id) != shard {
             continue;
         }
@@ -1291,7 +1272,7 @@ fn build_module_shard(
         let Some(full_module_name) = module_name_from_path(&path, Some(&root_path)) else {
             continue;
         };
-        let facts = file_facts(db, file, config);
+        let facts = file_facts(db, file);
         let name = SmolStr::new(
             full_module_name
                 .rsplit('.')
@@ -1318,10 +1299,10 @@ fn build_module_shard(
 fn build_workspace_module_index(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> ModuleIndex {
-    let roots = workspace.roots(db).to_vec();
+    let roots = db.workspace_roots().to_vec();
     let ws_roots: Vec<PathBuf> = roots
         .iter()
         .filter(|root| root.id == ws_id)
@@ -1333,7 +1314,7 @@ fn build_workspace_module_index(
     let mut module_name_to_file_ids: HashMap<SmolStr, Vec<FileId>> = HashMap::new();
 
     for shard in 0..EXPORT_SHARDS {
-        let shard = module_shard(db, workspace, config, shard);
+        let shard = module_shard(db, workspace, shard);
         for entry in &shard.entries {
             if entry.workspace_id != ws_id {
                 continue;
@@ -1374,7 +1355,6 @@ fn build_workspace_module_index(
 pub(crate) fn workspace_module_index_for(
     db: &SalsaDatabase,
     _workspace: WorkspaceInput,
-    _config: ConfigInput,
     ws_id: WorkspaceId,
 ) -> &ModuleIndex {
     db.workspace_index_cache()
@@ -1477,12 +1457,12 @@ pub(crate) fn find_workspace_root(
 /// File -> its workspace.
 pub(crate) fn file_workspace_id(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    _workspace: WorkspaceInput,
     file_id: FileId,
 ) -> Option<WorkspaceId> {
     let file = db.file_input(file_id)?;
     let path = file.path(db).clone()?;
-    let roots = workspace.roots(db).to_vec();
+    let roots = db.workspace_roots().to_vec();
     if roots.is_empty() {
         return Some(WorkspaceId::MAIN);
     }
@@ -1493,21 +1473,21 @@ pub(crate) fn file_workspace_id(
 pub(crate) fn module_file_of(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     module_name: SmolStr,
 ) -> Option<FileId> {
     let mut name = module_name.replace('\\', ".");
     // module_map rewrite rules (config order; every matching rule is applied, consistent with the old replace_module_path).
-    for (pattern, replace) in config.module_replace(db) {
+    for (pattern, replace) in config.module_replace() {
         if let Ok(regex) = regex::Regex::new(pattern.as_str())
             && regex.is_match(&name)
         {
             name = regex.replace(&name, replace.as_str()).into_owned();
         }
     }
-    let patterns = config.module_patterns(db).to_vec();
+    let patterns = config.module_patterns().to_vec();
     for ws_id in all_workspace_ids(db, workspace) {
-        let index = workspace_module_index_for(db, workspace, config, ws_id);
+        let index = workspace_module_index_for(db, workspace, ws_id);
         // Paths still containing `/` after module_map rewriting (`signalstrings/signalstrings.lua`)
         // first try exact literal relative-path matching, then `?` pattern resolution.
         if name.contains('/') {
@@ -1734,7 +1714,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 pub(crate) fn resolve_owner(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: SemanticId,
 ) -> Option<SemanticId> {
     let SemanticId::Name(name) = &owner else {
@@ -1769,7 +1749,7 @@ pub(crate) fn resolve_owner(
 pub(crate) fn resolve_owner_set(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: SemanticId,
 ) -> Vec<SemanticId> {
     match &owner {
@@ -1786,7 +1766,7 @@ pub(crate) fn resolve_owner_set(
                 push_unique(&mut out, decl);
             }
             // Type runtime value: same-name decl in the file declaring the same-name type (`local M = {}` pattern).
-            let roots = workspace.roots(db).to_vec();
+            let roots = db.workspace_roots().to_vec();
             let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
                 vec![WorkspaceId::MAIN]
             } else {
@@ -1794,7 +1774,7 @@ pub(crate) fn resolve_owner_set(
             };
             let mut runtime_decls: Vec<SemanticId> = Vec::new();
             for ws_id in ws_ids {
-                let index = workspace_decl_index_for(db, workspace, config, ws_id);
+                let index = workspace_decl_index_for(db, workspace, ws_id);
                 runtime_decls.extend(index.runtime_decls_named(&name_str).iter().cloned());
             }
             if let Some(decl) = global_decl_by_name(db, workspace, config, name_str.clone()) {
@@ -1809,7 +1789,7 @@ pub(crate) fn resolve_owner_set(
                 let Some(file) = db.file_input(decl_key.file_id) else {
                     continue;
                 };
-                let facts = file_facts(db, file, config);
+                let facts = file_facts(db, file);
                 let Some(decl) = facts.decl_by_id(&decl_id) else {
                     continue;
                 };
@@ -1843,7 +1823,7 @@ pub(crate) fn resolve_owner_set(
         SemanticId::TypeDef(_) => {
             let mut out = vec![owner.clone()];
             // Type runtime value: same-name decl in the file that declares this type.
-            let roots = workspace.roots(db).to_vec();
+            let roots = db.workspace_roots().to_vec();
             let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
                 vec![WorkspaceId::MAIN]
             } else {
@@ -1851,7 +1831,7 @@ pub(crate) fn resolve_owner_set(
             };
             let mut found: Option<(FileId, SmolStr)> = None;
             for ws_id in ws_ids {
-                let index = workspace_decl_index_for(db, workspace, config, ws_id);
+                let index = workspace_decl_index_for(db, workspace, ws_id);
                 if let Some((file_id, bare_name)) = index.type_def_location(&owner) {
                     found = Some((file_id, bare_name.clone()));
                     if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name) {
@@ -1866,7 +1846,7 @@ pub(crate) fn resolve_owner_set(
                         if ws_id.is_some_and(|ws| ws.is_main())
                             && let Some(file) = db.file_input(file_id)
                         {
-                            let facts = file_facts(db, file, config);
+                            let facts = file_facts(db, file);
                             if facts.is_meta
                                 && facts
                                     .decl_by_id(&decl_id)
@@ -1883,7 +1863,7 @@ pub(crate) fn resolve_owner_set(
             if let Some((file_id, bare_name)) = found
                 && let Some(member_file) = db.file_input(file_id)
             {
-                let facts = file_facts(db, member_file, config);
+                let facts = file_facts(db, member_file);
                 let def = facts.type_defs.iter().find(|def| def.name == bare_name);
                 if let Some(def) = def
                     && let Some(owner_syntax) = def.owner_syntax
@@ -1916,11 +1896,11 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 /// Keyed by file: when an initializer references cross-file members, dependence on `workspace_input` keeps memoization stable.
 pub(crate) fn decl_type(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     decl: SemanticId,
 ) -> TypeShell {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
     let Some(decl) = facts.decl_by_id(&decl) else {
         return TypeShell::unknown();
@@ -2005,12 +1985,12 @@ fn iter_slot_type(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     decl: &crate::salsa_builder::def::Decl,
 ) -> Option<TypeShell> {
     let owner = decl.owner_syntax?;
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let node = owner.to_node_from_root(&tree.get_red_root())?;
     let stat = emmylua_parser::LuaForRangeStat::cast(node)?;
     let vars = stat.get_var_name_list().collect::<Vec<_>>();
@@ -2066,7 +2046,7 @@ fn iter_slot_type(
             let Some(member_file) = db.file_input(member_ref.file_id) else {
                 continue;
             };
-            let member_facts = file_facts(db, member_file, config);
+            let member_facts = file_facts(db, member_file);
             let Some(member) = member_facts.member_by_id(&member_ref.id) else {
                 continue;
             };
@@ -2083,7 +2063,7 @@ fn iter_slot_type(
             let Some(return_syntax) = docs.returns.first() else {
                 continue;
             };
-            let member_tree = parse(db, member_file, config);
+            let member_tree = parse(db, member_file);
             let Some(return_node) = return_syntax.to_node_from_root(&member_tree.get_red_root())
             else {
                 continue;
@@ -2123,12 +2103,12 @@ fn iter_slot_type(
 pub(crate) fn lower_doc_type(
     db: &SalsaDatabase,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     type_syntax: LuaSyntaxId,
     generics: &[SalsaGenericParam],
 ) -> TypeShell {
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let root = tree.get_red_root();
     let Some(node) = type_syntax.to_node_from_root(&root) else {
         return TypeShell::unknown();
@@ -2142,8 +2122,8 @@ pub(crate) fn lower_doc_type(
 fn lower_doc_type_node(
     db: &SalsaDatabase,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     generics: &[SalsaGenericParam],
     doc_type: &LuaDocType,
 ) -> TypeShell {
@@ -2401,11 +2381,11 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
 /// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by salsa's native fixed point.
 pub(crate) fn member_type(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     member: SemanticId,
 ) -> TypeShell {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
     let Some(member) = facts.member_by_id(&member) else {
         return TypeShell::unknown();
@@ -2451,11 +2431,11 @@ pub(crate) fn member_type(
 /// Direct member names of a local declaration (completion candidates).
 pub(crate) fn member_keys_of_decl(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
     decl: SemanticId,
 ) -> Vec<SmolStr> {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let mut keys = facts
         .members
         .iter()
@@ -2470,11 +2450,11 @@ pub(crate) fn member_keys_of_decl(
 /// Member keys of a named type (including parent types, completion candidates). `type_def` is a global type id.
 pub(crate) fn member_keys_of_type(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
     type_def: SemanticId,
 ) -> Vec<SmolStr> {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let Some(def) = facts.type_def_by_id(&type_def) else {
         return Vec::new();
     };
@@ -2491,8 +2471,8 @@ pub(crate) fn type_member(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     type_def: SemanticId,
     name: &str,
     visited: &mut Vec<SemanticId>,
@@ -2568,11 +2548,11 @@ fn collect_type_keys(
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
 pub(crate) fn resolve_name(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     offset: TextSize,
 ) -> Option<SemanticId> {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let name_use = facts.name_use_at_offset(offset)?;
     facts
         .find_visible_decl_before_offset(&name_use.name, offset)
@@ -2586,11 +2566,11 @@ pub(crate) fn resolve_name(
 /// All references to a declaration (name use sites).
 pub(crate) fn decl_references(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
     decl: SemanticId,
 ) -> Vec<LuaSyntaxId> {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let Some(decl) = facts.decl_by_id(&decl) else {
         return Vec::new();
     };
@@ -2616,11 +2596,11 @@ pub(crate) fn decl_references(
 /// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via salsa fixed point.
 pub(crate) fn signature_returns(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
 ) -> Vec<TypeShell> {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
     let Some(sig) = facts.signature_by_closure(closure_syntax) else {
         return Vec::new();
@@ -2688,7 +2668,7 @@ pub(crate) fn signature_returns(
         }
     }
 
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let root = tree.get_red_root();
     let Some(node) = closure_syntax.to_node_from_root(&root) else {
         return Vec::new();
@@ -2741,8 +2721,8 @@ pub(crate) fn signature_returns(
 fn member_expected_returns(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
 ) -> Option<Vec<TypeShell>> {
     let member = facts
@@ -2808,8 +2788,8 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 /// Mutual recursion (`foo`->`bar`->`foo`) converges via salsa's native fixed point.
 pub(crate) fn signature_return(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
 ) -> TypeShell {
     let mut shell = TypeShell::unknown();
@@ -2822,12 +2802,12 @@ pub(crate) fn signature_return(
 /// Type of the function's `param_index`-th parameter (`---@param` annotation + generic binding).
 pub(crate) fn param_type(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
     param_index: usize,
 ) -> TypeShell {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
     let Some(sig) = facts.signature_by_closure(closure_syntax) else {
         return TypeShell::unknown();
@@ -2880,10 +2860,10 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 /// Value type exported by a module (type of `return M` / table literal, etc.).
 pub(crate) fn module_export_type(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
 ) -> TypeShell {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
     match &facts.module_export {
         // `return M`: declaration identity table (TableConst members reachable) + name identity (Named -> decl owner reachable).
@@ -2911,7 +2891,7 @@ pub(crate) fn module_export_type(
             TypeShell::from_name(name.as_str())
         }
         ModuleExport::Expr { value_syntax } => {
-            let tree = parse(db, file, config);
+            let tree = parse(db, file);
             let Some(expr) = find_expr_by_syntax_id(&tree, value_syntax) else {
                 return TypeShell::unknown();
             };
@@ -2969,8 +2949,8 @@ impl Drop for ExprTypeGuard {
 /// which matches the previous Salsa `cycle_initial` behavior.
 pub(crate) fn expr_type_of(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     expr_syntax: LuaSyntaxId,
 ) -> TypeShell {
     let key = (file.file_id(db), expr_syntax);
@@ -2978,9 +2958,9 @@ pub(crate) fn expr_type_of(
         return TypeShell::unknown();
     }
     let _guard = ExprTypeGuard::enter(key);
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
     let workspace = db.workspace_input();
-    let tree = parse(db, file, config);
+    let tree = parse(db, file);
     let Some(expr) = find_expr_by_syntax_id(&tree, &expr_syntax) else {
         return TypeShell::unknown();
     };
@@ -2991,8 +2971,8 @@ fn expr_type(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     expr: LuaExpr,
 ) -> TypeShell {
     // Deep member/call chains (1500+ levels) use an explicit task stack: avoids exhausting the native stack by recursive prefix evaluation.
@@ -3013,8 +2993,8 @@ fn expr_type_chain(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     expr: LuaExpr,
 ) -> Option<TypeShell> {
     let mut current = expr;
@@ -3067,8 +3047,8 @@ fn expr_type_node(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     expr: LuaExpr,
 ) -> TypeShell {
     match expr {
@@ -3188,8 +3168,8 @@ fn expr_type_index(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     index_expr: LuaIndexExpr,
     prefix_shell: TypeShell,
 ) -> TypeShell {
@@ -3296,8 +3276,8 @@ fn expr_type_call(
     db: &SalsaDatabase,
     facts: &FileFacts,
     workspace: Option<WorkspaceInput>,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    config: &ConfigInputData,
     call_expr: LuaCallExpr,
     prefix: LuaExpr,
     prefix_shell: TypeShell,
@@ -3335,7 +3315,7 @@ fn expr_type_call(
 fn member_type_via_owner(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: &SemanticId,
     name: &str,
 ) -> Option<TypeShell> {
@@ -3365,7 +3345,7 @@ fn member_type_via_owner(
 fn member_type_via_owner_method(
     db: &SalsaDatabase,
     workspace: WorkspaceInput,
-    config: ConfigInput,
+    config: &ConfigInputData,
     owner: &SemanticId,
     name: &str,
 ) -> Option<TypeShell> {
@@ -3380,7 +3360,7 @@ fn member_type_via_owner_method(
             let Some(member_file_input) = db.file_input(member.file_id) else {
                 continue;
             };
-            let member_facts = file_facts(db, member_file_input, config);
+            let member_facts = file_facts(db, member_file_input);
             let Some(member_def) = member_facts.member_by_id(&member.id) else {
                 continue;
             };
@@ -3504,7 +3484,7 @@ fn require_module_name(call_expr: &LuaCallExpr) -> Option<String> {
 pub(crate) fn file_and_config(
     db: &SalsaDatabase,
     file_id: FileId,
-) -> Option<(SourceFileInput, ConfigInput)> {
+) -> Option<(FileId, &ConfigInputData)> {
     Some((db.file_input(file_id)?, db.config_input()?))
 }
 

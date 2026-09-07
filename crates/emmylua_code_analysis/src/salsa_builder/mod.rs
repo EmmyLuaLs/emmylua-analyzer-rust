@@ -22,10 +22,7 @@ use crate::analysis_state::VfsState;
 use crate::vfs::file_path_to_uri;
 use crate::{Emmyrc, FileId, WorkspaceFolder, WorkspaceImport};
 pub use def::*;
-use inputs::{
-    ConfigInput, ConfigInputData, SourceFileInput, SourceFileInputData, WorkspaceInput,
-    WorkspaceInputData, WorkspaceRoot,
-};
+use inputs::{ConfigInputData, SourceFileInputData, WorkspaceInput, WorkspaceRoot};
 
 pub(crate) use facade::SalsaQueries;
 pub use facade::{MemberList, TypeDefList};
@@ -131,8 +128,10 @@ impl fmt::Debug for DocumentView {
 pub struct SalsaDatabase {
     // ── Plain config/data ──
     config: Option<ConfigInputData>,
-    /// File-set data (only stores a lightweight FileId list).
-    workspace: Option<WorkspaceInputData>,
+    /// Workspace file list (same set as the VFS snapshot).
+    workspace_file_ids: Arc<[FileId]>,
+    /// Registered workspace roots.
+    workspace_roots: Arc<[WorkspaceRoot]>,
 
     /// Plain VFS state independent of Salsa inputs.
     vfs: VfsState,
@@ -175,7 +174,8 @@ impl Default for SalsaDatabase {
         let executed_queries = std::sync::atomic::AtomicU64::new(0);
         let mut db = Self {
             config: None,
-            workspace: None,
+            workspace_file_ids: Arc::from(Vec::<FileId>::new()),
+            workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
             vfs: VfsState::new(),
             file_inputs: HashMap::new(),
             file_facts: HashMap::new(),
@@ -198,30 +198,28 @@ impl Default for SalsaDatabase {
 }
 
 impl SalsaDatabase {
-    pub(crate) fn file_input(&self, file_id: FileId) -> Option<SourceFileInput> {
-        self.file_inputs
-            .contains_key(&file_id)
-            .then(|| SourceFileInput::new(file_id))
+    pub(crate) fn file_input(&self, file_id: FileId) -> Option<FileId> {
+        self.file_inputs.contains_key(&file_id).then_some(file_id)
     }
 
     pub(crate) fn source_file_data(&self, file_id: FileId) -> Option<&SourceFileInputData> {
         self.file_inputs.get(&file_id)
     }
 
-    pub(crate) fn config_data(&self) -> Option<&ConfigInputData> {
-        self.config.as_ref()
+    pub(crate) fn workspace_file_ids(&self) -> &Arc<[FileId]> {
+        &self.workspace_file_ids
     }
 
-    pub(crate) fn workspace_data(&self) -> Option<&WorkspaceInputData> {
-        self.workspace.as_ref()
+    pub(crate) fn workspace_roots(&self) -> &Arc<[WorkspaceRoot]> {
+        &self.workspace_roots
+    }
+
+    pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
+        Some(WorkspaceInput)
     }
 
     pub(crate) fn file_facts_map(&self) -> &HashMap<FileId, facts::FileFacts> {
         &self.file_facts
-    }
-
-    pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
-        self.workspace.is_some().then_some(WorkspaceInput)
     }
 
     pub(crate) fn flow_tree_of(&self, file_id: FileId) -> &flow::FlowTree {
@@ -299,28 +297,15 @@ impl SalsaDatabase {
         // No Salsa snapshots remain; kept as no-op for call-site compatibility.
     }
 
-    /// Ensure the workspace input exists (create an empty salsa input on first write).
-    fn ensure_workspace(&mut self) {
-        if self.workspace.is_none() {
-            self.workspace = Some(WorkspaceInputData::new(
-                Arc::from(Vec::<FileId>::new()),
-                Arc::from(Vec::<WorkspaceRoot>::new()),
-            ));
-        }
-    }
+    /// Kept as a no-op for call-site compatibility; workspace fields are always present.
+    fn ensure_workspace(&mut self) {}
 
     fn set_workspace_file_ids(&mut self, file_ids: Arc<[FileId]>) {
-        let Some(workspace) = self.workspace.as_ref() else {
-            return;
-        };
-        self.workspace = Some(WorkspaceInputData::new(file_ids, workspace.roots.clone()));
+        self.workspace_file_ids = file_ids;
     }
 
     fn set_workspace_roots(&mut self, roots: Arc<[WorkspaceRoot]>) {
-        let Some(workspace) = self.workspace.as_ref() else {
-            return;
-        };
-        self.workspace = Some(WorkspaceInputData::new(workspace.file_ids.clone(), roots));
+        self.workspace_roots = roots;
     }
 
     /// Rebuild every per-file cache and shard cache from the current inputs.
@@ -386,7 +371,7 @@ impl SalsaDatabase {
             module_replace,
             known_doc_tags,
             strict_array_index,
-        ) = ConfigInput::parts_from_emmyrc(&emmyrc);
+        ) = ConfigInputData::parts_from_emmyrc(&emmyrc);
         self.config = Some(ConfigInputData::new(
             language_level,
             special_like,
@@ -457,10 +442,7 @@ impl SalsaDatabase {
     pub fn add_std_workspace(&mut self, root: PathBuf) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace.as_ref() else {
-            return;
-        };
-        let mut roots = workspace_input.roots.to_vec();
+        let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_std());
         roots.push(WorkspaceRoot {
             id: WorkspaceId::STD,
@@ -476,10 +458,7 @@ impl SalsaDatabase {
         self.cancel_snapshots();
         self.update_main_root(root.clone());
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace.as_ref() else {
-            return;
-        };
-        let mut roots = workspace_input.roots.to_vec();
+        let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_main());
         roots.push(WorkspaceRoot {
             id: WorkspaceId::MAIN,
@@ -494,10 +473,7 @@ impl SalsaDatabase {
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace.as_ref() else {
-            return;
-        };
-        let mut roots = workspace_input.roots.to_vec();
+        let mut roots = self.workspace_roots.to_vec();
         let id = WorkspaceId {
             id: self.next_library_workspace_id(&roots),
         };
@@ -514,26 +490,14 @@ impl SalsaDatabase {
     pub fn clear_non_std_workspaces(&mut self) {
         self.cancel_snapshots();
         self.ensure_workspace();
-        let Some(workspace_input) = self.workspace.as_ref() else {
-            return;
-        };
-        let roots: Vec<WorkspaceRoot> = workspace_input
-            .roots
+        let roots: Vec<WorkspaceRoot> = self
+            .workspace_roots
             .iter()
             .filter(|root_entry| root_entry.id.is_std())
             .cloned()
             .collect();
         self.set_workspace_roots(Arc::from(roots));
         self.reset_file_facts_cache();
-    }
-
-    /// Currently registered workspace roots.
-    #[allow(unused)]
-    pub(crate) fn workspace_roots(&self) -> Arc<[WorkspaceRoot]> {
-        self.workspace
-            .as_ref()
-            .map(|workspace| workspace.roots.clone())
-            .unwrap_or_default()
     }
 
     fn next_library_workspace_id(&self, roots: &[WorkspaceRoot]) -> u32 {
@@ -700,7 +664,8 @@ impl SalsaDatabase {
 
     pub fn clear(&mut self) {
         self.cancel_snapshots();
-        self.workspace = None;
+        self.workspace_file_ids = Arc::from(Vec::<FileId>::new());
+        self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
         self.vfs = VfsState::new();
         self.file_inputs = HashMap::new();
         self.file_facts = HashMap::new();
@@ -731,8 +696,7 @@ impl SalsaDatabase {
 
     /// Main workspace file list.
     pub fn main_workspace_file_ids(&self) -> Vec<FileId> {
-        let workspace = self.workspace_input();
-        let has_roots = workspace.is_some_and(|workspace| !workspace.roots(self).is_empty());
+        let has_roots = !self.workspace_roots().is_empty();
         if !has_roots {
             // Keep old behavior when no roots are registered: treat all files as main.
             return self.vfs.file_ids().to_vec();
@@ -784,8 +748,8 @@ impl SalsaDatabase {
 
     // ── Input accessors (for tracked layer / facade) ──
 
-    pub(crate) fn config_input(&self) -> Option<ConfigInput> {
-        self.config.is_some().then_some(ConfigInput)
+    pub(crate) fn config_input(&self) -> Option<&ConfigInputData> {
+        self.config.as_ref()
     }
 
     /// Actual execution count of tracked query bodies (diagnostic invalidation granularity).
@@ -805,12 +769,12 @@ impl SalsaDatabase {
 
     /// All use sites of a declaration (Decl) (cross-file, aggregated through sharded reference index).
     pub fn decl_reference_ranges(&self, decl: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
+        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
         let mut out = Vec::new();
         for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            let index = query::workspace_reference_index_for(self, workspace, ws_id);
             if let Some(ranges) = index.decl_refs.get(decl) {
                 out.extend(ranges.iter().copied());
             }
@@ -820,12 +784,12 @@ impl SalsaDatabase {
 
     /// All use sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_reference_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
+        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
         let mut out = Vec::new();
         for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            let index = query::workspace_reference_index_for(self, workspace, ws_id);
             if let Some(ranges) = index.member_refs.get(member) {
                 out.extend(ranges.iter().copied());
             }
@@ -835,12 +799,12 @@ impl SalsaDatabase {
 
     /// All definition sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_definition_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
+        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
         let mut out = Vec::new();
         for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, config, ws_id);
+            let index = query::workspace_reference_index_for(self, workspace, ws_id);
             if let Some(ranges) = index.member_defs.get(member) {
                 out.extend(ranges.iter().copied());
             }
@@ -870,10 +834,10 @@ impl SalsaDatabase {
     /// File → salsa module info (equivalent to ModuleIndex).
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
         let workspace = self.workspace_input()?;
-        let config = self.config_input()?;
+        let _config = self.config_input()?;
         let ws_id =
             query::file_workspace_id(self, workspace, file_id).unwrap_or(WorkspaceId::REMOTE);
-        let index = query::workspace_module_index_for(self, workspace, config, ws_id);
+        let index = query::workspace_module_index_for(self, workspace, ws_id);
         let mut info = index.module_info(file_id)?;
         if let Some(shell) = self.q().module_export_type(file_id) {
             info.export_type = Some(self.q().type_shell_lua(file_id, &shell));
@@ -884,9 +848,9 @@ impl SalsaDatabase {
     /// Module path → module tree node id (empty path returns the root node).
     pub fn module_node(&self, module_path: &str) -> Option<ModuleNodeId> {
         let workspace = self.workspace_input()?;
-        let config = self.config_input()?;
+        let _config = self.config_input()?;
         for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_module_index_for(self, workspace, config, ws_id);
+            let index = query::workspace_module_index_for(self, workspace, ws_id);
             if let Some(node_id) = index.find_module_node(module_path) {
                 return Some(node_id);
             }
@@ -897,19 +861,17 @@ impl SalsaDatabase {
     /// Module tree node details.
     pub fn module_node_info(&self, node_id: ModuleNodeId) -> Option<ModuleNode> {
         let workspace = self.workspace_input()?;
-        let config = self.config_input()?;
-        let index =
-            query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
+        let _config = self.config_input()?;
+        let index = query::workspace_module_index_for(self, workspace, node_id.workspace_id);
         index.module_node(node_id).cloned()
     }
 
     /// File id list under a module tree node.
     pub fn module_node_file_ids(&self, node_id: ModuleNodeId) -> Vec<FileId> {
-        let (Some(workspace), Some(config)) = (self.workspace_input(), self.config_input()) else {
+        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
             return Vec::new();
         };
-        let index =
-            query::workspace_module_index_for(self, workspace, config, node_id.workspace_id);
+        let index = query::workspace_module_index_for(self, workspace, node_id.workspace_id);
         index
             .module_file_ids(node_id)
             .map(|ids| ids.to_vec())
@@ -924,15 +886,13 @@ impl SalsaDatabase {
 
     /// Path → module name (relative to owning workspace root).
     pub fn module_name_from_path(&self, path: &std::path::Path) -> Option<String> {
-        if let Some(workspace) = self.workspace_input() {
-            let roots = workspace.roots(self).to_vec();
-            if let Some((_, root)) = query::find_workspace_root(&roots, path)
-                && let Some(name) = query::module_name_from_path(path, Some(&root))
-            {
-                return Some(name.to_string());
-            }
+        let roots = self.workspace_roots().to_vec();
+        if let Some((_, root)) = query::find_workspace_root(&roots, path)
+            && let Some(name) = query::module_name_from_path(path, Some(&root))
+        {
+            return Some(name.to_string());
         }
-        let root = self.config_input()?.main_root(self).clone();
+        let root = self.config_input()?.main_root().clone();
         query::module_name_from_path(path, root.as_deref()).map(|name| name.to_string())
     }
 

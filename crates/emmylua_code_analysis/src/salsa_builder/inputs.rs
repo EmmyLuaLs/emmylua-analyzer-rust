@@ -4,7 +4,7 @@ use lsp_types::Uri;
 use std::collections::HashMap as StdHashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use emmylua_parser::{
     LuaFeatures, LuaFeaturesSet, LuaLanguageLevel, LuaVersionNumber, ParserConfig, SpecialFunction,
@@ -21,11 +21,6 @@ use super::def::WorkspaceId;
 // Inputs
 // ──────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct SourceFileInput {
-    file_id: FileId,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct SourceFileInputData {
     pub(crate) text: Arc<str>,
@@ -39,34 +34,25 @@ impl SourceFileInputData {
     }
 }
 
-static NO_PATH: Option<PathBuf> = None;
-static NO_URI: Option<Uri> = None;
-
-impl SourceFileInput {
-    pub(crate) fn new(file_id: FileId) -> Self {
-        Self { file_id }
+impl FileId {
+    pub(crate) fn text(self, db: &SalsaDatabase) -> &str {
+        &db.source_file_data(self)
+            .expect("file data must exist")
+            .text
     }
 
-    pub(crate) fn text<'a>(&self, db: &'a SalsaDatabase) -> &'a str {
-        db.source_file_data(self.file_id)
-            .map(|data| data.text.as_ref())
-            .unwrap_or("")
+    pub(crate) fn path(self, db: &SalsaDatabase) -> &Option<PathBuf> {
+        &db.source_file_data(self)
+            .expect("file data must exist")
+            .path
     }
 
-    pub(crate) fn path<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<PathBuf> {
-        db.source_file_data(self.file_id)
-            .map(|data| &data.path)
-            .unwrap_or(&NO_PATH)
+    pub(crate) fn uri(self, db: &SalsaDatabase) -> &Option<Uri> {
+        &db.source_file_data(self).expect("file data must exist").uri
     }
 
-    pub(crate) fn uri<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<Uri> {
-        db.source_file_data(self.file_id)
-            .map(|data| &data.uri)
-            .unwrap_or(&NO_URI)
-    }
-
-    pub(crate) fn file_id(&self, _db: &SalsaDatabase) -> FileId {
-        self.file_id
+    pub(crate) fn file_id(self, _db: &SalsaDatabase) -> FileId {
+        self
     }
 }
 
@@ -106,9 +92,6 @@ impl Hash for SpecialFn {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ConfigInput;
-
 #[derive(Debug, Clone)]
 pub(crate) struct ConfigInputData {
     pub(crate) language_level: LanguageLevel,
@@ -144,49 +127,33 @@ impl ConfigInputData {
             main_root,
         }
     }
-}
 
-impl ConfigInput {
-    pub(crate) fn language_level(&self, db: &SalsaDatabase) -> LanguageLevel {
-        db.config_data()
-            .map(|data| data.language_level)
-            .unwrap_or(LanguageLevel(LuaLanguageLevel::Lua51))
+    pub(crate) fn language_level(&self) -> LanguageLevel {
+        self.language_level
     }
 
-    pub(crate) fn special_like<'a>(&self, db: &'a SalsaDatabase) -> &'a [(SmolStr, SpecialFn)] {
-        db.config_data()
-            .map(|data| data.special_like.as_slice())
-            .unwrap_or(&[])
+    pub(crate) fn special_like(&self) -> &[(SmolStr, SpecialFn)] {
+        &self.special_like
     }
 
-    pub(crate) fn non_std_symbols<'a>(&self, db: &'a SalsaDatabase) -> &'a [LuaFeatures] {
-        db.config_data()
-            .map(|data| data.non_std_symbols.as_slice())
-            .unwrap_or(&[])
+    pub(crate) fn non_std_symbols(&self) -> &[LuaFeatures] {
+        &self.non_std_symbols
     }
 
-    pub(crate) fn module_patterns<'a>(&self, db: &'a SalsaDatabase) -> &'a [SmolStr] {
-        db.config_data()
-            .map(|data| data.module_patterns.as_slice())
-            .unwrap_or(&[])
+    pub(crate) fn module_patterns(&self) -> &[SmolStr] {
+        &self.module_patterns
     }
 
-    pub(crate) fn module_replace<'a>(&self, db: &'a SalsaDatabase) -> &'a [(SmolStr, SmolStr)] {
-        db.config_data()
-            .map(|data| data.module_replace.as_slice())
-            .unwrap_or(&[])
+    pub(crate) fn module_replace(&self) -> &[(SmolStr, SmolStr)] {
+        &self.module_replace
     }
 
-    pub(crate) fn known_doc_tags<'a>(&self, db: &'a SalsaDatabase) -> &'a [SmolStr] {
-        db.config_data()
-            .map(|data| data.known_doc_tags.as_slice())
-            .unwrap_or(&[])
+    pub(crate) fn known_doc_tags(&self) -> &[SmolStr] {
+        &self.known_doc_tags
     }
 
-    pub(crate) fn main_root<'a>(&self, db: &'a SalsaDatabase) -> &'a Option<PathBuf> {
-        db.config_data()
-            .map(|data| &data.main_root)
-            .unwrap_or(&NO_PATH)
+    pub(crate) fn main_root(&self) -> &Option<PathBuf> {
+        &self.main_root
     }
 
     /// Extract configuration from `Emmyrc`.
@@ -274,19 +241,15 @@ impl ConfigInput {
         )
     }
 
-    pub(crate) fn to_parse_config<'a>(
-        &self,
-        db: &SalsaDatabase,
-        node_cache: &'a mut NodeCache,
-    ) -> ParserConfig<'a> {
+    pub(crate) fn to_parse_config<'a>(&self, node_cache: &'a mut NodeCache) -> ParserConfig<'a> {
         let mut special_like = StdHashMap::new();
-        for (name, func) in self.special_like(db) {
+        for (name, func) in &self.special_like {
             special_like.insert(name.as_str().to_string(), func.0);
         }
         let mut non_std_symbols = LuaFeaturesSet::default();
-        non_std_symbols.extends(self.non_std_symbols(db).to_vec());
+        non_std_symbols.extends(self.non_std_symbols.to_vec());
         ParserConfig::new(
-            self.language_level(db).0,
+            self.language_level.0,
             Some(node_cache),
             special_like,
             non_std_symbols,
@@ -297,7 +260,7 @@ impl ConfigInput {
 
 /// Workspace root metadata for std / main / library.
 ///
-/// File sets remain managed by `WorkspaceInput.file_ids`; workspace_id is derived by
+/// File sets are managed by `SalsaDatabase`; workspace_id is derived by
 /// matching path prefixes against `roots`, while `import` controls which relative paths participate in module indexing.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct WorkspaceRoot {
@@ -309,31 +272,4 @@ pub(crate) struct WorkspaceRoot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct WorkspaceInput;
 
-#[derive(Debug, Clone)]
-pub(crate) struct WorkspaceInputData {
-    pub(crate) file_ids: Arc<[FileId]>,
-    pub(crate) roots: Arc<[WorkspaceRoot]>,
-}
 
-impl WorkspaceInputData {
-    pub(crate) fn new(file_ids: Arc<[FileId]>, roots: Arc<[WorkspaceRoot]>) -> Self {
-        Self { file_ids, roots }
-    }
-}
-
-impl WorkspaceInput {
-    pub(crate) fn file_ids<'a>(&self, db: &'a SalsaDatabase) -> &'a Arc<[FileId]> {
-        db.workspace_data()
-            .map(|data| &data.file_ids)
-            .unwrap_or(&*EMPTY_FILE_IDS)
-    }
-
-    pub(crate) fn roots<'a>(&self, db: &'a SalsaDatabase) -> &'a Arc<[WorkspaceRoot]> {
-        db.workspace_data()
-            .map(|data| &data.roots)
-            .unwrap_or(&*EMPTY_ROOTS)
-    }
-}
-
-static EMPTY_FILE_IDS: LazyLock<Arc<[FileId]>> = LazyLock::new(|| Arc::from([]));
-static EMPTY_ROOTS: LazyLock<Arc<[WorkspaceRoot]>> = LazyLock::new(|| Arc::from([]));

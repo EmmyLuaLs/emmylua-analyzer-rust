@@ -146,13 +146,13 @@ impl<'db> SalsaQueries<'db> {
     // ── Files / Syntax ──
 
     pub fn file_facts(&self, file_id: FileId) -> Option<&'db FileFacts> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(file_facts(self.db, file, config))
+        let (file, _config) = file_and_config(self.db, file_id)?;
+        Some(file_facts(self.db, file))
     }
 
     pub fn syntax_tree(&self, file_id: FileId) -> Option<&'db LuaSyntaxTree> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(parse(self.db, file, config))
+        let (file, _config) = file_and_config(self.db, file_id)?;
+        Some(parse(self.db, file))
     }
 
     pub fn chunk(&self, file_id: FileId) -> Option<LuaChunk> {
@@ -164,7 +164,7 @@ impl<'db> SalsaQueries<'db> {
         let Some((_, config)) = file_and_config(self.db, file_id) else {
             return false;
         };
-        config.known_doc_tags(self.db).iter().any(|tag| tag == name)
+        config.known_doc_tags().iter().any(|tag| tag == name)
     }
 
     /// Whether a global name is deprecated in any workspace.
@@ -209,8 +209,8 @@ impl<'db> SalsaQueries<'db> {
 
     /// Per-file control-flow graph (CFG, for flow-sensitive analysis).
     pub fn flow_tree(&self, file_id: FileId) -> Option<&'db super::flow::FlowTree> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(super::flow::flow_tree_of(self.db, file, config))
+        let (file, _config) = file_and_config(self.db, file_id)?;
+        Some(super::flow::flow_tree_of(self.db, file))
     }
 
     // ── Declarations ──
@@ -276,8 +276,8 @@ impl<'db> SalsaQueries<'db> {
 
     /// File's exported facts (cross-file consumption entry: reads only the defining file, not its function bodies).
     pub fn file_exports(&self, file_id: FileId) -> Option<&'db FileExports> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(file_exports(self.db, file, config))
+        let (file, _config) = file_and_config(self.db, file_id)?;
+        Some(file_exports(self.db, file))
     }
 
     pub fn members(&self, file_id: FileId) -> Option<&'db [Member]> {
@@ -297,9 +297,9 @@ impl<'db> SalsaQueries<'db> {
         file_id: FileId,
         index_syntax: LuaSyntaxId,
     ) -> Option<(SemanticId, SmolStr)> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        let facts = file_facts(self.db, file, config);
-        let tree = parse(self.db, file, config);
+        let (file, _config) = file_and_config(self.db, file_id)?;
+        let facts = file_facts(self.db, file);
+        let tree = parse(self.db, file);
         let expr = query::find_expr_by_syntax_id(tree, &index_syntax)?;
         let emmylua_parser::LuaExpr::IndexExpr(index_expr) = expr else {
             return None;

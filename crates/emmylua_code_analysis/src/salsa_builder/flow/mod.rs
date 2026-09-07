@@ -15,8 +15,10 @@ mod stats;
 
 use emmylua_parser::LuaChunk;
 
+use crate::FileId;
+
 use super::SalsaDatabase;
-use super::inputs::{ConfigInput, SourceFileInput};
+use super::inputs::ConfigInputData;
 use super::query::file_facts;
 
 pub use binder::FlowBinder;
@@ -40,22 +42,18 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
 }
 
 /// Per-file control flow graph. Pure lookup in the write-time built `SalsaDatabase::flow_trees`.
-pub(crate) fn flow_tree_of(
-    db: &SalsaDatabase,
-    file: SourceFileInput,
-    _config: ConfigInput,
-) -> &FlowTree {
+pub(crate) fn flow_tree_of(db: &SalsaDatabase, file: FileId) -> &FlowTree {
     db.flow_tree_of(file.file_id(db))
 }
 
 pub(super) fn build_flow_tree(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
 ) -> FlowTree {
     let file_id = file.file_id(db);
-    let facts = file_facts(db, file, config);
-    let tree = super::query::parse(db, file, config);
+    let facts = file_facts(db, file);
+    let tree = super::query::parse(db, file);
     let chunk: LuaChunk = tree.get_chunk_node();
     let mut binder = FlowBinder::new(file_id, facts);
     let start = binder.start;

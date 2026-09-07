@@ -14,7 +14,7 @@ use crate::FileId;
 use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
 
 use super::SalsaDatabase;
-use super::inputs::{ConfigInput, SourceFileInput};
+use super::inputs::ConfigInputData;
 use super::query::file_facts;
 
 /// Export identities visible from a single file.
@@ -50,21 +50,17 @@ pub struct MemberExport {
 }
 
 /// Per-file export facts (collects identities only, no type precomputation).
-pub(crate) fn file_exports(
-    db: &SalsaDatabase,
-    file: SourceFileInput,
-    _config: ConfigInput,
-) -> &FileExports {
+pub(crate) fn file_exports(db: &SalsaDatabase, file: FileId) -> &FileExports {
     db.file_exports_of(file.file_id(db))
 }
 
 pub(super) fn build_file_exports(
     db: &SalsaDatabase,
-    file: SourceFileInput,
-    config: ConfigInput,
+    file: FileId,
+    _config: &ConfigInputData,
     file_id: FileId,
 ) -> FileExports {
-    let facts = file_facts(db, file, config);
+    let facts = file_facts(db, file);
 
     let types = facts.type_defs.clone();
 
@@ -130,7 +126,6 @@ pub fn shard_of(file_id: FileId) -> u8 {
 pub(crate) fn export_shard(
     db: &SalsaDatabase,
     _workspace: super::inputs::WorkspaceInput,
-    _config: ConfigInput,
     shard: u8,
 ) -> &ExportShard {
     db.export_shard_of(shard)
@@ -138,8 +133,8 @@ pub(crate) fn export_shard(
 
 pub(super) fn build_export_shard(
     db: &SalsaDatabase,
-    workspace: super::inputs::WorkspaceInput,
-    config: ConfigInput,
+    _workspace: super::inputs::WorkspaceInput,
+    _config: &ConfigInputData,
     shard: u8,
 ) -> ExportShard {
     let mut types = Vec::new();
@@ -147,14 +142,14 @@ pub(super) fn build_export_shard(
     let mut runtime_values = Vec::new();
     let mut members = Vec::new();
     let mut modules = Vec::new();
-    for file_id in workspace.file_ids(db).iter().copied() {
+    for file_id in db.workspace_file_ids().iter().copied() {
         if shard_of(file_id) != shard {
             continue;
         }
         let Some(file) = db.file_input(file_id) else {
             continue;
         };
-        let exports = file_exports(db, file, config);
+        let exports = file_exports(db, file);
         types.extend(exports.types.iter().cloned());
         globals.extend(exports.globals.iter().cloned());
         runtime_values.extend(
