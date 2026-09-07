@@ -14,18 +14,22 @@ use hashbrown::HashMap;
 pub use loader::{LuaFileInfo, load_workspace_files, read_file_with_encoding};
 use lsp_types::Uri;
 use rowan::NodeCache;
+use std::collections::{HashMap as StdHashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 pub use virtual_url::VirtualUrlGenerator;
 
 use crate::Emmyrc;
+use crate::analysis_state::FileData;
 
 #[derive(Debug)]
 pub struct Vfs {
-    file_id_map: HashMap<PathBuf, u32>,
+    file_id_map: HashMap<PathBuf, FileId>,
     file_path_map: HashMap<u32, PathBuf>,
     remote_file_id_map: HashMap<Uri, FileId>,
-    file_data: Vec<Option<FileContent>>,
+    files: StdHashMap<FileId, FileData>,
+    protected_paths: HashSet<PathBuf>,
+    next_file_id: u32,
     line_index_map: HashMap<FileId, LineIndex>,
     tree_map: HashMap<FileId, LuaSyntaxTree>,
     emmyrc: Option<Arc<Emmyrc>>,
@@ -44,7 +48,9 @@ impl Vfs {
             file_id_map: HashMap::new(),
             file_path_map: HashMap::new(),
             remote_file_id_map: HashMap::new(),
-            file_data: Vec::new(),
+            files: StdHashMap::new(),
+            protected_paths: HashSet::new(),
+            next_file_id: 0,
             line_index_map: HashMap::new(),
             tree_map: HashMap::new(),
             emmyrc: None,
@@ -52,24 +58,104 @@ impl Vfs {
         }
     }
 
-    pub fn file_id(&mut self, uri: &Uri) -> FileId {
-        let path = match uri_to_file_path(uri) {
-            Some(path) => path,
-            None => {
-                log::warn!("uri {} can not cover to file path", uri.as_str());
-                let id = self.file_data.len() as u32;
-                self.file_data.push(None);
-                return FileId { id };
+    pub(crate) fn file(&self, file_id: FileId) -> Option<&FileData> {
+        self.files.get(&file_id)
+    }
+
+    pub(crate) fn file_ids(&self) -> Vec<FileId> {
+        let mut ids: Vec<FileId> = self.files.keys().copied().collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    pub(crate) fn files(&self) -> &StdHashMap<FileId, FileData> {
+        &self.files
+    }
+
+    pub(crate) fn protected_paths(&self) -> &HashSet<PathBuf> {
+        &self.protected_paths
+    }
+
+    pub(crate) fn set_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.protected_paths = paths.into_iter().collect();
+    }
+
+    pub(crate) fn lookup_by_path(&self, path: &PathBuf) -> Option<FileId> {
+        self.file_id_map.get(path).copied()
+    }
+
+    pub(crate) fn lookup_by_uri(&self, uri: &Uri) -> Option<FileId> {
+        if let Some(path) = uri_to_file_path(uri) {
+            if let Some(id) = self.file_id_map.get(&path) {
+                return Some(*id);
             }
-        };
-        if let Some(&id) = self.file_id_map.get(&path) {
-            FileId { id }
-        } else {
-            let id = self.file_data.len() as u32;
+        }
+        self.remote_file_id_map.get(uri).copied()
+    }
+
+    pub(crate) fn insert_at(
+        &mut self,
+        file_id: FileId,
+        uri: Option<Uri>,
+        path: Option<PathBuf>,
+        text: String,
+    ) {
+        if let Some(path) = &path {
+            self.file_id_map.insert(path.clone(), file_id);
+            self.file_path_map.insert(file_id.id, path.clone());
+        }
+        if let Some(uri) = &uri {
+            if path.is_none() {
+                self.remote_file_id_map.insert(uri.clone(), file_id);
+            }
+        }
+        self.files
+            .insert(file_id, FileData::new(file_id, uri, path, Arc::from(text)));
+        if file_id.id >= self.next_file_id {
+            self.next_file_id = file_id.id + 1;
+        }
+    }
+
+    pub(crate) fn remove(&mut self, file_id: FileId) -> Option<FileData> {
+        let removed = self.files.remove(&file_id);
+        if let Some(file) = &removed {
+            if let Some(path) = &file.path {
+                self.file_id_map.remove(path);
+            }
+            if let Some(uri) = &file.uri {
+                self.remote_file_id_map.remove(uri);
+            }
+        }
+        self.file_path_map.remove(&file_id.id);
+        removed
+    }
+
+    fn allocate_id(&mut self) -> FileId {
+        let id = FileId::new(self.next_file_id);
+        self.next_file_id += 1;
+        id
+    }
+
+    pub fn file_id(&mut self, uri: &Uri) -> FileId {
+        if let Some(path) = uri_to_file_path(uri) {
+            if let Some(&id) = self.file_id_map.get(&path) {
+                return id;
+            }
+            let id = self.allocate_id();
             self.file_id_map.insert(path.clone(), id);
-            self.file_path_map.insert(id, path);
-            self.file_data.push(None);
-            FileId { id }
+            self.file_path_map.insert(id.id, path);
+            id
+        } else {
+            if let Some(id) = self.remote_file_id_map.get(uri) {
+                return *id;
+            }
+            let id = self.allocate_id();
+            self.remote_file_id_map.insert(uri.clone(), id);
+            id
         }
     }
 
@@ -77,16 +163,19 @@ impl Vfs {
         if let Some(id) = self.remote_file_id_map.get(uri) {
             *id
         } else {
-            let id = self.file_data.len() as u32;
-            self.remote_file_id_map.insert(uri.clone(), FileId { id });
-            self.file_data.push(None);
-            FileId { id }
+            let id = self.allocate_id();
+            self.remote_file_id_map.insert(uri.clone(), id);
+            id
         }
     }
 
     pub fn get_file_id(&self, uri: &Uri) -> Option<FileId> {
-        let path = uri_to_file_path(uri)?;
-        self.file_id_map.get(&path).map(|&id| FileId { id })
+        if let Some(path) = uri_to_file_path(uri) {
+            if let Some(id) = self.file_id_map.get(&path) {
+                return Some(*id);
+            }
+        }
+        self.remote_file_id_map.get(uri).copied()
     }
 
     pub fn get_uri(&self, id: &FileId) -> Option<Uri> {
@@ -102,32 +191,7 @@ impl Vfs {
         let fid = self.file_id(uri);
         log::debug!("file_id: {:?}, uri: {}", fid, uri.as_str());
 
-        if let Some(data) = &data {
-            let line_index = LineIndex::parse(data);
-            let parse_config = self
-                .emmyrc
-                .as_ref()
-                .expect("emmyrc set")
-                .get_parse_config(&mut self.node_cache);
-            let tree = LuaParser::parse(data, parse_config);
-            self.tree_map.insert(fid, tree);
-            self.line_index_map.insert(fid, line_index);
-        } else {
-            self.line_index_map.remove(&fid);
-            self.tree_map.remove(&fid);
-        }
-        self.file_data[fid.id as usize] = data.map(|content| FileContent {
-            content,
-            is_remote: false,
-        });
-        fid
-    }
-
-    pub fn set_remote_file_content(&mut self, uri: &Uri, data: Option<String>) -> FileId {
-        let fid = self.virtual_file_id(&uri);
-        log::debug!("virtual file_id: {:?}, uri: {}", fid, uri.as_str());
-
-        if let Some(data) = &data {
+        if let Some(data) = data {
             let line_index = LineIndex::parse(&data);
             let parse_config = self
                 .emmyrc
@@ -137,14 +201,36 @@ impl Vfs {
             let tree = LuaParser::parse(&data, parse_config);
             self.tree_map.insert(fid, tree);
             self.line_index_map.insert(fid, line_index);
+            let path = uri_to_file_path(uri);
+            self.insert_at(fid, Some(uri.clone()), path, data);
         } else {
             self.line_index_map.remove(&fid);
             self.tree_map.remove(&fid);
+            self.remove(fid);
         }
-        self.file_data[fid.id as usize] = data.map(|content| FileContent {
-            content,
-            is_remote: true,
-        });
+        fid
+    }
+
+    pub fn set_remote_file_content(&mut self, uri: &Uri, data: Option<String>) -> FileId {
+        let fid = self.virtual_file_id(&uri);
+        log::debug!("virtual file_id: {:?}, uri: {}", fid, uri.as_str());
+
+        if let Some(data) = data {
+            let line_index = LineIndex::parse(&data);
+            let parse_config = self
+                .emmyrc
+                .as_ref()
+                .expect("emmyrc set")
+                .get_parse_config(&mut self.node_cache);
+            let tree = LuaParser::parse(&data, parse_config);
+            self.tree_map.insert(fid, tree);
+            self.line_index_map.insert(fid, line_index);
+            self.insert_at(fid, Some(uri.clone()), None, data);
+        } else {
+            self.line_index_map.remove(&fid);
+            self.tree_map.remove(&fid);
+            self.remove(fid);
+        }
         fid
     }
 
@@ -153,11 +239,9 @@ impl Vfs {
         if let Some(path) = self.file_path_map.remove(&fid.id) {
             self.file_id_map.remove(&path);
         }
-        if let Some(data) = self.file_data.get_mut(fid.id as usize) {
-            data.take();
-        }
         self.line_index_map.remove(&fid);
         self.tree_map.remove(&fid);
+        self.remove(fid);
         Some(fid)
     }
 
@@ -165,13 +249,8 @@ impl Vfs {
         self.emmyrc = Some(emmyrc);
     }
 
-    pub fn get_file_content(&self, id: &FileId) -> Option<&String> {
-        let opt = &self.file_data[id.id as usize];
-        if let Some(s) = opt {
-            Some(&s.content)
-        } else {
-            None
-        }
+    pub fn get_file_content(&self, id: &FileId) -> Option<&str> {
+        self.files.get(id).map(|file| file.text.as_ref())
     }
 
     pub fn get_document(&self, id: &FileId) -> Option<LuaDocument<'_>> {
@@ -196,62 +275,30 @@ impl Vfs {
     }
 
     pub fn get_all_local_file_ids(&self) -> Vec<FileId> {
-        self.file_data
+        self.files
             .iter()
-            .enumerate()
-            .filter_map(|(fid, opt_content)| {
-                if let Some(content) = opt_content {
-                    if !content.is_remote {
-                        Some(FileId { id: fid as u32 })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
+            .filter(|(_, file)| file.path.is_some())
+            .map(|(id, _)| *id)
             .collect()
     }
 
     pub fn get_all_file_ids(&self) -> Vec<FileId> {
-        self.file_data
-            .iter()
-            .enumerate()
-            .filter_map(|(fid, opt_content)| {
-                if opt_content.is_some() {
-                    Some(FileId { id: fid as u32 })
-                } else {
-                    None
-                }
-            })
-            .collect()
+        self.files.keys().copied().collect()
     }
 
     pub fn is_remote_file(&self, id: &FileId) -> bool {
-        if let Some(opt_content) = self.file_data.get(id.id as usize) {
-            if let Some(content) = opt_content {
-                content.is_remote
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        self.files.get(id).is_some_and(|file| file.path.is_none())
     }
 
     pub fn clear(&mut self) {
+        self.files.clear();
+        self.protected_paths.clear();
+        self.next_file_id = 0;
         self.file_id_map.clear();
         self.file_path_map.clear();
-        self.file_data.clear();
         self.line_index_map.clear();
         self.tree_map.clear();
         self.emmyrc = None;
         self.node_cache = NodeCache::default();
     }
-}
-
-#[derive(Debug)]
-struct FileContent {
-    content: String,
-    is_remote: bool,
 }

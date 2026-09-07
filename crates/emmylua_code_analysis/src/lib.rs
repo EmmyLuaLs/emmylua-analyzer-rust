@@ -30,7 +30,7 @@ pub use crate::salsa_builder::def::{
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
 pub use crate::salsa_builder::{DocumentView, SalsaDatabase};
-pub use analysis_state::{AnalysisState, FileData, VfsState, WorkspaceIndex};
+pub use analysis_state::{AnalysisState, FileData, WorkspaceIndex};
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };

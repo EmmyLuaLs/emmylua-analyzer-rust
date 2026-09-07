@@ -18,7 +18,8 @@ use std::sync::Arc;
 use emmylua_parser::{LineIndex, LuaSyntaxTree};
 use lsp_types::Uri;
 
-use crate::analysis_state::{FileData, VfsState};
+use crate::analysis_state::FileData;
+use crate::vfs::Vfs;
 use crate::vfs::file_path_to_uri;
 use crate::{Emmyrc, FileId, WorkspaceFolder, WorkspaceImport};
 pub use def::*;
@@ -134,7 +135,7 @@ pub struct SalsaDatabase {
     workspace_roots: Arc<[WorkspaceRoot]>,
 
     /// Plain VFS state independent of Salsa inputs.
-    vfs: VfsState,
+    vfs: Vfs,
 
     /// Plain per-file facts cache, built eagerly on every write.
     file_facts: HashMap<FileId, facts::FileFacts>,
@@ -173,7 +174,7 @@ impl Default for SalsaDatabase {
             config: None,
             workspace_file_ids: Arc::from(Vec::<FileId>::new()),
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
-            vfs: VfsState::new(),
+            vfs: Vfs::new(),
             file_facts: HashMap::new(),
             flow_trees: HashMap::new(),
             syntax_trees: HashMap::new(),
@@ -585,7 +586,7 @@ impl SalsaDatabase {
             .iter()
             .cloned()
             .collect::<Vec<_>>();
-        let mut vfs = VfsState::new();
+        let mut vfs = Vfs::new();
         vfs.set_protected_paths(protected_paths);
         for (file_id, input) in file_inputs {
             let text = input.text.to_string();
@@ -625,7 +626,7 @@ impl SalsaDatabase {
         self.cancel_snapshots();
         self.workspace_file_ids = Arc::from(Vec::<FileId>::new());
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
-        self.vfs = VfsState::new();
+        self.vfs = Vfs::new();
         self.file_facts = HashMap::new();
         self.flow_trees = HashMap::new();
         self.syntax_trees = HashMap::new();
@@ -644,7 +645,7 @@ impl SalsaDatabase {
 
     /// Current VFS snapshot (immutable, shareable across threads).
     #[allow(dead_code)]
-    pub(crate) fn vfs(&self) -> &VfsState {
+    pub(crate) fn vfs(&self) -> &Vfs {
         &self.vfs
     }
 
