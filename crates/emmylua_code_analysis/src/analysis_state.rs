@@ -68,6 +68,10 @@ impl VfsState {
         ids
     }
 
+    pub fn files(&self) -> &HashMap<FileId, FileData> {
+        &self.files
+    }
+
     pub fn len(&self) -> usize {
         self.files.len()
     }

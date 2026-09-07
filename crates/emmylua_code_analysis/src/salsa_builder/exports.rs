@@ -123,17 +123,13 @@ pub fn shard_of(file_id: FileId) -> u8 {
 }
 
 /// A shard's export facts (write-time built map lookup).
-pub(crate) fn export_shard(
-    db: &SalsaDatabase,
-    _workspace: super::inputs::WorkspaceInput,
-    shard: u8,
-) -> &ExportShard {
+pub(crate) fn export_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ExportShard {
     db.export_shard_of(shard)
 }
 
 pub(super) fn build_export_shard(
     db: &SalsaDatabase,
-    _workspace: super::inputs::WorkspaceInput,
+    _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
 ) -> ExportShard {

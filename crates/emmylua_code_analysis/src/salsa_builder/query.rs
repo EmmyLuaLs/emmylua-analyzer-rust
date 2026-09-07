@@ -13,7 +13,7 @@ use super::def::{
 };
 use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
-use super::inputs::{ConfigInputData, WorkspaceInput};
+use super::inputs::ConfigInputData;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use super::{DocumentView, SalsaDatabase};
 use crate::FileId;
@@ -301,7 +301,7 @@ impl WorkspaceTypeIndex {
 
 fn build_workspace_type_index(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
@@ -333,7 +333,7 @@ fn build_workspace_type_index(
 
 pub(crate) fn workspace_type_index_for(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceTypeIndex {
     db.workspace_index_cache()
@@ -349,17 +349,13 @@ pub(crate) struct DeprecatedShard {
     member_keys: Vec<(FileId, SemanticId, SmolStr)>,
 }
 
-pub(crate) fn deprecated_shard(
-    db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
-    shard: u8,
-) -> &DeprecatedShard {
+pub(crate) fn deprecated_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &DeprecatedShard {
     db.deprecated_shard_of(shard)
 }
 
 fn build_deprecated_shard(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
 ) -> DeprecatedShard {
@@ -395,7 +391,7 @@ fn build_deprecated_shard(
 /// full global-declaration pipeline.
 pub(crate) fn deprecated_global_names_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
@@ -418,7 +414,7 @@ pub(crate) fn deprecated_global_names_for(
 /// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
 pub(crate) fn deprecated_member_names_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
@@ -434,10 +430,7 @@ pub(crate) fn deprecated_member_names_for(
     Arc::new(out)
 }
 
-pub(crate) fn all_workspace_ids(
-    db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
-) -> Vec<WorkspaceId> {
+pub(crate) fn all_workspace_ids(db: &SalsaDatabase, _workspace: ()) -> Vec<WorkspaceId> {
     let roots = db.workspace_roots().to_vec();
     let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
         vec![WorkspaceId::MAIN]
@@ -452,7 +445,7 @@ pub(crate) fn all_workspace_ids(
 
 fn file_matches_workspace_id(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     file_id: FileId,
     ws_id: WorkspaceId,
 ) -> bool {
@@ -466,7 +459,7 @@ fn file_matches_workspace_id(
 
 fn find_global_types(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
@@ -480,7 +473,7 @@ fn find_global_types(
 
 fn find_internal_types(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws: WorkspaceId,
     full_name: &str,
@@ -490,7 +483,7 @@ fn find_internal_types(
 
 fn find_file_types(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     file_id: FileId,
     full_name: &str,
@@ -503,7 +496,7 @@ fn find_file_types(
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 pub(crate) fn resolve_type_def_locations(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     file: FileId,
     bare_name: SmolStr,
@@ -551,7 +544,7 @@ pub(crate) fn resolve_type_def_locations(
 /// 3. bare name (**same-file Private** -> Internal -> Global).
 pub(crate) fn resolve_type_def(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     file: FileId,
     bare_name: SmolStr,
@@ -568,7 +561,7 @@ pub(crate) fn resolve_type_def(
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
 pub(crate) fn constructor_attribute_of_type(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     type_def: SemanticId,
 ) -> Option<ConstructorAttribute> {
@@ -636,7 +629,7 @@ pub struct WorkspaceMemberIndex {
 /// Member index scoped to a single workspace.
 fn build_workspace_member_index(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
@@ -681,7 +674,7 @@ fn build_workspace_member_index(
 
 pub(crate) fn workspace_member_index_for(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceMemberIndex {
     db.workspace_index_cache()
@@ -777,17 +770,13 @@ pub struct WorkspaceReferenceIndex {
     pub member_defs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
 }
 
-pub(crate) fn reference_shard(
-    db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
-    shard: u8,
-) -> &ReferenceShard {
+pub(crate) fn reference_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ReferenceShard {
     db.reference_shard_of(shard)
 }
 
 fn build_reference_shard(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
 ) -> ReferenceShard {
@@ -829,7 +818,7 @@ fn build_reference_shard(
 /// the shard results for the requested workspace.
 fn build_workspace_reference_index(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
@@ -866,7 +855,7 @@ fn build_workspace_reference_index(
 
 pub(crate) fn workspace_reference_index_for(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceReferenceIndex {
     db.workspace_index_cache()
@@ -883,7 +872,7 @@ pub(crate) fn workspace_reference_index_for(
 /// Query-level member resolution: owner/name -> concrete member id.
 fn resolve_member_id(
     db: &SalsaDatabase,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     config: &ConfigInputData,
     facts: &FileFacts,
     index_expr: &LuaIndexExpr,
@@ -906,7 +895,7 @@ fn resolve_member_id(
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
 pub(crate) fn members_of_owner(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
@@ -938,7 +927,7 @@ pub(crate) fn members_of_owner(
 
 fn return_members_of_owner_scan(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
@@ -959,7 +948,7 @@ fn return_members_of_owner_scan(
 /// (which already has `members_by_owner_name`).
 pub(crate) fn members_of_owner_named(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     owner: SemanticId,
     name: SmolStr,
@@ -1000,7 +989,7 @@ pub(crate) fn members_of_owner_named(
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
 pub(crate) fn member_keys_of_owner(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
 ) -> Vec<SmolStr> {
@@ -1022,7 +1011,7 @@ pub(crate) fn member_keys_of_owner(
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
 pub(crate) fn type_defs_in_scope(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     scope: TypeScope,
     full_name: SmolStr,
@@ -1037,7 +1026,7 @@ pub(crate) fn type_defs_in_scope(
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
 pub(crate) fn global_type_by_name(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     full_name: SmolStr,
 ) -> Option<SemanticId> {
@@ -1055,7 +1044,7 @@ pub(crate) fn global_type_by_name(
 /// indexes.
 fn build_workspace_decl_index(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
@@ -1119,7 +1108,7 @@ fn build_workspace_decl_index(
 
 pub(crate) fn workspace_decl_index_for(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceDeclIndex {
     db.workspace_index_cache()
@@ -1170,7 +1159,7 @@ impl WorkspaceDeclIndex {
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
 pub(crate) fn global_decl_by_name(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     name: SmolStr,
 ) -> Option<SemanticId> {
@@ -1213,17 +1202,13 @@ pub(crate) struct ModuleShard {
 
 /// Module shard query. Each file contributes a `ModuleEntry` using its owning workspace's root,
 /// so the per-workspace index can merge shards without scanning every file again.
-pub(crate) fn module_shard(
-    db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
-    shard: u8,
-) -> &ModuleShard {
+pub(crate) fn module_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ModuleShard {
     db.module_shard_of(shard)
 }
 
 fn build_module_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     shard: u8,
 ) -> ModuleShard {
@@ -1298,7 +1283,7 @@ fn build_module_shard(
 /// Module index scoped to a single workspace.
 fn build_workspace_module_index(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
 ) -> ModuleIndex {
@@ -1354,7 +1339,7 @@ fn build_workspace_module_index(
 
 pub(crate) fn workspace_module_index_for(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     ws_id: WorkspaceId,
 ) -> &ModuleIndex {
     db.workspace_index_cache()
@@ -1457,7 +1442,7 @@ pub(crate) fn find_workspace_root(
 /// File -> its workspace.
 pub(crate) fn file_workspace_id(
     db: &SalsaDatabase,
-    _workspace: WorkspaceInput,
+    _workspace: (),
     file_id: FileId,
 ) -> Option<WorkspaceId> {
     let file = db.file_input(file_id)?;
@@ -1472,7 +1457,7 @@ pub(crate) fn file_workspace_id(
 /// Module name -> file. Resolution order: module_map rewrite -> exact match -> require pattern (`?.lua`/`?/init.lua`).
 pub(crate) fn module_file_of(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     module_name: SmolStr,
 ) -> Option<FileId> {
@@ -1713,7 +1698,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
 pub(crate) fn resolve_owner(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
 ) -> Option<SemanticId> {
@@ -1748,7 +1733,7 @@ pub(crate) fn resolve_owner(
 /// For name chains (`a.b`), recursively take members along each head identity.
 pub(crate) fn resolve_owner_set(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
 ) -> Vec<SemanticId> {
@@ -1984,7 +1969,7 @@ pub(crate) fn decl_type(
 fn iter_slot_type(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     decl: &crate::salsa_builder::def::Decl,
@@ -2102,7 +2087,7 @@ fn iter_slot_type(
 /// `generics` = generic params in the current scope (`T` -> `Generic(T)`); named types resolve to TypeDef (cross-file).
 pub(crate) fn lower_doc_type(
     db: &SalsaDatabase,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     type_syntax: LuaSyntaxId,
@@ -2121,7 +2106,7 @@ pub(crate) fn lower_doc_type(
 
 fn lower_doc_type_node(
     db: &SalsaDatabase,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     generics: &[SalsaGenericParam],
@@ -2470,7 +2455,7 @@ pub(crate) fn member_keys_of_type(
 pub(crate) fn type_member(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     type_def: SemanticId,
@@ -2970,7 +2955,7 @@ pub(crate) fn expr_type_of(
 fn expr_type(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     expr: LuaExpr,
@@ -2992,7 +2977,7 @@ enum ChainFrame {
 fn expr_type_chain(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     expr: LuaExpr,
@@ -3046,7 +3031,7 @@ fn expr_type_chain(
 fn expr_type_node(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     expr: LuaExpr,
@@ -3167,7 +3152,7 @@ fn expr_type_node(
 fn expr_type_index(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     index_expr: LuaIndexExpr,
@@ -3275,7 +3260,7 @@ fn expr_type_index(
 fn expr_type_call(
     db: &SalsaDatabase,
     facts: &FileFacts,
-    workspace: Option<WorkspaceInput>,
+    workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
     call_expr: LuaCallExpr,
@@ -3314,7 +3299,7 @@ fn expr_type_call(
 /// Each member's type is resolved in its declaring file (`member_type` keyed by file input, so invalidation is file-precise).
 fn member_type_via_owner(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: &SemanticId,
     name: &str,
@@ -3344,7 +3329,7 @@ fn member_type_via_owner(
 /// Instance access inherits methods from the class table, not arbitrary dot-assignments on it.
 fn member_type_via_owner_method(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
+    workspace: (),
     config: &ConfigInputData,
     owner: &SemanticId,
     name: &str,

@@ -2,9 +2,7 @@
 
 use lsp_types::Uri;
 use std::collections::HashMap as StdHashMap;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use emmylua_parser::{
     LuaFeatures, LuaFeaturesSet, LuaLanguageLevel, LuaVersionNumber, ParserConfig, SpecialFunction,
@@ -20,19 +18,6 @@ use super::def::WorkspaceId;
 // ──────────────────────────────────────────────
 // Inputs
 // ──────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub(crate) struct SourceFileInputData {
-    pub(crate) text: Arc<str>,
-    pub(crate) path: Option<PathBuf>,
-    pub(crate) uri: Option<Uri>,
-}
-
-impl SourceFileInputData {
-    pub(crate) fn new(text: Arc<str>, path: Option<PathBuf>, uri: Option<Uri>) -> Self {
-        Self { text, path, uri }
-    }
-}
 
 impl FileId {
     pub(crate) fn text(self, db: &SalsaDatabase) -> &str {
@@ -56,46 +41,23 @@ impl FileId {
     }
 }
 
-/// `LuaLanguageLevel` lacks `Hash`; salsa fields require Eq+Hash, so a newtype supplies it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LanguageLevel(pub LuaLanguageLevel);
-
-impl Hash for LanguageLevel {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (self.0 as u8).hash(state);
-    }
-}
-
-impl LanguageLevel {
-    /// Language level → runtime version number (used for `---@version` visibility checks).
-    pub fn to_lua_version_number(&self) -> LuaVersionNumber {
-        match self.0 {
-            LuaLanguageLevel::Lua51 => LuaVersionNumber::new(5, 1, 0),
-            LuaLanguageLevel::Lua52 => LuaVersionNumber::new(5, 2, 0),
-            LuaLanguageLevel::Lua53 => LuaVersionNumber::new(5, 3, 0),
-            LuaLanguageLevel::Lua54 => LuaVersionNumber::new(5, 4, 0),
-            LuaLanguageLevel::Lua55 => LuaVersionNumber::new(5, 5, 0),
-            LuaLanguageLevel::LuaJIT | LuaLanguageLevel::LuaJIT2 | LuaLanguageLevel::LuaJIT3 => {
-                LuaVersionNumber::LUA_JIT
-            }
+pub(crate) fn language_level_to_version(level: LuaLanguageLevel) -> LuaVersionNumber {
+    match level {
+        LuaLanguageLevel::Lua51 => LuaVersionNumber::new(5, 1, 0),
+        LuaLanguageLevel::Lua52 => LuaVersionNumber::new(5, 2, 0),
+        LuaLanguageLevel::Lua53 => LuaVersionNumber::new(5, 3, 0),
+        LuaLanguageLevel::Lua54 => LuaVersionNumber::new(5, 4, 0),
+        LuaLanguageLevel::Lua55 => LuaVersionNumber::new(5, 5, 0),
+        LuaLanguageLevel::LuaJIT | LuaLanguageLevel::LuaJIT2 | LuaLanguageLevel::LuaJIT3 => {
+            LuaVersionNumber::LUA_JIT
         }
-    }
-}
-
-/// `SpecialFunction` lacks `Hash`; same workaround.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpecialFn(pub SpecialFunction);
-
-impl Hash for SpecialFn {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (self.0 as u8).hash(state);
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ConfigInputData {
-    pub(crate) language_level: LanguageLevel,
-    pub(crate) special_like: Vec<(SmolStr, SpecialFn)>,
+    pub(crate) language_level: LuaLanguageLevel,
+    pub(crate) special_like: Vec<(SmolStr, SpecialFunction)>,
     pub(crate) non_std_symbols: Vec<LuaFeatures>,
     pub(crate) module_patterns: Vec<SmolStr>,
     pub(crate) module_replace: Vec<(SmolStr, SmolStr)>,
@@ -107,8 +69,8 @@ pub(crate) struct ConfigInputData {
 impl ConfigInputData {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        language_level: LanguageLevel,
-        special_like: Vec<(SmolStr, SpecialFn)>,
+        language_level: LuaLanguageLevel,
+        special_like: Vec<(SmolStr, SpecialFunction)>,
         non_std_symbols: Vec<LuaFeatures>,
         module_patterns: Vec<SmolStr>,
         module_replace: Vec<(SmolStr, SmolStr)>,
@@ -128,11 +90,11 @@ impl ConfigInputData {
         }
     }
 
-    pub(crate) fn language_level(&self) -> LanguageLevel {
+    pub(crate) fn language_level(&self) -> LuaLanguageLevel {
         self.language_level
     }
 
-    pub(crate) fn special_like(&self) -> &[(SmolStr, SpecialFn)] {
+    pub(crate) fn special_like(&self) -> &[(SmolStr, SpecialFunction)] {
         &self.special_like
     }
 
@@ -161,8 +123,8 @@ impl ConfigInputData {
     pub(crate) fn parts_from_emmyrc(
         emmyrc: &Emmyrc,
     ) -> (
-        LanguageLevel,
-        Vec<(SmolStr, SpecialFn)>,
+        LuaLanguageLevel,
+        Vec<(SmolStr, SpecialFunction)>,
         Vec<LuaFeatures>,
         Vec<SmolStr>,
         Vec<(SmolStr, SmolStr)>,
@@ -172,11 +134,11 @@ impl ConfigInputData {
         let mut special_like = Vec::new();
         for (name, func) in &emmyrc.runtime.special {
             if let Some(func) = (*func).into() {
-                special_like.push((SmolStr::new(name), SpecialFn(func)));
+                special_like.push((SmolStr::new(name), func));
             }
         }
         for name in &emmyrc.runtime.require_like_function {
-            special_like.push((SmolStr::new(name), SpecialFn(SpecialFunction::Require)));
+            special_like.push((SmolStr::new(name), SpecialFunction::Require));
         }
 
         let mut non_std_symbols = emmyrc
@@ -231,7 +193,7 @@ impl ConfigInputData {
             .collect::<Vec<_>>();
 
         (
-            LanguageLevel(emmyrc.get_language_level()),
+            emmyrc.get_language_level(),
             special_like,
             non_std_symbols,
             module_patterns,
@@ -244,12 +206,12 @@ impl ConfigInputData {
     pub(crate) fn to_parse_config<'a>(&self, node_cache: &'a mut NodeCache) -> ParserConfig<'a> {
         let mut special_like = StdHashMap::new();
         for (name, func) in &self.special_like {
-            special_like.insert(name.as_str().to_string(), func.0);
+            special_like.insert(name.as_str().to_string(), *func);
         }
         let mut non_std_symbols = LuaFeaturesSet::default();
         non_std_symbols.extends(self.non_std_symbols.to_vec());
         ParserConfig::new(
-            self.language_level.0,
+            self.language_level,
             Some(node_cache),
             special_like,
             non_std_symbols,
@@ -268,8 +230,3 @@ pub(crate) struct WorkspaceRoot {
     pub(crate) root: PathBuf,
     pub(crate) import: WorkspaceImport,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct WorkspaceInput;
-
-
