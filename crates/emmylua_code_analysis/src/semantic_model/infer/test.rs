@@ -943,9 +943,8 @@ fn test_is_visible_private_field() {
     let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
-    let db_b = Box::leak(Box::new(db.clone()));
     let model_b: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db_b, fid_b).unwrap()));
+        Box::leak(Box::new(SemanticModel::new(db, fid_b).unwrap()));
 
     let member = model_b
         .members()

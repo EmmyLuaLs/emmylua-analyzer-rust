@@ -45,11 +45,15 @@ impl AnalysisState {
     }
 
     fn read(&self) -> RwLockReadGuard<'_, EmmyLuaAnalysis> {
-        self.inner.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.inner
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn write(&self) -> RwLockWriteGuard<'_, EmmyLuaAnalysis> {
-        self.inner.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.inner
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 

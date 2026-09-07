@@ -199,8 +199,7 @@ pub async fn on_emmy_gutter_detail_handler(
         cancel_token,
         move |analysis| {
             let locations = Mutex::new(Vec::new());
-            let salsa = analysis.salsa_snapshot();
-            salsa.parallel_for_each_file(|file_id, model| {
+            analysis.salsa.parallel_for_each_file(|file_id, model| {
                 let Some(facts) = model.file_facts() else {
                     return;
                 };

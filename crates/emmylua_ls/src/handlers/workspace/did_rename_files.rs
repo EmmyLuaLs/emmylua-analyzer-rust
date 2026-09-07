@@ -35,7 +35,7 @@ pub async fn process_did_rename_files_handler(
     let all_renames = context
         .analysis()
         .try_with_snapshot(|analysis| {
-            let salsa = analysis.salsa.clone();
+            let salsa = &analysis.salsa;
             let mut all_renames: Vec<RenameInfo> = vec![];
 
             for file_rename in params.files {
@@ -225,9 +225,9 @@ fn try_modify_require_path(
 ) -> Option<HashMap<Uri, Vec<TextEdit>>> {
     #[allow(clippy::mutable_key_type)]
     let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
-    let salsa = analysis.salsa.clone();
+    let salsa = &analysis.salsa;
     for file_id in salsa.file_ids() {
-        let Some(model) = SalsaSemanticModel::new(&salsa, file_id) else {
+        let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
             continue;
         };
         let Some(chunk) = model.chunk() else {

@@ -66,7 +66,7 @@ pub fn set_locale(locale: &str) {
     rust_i18n::set_locale(locale);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct EmmyLuaAnalysis {
     pub salsa: SalsaDatabase,
     pub diagnostic: LuaDiagnostic,
@@ -276,11 +276,6 @@ impl EmmyLuaAnalysis {
     /// Semantic model: accesses only the salsa analysis layer.
     pub fn semantic_model(&self, file_id: FileId) -> Option<semantic_model::SemanticModel<'_>> {
         semantic_model::SemanticModel::new(&self.salsa, file_id)
-    }
-
-    /// Salsa query snapshot: clones the shared memo table and can be sent to worker threads for concurrent queries.
-    pub fn salsa_snapshot(&self) -> SalsaDatabase {
-        self.salsa.clone()
     }
 
     pub fn diagnose_salsa(

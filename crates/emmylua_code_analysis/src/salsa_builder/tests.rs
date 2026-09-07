@@ -1431,26 +1431,32 @@ fn test_salsa_snapshot_query_from_other_thread() {
     let fid = db.set_file_content(&uri, Some("local x = 1\nlocal y = x + 1".to_string()));
     db.update_main_root(PathBuf::from("C:/ws"));
 
-    // Snapshot clone (shares memo table) → move into worker thread for querying.
-    let snapshot = db.clone();
-    let handle = std::thread::spawn(move || {
-        let model =
-            crate::semantic_model::SemanticModel::new(&snapshot, fid).expect("semantic model");
-        let x = model
-            .decls()
-            .expect("decls")
-            .iter()
-            .find(|d| d.name == "x")
-            .expect("x decl");
-        model.type_of_decl(&x.id).expect("x type")
+    // Read in a scoped thread borrowing the same live database.
+    let ty = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let model =
+                    crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
+                let x = model
+                    .decls()
+                    .expect("decls")
+                    .iter()
+                    .find(|d| d.name == "x")
+                    .expect("x decl");
+                model.type_of_decl(&x.id).expect("x type")
+            })
+            .join()
+            .expect("thread panicked")
     });
-    let ty = handle.join().expect("thread panicked");
     assert_eq!(ty, LuaType::IntegerConst(1));
 
-    // Write operations stay on the main thread; the snapshot is unaffected.
+    // Write operations stay on the main thread after the scoped read finishes.
     let uri2 = Uri::from_str("file:///C:/ws/thread_test2.lua").unwrap();
     db.set_file_content(&uri2, Some("local z = 2".to_string()));
-    assert!(db.file_ids().contains(&fid), "写操作后 salsa 仍持有原文件");
+    assert!(
+        db.file_ids().contains(&fid),
+        "写操作后 analysis 仍持有原文件"
+    );
 }
 
 #[test]
@@ -2017,150 +2023,6 @@ fn test_remote_uri_stable_mapping() {
 
     db.set_file_content(&uri, None);
     assert_eq!(db.lookup_file_id(&uri), None);
-}
-
-/// Micro-benchmark: database clone cost vs VFS read path / salsa query cost.
-/// `cargo test -p emmylua_code_analysis bench_clone_vs_query -- --ignored --nocapture`
-#[test]
-#[ignore = "micro benchmark: clone vs salsa query"]
-fn bench_clone_vs_query() {
-    use std::mem::size_of;
-    use std::time::{Duration, Instant};
-
-    let mut db = setup();
-
-    let empty_iters = 200_000;
-    let now = Instant::now();
-    for _ in 0..empty_iters {
-        let _ = db.clone();
-    }
-    let empty_clone_time = now.elapsed();
-
-    let file_count = 500;
-    for i in 0..file_count {
-        set_test_file(
-            &mut db,
-            i + 1,
-            &format!("C:/ws/file_{i}.lua"),
-            "local a = 1\nlocal b = a + 1\nreturn b",
-        );
-    }
-    let target = FileId::new(file_count);
-    let target_uri = db.file_uri(target).expect("target uri");
-
-    // warmup
-    for _ in 0..10_000 {
-        let _ = db.clone();
-    }
-    let _ = db.q().file_facts(target);
-    let _ = db.document(target);
-    let _ = db.line_index(target);
-    let _ = db.lookup_file_id(&target_uri);
-
-    let clone_iters = 200_000;
-    let query_iters = 20_000;
-    let read_iters = 200_000;
-
-    let now = Instant::now();
-    for _ in 0..clone_iters {
-        let _ = db.clone();
-    }
-    let clone_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..query_iters {
-        let _ = db.q().file_facts(target);
-    }
-    let facts_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..read_iters {
-        let _ = db.lookup_file_id(&target_uri);
-    }
-    let lookup_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..read_iters {
-        let _ = db.file_path(target);
-    }
-    let file_path_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..read_iters {
-        let _ = db.get_file_text(target);
-    }
-    let file_text_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..query_iters {
-        let _ = db.line_index(target);
-    }
-    let line_index_time = now.elapsed();
-
-    let now = Instant::now();
-    for _ in 0..query_iters {
-        let _ = db.document(target);
-    }
-    let document_time = now.elapsed();
-
-    fn ns_per(op: Duration, iters: u32) -> f64 {
-        op.as_nanos() as f64 / iters as f64
-    }
-
-    eprintln!("== clone vs query micro-benchmark ==");
-    eprintln!(
-        "SalsaDatabase size={}B  empty clone={:.1} ns/op",
-        size_of::<SalsaDatabase>(),
-        ns_per(empty_clone_time, empty_iters)
-    );
-    eprintln!(
-        "clone({} files)={:.1} ns/op",
-        file_count,
-        ns_per(clone_time, clone_iters)
-    );
-    eprintln!(
-        "lookup_file_id={:.1} ns/op  file_path={:.1} ns/op  get_file_text={:.1} ns/op",
-        ns_per(lookup_time, read_iters),
-        ns_per(file_path_time, read_iters),
-        ns_per(file_text_time, read_iters)
-    );
-    eprintln!(
-        "file_facts(cached)={:.1} ns/op  line_index(cached)={:.1} ns/op  document(cached)={:.1} ns/op",
-        ns_per(facts_time, query_iters),
-        ns_per(line_index_time, query_iters),
-        ns_per(document_time, query_iters)
-    );
-}
-
-#[test]
-fn test_vfs_snapshot_shared_between_clones_and_stable_across_metadata_change() {
-    let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1");
-
-    // Clones share the same VFS state
-    let snapshot = db.clone();
-    assert!(Arc::ptr_eq(db.vfs(), snapshot.vfs()));
-    drop(snapshot);
-
-    // Text-only update: don't replace the VFS state, avoiding an O(n) VFS clone per keystroke
-    let old_vfs = db.vfs().clone();
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 2");
-    assert!(
-        Arc::ptr_eq(&old_vfs, db.vfs()),
-        "text edit should reuse the same VFS state"
-    );
-
-    // Path/URI update: publish a new VFS state; the old state keeps the old mount info
-    set_test_file(&mut db, 1, "C:/ws/b.lua", "local x = 2");
-    assert!(!Arc::ptr_eq(&old_vfs, db.vfs()));
-    assert_eq!(
-        old_vfs.file(fid).unwrap().path.as_deref(),
-        Some(std::path::Path::new("C:/ws/a.lua"))
-    );
-    assert_eq!(
-        db.vfs().file(fid).unwrap().path.as_deref(),
-        Some(std::path::Path::new("C:/ws/b.lua"))
-    );
 }
 
 #[test]
