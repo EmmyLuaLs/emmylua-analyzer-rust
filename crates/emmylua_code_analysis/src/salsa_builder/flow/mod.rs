@@ -13,8 +13,6 @@ mod flow_node;
 mod flow_tree;
 mod stats;
 
-use std::sync::Arc;
-
 use emmylua_parser::LuaChunk;
 
 use super::SalsaDatabase;
@@ -41,23 +39,28 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
     label
 }
 
-/// Per-file control flow graph. Plain lazy cache backed by `SalsaDatabase::flow_trees`.
+/// Per-file control flow graph. Pure lookup in the write-time built `SalsaDatabase::flow_trees`.
 pub(crate) fn flow_tree_of(
     db: &SalsaDatabase,
     file: SourceFileInput,
+    _config: ConfigInput,
+) -> &FlowTree {
+    db.flow_tree_of(file.file_id(db))
+}
+
+pub(super) fn build_flow_tree(
+    db: &SalsaDatabase,
+    file: SourceFileInput,
     config: ConfigInput,
-) -> &Arc<FlowTree> {
+) -> FlowTree {
     let file_id = file.file_id(db);
-    let _ = file.text(db);
-    db.flow_tree_cell(file_id).get_or_init(|| {
-        let facts = file_facts(db, file, config);
-        let tree = super::query::parse(db, file, config);
-        let chunk: LuaChunk = tree.get_chunk_node();
-        let mut binder = FlowBinder::new(file_id, facts);
-        let start = binder.start;
-        if let Some(block) = chunk.get_block() {
-            engine::run_bind_block(&mut binder, block, start);
-        }
-        Arc::new(binder.finish())
-    })
+    let facts = file_facts(db, file, config);
+    let tree = super::query::parse(db, file, config);
+    let chunk: LuaChunk = tree.get_chunk_node();
+    let mut binder = FlowBinder::new(file_id, facts);
+    let start = binder.start;
+    if let Some(block) = chunk.get_block() {
+        engine::run_bind_block(&mut binder, block, start);
+    }
+    binder.finish()
 }

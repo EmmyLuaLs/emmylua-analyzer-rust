@@ -59,7 +59,7 @@ pub async fn on_formatting_handler(
                 non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
             };
             Some((
-                document,
+                document.clone(),
                 emmyrc,
                 file_path,
                 normalized_path,

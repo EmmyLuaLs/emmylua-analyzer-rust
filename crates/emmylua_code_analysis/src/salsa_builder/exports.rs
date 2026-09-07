@@ -53,15 +53,12 @@ pub struct MemberExport {
 pub(crate) fn file_exports(
     db: &SalsaDatabase,
     file: SourceFileInput,
-    config: ConfigInput,
+    _config: ConfigInput,
 ) -> &FileExports {
-    let file_id = file.file_id(db);
-    let _ = file.text(db);
-    db.file_exports_cell(file_id)
-        .get_or_init(|| build_file_exports(db, file, config, file_id))
+    db.file_exports_of(file.file_id(db))
 }
 
-fn build_file_exports(
+pub(super) fn build_file_exports(
     db: &SalsaDatabase,
     file: SourceFileInput,
     config: ConfigInput,
@@ -129,19 +126,17 @@ pub fn shard_of(file_id: FileId) -> u8 {
     (file_id.id % EXPORT_SHARDS as u32) as u8
 }
 
-/// A shard's export facts (plain cache: depends only on `file_exports` of files in this shard).
+/// A shard's export facts (write-time built map lookup).
 pub(crate) fn export_shard(
     db: &SalsaDatabase,
-    workspace: super::inputs::WorkspaceInput,
-    config: ConfigInput,
+    _workspace: super::inputs::WorkspaceInput,
+    _config: ConfigInput,
     shard: u8,
 ) -> &ExportShard {
-    let _ = workspace.revision(db);
-    db.export_shard_cell(shard)
-        .get_or_init(|| build_export_shard(db, workspace, config, shard))
+    db.export_shard_of(shard)
 }
 
-fn build_export_shard(
+pub(super) fn build_export_shard(
     db: &SalsaDatabase,
     workspace: super::inputs::WorkspaceInput,
     config: ConfigInput,

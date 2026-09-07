@@ -313,16 +313,11 @@ pub(crate) struct WorkspaceInput;
 pub(crate) struct WorkspaceInputData {
     pub(crate) file_ids: Arc<[FileId]>,
     pub(crate) roots: Arc<[WorkspaceRoot]>,
-    pub(crate) revision: u64,
 }
 
 impl WorkspaceInputData {
-    pub(crate) fn new(file_ids: Arc<[FileId]>, roots: Arc<[WorkspaceRoot]>, revision: u64) -> Self {
-        Self {
-            file_ids,
-            roots,
-            revision,
-        }
+    pub(crate) fn new(file_ids: Arc<[FileId]>, roots: Arc<[WorkspaceRoot]>) -> Self {
+        Self { file_ids, roots }
     }
 }
 
@@ -337,10 +332,6 @@ impl WorkspaceInput {
         db.workspace_data()
             .map(|data| &data.roots)
             .unwrap_or(&*EMPTY_ROOTS)
-    }
-
-    pub(crate) fn revision(&self, db: &SalsaDatabase) -> u64 {
-        db.workspace_data().map(|data| data.revision).unwrap_or(0)
     }
 }
 

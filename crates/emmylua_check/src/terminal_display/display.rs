@@ -77,7 +77,7 @@ impl TerminalDisplay {
 
         // Display each diagnostic individually
         for diagnostic in diagnostics {
-            self.display_single_diagnostic(&file_path, &document, &text_lines, diagnostic);
+            self.display_single_diagnostic(&file_path, document, &text_lines, diagnostic);
         }
 
         println!(); // Add blank line separator

@@ -13,7 +13,7 @@ pub(crate) mod types;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
 use emmylua_parser::{LineIndex, LuaSyntaxTree};
 use lsp_types::Uri;
@@ -140,31 +140,28 @@ pub struct SalsaDatabase {
     /// Plain per-file input data, kept separate from VFS.
     file_inputs: HashMap<FileId, SourceFileInputData>,
 
-    /// Plain per-file facts cache. Unlike Salsa's tracked `file_facts`, this is a
-    /// normal lazy cache; file writes invalidate only the affected entry (or all
-    /// entries when config/workspace roots change).
-    file_facts: HashMap<FileId, OnceLock<facts::FileFacts>>,
+    /// Plain per-file facts cache, built eagerly on every write.
+    file_facts: HashMap<FileId, facts::FileFacts>,
 
     /// Plain per-file control-flow graph cache (same invalidation as `file_facts`).
-    flow_trees: HashMap<FileId, OnceLock<Arc<flow::FlowTree>>>,
+    flow_trees: HashMap<FileId, flow::FlowTree>,
 
-    /// Plain per-file syntax/line-index/document caches.
-    syntax_trees: HashMap<FileId, OnceLock<LuaSyntaxTree>>,
-    line_indexes: HashMap<FileId, OnceLock<Arc<LineIndex>>>,
-    documents: HashMap<FileId, OnceLock<Arc<DocumentView>>>,
+    /// Plain per-file syntax and document caches.
+    syntax_trees: HashMap<FileId, LuaSyntaxTree>,
+    documents: HashMap<FileId, DocumentView>,
 
     /// Plain per-file exports / shard caches.
-    file_exports: HashMap<FileId, OnceLock<exports::FileExports>>,
-    export_shards: HashMap<u8, OnceLock<exports::ExportShard>>,
+    file_exports: HashMap<FileId, exports::FileExports>,
+    export_shards: HashMap<u8, exports::ExportShard>,
 
     /// Plain per-file references and remaining shard caches.
-    file_references: HashMap<FileId, OnceLock<query::FileReferences>>,
-    deprecated_shards: HashMap<u8, OnceLock<query::DeprecatedShard>>,
-    module_shards: HashMap<u8, OnceLock<query::ModuleShard>>,
-    reference_shards: HashMap<u8, OnceLock<query::ReferenceShard>>,
+    file_references: HashMap<FileId, query::FileReferences>,
+    deprecated_shards: HashMap<u8, query::DeprecatedShard>,
+    module_shards: HashMap<u8, query::ModuleShard>,
+    reference_shards: HashMap<u8, query::ReferenceShard>,
 
     /// Plain merged workspace indexes (type/member/decl/module/reference).
-    workspace_index: Mutex<query::WorkspaceIndexCache>,
+    workspace_index: query::WorkspaceIndexCache,
 
     /// Next FileId to allocate.
     next_file_id: u32,
@@ -184,7 +181,6 @@ impl Default for SalsaDatabase {
             file_facts: HashMap::new(),
             flow_trees: HashMap::new(),
             syntax_trees: HashMap::new(),
-            line_indexes: HashMap::new(),
             documents: HashMap::new(),
             file_exports: HashMap::new(),
             export_shards: HashMap::new(),
@@ -192,7 +188,7 @@ impl Default for SalsaDatabase {
             deprecated_shards: HashMap::new(),
             module_shards: HashMap::new(),
             reference_shards: HashMap::new(),
-            workspace_index: Mutex::new(query::WorkspaceIndexCache::new()),
+            workspace_index: query::WorkspaceIndexCache::new(),
             next_file_id: 0,
             executed_queries,
         };
@@ -220,91 +216,63 @@ impl SalsaDatabase {
         self.workspace.as_ref()
     }
 
+    pub(crate) fn file_facts_map(&self) -> &HashMap<FileId, facts::FileFacts> {
+        &self.file_facts
+    }
+
     pub(crate) fn workspace_input(&self) -> Option<WorkspaceInput> {
         self.workspace.is_some().then_some(WorkspaceInput)
     }
 
-    pub(crate) fn file_facts_cell(&self, file_id: FileId) -> &OnceLock<facts::FileFacts> {
-        self.file_facts.get(&file_id).unwrap_or_else(|| {
-            // Every public file-mutation path inserts/removes a cell in `file_facts`
-            // alongside `file_inputs`. This static fallback is only to keep the trait
-            // object signature total if an internal invariant is ever violated.
-            static MISSING: OnceLock<facts::FileFacts> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn flow_tree_of(&self, file_id: FileId) -> &flow::FlowTree {
+        self.flow_trees
+            .get(&file_id)
+            .expect("flow tree must be built before read")
     }
 
-    pub(crate) fn flow_tree_cell(&self, file_id: FileId) -> &OnceLock<Arc<flow::FlowTree>> {
-        self.flow_trees.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<flow::FlowTree>> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn syntax_tree_of(&self, file_id: FileId) -> &LuaSyntaxTree {
+        self.syntax_trees
+            .get(&file_id)
+            .expect("syntax tree must be built before read")
     }
 
-    pub(crate) fn syntax_tree_cell(&self, file_id: FileId) -> &OnceLock<LuaSyntaxTree> {
-        self.syntax_trees.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<LuaSyntaxTree> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExports {
+        self.file_exports
+            .get(&file_id)
+            .expect("file exports must be built before read")
     }
 
-    pub(crate) fn line_index_cell(&self, file_id: FileId) -> &OnceLock<Arc<LineIndex>> {
-        self.line_indexes.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<LineIndex>> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn export_shard_of(&self, shard: u8) -> &exports::ExportShard {
+        self.export_shards
+            .get(&shard)
+            .expect("export shard must be built before read")
     }
 
-    pub(crate) fn document_cell(&self, file_id: FileId) -> &OnceLock<Arc<DocumentView>> {
-        self.documents.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<Arc<DocumentView>> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn file_references_of(&self, file_id: FileId) -> &query::FileReferences {
+        self.file_references
+            .get(&file_id)
+            .expect("file references must be built before read")
     }
 
-    pub(crate) fn file_exports_cell(&self, file_id: FileId) -> &OnceLock<exports::FileExports> {
-        self.file_exports.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<exports::FileExports> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn deprecated_shard_of(&self, shard: u8) -> &query::DeprecatedShard {
+        self.deprecated_shards
+            .get(&shard)
+            .expect("deprecated shard must be built before read")
     }
 
-    pub(crate) fn export_shard_cell(&self, shard: u8) -> &OnceLock<exports::ExportShard> {
-        self.export_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<exports::ExportShard> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn module_shard_of(&self, shard: u8) -> &query::ModuleShard {
+        self.module_shards
+            .get(&shard)
+            .expect("module shard must be built before read")
     }
 
-    pub(crate) fn file_references_cell(&self, file_id: FileId) -> &OnceLock<query::FileReferences> {
-        self.file_references.get(&file_id).unwrap_or_else(|| {
-            static MISSING: OnceLock<query::FileReferences> = OnceLock::new();
-            &MISSING
-        })
+    pub(crate) fn reference_shard_of(&self, shard: u8) -> &query::ReferenceShard {
+        self.reference_shards
+            .get(&shard)
+            .expect("reference shard must be built before read")
     }
 
-    pub(crate) fn deprecated_shard_cell(&self, shard: u8) -> &OnceLock<query::DeprecatedShard> {
-        self.deprecated_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<query::DeprecatedShard> = OnceLock::new();
-            &MISSING
-        })
-    }
-
-    pub(crate) fn module_shard_cell(&self, shard: u8) -> &OnceLock<query::ModuleShard> {
-        self.module_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<query::ModuleShard> = OnceLock::new();
-            &MISSING
-        })
-    }
-
-    pub(crate) fn reference_shard_cell(&self, shard: u8) -> &OnceLock<query::ReferenceShard> {
-        self.reference_shards.get(&shard).unwrap_or_else(|| {
-            static MISSING: OnceLock<query::ReferenceShard> = OnceLock::new();
-            &MISSING
-        })
-    }
-
-    pub(crate) fn workspace_index_cache(&self) -> &Mutex<query::WorkspaceIndexCache> {
+    pub(crate) fn workspace_index_cache(&self) -> &query::WorkspaceIndexCache {
         &self.workspace_index
     }
 }
@@ -337,124 +305,40 @@ impl SalsaDatabase {
             self.workspace = Some(WorkspaceInputData::new(
                 Arc::from(Vec::<FileId>::new()),
                 Arc::from(Vec::<WorkspaceRoot>::new()),
-                0,
             ));
         }
-    }
-
-    /// Bump the global workspace revision. Every file/config/root mutation that can
-    /// change any merged workspace index must call this so Salsa consumers of the
-    /// plain `WorkspaceIndexCache` are invalidated.
-    fn bump_workspace_revision(&mut self) {
-        let Some(workspace) = self.workspace.as_ref() else {
-            return;
-        };
-        let revision = workspace.revision.saturating_add(1);
-        self.workspace = Some(WorkspaceInputData::new(
-            workspace.file_ids.clone(),
-            workspace.roots.clone(),
-            revision,
-        ));
     }
 
     fn set_workspace_file_ids(&mut self, file_ids: Arc<[FileId]>) {
         let Some(workspace) = self.workspace.as_ref() else {
             return;
         };
-        self.workspace = Some(WorkspaceInputData::new(
-            file_ids,
-            workspace.roots.clone(),
-            workspace.revision,
-        ));
+        self.workspace = Some(WorkspaceInputData::new(file_ids, workspace.roots.clone()));
     }
 
     fn set_workspace_roots(&mut self, roots: Arc<[WorkspaceRoot]>) {
         let Some(workspace) = self.workspace.as_ref() else {
             return;
         };
-        self.workspace = Some(WorkspaceInputData::new(
-            workspace.file_ids.clone(),
-            roots,
-            workspace.revision,
-        ));
+        self.workspace = Some(WorkspaceInputData::new(workspace.file_ids.clone(), roots));
     }
 
-    /// Drop all lazily built per-file facts and recreate empty cells for current files.
+    /// Rebuild every per-file cache and shard cache from the current inputs.
     ///
-    /// Called after configuration or workspace-root changes, where every file's facts
-    /// may need to be rebuilt because parser features or workspace identity changed.
-    fn reset_export_shards(&mut self) {
-        self.export_shards = (0..exports::EXPORT_SHARDS)
-            .map(|shard| (shard, OnceLock::new()))
-            .collect();
-    }
-
-    fn reset_other_shard_caches(&mut self) {
-        let shards = 0..exports::EXPORT_SHARDS;
-        self.deprecated_shards = shards
-            .clone()
-            .map(|shard| (shard, OnceLock::new()))
-            .collect();
-        self.module_shards = shards
-            .clone()
-            .map(|shard| (shard, OnceLock::new()))
-            .collect();
-        self.reference_shards = shards.map(|shard| (shard, OnceLock::new())).collect();
+    /// All reads are pure map lookups after this; writes are the only place where
+    /// caches are populated.
+    fn rebuild_all_caches(&mut self) {
+        query::rebuild_all_caches(self);
     }
 
     fn reset_file_facts_cache(&mut self) {
-        let file_ids = self.vfs.file_ids();
-        self.file_facts = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.flow_trees = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.syntax_trees = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.line_indexes = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.documents = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.file_exports = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.file_references = file_ids
-            .iter()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.reset_export_shards();
-        self.reset_other_shard_caches();
+        self.rebuild_all_caches();
     }
 
-    /// Mark one file's facts/flow-tree/syntax caches stale. The actual build stays lazy.
-    fn invalidate_file_facts(&mut self, file_id: FileId) {
-        self.file_facts.insert(file_id, OnceLock::new());
-        self.flow_trees.insert(file_id, OnceLock::new());
-        self.syntax_trees.insert(file_id, OnceLock::new());
-        self.line_indexes.insert(file_id, OnceLock::new());
-        self.documents.insert(file_id, OnceLock::new());
-        self.file_exports.insert(file_id, OnceLock::new());
-        self.file_references.insert(file_id, OnceLock::new());
-        // Shards aggregate multiple files; reset them on any file change for simplicity.
-        self.reset_export_shards();
-        self.reset_other_shard_caches();
+    /// Mark one file's caches stale. The full eager rebuild is intentionally coarse:
+    /// writes are rare and the read paths no longer mutate any cache.
+    fn invalidate_file_facts(&mut self, _file_id: FileId) {
+        self.rebuild_all_caches();
     }
 
     /// Insert or update one file entry in the VFS snapshot.
@@ -467,22 +351,12 @@ impl SalsaDatabase {
         let uri = input.uri.clone();
         self.vfs.insert_at(file_id, uri, path, text);
         self.file_inputs.insert(file_id, input);
-        self.file_facts.insert(file_id, OnceLock::new());
-        self.flow_trees.insert(file_id, OnceLock::new());
-        self.syntax_trees.insert(file_id, OnceLock::new());
-        self.line_indexes.insert(file_id, OnceLock::new());
-        self.documents.insert(file_id, OnceLock::new());
-        self.file_exports.insert(file_id, OnceLock::new());
-        self.file_references.insert(file_id, OnceLock::new());
-        self.reset_export_shards();
-        self.reset_other_shard_caches();
-        self.bump_workspace_revision();
-
         if is_new {
             let file_ids = self.vfs.file_ids();
             let file_ids: Arc<[FileId]> = Arc::from(file_ids);
             self.set_workspace_file_ids(file_ids);
         }
+        self.rebuild_all_caches();
     }
 
     /// Remove a file from the workspace file list and VFS snapshot.
@@ -492,16 +366,12 @@ impl SalsaDatabase {
         self.file_facts.remove(&file_id);
         self.flow_trees.remove(&file_id);
         self.syntax_trees.remove(&file_id);
-        self.line_indexes.remove(&file_id);
         self.documents.remove(&file_id);
         self.file_exports.remove(&file_id);
         self.file_references.remove(&file_id);
-        self.reset_export_shards();
-        self.reset_other_shard_caches();
-        self.bump_workspace_revision();
-
         let file_ids: Arc<[FileId]> = Arc::from(self.vfs.file_ids());
         self.set_workspace_file_ids(file_ids);
+        self.rebuild_all_caches();
     }
 
     // ---- Config ----
@@ -528,7 +398,6 @@ impl SalsaDatabase {
             None,
         ));
         self.reset_file_facts_cache();
-        self.bump_workspace_revision();
     }
 
     /// Main workspace root (used for require module name derivation).
@@ -547,7 +416,6 @@ impl SalsaDatabase {
                 main_root,
             ));
         }
-        self.bump_workspace_revision();
     }
 
     pub fn main_root(&self) -> Option<PathBuf> {
@@ -601,7 +469,6 @@ impl SalsaDatabase {
         });
         self.set_workspace_roots(Arc::from(roots));
         self.reset_file_facts_cache();
-        self.bump_workspace_revision();
     }
 
     /// Register or replace the main workspace root.
@@ -621,7 +488,6 @@ impl SalsaDatabase {
         });
         self.set_workspace_roots(Arc::from(roots));
         self.reset_file_facts_cache();
-        self.bump_workspace_revision();
     }
 
     /// Register a library workspace (allocates a new `WorkspaceId`).
@@ -642,7 +508,6 @@ impl SalsaDatabase {
         });
         self.set_workspace_roots(Arc::from(roots));
         self.reset_file_facts_cache();
-        self.bump_workspace_revision();
     }
 
     /// Keep only the std workspace (clear main/library before reload).
@@ -660,7 +525,6 @@ impl SalsaDatabase {
             .collect();
         self.set_workspace_roots(Arc::from(roots));
         self.reset_file_facts_cache();
-        self.bump_workspace_revision();
     }
 
     /// Currently registered workspace roots.
@@ -778,7 +642,6 @@ impl SalsaDatabase {
             // the stored input data and per-file caches are now stale.
             self.file_inputs.insert(file_id, input);
             self.invalidate_file_facts(file_id);
-            self.bump_workspace_revision();
         }
     }
 
@@ -810,52 +673,8 @@ impl SalsaDatabase {
         let file_ids: Arc<[FileId]> = Arc::from(vfs.file_ids());
         self.vfs = vfs;
         self.file_inputs = new_file_inputs;
-        self.file_facts = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.flow_trees = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.syntax_trees = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.line_indexes = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.documents = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.file_exports = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.file_references = self
-            .file_inputs
-            .keys()
-            .copied()
-            .map(|file_id| (file_id, OnceLock::new()))
-            .collect();
-        self.reset_export_shards();
-        self.reset_other_shard_caches();
-        self.bump_workspace_revision();
         self.set_workspace_file_ids(file_ids);
+        self.rebuild_all_caches();
     }
 
     /// Current workspace file map (FileId -> source data).
@@ -887,16 +706,17 @@ impl SalsaDatabase {
         self.file_facts = HashMap::new();
         self.flow_trees = HashMap::new();
         self.syntax_trees = HashMap::new();
-        self.line_indexes = HashMap::new();
         self.documents = HashMap::new();
         self.file_exports = HashMap::new();
-        self.reset_export_shards();
+        self.export_shards = HashMap::new();
         self.file_references = HashMap::new();
-        self.reset_other_shard_caches();
-        self.workspace_index = Mutex::new(query::WorkspaceIndexCache::new());
+        self.deprecated_shards = HashMap::new();
+        self.module_shards = HashMap::new();
+        self.reference_shards = HashMap::new();
+        self.workspace_index = query::WorkspaceIndexCache::new();
         self.next_file_id = 0;
         self.ensure_workspace();
-        self.bump_workspace_revision();
+        self.rebuild_all_caches();
     }
 
     /// Current VFS snapshot (immutable, shareable across threads).
@@ -950,16 +770,16 @@ impl SalsaDatabase {
         self.vfs.file(file_id).map(|file| file.text.as_ref())
     }
 
-    /// Per-file line index, memoized as a salsa derived query.
-    pub fn line_index(&self, file_id: FileId) -> Option<Arc<LineIndex>> {
-        let file = self.file_input(file_id)?;
-        Some(query::line_index(self, file).clone())
+    /// Per-file line index. The line index is stored inside the eager document cache.
+    pub fn line_index(&self, file_id: FileId) -> Option<&LineIndex> {
+        self.documents
+            .get(&file_id)
+            .map(|document| document.line_index.as_ref())
     }
 
-    /// Document view, memoized as a salsa derived query.
-    pub fn document(&self, file_id: FileId) -> Option<Arc<DocumentView>> {
-        let file = self.file_input(file_id)?;
-        Some(query::document(self, file).clone())
+    /// Document view, built eagerly on writes and borrowed on reads.
+    pub fn document(&self, file_id: FileId) -> Option<&DocumentView> {
+        self.documents.get(&file_id)
     }
 
     // ── Input accessors (for tracked layer / facade) ──

@@ -179,11 +179,11 @@ impl<'db> SemanticModel<'db> {
         self.db.file_path(self.file_id)
     }
 
-    pub fn document(&self, file_id: FileId) -> Option<Arc<DocumentView>> {
+    pub fn document(&self, file_id: FileId) -> Option<&'db DocumentView> {
         self.db.document(file_id)
     }
 
-    pub fn document_current(&self) -> Option<Arc<DocumentView>> {
+    pub fn document_current(&self) -> Option<&'db DocumentView> {
         self.document(self.file_id)
     }
 
@@ -3470,7 +3470,7 @@ impl<'db> SemanticModel<'db> {
 
     // -- Control flow --
 
-    pub fn flow_tree(&self) -> Option<Arc<FlowTree>> {
+    pub fn flow_tree(&self) -> Option<&'db FlowTree> {
         self.q().flow_tree(self.file_id)
     }
 

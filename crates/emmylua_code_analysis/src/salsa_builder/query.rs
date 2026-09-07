@@ -24,52 +24,45 @@ use emmylua_parser::{
 };
 use rowan::{NodeCache, TextSize};
 
-/// Parse. Plain lazy cache in `SalsaDatabase::syntax_trees`.
+/// Parse. Pure lookup in the write-time built `SalsaDatabase::syntax_trees`.
 pub(crate) fn parse(
     db: &SalsaDatabase,
     file: SourceFileInput,
-    config: ConfigInput,
+    _config: ConfigInput,
 ) -> &LuaSyntaxTree {
-    let file_id = file.file_id(db);
+    db.syntax_tree_of(file.file_id(db))
+}
+
+/// Pure syntax-tree construction used by the write-time cache builder.
+pub(crate) fn build_syntax_tree(
+    db: &SalsaDatabase,
+    file: SourceFileInput,
+    config: ConfigInput,
+    text: &str,
+) -> LuaSyntaxTree {
     let _ = file.text(db);
     let _ = config.language_level(db);
     let _ = config.special_like(db);
     let _ = config.non_std_symbols(db);
-    db.syntax_tree_cell(file_id).get_or_init(|| {
-        let text = file.text(db);
-        let mut node_cache = NodeCache::default();
-        let parse_config = config.to_parse_config(db, &mut node_cache);
-        LuaParser::parse(text, parse_config)
-    })
+    let mut node_cache = NodeCache::default();
+    let parse_config = config.to_parse_config(db, &mut node_cache);
+    LuaParser::parse(text, parse_config)
 }
 
-/// Per-file line index. Plain lazy cache.
-pub(crate) fn line_index(db: &SalsaDatabase, file: SourceFileInput) -> &Arc<LineIndex> {
+/// Pure document construction used by the write-time cache builder.
+pub(crate) fn build_document(db: &SalsaDatabase, file: SourceFileInput) -> DocumentView {
     let file_id = file.file_id(db);
-    let _ = file.text(db);
-    db.line_index_cell(file_id)
-        .get_or_init(|| Arc::new(LineIndex::parse(file.text(db))))
-}
-
-/// Per-file document view. Plain lazy cache; contains URI/Path/Text/LineIndex.
-pub(crate) fn document(db: &SalsaDatabase, file: SourceFileInput) -> &Arc<DocumentView> {
-    let file_id = file.file_id(db);
-    let _ = file.text(db);
-    let _ = file.path(db);
-    let _ = file.uri(db);
-    db.document_cell(file_id).get_or_init(|| {
-        let path = file.path(db).clone();
-        let text: Arc<str> = Arc::from(file.text(db));
-        let line_index = line_index(db, file).clone();
-        let uri = file.uri(db).clone();
-        Arc::new(DocumentView {
-            file_id,
-            path,
-            uri,
-            text,
-            line_index,
-        })
-    })
+    let path = file.path(db).clone();
+    let text: Arc<str> = Arc::from(file.text(db));
+    let line_index = Arc::new(LineIndex::parse(file.text(db)));
+    let uri = file.uri(db).clone();
+    DocumentView {
+        file_id,
+        path,
+        uri,
+        text,
+        line_index,
+    }
 }
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
@@ -78,33 +71,211 @@ pub(crate) fn document(db: &SalsaDatabase, file: SourceFileInput) -> &Arc<Docume
 /// `SalsaDatabase::file_facts` map and invalidated by file/config/workspace writes.
 /// It still touches the same Salsa input fields here so callers inside tracked
 /// queries are correctly invalidated when the underlying text/config/roots change.
+pub(crate) fn build_file_facts(
+    db: &SalsaDatabase,
+    file: SourceFileInput,
+    config: ConfigInput,
+    file_id: FileId,
+    text: &str,
+) -> FileFacts {
+    let workspace_id = db
+        .workspace_input()
+        .and_then(|workspace| file_workspace_id(db, workspace, file_id))
+        .unwrap_or(WorkspaceId::MAIN);
+    let tree = parse(db, file, config);
+    let chunk = tree.get_chunk_node();
+    FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
+}
+
 pub(crate) fn file_facts(
     db: &SalsaDatabase,
     file: SourceFileInput,
     config: ConfigInput,
 ) -> &FileFacts {
-    let file_id = file.file_id(db);
-    let text = file.text(db);
-    let _ = file.path(db);
+    let _ = config;
+    db.file_facts_map()
+        .get(&file.file_id(db))
+        .expect("file facts must be built before read")
+}
 
-    // Record Salsa dependencies on every input that used to feed the old tracked
-    // `file_facts` query (parse config + workspace identity).
-    let _ = config.language_level(db);
-    let _ = config.special_like(db);
-    let _ = config.non_std_symbols(db);
-    if let Some(workspace) = db.workspace_input() {
-        let _ = workspace.roots(db);
+/// Rebuild all write-time caches from the current inputs.
+///
+/// This is the only place where the per-file and shard caches are populated.
+/// Read-side query functions perform pure map lookups and never call `get_or_init`.
+pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
+    let Some(config) = db.config_input() else {
+        db.file_facts.clear();
+        db.flow_trees.clear();
+        db.syntax_trees.clear();
+        db.documents.clear();
+        db.file_exports.clear();
+        db.export_shards.clear();
+        db.file_references.clear();
+        db.deprecated_shards.clear();
+        db.module_shards.clear();
+        db.reference_shards.clear();
+        return;
+    };
+    let Some(workspace) = db.workspace_input() else {
+        return;
+    };
+
+    let file_ids = db.vfs.file_ids();
+
+    // Per-file syntax trees.
+    let mut syntax_trees = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        let Some(data) = db.source_file_data(file_id) else {
+            continue;
+        };
+        let file = SourceFileInput::new(file_id);
+        syntax_trees.insert(file_id, build_syntax_tree(db, file, config, &data.text));
     }
+    db.syntax_trees = syntax_trees;
 
-    db.file_facts_cell(file_id).get_or_init(|| {
-        let workspace_id = db
-            .workspace_input()
-            .and_then(|workspace| file_workspace_id(db, workspace, file_id))
-            .unwrap_or(WorkspaceId::MAIN);
-        let tree = parse(db, file, config);
-        let chunk = tree.get_chunk_node();
-        FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
-    })
+    // Per-file facts (depends on syntax trees).
+    let mut file_facts = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        let Some(data) = db.source_file_data(file_id) else {
+            continue;
+        };
+        let file = SourceFileInput::new(file_id);
+        let facts = build_file_facts(db, file, config, file_id, &data.text);
+        file_facts.insert(file_id, facts);
+    }
+    db.file_facts = file_facts;
+
+    // Per-file document views (depends on line indexes).
+    let mut documents = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        if db.source_file_data(file_id).is_some() {
+            let file = SourceFileInput::new(file_id);
+            documents.insert(file_id, build_document(db, file));
+        }
+    }
+    db.documents = documents;
+
+    // Per-file control-flow graphs (depends on facts and syntax trees).
+    let mut flow_trees = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        if db.source_file_data(file_id).is_some() {
+            let file = SourceFileInput::new(file_id);
+            flow_trees.insert(file_id, super::flow::build_flow_tree(db, file, config));
+        }
+    }
+    db.flow_trees = flow_trees;
+
+    // Per-file export identities (depends on facts).
+    let mut file_exports = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        if let Some(file) = db.file_input(file_id) {
+            file_exports.insert(
+                file_id,
+                super::exports::build_file_exports(db, file, config, file_id),
+            );
+        }
+    }
+    db.file_exports = file_exports;
+
+    // Export shards (depend on file exports and the workspace file list).
+    let mut export_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    for shard in 0..EXPORT_SHARDS {
+        export_shards.insert(
+            shard,
+            super::exports::build_export_shard(db, workspace, config, shard),
+        );
+    }
+    db.export_shards = export_shards;
+
+    // Deprecated shards (depend on facts).
+    let mut deprecated_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    for shard in 0..EXPORT_SHARDS {
+        deprecated_shards.insert(shard, build_deprecated_shard(db, workspace, config, shard));
+    }
+    db.deprecated_shards = deprecated_shards;
+
+    // Module shards (depend on facts and workspace roots).
+    let mut module_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    for shard in 0..EXPORT_SHARDS {
+        module_shards.insert(shard, build_module_shard(db, workspace, config, shard));
+    }
+    db.module_shards = module_shards;
+
+    // Workspace type/member/declaration/module indexes. These are needed while
+    // building per-file references; the reference index itself must wait until
+    // per-file references have been collected.
+    let ws_ids = all_workspace_ids(db, workspace);
+    let workspace_types = ws_ids
+        .iter()
+        .map(|&ws_id| {
+            (
+                ws_id,
+                build_workspace_type_index(db, workspace, config, ws_id),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let workspace_members = ws_ids
+        .iter()
+        .map(|&ws_id| {
+            (
+                ws_id,
+                build_workspace_member_index(db, workspace, config, ws_id),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let workspace_decls = ws_ids
+        .iter()
+        .map(|&ws_id| {
+            (
+                ws_id,
+                build_workspace_decl_index(db, workspace, config, ws_id),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let workspace_modules = ws_ids
+        .iter()
+        .map(|&ws_id| {
+            (
+                ws_id,
+                build_workspace_module_index(db, workspace, config, ws_id),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    db.workspace_index = WorkspaceIndexCache {
+        types: workspace_types,
+        members: workspace_members,
+        decls: workspace_decls,
+        modules: workspace_modules,
+        references: HashMap::new(),
+    };
+
+    // Per-file reference indexes (depend on the workspace indexes above).
+    let mut file_references = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        if let Some(file) = db.file_input(file_id) {
+            file_references.insert(file_id, build_file_references(db, file, config));
+        }
+    }
+    db.file_references = file_references;
+
+    // Reference shards (depend on per-file reference indexes).
+    let mut reference_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    for shard in 0..EXPORT_SHARDS {
+        reference_shards.insert(shard, build_reference_shard(db, workspace, config, shard));
+    }
+    db.reference_shards = reference_shards;
+
+    // Workspace reference indexes (depend on reference shards).
+    let workspace_references = ws_ids
+        .iter()
+        .map(|&ws_id| {
+            (
+                ws_id,
+                build_workspace_reference_index(db, workspace, config, ws_id),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    db.workspace_index.references = workspace_references;
 }
 
 // ──────────────────────────────────────────────
@@ -119,8 +290,8 @@ use smol_str::SmolStr;
 
 /// Workspace type index: plain `(scope, full_name)` -> all type definitions.
 ///
-/// This is not a Salsa query. It is stored in `WorkspaceIndexCache` and rebuilt from
-/// export shards when `WorkspaceInput.revision` changes.
+/// This is not a Salsa query. It is built eagerly into `WorkspaceIndexCache` from
+/// export shards on every write.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceTypeIndex {
     by_scope_name: HashMap<(TypeScope, SmolStr), Arc<[TypeDef]>>,
@@ -170,25 +341,14 @@ fn build_workspace_type_index(
 
 pub(crate) fn workspace_type_index_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     ws_id: WorkspaceId,
-) -> Arc<WorkspaceTypeIndex> {
-    let revision = workspace.revision(db);
-    let cache = db.workspace_index_cache();
-    if let Some(index) = cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_type(revision, ws_id)
-    {
-        return index;
-    }
-    let index = Arc::new(build_workspace_type_index(db, workspace, config, ws_id));
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert_type(revision, ws_id, index.clone());
-    index
+) -> &WorkspaceTypeIndex {
+    db.workspace_index_cache()
+        .types
+        .get(&ws_id)
+        .expect("workspace type index must be built before read")
 }
 
 /// A shard's deprecated global names: only files in the stable shard; editing one file recomputes one shard.
@@ -200,13 +360,11 @@ pub(crate) struct DeprecatedShard {
 
 pub(crate) fn deprecated_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     shard: u8,
 ) -> &DeprecatedShard {
-    let _ = workspace.revision(db);
-    db.deprecated_shard_cell(shard)
-        .get_or_init(|| build_deprecated_shard(db, workspace, config, shard))
+    db.deprecated_shard_of(shard)
 }
 
 fn build_deprecated_shard(
@@ -531,25 +689,14 @@ fn build_workspace_member_index(
 
 pub(crate) fn workspace_member_index_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     ws_id: WorkspaceId,
-) -> Arc<WorkspaceMemberIndex> {
-    let revision = workspace.revision(db);
-    let cache = db.workspace_index_cache();
-    if let Some(index) = cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_member(revision, ws_id)
-    {
-        return index;
-    }
-    let index = Arc::new(build_workspace_member_index(db, workspace, config, ws_id));
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert_member(revision, ws_id, index.clone());
-    index
+) -> &WorkspaceMemberIndex {
+    db.workspace_index_cache()
+        .members
+        .get(&ws_id)
+        .expect("workspace member index must be built before read")
 }
 
 /// Per-file reference index: only collects reference points in this file that can resolve to cross-file identities.
@@ -563,16 +710,13 @@ pub struct FileReferences {
     pub member_defs: HashMap<SemanticId, Vec<rowan::TextRange>>,
 }
 
-/// Per-file reference index.
+/// Per-file reference index. Pure lookup in the write-time built cache.
 pub(crate) fn file_references(
     db: &SalsaDatabase,
     file: SourceFileInput,
-    config: ConfigInput,
+    _config: ConfigInput,
 ) -> &FileReferences {
-    let file_id = file.file_id(db);
-    let _ = file.text(db);
-    db.file_references_cell(file_id)
-        .get_or_init(|| build_file_references(db, file, config))
+    db.file_references_of(file.file_id(db))
 }
 
 fn build_file_references(
@@ -648,13 +792,11 @@ pub struct WorkspaceReferenceIndex {
 
 pub(crate) fn reference_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     shard: u8,
 ) -> &ReferenceShard {
-    let _ = workspace.revision(db);
-    db.reference_shard_cell(shard)
-        .get_or_init(|| build_reference_shard(db, workspace, config, shard))
+    db.reference_shard_of(shard)
 }
 
 fn build_reference_shard(
@@ -738,27 +880,14 @@ fn build_workspace_reference_index(
 
 pub(crate) fn workspace_reference_index_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     ws_id: WorkspaceId,
-) -> Arc<WorkspaceReferenceIndex> {
-    let revision = workspace.revision(db);
-    let cache = db.workspace_index_cache();
-    if let Some(index) = cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_reference(revision, ws_id)
-    {
-        return index;
-    }
-    let index = Arc::new(build_workspace_reference_index(
-        db, workspace, config, ws_id,
-    ));
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert_reference(revision, ws_id, index.clone());
-    index
+) -> &WorkspaceReferenceIndex {
+    db.workspace_index_cache()
+        .references
+        .get(&ws_id)
+        .expect("workspace reference index must be built before read")
 }
 
 /// Whether `resolve_member_id` can be trusted directly for this owner/name pair.
@@ -1005,25 +1134,14 @@ fn build_workspace_decl_index(
 
 pub(crate) fn workspace_decl_index_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     ws_id: WorkspaceId,
-) -> Arc<WorkspaceDeclIndex> {
-    let revision = workspace.revision(db);
-    let cache = db.workspace_index_cache();
-    if let Some(index) = cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_decl(revision, ws_id)
-    {
-        return index;
-    }
-    let index = Arc::new(build_workspace_decl_index(db, workspace, config, ws_id));
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert_decl(revision, ws_id, index.clone());
-    index
+) -> &WorkspaceDeclIndex {
+    db.workspace_index_cache()
+        .decls
+        .get(&ws_id)
+        .expect("workspace declaration index must be built before read")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1114,13 +1232,11 @@ pub(crate) struct ModuleShard {
 /// so the per-workspace index can merge shards without scanning every file again.
 pub(crate) fn module_shard(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     shard: u8,
 ) -> &ModuleShard {
-    let _ = workspace.revision(db);
-    db.module_shard_cell(shard)
-        .get_or_init(|| build_module_shard(db, workspace, config, shard))
+    db.module_shard_of(shard)
 }
 
 fn build_module_shard(
@@ -1257,25 +1373,14 @@ fn build_workspace_module_index(
 
 pub(crate) fn workspace_module_index_for(
     db: &SalsaDatabase,
-    workspace: WorkspaceInput,
-    config: ConfigInput,
+    _workspace: WorkspaceInput,
+    _config: ConfigInput,
     ws_id: WorkspaceId,
-) -> Arc<ModuleIndex> {
-    let revision = workspace.revision(db);
-    let cache = db.workspace_index_cache();
-    if let Some(index) = cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_module(revision, ws_id)
-    {
-        return index;
-    }
-    let index = Arc::new(build_workspace_module_index(db, workspace, config, ws_id));
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert_module(revision, ws_id, index.clone());
-    index
+) -> &ModuleIndex {
+    db.workspace_index_cache()
+        .modules
+        .get(&ws_id)
+        .expect("workspace module index must be built before read")
 }
 
 fn build_module_tree(
@@ -1554,109 +1659,20 @@ impl ModuleIndex {
 
 /// Plain merged workspace indexes.
 ///
-/// This is the Phase 3 replacement for the Salsa-tracked `workspace_*_index_for`
-/// queries. It is just a cache keyed by `WorkspaceInput.revision`; the actual
-/// per-shard Salsa queries are still used to rebuild each merged index when needed.
-#[derive(Debug)]
+/// This is a write-time built cache. It is never mutated by read-side queries;
+/// `rebuild_all_caches` replaces it wholesale whenever inputs change.
+#[derive(Debug, Default)]
 pub(crate) struct WorkspaceIndexCache {
-    revision: u64,
-    types: HashMap<WorkspaceId, Arc<WorkspaceTypeIndex>>,
-    members: HashMap<WorkspaceId, Arc<WorkspaceMemberIndex>>,
-    decls: HashMap<WorkspaceId, Arc<WorkspaceDeclIndex>>,
-    modules: HashMap<WorkspaceId, Arc<ModuleIndex>>,
-    references: HashMap<WorkspaceId, Arc<WorkspaceReferenceIndex>>,
+    pub(crate) types: HashMap<WorkspaceId, WorkspaceTypeIndex>,
+    pub(crate) members: HashMap<WorkspaceId, WorkspaceMemberIndex>,
+    pub(crate) decls: HashMap<WorkspaceId, WorkspaceDeclIndex>,
+    pub(crate) modules: HashMap<WorkspaceId, ModuleIndex>,
+    pub(crate) references: HashMap<WorkspaceId, WorkspaceReferenceIndex>,
 }
 
 impl WorkspaceIndexCache {
     pub(crate) fn new() -> Self {
-        Self {
-            revision: u64::MAX,
-            types: HashMap::new(),
-            members: HashMap::new(),
-            decls: HashMap::new(),
-            modules: HashMap::new(),
-            references: HashMap::new(),
-        }
-    }
-
-    fn ensure_revision(&mut self, revision: u64) {
-        if self.revision != revision {
-            self.revision = revision;
-            self.types.clear();
-            self.members.clear();
-            self.decls.clear();
-            self.modules.clear();
-            self.references.clear();
-        }
-    }
-
-    fn get_type(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceTypeIndex>> {
-        (self.revision == revision)
-            .then(|| self.types.get(&ws_id).cloned())
-            .flatten()
-    }
-
-    fn insert_type(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<WorkspaceTypeIndex>) {
-        self.ensure_revision(revision);
-        self.types.insert(ws_id, index);
-    }
-
-    fn get_member(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceMemberIndex>> {
-        (self.revision == revision)
-            .then(|| self.members.get(&ws_id).cloned())
-            .flatten()
-    }
-
-    fn insert_member(
-        &mut self,
-        revision: u64,
-        ws_id: WorkspaceId,
-        index: Arc<WorkspaceMemberIndex>,
-    ) {
-        self.ensure_revision(revision);
-        self.members.insert(ws_id, index);
-    }
-
-    fn get_decl(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<WorkspaceDeclIndex>> {
-        (self.revision == revision)
-            .then(|| self.decls.get(&ws_id).cloned())
-            .flatten()
-    }
-
-    fn insert_decl(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<WorkspaceDeclIndex>) {
-        self.ensure_revision(revision);
-        self.decls.insert(ws_id, index);
-    }
-
-    fn get_module(&self, revision: u64, ws_id: WorkspaceId) -> Option<Arc<ModuleIndex>> {
-        (self.revision == revision)
-            .then(|| self.modules.get(&ws_id).cloned())
-            .flatten()
-    }
-
-    fn insert_module(&mut self, revision: u64, ws_id: WorkspaceId, index: Arc<ModuleIndex>) {
-        self.ensure_revision(revision);
-        self.modules.insert(ws_id, index);
-    }
-
-    fn get_reference(
-        &self,
-        revision: u64,
-        ws_id: WorkspaceId,
-    ) -> Option<Arc<WorkspaceReferenceIndex>> {
-        (self.revision == revision)
-            .then(|| self.references.get(&ws_id).cloned())
-            .flatten()
-    }
-
-    fn insert_reference(
-        &mut self,
-        revision: u64,
-        ws_id: WorkspaceId,
-        index: Arc<WorkspaceReferenceIndex>,
-    ) {
-        self.ensure_revision(revision);
-        self.references.insert(ws_id, index);
+        Self::default()
     }
 }
 

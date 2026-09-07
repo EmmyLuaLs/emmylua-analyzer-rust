@@ -59,7 +59,7 @@ pub async fn on_range_formatting_handler(
             };
             Some((
                 file_id,
-                document,
+                document.clone(),
                 emmyrc,
                 file_path,
                 normalized_path,

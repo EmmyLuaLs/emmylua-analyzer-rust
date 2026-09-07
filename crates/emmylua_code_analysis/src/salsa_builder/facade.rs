@@ -208,9 +208,9 @@ impl<'db> SalsaQueries<'db> {
     }
 
     /// Per-file control-flow graph (CFG, for flow-sensitive analysis).
-    pub fn flow_tree(&self, file_id: FileId) -> Option<Arc<super::flow::FlowTree>> {
+    pub fn flow_tree(&self, file_id: FileId) -> Option<&'db super::flow::FlowTree> {
         let (file, config) = file_and_config(self.db, file_id)?;
-        Some(super::flow::flow_tree_of(self.db, file, config).clone())
+        Some(super::flow::flow_tree_of(self.db, file, config))
     }
 
     // ── Declarations ──
