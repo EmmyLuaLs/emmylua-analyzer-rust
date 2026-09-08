@@ -24,7 +24,7 @@ use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
 use super::query::{
     self, decl_references, decl_type, file_and_config, file_facts, member_keys_of_decl,
-    member_keys_of_type, member_type, module_export_type, parse, resolve_name, resolve_type_def,
+    member_keys_of_type, member_type, module_export_type, resolve_name, resolve_type_def,
     signature_return,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};

@@ -290,8 +290,6 @@ impl SemanticDatabase {
         self.vfs.remove(file_id);
         self.file_facts.remove(&file_id);
         self.flow_trees.remove(&file_id);
-        self.syntax_trees.remove(&file_id);
-        self.documents.remove(&file_id);
         self.file_exports.remove(&file_id);
         self.file_references.remove(&file_id);
         let file_ids: Arc<[FileId]> = Arc::from(self.vfs.file_ids());

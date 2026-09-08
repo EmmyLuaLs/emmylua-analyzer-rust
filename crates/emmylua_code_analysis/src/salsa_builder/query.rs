@@ -2,11 +2,12 @@
 //!
 //! Salsa-tracked node queries plus plain workspace indexes. Recursive cycles converge via the native `cycle_fn`.
 
-use std::cell::RefCell;
 use hashbrown::{HashMap, HashSet};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use super::SemanticDatabase;
 use super::def::{
     ConstructorAttribute, DeclKind, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
     ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef, TypeDefKind,
@@ -15,51 +16,13 @@ use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::ConfigInputData;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
-use super::{DocumentView, SemanticDatabase};
 use crate::FileId;
 use emmylua_parser::{
-    BinaryOperator, LineIndex, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr,
-    LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaParser, LuaReturnStat, LuaSyntaxId,
-    LuaSyntaxTree, LuaTypeBinaryOperator, LuaVersionCondition, UnaryOperator,
+    BinaryOperator, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr, LuaIndexExpr,
+    LuaLiteralExpr, LuaLiteralToken, LuaReturnStat, LuaSyntaxId, LuaSyntaxTree,
+    LuaTypeBinaryOperator, LuaVersionCondition, UnaryOperator,
 };
-use rowan::{NodeCache, TextSize};
-
-/// Parse. Pure lookup in the write-time built `SalsaDatabase::syntax_trees`.
-pub(crate) fn parse(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree {
-    db.syntax_tree_of(file.file_id(db))
-}
-
-/// Pure syntax-tree construction used by the write-time cache builder.
-pub(crate) fn build_syntax_tree(
-    db: &SemanticDatabase,
-    file: FileId,
-    config: &ConfigInputData,
-    text: &str,
-) -> LuaSyntaxTree {
-    let _ = file.text(db);
-    let _ = config.language_level();
-    let _ = config.special_like();
-    let _ = config.non_std_symbols();
-    let mut node_cache = NodeCache::default();
-    let parse_config = config.to_parse_config(&mut node_cache);
-    LuaParser::parse(text, parse_config)
-}
-
-/// Pure document construction used by the write-time cache builder.
-pub(crate) fn build_document(db: &SemanticDatabase, file: FileId) -> DocumentView {
-    let file_id = file.file_id(db);
-    let path = file.path(db).clone();
-    let text: Arc<str> = Arc::from(file.text(db));
-    let line_index = Arc::new(LineIndex::parse(file.text(db)));
-    let uri = file.uri(db).clone();
-    DocumentView {
-        file_id,
-        path,
-        uri,
-        text,
-        line_index,
-    }
-}
+use rowan::TextSize;
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
@@ -78,7 +41,9 @@ pub(crate) fn build_file_facts(
         .workspace_input()
         .and_then(|workspace| file_workspace_id(db, workspace, file_id))
         .unwrap_or(WorkspaceId::MAIN);
-    let tree = parse(db, file);
+    let tree = db.vfs()
+        .get_syntax_tree(&file_id)
+        .expect("syntax tree must be built before read");
     let chunk = tree.get_chunk_node();
     FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
 }
@@ -97,8 +62,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     let Some(config) = db.config_input().cloned() else {
         db.file_facts.clear();
         db.flow_trees.clear();
-        db.syntax_trees.clear();
-        db.documents.clear();
         db.file_exports.clear();
         db.export_shards.clear();
         db.file_references.clear();
@@ -114,17 +77,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
 
     let file_ids = db.vfs.file_ids();
 
-    // Per-file syntax trees.
-    let mut syntax_trees = HashMap::with_capacity(file_ids.len());
-    for file_id in file_ids.iter().copied() {
-        let Some(data) = db.source_file_data(file_id) else {
-            continue;
-        };
-        let file = file_id;
-        syntax_trees.insert(file_id, build_syntax_tree(db, file, config, &data.text));
-    }
-    db.syntax_trees = syntax_trees;
-
     // Per-file facts (depends on syntax trees).
     let mut file_facts = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
@@ -136,16 +88,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         file_facts.insert(file_id, facts);
     }
     db.file_facts = file_facts;
-
-    // Per-file document views (depends on line indexes).
-    let mut documents = HashMap::with_capacity(file_ids.len());
-    for file_id in file_ids.iter().copied() {
-        if db.source_file_data(file_id).is_some() {
-            let file = file_id;
-            documents.insert(file_id, build_document(db, file));
-        }
-    }
-    db.documents = documents;
 
     // Per-file control-flow graphs (depends on facts and syntax trees).
     let mut flow_trees = HashMap::with_capacity(file_ids.len());
@@ -349,7 +291,11 @@ pub(crate) struct DeprecatedShard {
     member_keys: Vec<(FileId, SemanticId, SmolStr)>,
 }
 
-pub(crate) fn deprecated_shard(db: &SemanticDatabase, _workspace: (), shard: u8) -> &DeprecatedShard {
+pub(crate) fn deprecated_shard(
+    db: &SemanticDatabase,
+    _workspace: (),
+    shard: u8,
+) -> &DeprecatedShard {
     db.deprecated_shard_of(shard)
 }
 
