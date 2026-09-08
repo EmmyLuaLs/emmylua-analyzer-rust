@@ -314,7 +314,7 @@ fn build_deprecated_shard(
 ) -> DeprecatedShard {
     let mut names = Vec::new();
     let mut member_keys = Vec::new();
-    for file_id in db.workspace_file_ids().iter().copied() {
+    for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
             continue;
         }
@@ -734,7 +734,7 @@ fn build_reference_shard(
     shard: u8,
 ) -> ReferenceShard {
     let mut out = ReferenceShard::default();
-    for file_id in db.workspace_file_ids().iter().copied() {
+    for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
             continue;
         }
@@ -1167,7 +1167,7 @@ fn build_module_shard(
 ) -> ModuleShard {
     let roots = db.workspace_roots().to_vec();
     let paths: Vec<PathBuf> = if roots.is_empty() {
-        db.workspace_file_ids()
+        db.file_ids()
             .iter()
             .filter_map(|&file_id| db.file_input(file_id))
             .filter_map(|file| file.path(db).clone())
@@ -1185,7 +1185,7 @@ fn build_module_shard(
     };
 
     let mut entries: Vec<ModuleEntry> = Vec::new();
-    for file_id in db.workspace_file_ids().iter().copied() {
+    for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
             continue;
         }

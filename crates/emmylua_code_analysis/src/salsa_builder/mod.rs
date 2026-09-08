@@ -29,8 +29,6 @@ pub use facade::{MemberList, TypeDefList};
 pub struct SemanticDatabase {
     // ── Plain config/data ──
     config: Option<ConfigInputData>,
-    /// Workspace file list (same set as the VFS snapshot).
-    workspace_file_ids: Arc<[FileId]>,
     /// Registered workspace roots.
     workspace_roots: Arc<[WorkspaceRoot]>,
 
@@ -61,7 +59,6 @@ impl Default for SemanticDatabase {
     fn default() -> Self {
         Self {
             config: None,
-            workspace_file_ids: Arc::from(Vec::<FileId>::new()),
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
             vfs: Vfs::new(),
             file_facts: HashMap::new(),
@@ -84,10 +81,6 @@ impl SemanticDatabase {
 
     pub(crate) fn source_file_data(&self, file_id: FileId) -> Option<&FileData> {
         self.vfs.file(file_id)
-    }
-
-    pub(crate) fn workspace_file_ids(&self) -> &Arc<[FileId]> {
-        &self.workspace_file_ids
     }
 
     pub(crate) fn workspace_roots(&self) -> &Arc<[WorkspaceRoot]> {
@@ -162,10 +155,6 @@ impl SemanticDatabase {
         Self::default()
     }
 
-    fn set_workspace_file_ids(&mut self, file_ids: Arc<[FileId]>) {
-        self.workspace_file_ids = file_ids;
-    }
-
     fn set_workspace_roots(&mut self, roots: Arc<[WorkspaceRoot]>) {
         self.workspace_roots = roots;
     }
@@ -189,8 +178,6 @@ impl SemanticDatabase {
         self.flow_trees.remove(&file_id);
         self.file_exports.remove(&file_id);
         self.file_references.remove(&file_id);
-        let file_ids: Arc<[FileId]> = Arc::from(self.vfs.file_ids());
-        self.set_workspace_file_ids(file_ids);
         self.rebuild_all_caches();
     }
 
@@ -410,14 +397,7 @@ impl SemanticDatabase {
         uri: Option<Uri>,
         text: String,
     ) {
-        let old = self.vfs.file(file_id);
-        let is_new = old.is_none();
         self.vfs.insert_at(file_id, uri, path, text);
-        if is_new {
-            let file_ids = self.vfs.file_ids();
-            let file_ids: Arc<[FileId]> = Arc::from(file_ids);
-            self.set_workspace_file_ids(file_ids);
-        }
         self.rebuild_all_caches();
     }
 
@@ -441,9 +421,7 @@ impl SemanticDatabase {
             vfs.insert_at(file_id, uri, path, text);
         }
 
-        let file_ids: Arc<[FileId]> = Arc::from(vfs.file_ids());
         self.vfs = vfs;
-        self.set_workspace_file_ids(file_ids);
         self.rebuild_all_caches();
     }
 
@@ -470,7 +448,6 @@ impl SemanticDatabase {
     }
 
     pub fn clear(&mut self) {
-        self.workspace_file_ids = Arc::from(Vec::<FileId>::new());
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
         self.vfs = Vfs::new();
         self.file_facts = HashMap::new();

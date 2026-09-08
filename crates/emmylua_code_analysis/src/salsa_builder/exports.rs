@@ -138,7 +138,7 @@ pub(super) fn build_export_shard(
     let mut runtime_values = Vec::new();
     let mut members = Vec::new();
     let mut modules = Vec::new();
-    for file_id in db.workspace_file_ids().iter().copied() {
+    for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
             continue;
         }
