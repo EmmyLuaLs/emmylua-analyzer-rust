@@ -23,8 +23,8 @@ impl CommandSpec for AutoRequireCommand {
 
         let (text_edit, uri) = context.analysis().try_with_snapshot(|analysis| {
             let model = analysis.semantic_model(add_to)?;
-            let document = analysis.salsa.document(add_to)?;
-            let module_name = analysis.salsa.module_name_of(need_require_file_id)?;
+            let document = analysis.db.document(add_to)?;
+            let module_name = analysis.db.module_name_of(need_require_file_id)?;
             let emmyrc = analysis.get_emmyrc();
             let require_like_func = &emmyrc.runtime.require_like_function;
             let auto_require_func = emmyrc.completion.auto_require_function.clone();

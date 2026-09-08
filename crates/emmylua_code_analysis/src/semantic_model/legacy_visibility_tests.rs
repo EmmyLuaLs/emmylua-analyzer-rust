@@ -78,7 +78,7 @@ mod test {
     fn std_workspace_types_are_visible_without_explicit_public() {
         let mut ws = VirtualWorkspace::new();
         let std_root = ws.virtual_url_generator.new_path("std");
-        ws.analysis.salsa.add_std_workspace(std_root);
+        ws.analysis.db.add_std_workspace(std_root);
         ws.def_file(
             "std/types.lua",
             r#"

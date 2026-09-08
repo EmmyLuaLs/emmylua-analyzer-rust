@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
-    SalsaDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId, TypeDef, TypeDefKind,
+    SemanticDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId, TypeDef, TypeDefKind,
     VariadicType, first_param_may_not_self,
 };
 use emmylua_parser::{
@@ -32,7 +32,7 @@ struct MemberContextInfo {
 
 pub fn build_semantic_info_hover(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
     range: TextRange,
 ) -> Option<Hover> {

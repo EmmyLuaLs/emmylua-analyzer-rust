@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{SalsaDatabase, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SemanticId};
 use lsp_types::Uri;
 
 use super::rename_decl::push_edit;
@@ -8,7 +8,7 @@ use crate::handlers::common::member_key_rename_ranges;
 
 #[allow(clippy::mutable_key_type)]
 pub fn rename_member_references(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,

@@ -7,7 +7,7 @@
 //! - type references: `resolve_type_def` per doc name type + `type_defs_in_scope` definition sites;
 //! - label references: same-file pure syntax (same-named goto/label in the same closure).
 
-use emmylua_code_analysis::{FileId, SalsaDatabase, SalsaSemanticModel, SemanticId, TypeDef};
+use emmylua_code_analysis::{FileId, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDef};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaDocNameType, LuaExpr, LuaGotoStat, LuaIndexExpr,
     LuaLabelStat, LuaLiteralToken, LuaSyntaxKind, LuaSyntaxToken,
@@ -16,7 +16,7 @@ use rowan::TextRange;
 
 /// All reference positions for a declaration (Decl), cross-file, plus the declaration name.
 pub fn decl_reference_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     include_declaration: bool,
 ) -> Vec<(FileId, TextRange)> {
@@ -32,7 +32,7 @@ pub fn decl_reference_ranges(
 
 /// All reference positions for a member (Member), cross-file: definition sites (sharded reference index) + index use sites.
 pub fn member_reference_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
     include_declaration: bool,
 ) -> Vec<(FileId, TextRange)> {
@@ -62,7 +62,7 @@ pub fn member_reference_ranges(
 
 /// `---@[constructor("init")]` class call sites: when a member is its type constructor,
 /// call prefixes on the type runtime value (`A()`) are counted as references to that constructor member.
-fn constructor_call_ranges(salsa: &SalsaDatabase, member: &SemanticId) -> Vec<(FileId, TextRange)> {
+fn constructor_call_ranges(salsa: &SemanticDatabase, member: &SemanticId) -> Vec<(FileId, TextRange)> {
     let Some((def, runtime_owner)) = member_constructor(salsa, member) else {
         return Vec::new();
     };
@@ -92,7 +92,7 @@ fn constructor_call_ranges(salsa: &SalsaDatabase, member: &SemanticId) -> Vec<(F
 
 /// Member → its owning type + runtime value identity (only when the member is a constructor).
 fn member_constructor(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
 ) -> Option<(TypeDef, Option<SemanticId>)> {
     let SemanticId::Member(key) = member else {
@@ -153,7 +153,7 @@ fn runtime_decl_of_type_def(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> Op
 /// `---@[constructor("init")]` is attached to a parameter doc of the `meta` signature,
 /// and `local A = meta("A")` binds the string argument to the type definition.
 fn constructor_name_for_type_def(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     def: &TypeDef,
     runtime_owner: Option<&SemanticId>,
 ) -> Option<String> {
@@ -226,7 +226,7 @@ fn call_prefix_type_is_def(
 /// Member key text rename ranges (for rename): **all** member definition sites with the same key text + index key sites (cross-file).
 /// Key matching = `LuaMemberKey::to_path()` text equality (`Name("x")` ↔ `T.x`; `Integer(1)` ↔ `t[1]`).
 pub fn member_key_rename_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
     new_name: &str,
 ) -> Vec<(FileId, TextRange, String)> {
@@ -271,7 +271,7 @@ pub fn member_key_rename_ranges(
 
 /// All reference positions for a type definition (TypeDef), cross-file, plus definition sites.
 pub fn type_def_reference_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     def: &TypeDef,
     include_declaration: bool,
 ) -> Vec<(FileId, TextRange)> {
@@ -305,7 +305,7 @@ pub fn type_def_reference_ranges(
 
 /// Type rename ranges: definition sites + use sites; use sites replace the old name segment with the new name.
 pub fn type_def_rename_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     def: &TypeDef,
     new_name: &str,
 ) -> Vec<(FileId, TextRange, String)> {
@@ -483,7 +483,7 @@ fn matches_type_def(model: &SalsaSemanticModel<'_>, def: &TypeDef, name: &str) -
         || name.ends_with(&format!(".{}", def.name))
 }
 
-fn member_key_text_of(salsa: &SalsaDatabase, member: &SemanticId) -> Option<String> {
+fn member_key_text_of(salsa: &SemanticDatabase, member: &SemanticId) -> Option<String> {
     let SemanticId::Member(key) = member else {
         return None;
     };

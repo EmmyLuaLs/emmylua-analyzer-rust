@@ -15,7 +15,7 @@ use crate::{
     LuaTupleStatus, LuaTupleType, VariadicType,
 };
 
-use super::SalsaDatabase;
+use super::SemanticDatabase;
 use super::def::{
     ConstructorAttribute, Decl, Member, MemberRef, ModuleExport, NameUse, SalsaGenericParam, Scope,
     SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
@@ -135,11 +135,11 @@ impl IntoIterator for TypeDefList {
 
 #[derive(Clone, Copy)]
 pub(crate) struct SalsaQueries<'db> {
-    db: &'db SalsaDatabase,
+    db: &'db SemanticDatabase,
 }
 
 impl<'db> SalsaQueries<'db> {
-    pub fn new(db: &'db SalsaDatabase) -> Self {
+    pub fn new(db: &'db SemanticDatabase) -> Self {
         Self { db }
     }
 

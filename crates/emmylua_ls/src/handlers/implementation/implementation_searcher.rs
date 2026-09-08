@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use emmylua_code_analysis::{DeclKind, SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{DeclKind, SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaDocTagField, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaStat,
     LuaSyntaxToken, LuaTableField,
@@ -11,7 +11,7 @@ use crate::handlers::common::{decl_reference_ranges, member_reference_ranges};
 
 pub fn search_implementations(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
@@ -34,7 +34,7 @@ pub fn search_implementations(
 }
 
 fn search_member_implementations(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
@@ -141,7 +141,7 @@ fn is_signature_position(model: &SalsaSemanticModel<'_>, range: rowan::TextRange
 }
 
 fn search_decl_implementations(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
@@ -219,7 +219,7 @@ fn is_decl_implementation_position(
         .any(|var| var.to_expr().get_syntax_id() == name_expr.get_syntax_id())
 }
 
-fn member_key_text(salsa: &SalsaDatabase, member: &SemanticId) -> Option<String> {
+fn member_key_text(salsa: &SemanticDatabase, member: &SemanticId) -> Option<String> {
     let SemanticId::Member(key) = member else {
         return None;
     };
@@ -232,7 +232,7 @@ fn member_key_text(salsa: &SalsaDatabase, member: &SemanticId) -> Option<String>
 }
 
 fn make_location(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {
@@ -246,7 +246,7 @@ fn make_location(
 }
 
 fn push_location(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
     result: &mut Vec<Location>,

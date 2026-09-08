@@ -219,7 +219,7 @@ pub async fn process_did_close_document(
         .analysis()
         .try_with_snapshot(|analysis| {
             let file_id = analysis.get_file_id(uri)?;
-            Some(analysis.salsa.get_file_text(file_id).is_some())
+            Some(analysis.db.get_file_text(file_id).is_some())
         })
         .unwrap_or(false);
     if !file_exists {

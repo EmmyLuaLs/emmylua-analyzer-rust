@@ -40,7 +40,7 @@ pub fn definition(
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let root = model.chunk()?;
     let position_offset =
         document.get_offset(position.line as usize, position.character as usize)?;
@@ -66,19 +66,19 @@ pub fn definition(
     };
 
     // 1. Label definition (goto / label).
-    if let Some(response) = goto_label::goto_label_definition(&model, &analysis.salsa, &token) {
+    if let Some(response) = goto_label::goto_label_definition(&model, &analysis.db, &token) {
         return Some(response);
     }
 
     // 2. String token: require module file / string template reference.
     if let Some(string_token) = LuaStringToken::cast(token.clone()) {
         if let Some(response) =
-            goto_module_file::goto_module_file(&analysis.salsa, string_token.clone())
+            goto_module_file::goto_module_file(&analysis.db, string_token.clone())
         {
             return Some(response);
         }
         if let Some(response) =
-            goto_string::goto_str_tpl_ref_definition(&model, &analysis.salsa, string_token)
+            goto_string::goto_str_tpl_ref_definition(&model, &analysis.db, string_token)
         {
             return Some(response);
         }
@@ -88,7 +88,7 @@ pub fn definition(
     // 2.5 Doc description reference / `@see`.
     if let Some(response) = goto_def_definition::goto_doc_definition(
         &model,
-        &analysis.salsa,
+        &analysis.db,
         &token,
         position_offset,
         &analysis.get_emmyrc(),
@@ -98,7 +98,7 @@ pub fn definition(
 
     // 3. Semantic declarations (decl / member / typedef).
     let decl = model.find_decl(token.clone().into())?;
-    goto_def_definition::goto_def_definition(&model, &analysis.salsa, &decl, &token)
+    goto_def_definition::goto_def_definition(&model, &analysis.db, &decl, &token)
 }
 
 pub struct DefinitionCapabilities;

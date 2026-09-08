@@ -31,7 +31,7 @@ pub async fn on_code_lens_handler(
                 return None;
             }
             let model = analysis.semantic_model(file_id)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             build_code_lens(&model, &document)
         },
     )
@@ -52,7 +52,7 @@ pub async fn on_resolve_code_lens_handler(
     let result = context
         .analysis()
         .with_snapshot(|analysis| {
-            resolve_code_lens(&analysis.salsa, code_lens.clone(), client_id)
+            resolve_code_lens(&analysis.db, code_lens.clone(), client_id)
                 .unwrap_or(code_lens.clone())
         })
         .unwrap_or_else(|| code_lens.clone());

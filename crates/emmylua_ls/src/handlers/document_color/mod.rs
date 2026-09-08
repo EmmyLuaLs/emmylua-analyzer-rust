@@ -28,7 +28,7 @@ pub async fn on_document_color(
             if !analysis.get_emmyrc().document_color.enable {
                 return None;
             }
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let root = model.chunk()?;
             Some(build_colors(root.syntax().clone(), &document))
         },
@@ -53,7 +53,7 @@ pub async fn on_document_color_presentation(
         cancel_token,
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let range = document.to_rowan_range(params.range)?;
             let color = params.color;
             let text = document.get_text_slice(range);

@@ -43,7 +43,7 @@ pub fn code_action(
     diagnostics: Vec<Diagnostic>,
 ) -> Option<CodeActionResponse> {
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let emmyrc = analysis.get_emmyrc();
 
     build_actions(&model, &document, &emmyrc, file_id, diagnostics)

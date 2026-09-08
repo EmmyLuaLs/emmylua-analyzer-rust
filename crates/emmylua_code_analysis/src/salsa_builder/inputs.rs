@@ -12,7 +12,7 @@ use smol_str::SmolStr;
 
 use crate::{Emmyrc, FileId, WorkspaceImport};
 
-use super::SalsaDatabase;
+use super::SemanticDatabase;
 use super::def::WorkspaceId;
 
 // ──────────────────────────────────────────────
@@ -20,23 +20,23 @@ use super::def::WorkspaceId;
 // ──────────────────────────────────────────────
 
 impl FileId {
-    pub(crate) fn text(self, db: &SalsaDatabase) -> &str {
+    pub(crate) fn text(self, db: &SemanticDatabase) -> &str {
         &db.source_file_data(self)
             .expect("file data must exist")
             .text
     }
 
-    pub(crate) fn path(self, db: &SalsaDatabase) -> &Option<PathBuf> {
+    pub(crate) fn path(self, db: &SemanticDatabase) -> &Option<PathBuf> {
         &db.source_file_data(self)
             .expect("file data must exist")
             .path
     }
 
-    pub(crate) fn uri(self, db: &SalsaDatabase) -> &Option<Uri> {
+    pub(crate) fn uri(self, db: &SemanticDatabase) -> &Option<Uri> {
         &db.source_file_data(self).expect("file data must exist").uri
     }
 
-    pub(crate) fn file_id(self, _db: &SalsaDatabase) -> FileId {
+    pub(crate) fn file_id(self, _db: &SemanticDatabase) -> FileId {
         self
     }
 }

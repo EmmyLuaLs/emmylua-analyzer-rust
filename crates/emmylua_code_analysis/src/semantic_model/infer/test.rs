@@ -16,12 +16,12 @@ use super::super::infer::infer_expr;
 
 fn model_of(source: &str) -> (&'static SemanticModel<'static>, Arc<Emmyrc>) {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/infer.lua").unwrap();
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     // Leak for tests.
-    let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
     (model, emmyrc)
@@ -121,7 +121,7 @@ fn test_infer_expr_function_structure() {
 fn test_infer_expr_member_cross_file() {
     // B defines M.x = 1; A reads M.x -> Number.
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("M = {}\nM.x = 1".to_string()));
@@ -129,7 +129,7 @@ fn test_infer_expr_member_cross_file() {
     let fid = db.set_file_content(&uri_a, Some("local y = M.x".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -835,7 +835,7 @@ fn test_setmetatable_passthrough() {
 #[test]
 fn test_require_via_variable() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("return { value = 42 }".to_string()));
@@ -846,7 +846,7 @@ fn test_require_via_variable() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -864,7 +864,7 @@ fn test_require_via_variable() {
 #[test]
 fn test_require_literal_vm() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("return { value = 42 }".to_string()));
@@ -875,7 +875,7 @@ fn test_require_literal_vm() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -928,7 +928,7 @@ fn test_is_reference_to_member() {
 #[test]
 fn test_is_visible_private_field() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     // Defining file: ---@field private secret number (visibility prefix syntax).
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
@@ -940,7 +940,7 @@ fn test_is_visible_private_field() {
     let uri_a = Uri::from_str("file:///C:/ws/a.lua").unwrap();
     let fid = db.set_file_content(&uri_a, Some("local c = {}\nlocal v = c.secret".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let db: &'static crate::salsa_builder::SalsaDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
     let model_b: &'static SemanticModel<'static> =

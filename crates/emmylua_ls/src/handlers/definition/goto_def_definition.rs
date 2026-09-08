@@ -6,7 +6,7 @@
 //! is retired; see `docs/SALSA_FROM_SCRATCH.md` §M3.
 
 use emmylua_code_analysis::{
-    Emmyrc, LuaMemberKey, SalsaDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId,
+    Emmyrc, LuaMemberKey, SemanticDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId,
     WorkspaceId,
 };
 use emmylua_parser::{
@@ -21,7 +21,7 @@ use crate::util::parse_desc;
 
 pub fn goto_def_definition(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     token: &LuaSyntaxToken,
 ) -> Option<GotoDefinitionResponse> {
@@ -51,7 +51,7 @@ pub fn goto_def_definition(
 
 fn goto_member_definition(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     token: &LuaSyntaxToken,
 ) -> Option<GotoDefinitionResponse> {
@@ -190,7 +190,7 @@ fn member_key_of(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> Option<Lu
 
 fn add_field_accessor_locations(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     prefix_types: &[emmylua_code_analysis::LuaType],
     key: &LuaMemberKey,
     locations: &mut Vec<Location>,
@@ -268,7 +268,7 @@ fn type_has_field_accessor(
 }
 
 fn location_of(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {
@@ -283,7 +283,7 @@ fn location_of(
 /// Goto definition for doc description references (`:lua:obj:` / `{lua:obj}` / `--- @see`).
 pub(super) fn goto_doc_definition(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: &LuaSyntaxToken,
     offset: TextSize,
     emmyrc: &Emmyrc,
@@ -361,7 +361,7 @@ pub(super) fn goto_doc_definition(
 
 fn resolve_doc_path(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     names: &[String],
     cursor_index: usize,
     scope_types: &[emmylua_code_analysis::LuaType],
@@ -428,7 +428,7 @@ fn resolve_doc_path(
 
 fn member_definition_response(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     pairs: &[(&emmylua_code_analysis::LuaType, &str)],
 ) -> Option<GotoDefinitionResponse> {
     let mut infos = Vec::new();
@@ -475,7 +475,7 @@ fn comment_scope_types(
 }
 
 fn infos_to_locations(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     infos: &[SalsaMemberInfo],
 ) -> Option<GotoDefinitionResponse> {
     let mut locations = Vec::new();

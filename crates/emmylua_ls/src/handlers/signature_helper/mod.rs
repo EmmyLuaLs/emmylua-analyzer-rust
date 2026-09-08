@@ -50,7 +50,7 @@ pub fn signature_help(
     param_context: SignatureHelpContext,
 ) -> Option<SignatureHelp> {
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let root = model.chunk()?;
     let position_offset =
         document.get_offset(position.line as usize, position.character as usize)?;

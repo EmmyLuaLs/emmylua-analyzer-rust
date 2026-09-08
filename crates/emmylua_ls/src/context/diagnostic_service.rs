@@ -125,7 +125,7 @@ impl DiagnosticService {
                 _ = tokio::time::sleep(Duration::from_millis(interval)) => {
                     let file_ids = analysis
                         .try_with_snapshot(|analysis| {
-                            Some(analysis.salsa.main_workspace_file_ids())
+                            Some(analysis.db.main_workspace_file_ids())
                         })
                         .unwrap_or_default();
                     // Full-workspace diagnostics can be cancelled by salsa's pending-write
@@ -214,7 +214,7 @@ impl DiagnosticService {
         let mut result = Vec::new();
         let main_workspace_file_ids = self
             .analysis
-            .try_with_snapshot(|analysis| Some(analysis.salsa.main_workspace_file_ids()))
+            .try_with_snapshot(|analysis| Some(analysis.db.main_workspace_file_ids()))
             .unwrap_or_default();
 
         for file_id in main_workspace_file_ids {
@@ -249,7 +249,7 @@ impl DiagnosticService {
 
         let main_workspace_file_ids = self
             .analysis
-            .try_with_snapshot(|analysis| Some(analysis.salsa.main_workspace_file_ids()))
+            .try_with_snapshot(|analysis| Some(analysis.db.main_workspace_file_ids()))
             .unwrap_or_default();
 
         let (result, completed) = run_workspace_batch(

@@ -22,7 +22,7 @@ pub fn resolve_completion(
         _ => return completion_item,
     };
 
-    let Some(document) = analysis.salsa.document(file_id) else {
+    let Some(document) = analysis.db.document(file_id) else {
         return completion_item;
     };
     let Some(position) = document.to_lsp_position(offset.into()) else {

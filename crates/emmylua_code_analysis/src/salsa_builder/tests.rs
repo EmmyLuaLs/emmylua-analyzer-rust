@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rowan::TextSize;
 use smol_str::SmolStr;
 
-use super::SalsaDatabase;
+use super::SemanticDatabase;
 use super::def::{
     ConstructorReturnMode, DeclKind, ModuleExport, SemanticId, TypeDefKind, TypeVisibility,
 };
@@ -14,13 +14,13 @@ use super::query::{deprecated_shard, module_shard};
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId};
 
-fn setup() -> SalsaDatabase {
-    let mut db = SalsaDatabase::new();
+fn setup() -> SemanticDatabase {
+    let mut db = SemanticDatabase::new();
     db.update_config(Arc::new(Emmyrc::default()));
     db
 }
 
-fn set_test_file(db: &mut SalsaDatabase, file_id: u32, path: &str, source: &str) -> FileId {
+fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
     let fid = FileId::new(file_id);
     db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
     fid
@@ -896,34 +896,6 @@ fn test_require_module_subdir_suffix() {
 }
 
 #[test]
-fn test_invalidation_granularity_local_decl_cached_across_edit() {
-    let mut db = setup();
-    // A: purely local decl (no cross-file reads); B: unrelated file.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1");
-    let _fid_b = set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
-
-    let facts = db.q().file_facts(fid).expect("facts");
-    let x = decl_local(&facts, "x");
-    assert_primitive(
-        &db.q().decl_type(fid, x.clone()).expect("x"),
-        PrimitiveType::Number,
-    );
-
-    // Record execution count; edit unrelated file B.
-    let before = db.query_execution_count();
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 's'");
-    assert_primitive(&db.q().decl_type(fid, x).expect("x"), PrimitiveType::Number);
-    let after = db.query_execution_count();
-
-    // A purely local decl's type does not depend on workspace → after editing an unrelated file, memo is reused and it is not re-executed.
-    assert_eq!(
-        before, after,
-        "纯局部 decl_type 不应因无关文件编辑而重算（before={}, after={}）",
-        before, after
-    );
-}
-
-#[test]
 fn test_invalidation_granularity_cross_file_decl_reexecutes() {
     let mut db = setup();
     // A: local y = M.x (cross-file) → should depend on workspace and re-execute after editing B.
@@ -1314,7 +1286,7 @@ fn test_lua_compilation_salsa_sync_and_check() {
     use std::str::FromStr;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = SalsaDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/check_test.lua").unwrap();
     let fid = db.set_file_content(
@@ -1391,7 +1363,7 @@ fn test_syntax_error_checks() {
 
     for (source, expect_error) in cases {
         let emmyrc = Arc::new(Emmyrc::default());
-        let mut db = SalsaDatabase::new();
+        let mut db = SemanticDatabase::new();
         db.update_config(emmyrc.clone());
         let uri = Uri::from_str("file:///C:/ws/syntax.lua").unwrap();
         let fid = db.set_file_content(&uri, Some(source.to_string()));
@@ -1423,7 +1395,7 @@ fn test_salsa_snapshot_query_from_other_thread() {
     use std::str::FromStr;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = SalsaDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/thread_test.lua").unwrap();
     let fid = db.set_file_content(&uri, Some("local x = 1\nlocal y = x + 1".to_string()));

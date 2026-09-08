@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use ansi_term::{Color, Style};
-use emmylua_code_analysis::{DocumentView, FileId, SalsaDatabase};
+use emmylua_code_analysis::{DocumentView, FileId, SemanticDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl TerminalDisplay {
 
     pub fn display_diagnostics(
         &mut self,
-        db: &SalsaDatabase,
+        db: &SemanticDatabase,
         file_id: FileId,
         diagnostics: Vec<Diagnostic>,
     ) {
@@ -83,7 +83,7 @@ impl TerminalDisplay {
         println!(); // Add blank line separator
     }
 
-    fn get_relative_path(&self, db: &SalsaDatabase, file_id: FileId) -> String {
+    fn get_relative_path(&self, db: &SemanticDatabase, file_id: FileId) -> String {
         let mut file_path = db.file_path(file_id).unwrap().clone();
         if let Ok(new_file_path) = file_path.strip_prefix(&self.workspace) {
             file_path = new_file_path.to_path_buf();

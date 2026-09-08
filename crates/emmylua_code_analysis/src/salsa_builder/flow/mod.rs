@@ -17,7 +17,7 @@ use emmylua_parser::LuaChunk;
 
 use crate::FileId;
 
-use super::SalsaDatabase;
+use super::SemanticDatabase;
 use super::inputs::ConfigInputData;
 use super::query::file_facts;
 
@@ -42,12 +42,12 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
 }
 
 /// Per-file control flow graph. Pure lookup in the write-time built `SalsaDatabase::flow_trees`.
-pub(crate) fn flow_tree_of(db: &SalsaDatabase, file: FileId) -> &FlowTree {
+pub(crate) fn flow_tree_of(db: &SemanticDatabase, file: FileId) -> &FlowTree {
     db.flow_tree_of(file.file_id(db))
 }
 
 pub(super) fn build_flow_tree(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
 ) -> FlowTree {

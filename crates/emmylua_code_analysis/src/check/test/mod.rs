@@ -66,7 +66,7 @@ pub(crate) fn check_source(source: &str) -> Vec<Diagnostic> {
 /// Run all checks on a single source file with a custom emmyrc and return diagnostics.
 pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diagnostic> {
     let emmyrc = Arc::new(emmyrc);
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let fid = db.set_file_content(&uri, Some(source.to_string()));

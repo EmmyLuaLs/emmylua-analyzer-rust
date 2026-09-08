@@ -27,7 +27,7 @@ pub async fn on_document_selection_range_handle(
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let semantic_model = analysis.semantic_model(file_id)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let root = semantic_model.chunk()?;
             let emmyrc = analysis.get_emmyrc();
             let mut result = Vec::new();

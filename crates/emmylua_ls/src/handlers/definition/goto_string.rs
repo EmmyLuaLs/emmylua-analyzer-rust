@@ -4,13 +4,13 @@
 //! compose the type name as "prefix + string + suffix" → type definition positions.
 //! Mirrors the old `goto_str_tpl_ref_definition`, now via salsa queries only.
 
-use emmylua_code_analysis::{LuaType, SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{LuaType, SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaStringToken};
 use lsp_types::{GotoDefinitionResponse, Location};
 
 pub fn goto_str_tpl_ref_definition(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     string_token: LuaStringToken,
 ) -> Option<GotoDefinitionResponse> {
     let name = string_token.get_value();
@@ -65,7 +65,7 @@ pub fn goto_str_tpl_ref_definition(
 /// Callee's doc signature: name expression → declared closure (cross-file via the declaration file model); closure expression → itself.
 fn callee_signature(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     call_expr: &LuaCallExpr,
 ) -> Option<emmylua_code_analysis::LuaFunctionType> {
     let prefix = call_expr.get_prefix_expr()?;
@@ -94,7 +94,7 @@ fn callee_signature(
 
 fn try_extract_str_tpl_ref_locations(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     param_type: &Option<LuaType>,
     name: &str,
 ) -> Option<Vec<Location>> {

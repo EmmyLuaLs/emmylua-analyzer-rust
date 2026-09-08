@@ -42,7 +42,7 @@ mod tests {
 
     use lsp_types::Uri;
 
-    use crate::{Emmyrc, Vfs, file_path_to_uri, uri_to_file_path};
+    use crate::{Emmyrc, FileId, Vfs, file_path_to_uri, uri_to_file_path};
 
     fn create_vfs() -> Vfs {
         let mut vfs = Vfs::new();
@@ -55,30 +55,25 @@ mod tests {
         let mut vfs = create_vfs();
 
         let uri = Uri::from_str("file:///C:/Users/username/Documents/test.lua").unwrap();
-        let id = vfs.file_id(&uri);
-        assert_eq!(id.id, 0);
-        let id_another = vfs.get_file_id(&uri).unwrap();
-        assert_eq!(id_another, id);
         let uri2 = Uri::from_str("file:///C:/Users/username/Documents/test2.lua").unwrap();
 
-        let id2 = vfs.file_id(&uri2);
-        assert_eq!(id2.id, 1);
-        assert!(id2 != id);
+        let id = vfs.set_file_content(&uri, Some("content".to_string()));
+        let id_another = vfs.get_file_id(&uri).unwrap();
+        assert_eq!(id_another, id);
 
-        vfs.set_file_content(&uri, Some("content".to_string()));
         let content = vfs.get_file_content(&id).unwrap();
         assert_eq!(content, "content");
 
-        let content2 = vfs.get_file_content(&id2);
+        let content2 = vfs.get_file_content(&FileId::new(id.id + 1));
         assert!(content2.is_none());
+        let _ = uri2;
     }
 
     #[test]
     fn test_clear_file() {
         let mut vfs = create_vfs();
         let uri = Uri::from_str("file:///C:/Users/username/Documents/test.lua").unwrap();
-        let id = vfs.file_id(&uri);
-        vfs.set_file_content(&uri, Some("content".to_string()));
+        let id = vfs.set_file_content(&uri, Some("content".to_string()));
         let content = vfs.get_file_content(&id).unwrap();
         assert_eq!(content, "content");
 
@@ -92,7 +87,8 @@ mod tests {
         let mut vfs = create_vfs();
         if cfg!(windows) {
             let uri = Uri::from_str("file:///C:/Users/username/Documents/test.lua").unwrap();
-            let id = vfs.file_id(&uri);
+            vfs.set_file_content(&uri, Some("content".to_string()));
+            let id = vfs.get_file_id(&uri).unwrap();
             let path = Path::new("C:/Users/username/Documents/test.lua");
             let uri2 = file_path_to_uri(&path.into()).unwrap();
             assert_eq!(uri2, uri);

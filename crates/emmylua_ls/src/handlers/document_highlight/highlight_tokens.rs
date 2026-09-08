@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{
     LuaAstNode, LuaDocNameType, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
 };
@@ -11,7 +11,7 @@ use crate::handlers::common::{
 
 pub fn highlight_tokens(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
 ) -> Option<Vec<DocumentHighlight>> {
     let mut result = Vec::new();
@@ -67,7 +67,7 @@ pub fn highlight_tokens(
 
 fn highlight_decl_references(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     result: &mut Vec<DocumentHighlight>,
 ) {
@@ -95,7 +95,7 @@ fn highlight_decl_references(
 
 fn highlight_name(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -144,7 +144,7 @@ fn is_keyword(kind: LuaTokenKind) -> bool {
 
 fn highlight_keywords(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -167,7 +167,7 @@ fn highlight_keywords(
 
 fn highlight_node_keywords(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     node: LuaSyntaxNode,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -190,7 +190,7 @@ fn highlight_node_keywords(
 
 fn push_highlight(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     range: rowan::TextRange,
     kind: Option<DocumentHighlightKind>,
     result: &mut Vec<DocumentHighlight>,

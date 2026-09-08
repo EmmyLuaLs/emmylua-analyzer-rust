@@ -44,7 +44,7 @@ pub async fn on_range_formatting_handler(
         cancel_token.clone(),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let file_path = document.path.clone();
             let normalized_path = file_path
                 .as_deref()

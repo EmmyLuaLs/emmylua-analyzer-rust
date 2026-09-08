@@ -74,7 +74,7 @@ pub fn completion(
         return None;
     }
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let emmyrc = analysis.get_emmyrc();
     let root = model.chunk()?;
     let position_offset =

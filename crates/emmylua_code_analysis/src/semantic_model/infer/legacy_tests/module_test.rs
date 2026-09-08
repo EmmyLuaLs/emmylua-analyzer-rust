@@ -43,7 +43,7 @@ mod test {
                 return A
                 "#,
         );
-        let module = ws.analysis.salsa.module_info_of(file_id);
+        let module = ws.analysis.db.module_info_of(file_id);
         assert!(module.is_some());
         assert!(module.as_ref().unwrap().visible.is_hidden());
     }
@@ -61,7 +61,7 @@ mod test {
                 return A
                 "#,
         );
-        let module = ws.analysis.salsa.module_info_of(file_id);
+        let module = ws.analysis.db.module_info_of(file_id);
         assert!(module.is_some());
         assert!(module.as_ref().unwrap().visible == ModuleVisibility::Public);
     }
@@ -80,7 +80,7 @@ mod test {
                 return A
                 "#,
             );
-            let module = ws.analysis.salsa.module_info_of(file_id);
+            let module = ws.analysis.db.module_info_of(file_id);
             assert!(module.is_some());
             assert!(module.as_ref().unwrap().visible == ModuleVisibility::Internal);
         }
@@ -96,7 +96,7 @@ mod test {
                 return B
                 "#,
             );
-            let module = ws.analysis.salsa.module_info_of(file_id);
+            let module = ws.analysis.db.module_info_of(file_id);
             assert!(module.is_some());
             assert!(module.as_ref().unwrap().visible == ModuleVisibility::Public);
         }
@@ -112,7 +112,7 @@ mod test {
                 }
                 "#,
             );
-            let module = ws.analysis.salsa.module_info_of(file_id);
+            let module = ws.analysis.db.module_info_of(file_id);
             assert!(module.is_some());
             assert!(module.as_ref().unwrap().visible == ModuleVisibility::Internal);
         }

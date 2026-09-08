@@ -31,7 +31,7 @@ use crate::DocumentView;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
-use crate::salsa_builder::SalsaDatabase;
+use crate::salsa_builder::SemanticDatabase;
 use crate::salsa_builder::SalsaQueries;
 use crate::salsa_builder::def::{
     ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
@@ -48,7 +48,7 @@ use crate::{
 
 /// Semantic model: a per-file access handle, only through the salsa analysis layer.
 pub struct SemanticModel<'db> {
-    db: &'db SalsaDatabase,
+    db: &'db SemanticDatabase,
     file_id: FileId,
     /// Closure return-inference in-progress stack (replaces thread_local; scoped to each SemanticModel instance).
     closure_return_infer_stack: RefCell<Vec<LuaSyntaxId>>,
@@ -113,7 +113,7 @@ pub(crate) struct CallSiteAnalysis {
 }
 
 impl<'db> SemanticModel<'db> {
-    pub fn new(db: &'db SalsaDatabase, file_id: FileId) -> Option<Self> {
+    pub fn new(db: &'db SemanticDatabase, file_id: FileId) -> Option<Self> {
         Some(Self {
             db,
             file_id,

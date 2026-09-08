@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{DocumentView, Emmyrc, SalsaDatabase, file_path_to_uri};
+use emmylua_code_analysis::{DocumentView, Emmyrc, SemanticDatabase, file_path_to_uri};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaLiteralExpr, LuaStringToken,
     LuaSyntaxNode,
@@ -8,7 +8,7 @@ use emmylua_parser::{
 use lsp_types::DocumentLink;
 
 pub fn build_links(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     root: LuaSyntaxNode,
     document: &DocumentView,
     emmyrc: &Emmyrc,
@@ -27,7 +27,7 @@ pub fn build_links(
 }
 
 fn try_build_file_link(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaStringToken,
     document: &DocumentView,
     result: &mut Vec<DocumentLink>,
@@ -78,7 +78,7 @@ fn try_build_file_link(
 }
 
 fn try_build_module_link(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaStringToken,
     document: &DocumentView,
     result: &mut Vec<DocumentLink>,

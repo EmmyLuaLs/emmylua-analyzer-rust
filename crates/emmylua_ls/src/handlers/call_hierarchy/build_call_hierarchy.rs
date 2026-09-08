@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaStat, LuaTokenKind, PathTrait};
 use lsp_types::{CallHierarchyIncomingCall, CallHierarchyItem, Location, SymbolKind};
 use rowan::{TextRange, TokenAtOffset};
@@ -56,7 +56,7 @@ impl SemanticIdData {
 
 pub fn build_call_hierarchy_item(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     semantic_decl: &SemanticId,
 ) -> Option<CallHierarchyItem> {
     let data = CallHierarchyItemData {
@@ -111,7 +111,7 @@ pub fn build_call_hierarchy_item(
 }
 
 pub fn build_incoming_hierarchy(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     semantic_decl: &SemanticId,
 ) -> Option<Vec<CallHierarchyIncomingCall>> {
     let mut result = vec![];
@@ -140,7 +140,7 @@ pub fn build_incoming_hierarchy(
 }
 
 fn build_incoming_hierarchy_item(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     location: &Location,
     result: &mut Vec<CallHierarchyIncomingCall>,
 ) -> Option<()> {
@@ -228,7 +228,7 @@ fn build_incoming_hierarchy_item(
 
 #[allow(clippy::too_many_arguments)]
 fn push_incoming_item(
-    _salsa: &SalsaDatabase,
+    _salsa: &SemanticDatabase,
     result: &mut Vec<CallHierarchyIncomingCall>,
     location: &Location,
     model: &SalsaSemanticModel<'_>,
@@ -257,7 +257,7 @@ fn push_incoming_item(
 }
 
 fn model_of<'a>(
-    salsa: &'a SalsaDatabase,
+    salsa: &'a SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
 ) -> SalsaSemanticModel<'a> {
     SalsaSemanticModel::new(salsa, file_id).expect("salsa model must exist")

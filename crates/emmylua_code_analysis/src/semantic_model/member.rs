@@ -1123,7 +1123,7 @@ mod tests {
     use lsp_types::Uri;
 
     use crate::{
-        Emmyrc, LuaArrayType, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SalsaDatabase,
+        Emmyrc, LuaArrayType, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDatabase,
     };
 
     use super::super::SemanticModel;
@@ -1131,12 +1131,12 @@ mod tests {
 
     fn model_of(source: &str) -> &'static SemanticModel<'static> {
         let emmyrc = Arc::new(Emmyrc::default());
-        let mut db = SalsaDatabase::new();
+        let mut db = SemanticDatabase::new();
         db.update_config(emmyrc);
         let uri = Uri::from_str("file:///C:/ws/member.lua").unwrap();
         let fid = db.set_file_content(&uri, Some(source.to_string()));
         // Leak: for tests.
-        let db: &'static SalsaDatabase = Box::leak(Box::new(db));
+        let db: &'static SemanticDatabase = Box::leak(Box::new(db));
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()))
     }
 

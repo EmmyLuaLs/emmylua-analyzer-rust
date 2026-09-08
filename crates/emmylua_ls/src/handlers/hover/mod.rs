@@ -44,7 +44,7 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
         return None;
     }
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let root = model.chunk()?;
     let position_offset =
         document.get_offset(position.line as usize, position.character as usize)?;
@@ -93,7 +93,7 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
                 range: document.to_lsp_range(literal.text_range()),
             })
         }
-        _ => build_semantic_info_hover(&model, &analysis.salsa, token.clone(), token.text_range()),
+        _ => build_semantic_info_hover(&model, &analysis.db, token.clone(), token.text_range()),
     }
 }
 

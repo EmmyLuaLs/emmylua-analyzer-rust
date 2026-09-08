@@ -1,13 +1,13 @@
 //! # goto_module_file — require path → module file (salsa `module_file_of`).
 
-use emmylua_code_analysis::SalsaDatabase;
+use emmylua_code_analysis::SemanticDatabase;
 use emmylua_parser::LuaStringToken;
 use lsp_types::{GotoDefinitionResponse, Location, Range};
 
 use crate::handlers::document_link::is_require_path;
 
 pub fn goto_module_file(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     string_token: LuaStringToken,
 ) -> Option<GotoDefinitionResponse> {
     if !is_require_path(string_token.clone()).unwrap_or(false) {

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{FileId, SalsaDatabase};
+use emmylua_code_analysis::{FileId, SemanticDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 
 use super::OutputWriter;
@@ -24,7 +24,7 @@ impl GithubOutputWriter {
 }
 
 impl OutputWriter for GithubOutputWriter {
-    fn write(&mut self, db: &SalsaDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
+    fn write(&mut self, db: &SemanticDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
         let Some(file_path) = db.file_path(file_id) else {
             return;
         };

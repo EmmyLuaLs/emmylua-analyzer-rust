@@ -10,14 +10,14 @@ use std::sync::Arc;
 use lsp_types::Uri;
 
 use crate::DiagnosticCode;
-use crate::{Emmyrc, SalsaDatabase, SalsaSemanticModel};
+use crate::{Emmyrc, SemanticDatabase, SalsaSemanticModel};
 
 use super::{Diagnostic, check_source, count_by_code};
 
 /// `(file) Foo` defined in another file does not affect `Foo` in the current file.
 fn check_with_other_file(other_source: &str, main_source: &str) -> Vec<Diagnostic> {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = SalsaDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
 
     let other_uri = Uri::from_str("file:///C:/ws/other.lua").expect("other uri");

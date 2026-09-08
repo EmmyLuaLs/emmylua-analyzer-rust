@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DeclKind, SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{DeclKind, SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaClosureExpr, LuaCommentOwner, LuaDocTagParam, LuaStat,
     LuaTableField,
@@ -12,7 +12,7 @@ use crate::handlers::common::decl_reference_ranges;
 #[allow(clippy::mutable_key_type)]
 pub fn rename_decl_references(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
@@ -41,7 +41,7 @@ fn is_param(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> bool {
 #[allow(clippy::mutable_key_type)]
 fn rename_doc_param(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
@@ -87,7 +87,7 @@ fn rename_doc_param(
 
 #[allow(clippy::mutable_key_type)]
 pub(crate) fn push_edit(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
     new_text: String,

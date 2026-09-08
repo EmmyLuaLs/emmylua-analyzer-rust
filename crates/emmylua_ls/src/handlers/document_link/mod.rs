@@ -25,10 +25,10 @@ pub async fn on_document_link_handler(
             let file_id = analysis.get_file_id(&uri)?;
             let semantic_model = analysis.semantic_model(file_id)?;
             let root = semantic_model.chunk()?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let emmyrc = analysis.get_emmyrc();
 
-            build_links(&analysis.salsa, root.syntax().clone(), &document, &emmyrc)
+            build_links(&analysis.db, root.syntax().clone(), &document, &emmyrc)
         },
     )
     .await

@@ -13,7 +13,7 @@ use crate::{
 pub use emmy_gutter_detail_request::*;
 pub use emmy_gutter_request::*;
 use emmylua_code_analysis::{
-    DocumentView, Emmyrc, LuaType, SalsaDatabase, SalsaSemanticModel, TypeScope,
+    DocumentView, Emmyrc, LuaType, SemanticDatabase, SalsaSemanticModel, TypeScope,
 };
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaVarExpr};
 use lsp_types::Uri;
@@ -37,9 +37,9 @@ pub async fn on_emmy_gutter_handler(
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let model = analysis.semantic_model(file_id)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let emmyrc = analysis.get_emmyrc();
-            build_gutter_infos(&model, &document, &analysis.salsa, &emmyrc)
+            build_gutter_infos(&model, &document, &analysis.db, &emmyrc)
         },
     )
     .await
@@ -48,7 +48,7 @@ pub async fn on_emmy_gutter_handler(
 fn build_gutter_infos(
     model: &SalsaSemanticModel<'_>,
     document: &DocumentView,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     emmyrc: &Emmyrc,
 ) -> Option<Vec<GutterInfo>> {
     let root = model.chunk()?;
@@ -109,7 +109,7 @@ fn build_gutter_infos(
 fn build_func_override_gutter_info(
     model: &SalsaSemanticModel<'_>,
     document: &DocumentView,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     emmyrc: &Emmyrc,
     gutters: &mut Vec<GutterInfo>,
     func_stat: emmylua_parser::LuaFuncStat,
@@ -199,7 +199,7 @@ pub async fn on_emmy_gutter_detail_handler(
         cancel_token,
         move |analysis| {
             let locations = Mutex::new(Vec::new());
-            analysis.salsa.parallel_for_each_file(|file_id, model| {
+            analysis.db.parallel_for_each_file(|file_id, model| {
                 let Some(facts) = model.file_facts() else {
                     return;
                 };

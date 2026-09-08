@@ -4,7 +4,7 @@ mod rename_type;
 
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{SalsaDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaDocTagParam, LuaLiteralExpr, LuaSyntaxKind, LuaSyntaxNode,
     LuaSyntaxToken, LuaTokenKind,
@@ -58,7 +58,7 @@ pub async fn on_prepare_rename_handler(
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let model = analysis.semantic_model(file_id)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let root = model.chunk()?;
             let position_offset =
                 document.get_offset(position.line as usize, position.character as usize)?;
@@ -104,7 +104,7 @@ pub fn rename(
     new_name: String,
 ) -> Option<WorkspaceEdit> {
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let root = model.chunk()?;
     let position_offset =
         document.get_offset(position.line as usize, position.character as usize)?;
@@ -127,13 +127,13 @@ pub fn rename(
         }
     };
 
-    rename_references(&model, &analysis.salsa, token, new_name)
+    rename_references(&model, &analysis.db, token, new_name)
 }
 
 #[allow(clippy::mutable_key_type)]
 fn rename_references(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
     new_name: String,
 ) -> Option<WorkspaceEdit> {

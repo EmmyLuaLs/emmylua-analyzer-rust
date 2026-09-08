@@ -46,7 +46,7 @@ pub fn references(
         return None;
     }
     let model = analysis.semantic_model(file_id)?;
-    let document = analysis.salsa.document(file_id)?;
+    let document = analysis.db.document(file_id)?;
     let root = model.chunk()?;
     let position_offset =
         document.get_offset(position.line as usize, position.character as usize)?;
@@ -69,7 +69,7 @@ pub fn references(
         }
     };
 
-    search_references(&model, &analysis.salsa, token, include_declaration)
+    search_references(&model, &analysis.db, token, include_declaration)
 }
 
 pub struct ReferencesCapabilities;

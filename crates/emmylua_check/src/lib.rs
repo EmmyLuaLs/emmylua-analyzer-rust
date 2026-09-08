@@ -48,7 +48,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
         }
     };
 
-    let db = &analysis.salsa;
+    let db = &analysis.db;
     let need_check_files = db.main_workspace_file_ids();
 
     // Optional `--profile`: collect per-checker timings while running all files.
@@ -85,7 +85,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     });
     // Drop the original sender so the receiver can detect when the worker has finished.
     drop(sender);
-    let db = &analysis.salsa;
+    let db = &analysis.db;
 
     let exit_code = output_result(
         total_count,

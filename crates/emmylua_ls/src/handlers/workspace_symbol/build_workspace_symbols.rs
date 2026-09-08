@@ -19,7 +19,7 @@ pub fn build_workspace_symbols(
     cancel_token: CancellationToken,
 ) -> Option<WorkspaceSymbolResponse> {
     let symbols = Mutex::new(Vec::new());
-    analysis.salsa.parallel_for_each_file(|file_id, model| {
+    analysis.db.parallel_for_each_file(|file_id, model| {
         if cancel_token.is_cancelled() {
             return;
         }

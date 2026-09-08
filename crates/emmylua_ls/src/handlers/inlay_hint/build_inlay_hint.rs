@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    AsyncState, LuaType, SalsaDatabase, SalsaSemanticModel, SemanticId, TypeDefKind,
+    AsyncState, LuaType, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDefKind,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaCommentOwner, LuaDocTag, LuaExpr, LuaFuncStat,
@@ -13,7 +13,7 @@ use crate::handlers::hover::render::humanize;
 
 pub fn build_inlay_hints(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     client_id: ClientId,
     enum_param_hint: bool,
 ) -> Option<Vec<InlayHint>> {
@@ -55,7 +55,7 @@ pub fn build_inlay_hints(
 /// Closure parameter hint: `---@param` annotated type → `: T` after the parameter name.
 fn build_closure_param_hints(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     document: &emmylua_code_analysis::DocumentView,
     result: &mut Vec<InlayHint>,
     closure: emmylua_parser::LuaClosureExpr,
@@ -657,7 +657,7 @@ fn is_primitive_type(ty: &LuaType) -> bool {
 }
 
 /// Find the built-in library file (`builtin.lua`) location; return `None` if not found.
-fn builtin_file_location(salsa: &SalsaDatabase) -> Option<Location> {
+fn builtin_file_location(salsa: &SemanticDatabase) -> Option<Location> {
     for file_id in salsa.file_ids() {
         let document = salsa.document(file_id)?;
         if document

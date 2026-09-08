@@ -10,18 +10,17 @@ pub(crate) mod query;
 mod tests;
 pub(crate) mod types;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use emmylua_parser::{LineIndex, LuaSyntaxTree};
+use emmylua_parser::{LineIndex, LuaSyntaxTree, LuaVersionNumber};
 use lsp_types::Uri;
 
-use crate::analysis_state::FileData;
 use crate::vfs::Vfs;
 use crate::vfs::file_path_to_uri;
-use crate::{Emmyrc, FileId, WorkspaceFolder, WorkspaceImport};
+use crate::{Emmyrc, FileData, FileId, WorkspaceFolder, WorkspaceImport, uri_to_file_path};
 pub use def::*;
 use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
 
@@ -126,7 +125,7 @@ impl fmt::Debug for DocumentView {
     }
 }
 
-pub struct SalsaDatabase {
+pub struct SemanticDatabase {
     // ── Plain config/data ──
     config: Option<ConfigInputData>,
     /// Workspace file list (same set as the VFS snapshot).
@@ -143,10 +142,6 @@ pub struct SalsaDatabase {
     /// Plain per-file control-flow graph cache (same invalidation as `file_facts`).
     flow_trees: HashMap<FileId, flow::FlowTree>,
 
-    /// Plain per-file syntax and document caches.
-    syntax_trees: HashMap<FileId, LuaSyntaxTree>,
-    documents: HashMap<FileId, DocumentView>,
-
     /// Plain per-file exports / shard caches.
     file_exports: HashMap<FileId, exports::FileExports>,
     export_shards: HashMap<u8, exports::ExportShard>,
@@ -159,26 +154,17 @@ pub struct SalsaDatabase {
 
     /// Plain merged workspace indexes (type/member/decl/module/reference).
     workspace_index: query::WorkspaceIndexCache,
-
-    /// Next FileId to allocate.
-    next_file_id: u32,
-
-    /// Actual execution count of tracked query bodies.
-    executed_queries: std::sync::atomic::AtomicU64,
 }
 
-impl Default for SalsaDatabase {
+impl Default for SemanticDatabase {
     fn default() -> Self {
-        let executed_queries = std::sync::atomic::AtomicU64::new(0);
-        let mut db = Self {
+        Self {
             config: None,
             workspace_file_ids: Arc::from(Vec::<FileId>::new()),
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
             vfs: Vfs::new(),
             file_facts: HashMap::new(),
             flow_trees: HashMap::new(),
-            syntax_trees: HashMap::new(),
-            documents: HashMap::new(),
             file_exports: HashMap::new(),
             export_shards: HashMap::new(),
             file_references: HashMap::new(),
@@ -186,15 +172,11 @@ impl Default for SalsaDatabase {
             module_shards: HashMap::new(),
             reference_shards: HashMap::new(),
             workspace_index: query::WorkspaceIndexCache::new(),
-            next_file_id: 0,
-            executed_queries,
-        };
-        db.ensure_workspace();
-        db
+        }
     }
 }
 
-impl SalsaDatabase {
+impl SemanticDatabase {
     pub(crate) fn file_input(&self, file_id: FileId) -> Option<FileId> {
         self.vfs.file(file_id).map(|_| file_id)
     }
@@ -225,10 +207,8 @@ impl SalsaDatabase {
             .expect("flow tree must be built before read")
     }
 
-    pub(crate) fn syntax_tree_of(&self, file_id: FileId) -> &LuaSyntaxTree {
-        self.syntax_trees
-            .get(&file_id)
-            .expect("syntax tree must be built before read")
+    pub(crate) fn syntax_tree_of(&self, file_id: FileId) -> Option<&LuaSyntaxTree> {
+        self.vfs.get_syntax_tree(&file_id)
     }
 
     pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExports {
@@ -271,7 +251,7 @@ impl SalsaDatabase {
         &self.workspace_index
     }
 }
-impl fmt::Debug for SalsaDatabase {
+impl fmt::Debug for SemanticDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SalsaDatabase")
             .field("file_count", &self.vfs.len())
@@ -280,22 +260,10 @@ impl fmt::Debug for SalsaDatabase {
     }
 }
 
-impl SalsaDatabase {
+impl SemanticDatabase {
     pub fn new() -> Self {
         Self::default()
     }
-
-    /// Drain other clones to obtain exclusive salsa writer access.
-    ///
-    /// Salsa's input setters already call `cancel_others()` (waiting for other clones to drop);
-    /// calling this explicitly before any `&mut self` write path ensures no readers during writes.
-    #[inline]
-    fn cancel_snapshots(&mut self) {
-        // No Salsa snapshots remain; kept as no-op for call-site compatibility.
-    }
-
-    /// Kept as a no-op for call-site compatibility; workspace fields are always present.
-    fn ensure_workspace(&mut self) {}
 
     fn set_workspace_file_ids(&mut self, file_ids: Arc<[FileId]>) {
         self.workspace_file_ids = file_ids;
@@ -334,7 +302,6 @@ impl SalsaDatabase {
     // ---- Config ----
 
     pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
-        self.cancel_snapshots();
         let (
             language_level,
             special_like,
@@ -359,7 +326,6 @@ impl SalsaDatabase {
 
     /// Main workspace root (used for require module name derivation).
     pub fn update_main_root(&mut self, root: PathBuf) {
-        self.cancel_snapshots();
         if let Some(config) = &self.config {
             let main_root = Some(root);
             self.config = Some(ConfigInputData::new(
@@ -412,8 +378,6 @@ impl SalsaDatabase {
 
     /// Register the built-in std workspace root.
     pub fn add_std_workspace(&mut self, root: PathBuf) {
-        self.cancel_snapshots();
-        self.ensure_workspace();
         let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_std());
         roots.push(WorkspaceRoot {
@@ -427,9 +391,7 @@ impl SalsaDatabase {
 
     /// Register or replace the main workspace root.
     pub fn add_main_workspace(&mut self, root: PathBuf) {
-        self.cancel_snapshots();
         self.update_main_root(root.clone());
-        self.ensure_workspace();
         let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_main());
         roots.push(WorkspaceRoot {
@@ -443,8 +405,6 @@ impl SalsaDatabase {
 
     /// Register a library workspace (allocates a new `WorkspaceId`).
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
-        self.cancel_snapshots();
-        self.ensure_workspace();
         let mut roots = self.workspace_roots.to_vec();
         let id = WorkspaceId {
             id: self.next_library_workspace_id(&roots),
@@ -460,8 +420,6 @@ impl SalsaDatabase {
 
     /// Keep only the std workspace (clear main/library before reload).
     pub fn clear_non_std_workspaces(&mut self) {
-        self.cancel_snapshots();
-        self.ensure_workspace();
         let roots: Vec<WorkspaceRoot> = self
             .workspace_roots
             .iter()
@@ -483,20 +441,18 @@ impl SalsaDatabase {
 
     /// Add paths that workspace reload must preserve (e.g. bundled std lib).
     pub fn add_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
-        self.cancel_snapshots();
-        self.ensure_workspace();
         let mut set = self.vfs.protected_paths().clone();
         set.extend(paths);
         self.vfs.set_protected_paths(set);
     }
 
     /// Currently protected paths (loaded std lib etc.).
-    pub fn protected_paths(&self) -> Arc<HashSet<PathBuf>> {
-        Arc::new(self.vfs.protected_paths().clone())
+    pub fn protected_paths(&self) -> &HashSet<PathBuf> {
+        self.vfs.protected_paths()
     }
 
     /// Current configured runtime version (used for `---@version` visibility).
-    pub fn lua_version(&self) -> Option<emmylua_parser::LuaVersionNumber> {
+    pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.config
             .as_ref()
             .map(|config| language_level_to_version(config.language_level))
@@ -524,7 +480,6 @@ impl SalsaDatabase {
     // ---- File management ----
 
     pub fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        self.cancel_snapshots();
         let fid = self.lookup_file_id(uri).unwrap_or_else(|| {
             let id = FileId::new(self.next_file_id);
             self.next_file_id += 1;
@@ -540,7 +495,6 @@ impl SalsaDatabase {
     }
 
     pub fn set_file(&mut self, file_id: FileId, path: Option<PathBuf>, text: String) {
-        self.cancel_snapshots();
         let uri = path.as_ref().and_then(file_path_to_uri);
         self.set_file_inner(file_id, path, uri, text);
     }
@@ -552,7 +506,6 @@ impl SalsaDatabase {
         uri: Option<Uri>,
         text: String,
     ) -> FileData {
-        self.ensure_workspace();
         FileData::new(file_id, uri, path, Arc::from(text))
     }
 
@@ -563,7 +516,6 @@ impl SalsaDatabase {
         uri: Option<Uri>,
         text: String,
     ) {
-        self.ensure_workspace();
         let old = self.vfs.file(file_id);
         let is_new = old.is_none();
         self.vfs.insert_at(file_id, uri, path, text);
@@ -577,9 +529,6 @@ impl SalsaDatabase {
 
     /// Replace the whole workspace file set in one salsa write.
     pub(crate) fn replace_workspace_files(&mut self, file_inputs: HashMap<FileId, FileData>) {
-        self.cancel_snapshots();
-        self.ensure_workspace();
-
         let protected_paths = self
             .vfs
             .protected_paths()
@@ -603,7 +552,11 @@ impl SalsaDatabase {
 
     /// Current workspace file map (FileId -> source data).
     pub(crate) fn file_input_map(&self) -> HashMap<FileId, FileData> {
-        self.vfs.files().clone()
+        self.vfs
+            .files()
+            .iter()
+            .map(|file| (file.file_id, file.clone()))
+            .collect()
     }
 
     /// Allocate a fresh FileId.
@@ -614,7 +567,6 @@ impl SalsaDatabase {
     }
 
     pub fn remove_file(&mut self, file_id: FileId) {
-        self.cancel_snapshots();
         self.remove_file_inner(file_id);
     }
 
@@ -623,7 +575,6 @@ impl SalsaDatabase {
     }
 
     pub fn clear(&mut self) {
-        self.cancel_snapshots();
         self.workspace_file_ids = Arc::from(Vec::<FileId>::new());
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
         self.vfs = Vfs::new();
@@ -639,7 +590,6 @@ impl SalsaDatabase {
         self.reference_shards = HashMap::new();
         self.workspace_index = query::WorkspaceIndexCache::new();
         self.next_file_id = 0;
-        self.ensure_workspace();
         self.rebuild_all_caches();
     }
 
@@ -650,7 +600,7 @@ impl SalsaDatabase {
     }
 
     pub fn file_ids(&self) -> Vec<FileId> {
-        self.vfs.file_ids().to_vec()
+        self.vfs.file_ids()
     }
 
     /// Main workspace file list.
@@ -658,7 +608,7 @@ impl SalsaDatabase {
         let has_roots = !self.workspace_roots().is_empty();
         if !has_roots {
             // Keep old behavior when no roots are registered: treat all files as main.
-            return self.vfs.file_ids().to_vec();
+            return self.vfs.file_ids();
         }
         self.vfs
             .file_ids()
@@ -709,12 +659,6 @@ impl SalsaDatabase {
 
     pub(crate) fn config_input(&self) -> Option<&ConfigInputData> {
         self.config.as_ref()
-    }
-
-    /// Actual execution count of tracked query bodies (diagnostic invalidation granularity).
-    pub fn query_execution_count(&self) -> u64 {
-        self.executed_queries
-            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     // ── Facade ──
@@ -861,5 +805,3 @@ impl SalsaDatabase {
         SalsaQueries::new(self)
     }
 }
-
-use crate::vfs::uri_to_file_path;

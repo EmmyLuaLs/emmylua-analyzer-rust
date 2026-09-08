@@ -9,13 +9,13 @@ use std::sync::Arc;
 use lsp_types::Uri;
 
 use crate::DiagnosticCode;
-use crate::{Emmyrc, SalsaDatabase, SalsaSemanticModel};
+use crate::{Emmyrc, SemanticDatabase, SalsaSemanticModel};
 
 use super::{Diagnostic, count_by_code};
 
 fn check_require(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = SalsaDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
 
     let def_uri = Uri::from_str("file:///C:/ws/mod.lua").expect("def uri");

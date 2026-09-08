@@ -13,7 +13,7 @@ fn ctx() -> TypeCheckContext<'static> {
     // Borrow a dummy model: structural checks don't trigger resolution, so use a leaked fake model.
     let model: &'static crate::semantic_model::SemanticModel<'static> = Box::leak(Box::new(
         crate::semantic_model::SemanticModel::new(
-            Box::leak(Box::new(crate::salsa_builder::SalsaDatabase::new())),
+            Box::leak(Box::new(crate::salsa_builder::SemanticDatabase::new())),
             crate::FileId::new(0),
         )
         .unwrap(),
@@ -144,7 +144,7 @@ fn test_ref_inheritance() {
     use std::str::FromStr;
 
     let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/inherit.lua").unwrap();
     let fid = db.set_file_content(
@@ -171,7 +171,7 @@ fn test_alias_nominal() {
     use std::str::FromStr;
 
     let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/alias.lua").unwrap();
     let fid = db.set_file_content(
@@ -221,7 +221,7 @@ fn test_detail_reason() {
     use std::str::FromStr;
 
     let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/x.lua").unwrap();
     let fid = db.set_file_content(&uri, Some("local x = 1".to_string()));

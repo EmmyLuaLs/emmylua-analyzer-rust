@@ -3,7 +3,7 @@
 //! Salsa-tracked node queries plus plain workspace indexes. Recursive cycles converge via the native `cycle_fn`.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::ConfigInputData;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
-use super::{DocumentView, SalsaDatabase};
+use super::{DocumentView, SemanticDatabase};
 use crate::FileId;
 use emmylua_parser::{
     BinaryOperator, LineIndex, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr,
@@ -25,13 +25,13 @@ use emmylua_parser::{
 use rowan::{NodeCache, TextSize};
 
 /// Parse. Pure lookup in the write-time built `SalsaDatabase::syntax_trees`.
-pub(crate) fn parse(db: &SalsaDatabase, file: FileId) -> &LuaSyntaxTree {
+pub(crate) fn parse(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree {
     db.syntax_tree_of(file.file_id(db))
 }
 
 /// Pure syntax-tree construction used by the write-time cache builder.
 pub(crate) fn build_syntax_tree(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     text: &str,
@@ -46,7 +46,7 @@ pub(crate) fn build_syntax_tree(
 }
 
 /// Pure document construction used by the write-time cache builder.
-pub(crate) fn build_document(db: &SalsaDatabase, file: FileId) -> DocumentView {
+pub(crate) fn build_document(db: &SemanticDatabase, file: FileId) -> DocumentView {
     let file_id = file.file_id(db);
     let path = file.path(db).clone();
     let text: Arc<str> = Arc::from(file.text(db));
@@ -68,7 +68,7 @@ pub(crate) fn build_document(db: &SalsaDatabase, file: FileId) -> DocumentView {
 /// It still touches the same Salsa input fields here so callers inside tracked
 /// queries are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn build_file_facts(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
     file_id: FileId,
@@ -83,7 +83,7 @@ pub(crate) fn build_file_facts(
     FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
 }
 
-pub(crate) fn file_facts(db: &SalsaDatabase, file: FileId) -> &FileFacts {
+pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
     db.file_facts_map()
         .get(&file.file_id(db))
         .expect("file facts must be built before read")
@@ -93,7 +93,7 @@ pub(crate) fn file_facts(db: &SalsaDatabase, file: FileId) -> &FileFacts {
 ///
 /// This is the only place where the per-file and shard caches are populated.
 /// Read-side query functions perform pure map lookups and never call `get_or_init`.
-pub(crate) fn rebuild_all_caches(db: &mut SalsaDatabase) {
+pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     let Some(config) = db.config_input().cloned() else {
         db.file_facts.clear();
         db.flow_trees.clear();
@@ -300,7 +300,7 @@ impl WorkspaceTypeIndex {
 }
 
 fn build_workspace_type_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -332,7 +332,7 @@ fn build_workspace_type_index(
 }
 
 pub(crate) fn workspace_type_index_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceTypeIndex {
@@ -349,12 +349,12 @@ pub(crate) struct DeprecatedShard {
     member_keys: Vec<(FileId, SemanticId, SmolStr)>,
 }
 
-pub(crate) fn deprecated_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &DeprecatedShard {
+pub(crate) fn deprecated_shard(db: &SemanticDatabase, _workspace: (), shard: u8) -> &DeprecatedShard {
     db.deprecated_shard_of(shard)
 }
 
 fn build_deprecated_shard(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
@@ -390,7 +390,7 @@ fn build_deprecated_shard(
 /// deprecated with a hash-set lookup instead of resolving each name through the
 /// full global-declaration pipeline.
 pub(crate) fn deprecated_global_names_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -413,7 +413,7 @@ pub(crate) fn deprecated_global_names_for(
 /// know whether *any* deprecated member with this key exists. If it does, the caller
 /// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
 pub(crate) fn deprecated_member_names_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -430,7 +430,7 @@ pub(crate) fn deprecated_member_names_for(
     Arc::new(out)
 }
 
-pub(crate) fn all_workspace_ids(db: &SalsaDatabase, _workspace: ()) -> Vec<WorkspaceId> {
+pub(crate) fn all_workspace_ids(db: &SemanticDatabase, _workspace: ()) -> Vec<WorkspaceId> {
     let roots = db.workspace_roots().to_vec();
     let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
         vec![WorkspaceId::MAIN]
@@ -444,7 +444,7 @@ pub(crate) fn all_workspace_ids(db: &SalsaDatabase, _workspace: ()) -> Vec<Works
 }
 
 fn file_matches_workspace_id(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     file_id: FileId,
     ws_id: WorkspaceId,
@@ -458,7 +458,7 @@ fn file_matches_workspace_id(
 }
 
 fn find_global_types(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     full_name: &str,
@@ -472,7 +472,7 @@ fn find_global_types(
 }
 
 fn find_internal_types(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws: WorkspaceId,
@@ -482,7 +482,7 @@ fn find_internal_types(
 }
 
 fn find_file_types(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     file_id: FileId,
@@ -495,7 +495,7 @@ fn find_file_types(
 /// Resolve **all definition locations** of a named type in the current file scope
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 pub(crate) fn resolve_type_def_locations(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     file: FileId,
@@ -543,7 +543,7 @@ pub(crate) fn resolve_type_def_locations(
 /// 1. file namespace qualification (Internal -> Global); 2. `@using` qualification (Internal -> Global);
 /// 3. bare name (**same-file Private** -> Internal -> Global).
 pub(crate) fn resolve_type_def(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     file: FileId,
@@ -560,7 +560,7 @@ pub(crate) fn resolve_type_def(
 /// the attribute belongs to the factory function signature. Here we trace back from the runtime value declaration
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
 pub(crate) fn constructor_attribute_of_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     type_def: SemanticId,
@@ -576,7 +576,7 @@ pub(crate) fn constructor_attribute_of_type(
 }
 
 fn constructor_attribute_of_decl(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     config: &ConfigInputData,
     decl: SemanticId,
 ) -> Option<ConstructorAttribute> {
@@ -628,7 +628,7 @@ pub struct WorkspaceMemberIndex {
 
 /// Member index scoped to a single workspace.
 fn build_workspace_member_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -673,7 +673,7 @@ fn build_workspace_member_index(
 }
 
 pub(crate) fn workspace_member_index_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceMemberIndex {
@@ -695,12 +695,12 @@ pub struct FileReferences {
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
-pub(crate) fn file_references(db: &SalsaDatabase, file: FileId) -> &FileReferences {
+pub(crate) fn file_references(db: &SemanticDatabase, file: FileId) -> &FileReferences {
     db.file_references_of(file.file_id(db))
 }
 
 fn build_file_references(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
 ) -> FileReferences {
@@ -770,12 +770,12 @@ pub struct WorkspaceReferenceIndex {
     pub member_defs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
 }
 
-pub(crate) fn reference_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ReferenceShard {
+pub(crate) fn reference_shard(db: &SemanticDatabase, _workspace: (), shard: u8) -> &ReferenceShard {
     db.reference_shard_of(shard)
 }
 
 fn build_reference_shard(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
@@ -817,7 +817,7 @@ fn build_reference_shard(
 /// file directly. Editing one file only recomputes its shard; this function re-merges
 /// the shard results for the requested workspace.
 fn build_workspace_reference_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -854,7 +854,7 @@ fn build_workspace_reference_index(
 }
 
 pub(crate) fn workspace_reference_index_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceReferenceIndex {
@@ -871,7 +871,7 @@ pub(crate) fn workspace_reference_index_for(
 /// otherwise the full resolver must decide between runtime member and `@field`.
 /// Query-level member resolution: owner/name -> concrete member id.
 fn resolve_member_id(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: Option<()>,
     config: &ConfigInputData,
     facts: &FileFacts,
@@ -894,7 +894,7 @@ fn resolve_member_id(
 
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
 pub(crate) fn members_of_owner(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
@@ -926,7 +926,7 @@ pub(crate) fn members_of_owner(
 }
 
 fn return_members_of_owner_scan(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     owner: SemanticId,
@@ -947,7 +947,7 @@ fn return_members_of_owner_scan(
 /// file-local `Decl`/`Member`; file-local owners still read their own `FileFacts`
 /// (which already has `members_by_owner_name`).
 pub(crate) fn members_of_owner_named(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     owner: SemanticId,
@@ -988,7 +988,7 @@ pub(crate) fn members_of_owner_named(
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
 pub(crate) fn member_keys_of_owner(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
@@ -1010,7 +1010,7 @@ pub(crate) fn member_keys_of_owner(
 
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
 pub(crate) fn type_defs_in_scope(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     scope: TypeScope,
@@ -1025,7 +1025,7 @@ pub(crate) fn type_defs_in_scope(
 
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
 pub(crate) fn global_type_by_name(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     full_name: SmolStr,
@@ -1043,7 +1043,7 @@ pub(crate) fn global_type_by_name(
 /// separately, so editing main workspace files does not rebuild the std/library
 /// indexes.
 fn build_workspace_decl_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -1107,7 +1107,7 @@ fn build_workspace_decl_index(
 }
 
 pub(crate) fn workspace_decl_index_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     ws_id: WorkspaceId,
 ) -> &WorkspaceDeclIndex {
@@ -1158,7 +1158,7 @@ impl WorkspaceDeclIndex {
 
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
 pub(crate) fn global_decl_by_name(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     name: SmolStr,
@@ -1202,12 +1202,12 @@ pub(crate) struct ModuleShard {
 
 /// Module shard query. Each file contributes a `ModuleEntry` using its owning workspace's root,
 /// so the per-workspace index can merge shards without scanning every file again.
-pub(crate) fn module_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ModuleShard {
+pub(crate) fn module_shard(db: &SemanticDatabase, _workspace: (), shard: u8) -> &ModuleShard {
     db.module_shard_of(shard)
 }
 
 fn build_module_shard(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     shard: u8,
@@ -1282,7 +1282,7 @@ fn build_module_shard(
 /// Workspace module index: module name (relative to workspace root) -> file.
 /// Module index scoped to a single workspace.
 fn build_workspace_module_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     _config: &ConfigInputData,
     ws_id: WorkspaceId,
@@ -1338,7 +1338,7 @@ fn build_workspace_module_index(
 }
 
 pub(crate) fn workspace_module_index_for(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     ws_id: WorkspaceId,
 ) -> &ModuleIndex {
@@ -1441,7 +1441,7 @@ pub(crate) fn find_workspace_root(
 
 /// File -> its workspace.
 pub(crate) fn file_workspace_id(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     file_id: FileId,
 ) -> Option<WorkspaceId> {
@@ -1456,7 +1456,7 @@ pub(crate) fn file_workspace_id(
 
 /// Module name -> file. Resolution order: module_map rewrite -> exact match -> require pattern (`?.lua`/`?/init.lua`).
 pub(crate) fn module_file_of(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     module_name: SmolStr,
@@ -1697,7 +1697,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// Phase 2 association: resolve `Name("a.b")` to a real definition (type/variable/member chain).
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
 pub(crate) fn resolve_owner(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
@@ -1732,7 +1732,7 @@ pub(crate) fn resolve_owner(
 /// `Name("M")` -> `{TypeDef(M), Decl(M)}`; member lookup uses the union across sets.
 /// For name chains (`a.b`), recursively take members along each head identity.
 pub(crate) fn resolve_owner_set(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: SemanticId,
@@ -1880,7 +1880,7 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 /// Priority: `---@type` annotation -> initializer expression.
 /// Keyed by file: when an initializer references cross-file members, dependence on `workspace_input` keeps memoization stable.
 pub(crate) fn decl_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     decl: SemanticId,
@@ -1967,7 +1967,7 @@ pub(crate) fn decl_type(
 /// the `__pairs`/`__ipairs` function signature's `---@return fun(): K, V` and projects it by slot (preserving order,
 /// not lost through TypeShell's candidate set).
 fn iter_slot_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -2086,7 +2086,7 @@ fn iter_slot_type(
 /// Lower a doc type node to `TypeShell`.
 /// `generics` = generic params in the current scope (`T` -> `Generic(T)`); named types resolve to TypeDef (cross-file).
 pub(crate) fn lower_doc_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
@@ -2105,7 +2105,7 @@ pub(crate) fn lower_doc_type(
 }
 
 fn lower_doc_type_node(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
@@ -2365,7 +2365,7 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
 
 /// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by salsa's native fixed point.
 pub(crate) fn member_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     member: SemanticId,
@@ -2415,7 +2415,7 @@ pub(crate) fn member_type(
 
 /// Direct member names of a local declaration (completion candidates).
 pub(crate) fn member_keys_of_decl(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
     decl: SemanticId,
@@ -2434,7 +2434,7 @@ pub(crate) fn member_keys_of_decl(
 
 /// Member keys of a named type (including parent types, completion candidates). `type_def` is a global type id.
 pub(crate) fn member_keys_of_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
     type_def: SemanticId,
@@ -2453,7 +2453,7 @@ pub(crate) fn member_keys_of_type(
 
 /// Type of a named type's member (including parent types). Pure function; caller must be in a tracked context.
 pub(crate) fn type_member(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -2532,7 +2532,7 @@ fn collect_type_keys(
 
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
 pub(crate) fn resolve_name(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     offset: TextSize,
@@ -2550,7 +2550,7 @@ pub(crate) fn resolve_name(
 
 /// All references to a declaration (name use sites).
 pub(crate) fn decl_references(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
     decl: SemanticId,
@@ -2580,7 +2580,7 @@ pub(crate) fn decl_references(
 /// Per-slot function return types. Doc annotations take priority (one slot per `---@return`);
 /// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via salsa fixed point.
 pub(crate) fn signature_returns(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
@@ -2704,7 +2704,7 @@ pub(crate) fn signature_returns(
 /// When a member implementation function (`function Test.e()`) has no `---@return`, use the return type
 /// of the same-named `---@field e fun(): ...` as this implementation's signature return.
 fn member_expected_returns(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
     config: &ConfigInputData,
@@ -2772,7 +2772,7 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 /// Function return type (merged view, compatible with old consumers). Doc annotations take priority; otherwise scan the function body's `return` statements.
 /// Mutual recursion (`foo`->`bar`->`foo`) converges via salsa's native fixed point.
 pub(crate) fn signature_return(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
@@ -2786,7 +2786,7 @@ pub(crate) fn signature_return(
 
 /// Type of the function's `param_index`-th parameter (`---@param` annotation + generic binding).
 pub(crate) fn param_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     closure_syntax: LuaSyntaxId,
@@ -2844,7 +2844,7 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 
 /// Value type exported by a module (type of `return M` / table literal, etc.).
 pub(crate) fn module_export_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
 ) -> TypeShell {
@@ -2933,7 +2933,7 @@ impl Drop for ExprTypeGuard {
 /// re-entering the same expression while it is still being inferred returns `Unknown`,
 /// which matches the previous Salsa `cycle_initial` behavior.
 pub(crate) fn expr_type_of(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     config: &ConfigInputData,
     expr_syntax: LuaSyntaxId,
@@ -2953,7 +2953,7 @@ pub(crate) fn expr_type_of(
 }
 
 fn expr_type(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -2975,7 +2975,7 @@ enum ChainFrame {
 }
 
 fn expr_type_chain(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -3029,7 +3029,7 @@ fn expr_type_chain(
 }
 
 fn expr_type_node(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -3150,7 +3150,7 @@ fn expr_type_node(
 }
 
 fn expr_type_index(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -3258,7 +3258,7 @@ fn expr_type_index(
 }
 
 fn expr_type_call(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     facts: &FileFacts,
     workspace: Option<()>,
     file: FileId,
@@ -3298,7 +3298,7 @@ fn expr_type_call(
 /// Phase 2 member type: union of members by owner key + resolved concrete id key (cross-file).
 /// Each member's type is resolved in its declaring file (`member_type` keyed by file input, so invalidation is file-precise).
 fn member_type_via_owner(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: &SemanticId,
@@ -3328,7 +3328,7 @@ fn member_type_via_owner(
 /// Same as `member_type_via_owner`, but only accepts `:` method members.
 /// Instance access inherits methods from the class table, not arbitrary dot-assignments on it.
 fn member_type_via_owner_method(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: (),
     config: &ConfigInputData,
     owner: &SemanticId,
@@ -3467,7 +3467,7 @@ fn require_module_name(call_expr: &LuaCallExpr) -> Option<String> {
 
 /// file_id → (file input, config input).
 pub(crate) fn file_and_config(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file_id: FileId,
 ) -> Option<(FileId, &ConfigInputData)> {
     Some((db.file_input(file_id)?, db.config_input()?))

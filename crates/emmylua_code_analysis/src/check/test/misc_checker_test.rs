@@ -38,7 +38,7 @@ fn test_library_file_has_no_diagnostics() {
     use std::sync::Arc;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     db.add_library_workspace(&crate::WorkspaceFolder::new(
         std::path::PathBuf::from("C:/libs/some-lib"),
@@ -143,7 +143,7 @@ fn test_access_invisible_cross_file() {
     use crate::semantic_model::SemanticModel;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SalsaDatabase::new();
+    let mut db = crate::SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     // Definition file: private field.
     let uri_b = Uri::from_str("file:///C:/ws/def.lua").unwrap();

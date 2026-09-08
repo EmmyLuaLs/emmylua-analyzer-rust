@@ -5,7 +5,7 @@ mod text_output_writer;
 
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{FileId, SalsaDatabase};
+use emmylua_code_analysis::{FileId, SemanticDatabase};
 use lsp_types::Diagnostic;
 use tokio::sync::mpsc::Receiver;
 
@@ -18,7 +18,7 @@ type DiagnosticReceiver = Receiver<(FileId, Option<Vec<Diagnostic>>)>;
 
 pub async fn output_result(
     total_count: usize,
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     workspace: PathBuf,
     mut receiver: DiagnosticReceiver,
     output_format: OutputFormat,
@@ -92,7 +92,7 @@ pub async fn output_result(
 }
 
 trait OutputWriter {
-    fn write(&mut self, db: &SalsaDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>);
+    fn write(&mut self, db: &SemanticDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>);
 
     fn finish(&mut self);
 }

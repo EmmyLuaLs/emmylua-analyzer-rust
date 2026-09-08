@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{FileId, SalsaDatabase, SalsaSemanticModel, SemanticId, TypeDef};
+use emmylua_code_analysis::{FileId, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDef};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaIndexExpr, LuaLiteralToken, LuaSyntaxToken,
 };
@@ -20,7 +20,7 @@ use crate::handlers::common::{
 /// Entry point: token position → list of reference positions.
 pub fn search_references(
     model: &SalsaSemanticModel<'_>,
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     token: LuaSyntaxToken,
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
@@ -106,7 +106,7 @@ fn require_index_member(
 /// Reference ranges for require module path strings (the legacy reference index also counted the
 /// `"mod"` in `require("mod").field` as a member alias reference).
 fn require_module_literal_ranges(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
 ) -> Vec<(FileId, rowan::TextRange)> {
     let mut out = Vec::new();
@@ -139,7 +139,7 @@ fn require_module_literal_ranges(
 /// Member reference ranges + `require("mod").member` usage sites (`resolve_member` does not yet give
 /// alias identities for require-module exported members; here they are filled in by module file + member key).
 fn member_reference_ranges_with_require(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     member: &SemanticId,
     include_declaration: bool,
 ) -> Vec<(FileId, rowan::TextRange)> {
@@ -167,7 +167,7 @@ fn member_reference_ranges_with_require(
 /// Declarations in `local function flush() ...; return { flush = flush }` are included, and cross-file
 /// usage sites like `local f = require("mod").flush; f()` must also be counted.
 fn decl_reference_ranges_with_aliases(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
     include_declaration: bool,
 ) -> Vec<(FileId, rowan::TextRange)> {
@@ -224,7 +224,7 @@ fn decl_reference_ranges_with_aliases(
 
 /// `return init` module export: other files alias the declaration to the target via `local f = require("mod")`.
 fn module_alias_decls_of_decl(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     decl: &SemanticId,
 ) -> Vec<(SemanticId, Vec<(FileId, rowan::TextRange)>)> {
     let mut out = Vec::new();
@@ -298,7 +298,7 @@ fn require_module_name_at(
 }
 
 /// Which member aliases reference a declaration (the `flush` member in `export.flush = flush`).
-fn alias_members_of_decl(salsa: &SalsaDatabase, decl: &SemanticId) -> Vec<SemanticId> {
+fn alias_members_of_decl(salsa: &SemanticDatabase, decl: &SemanticId) -> Vec<SemanticId> {
     let mut out = Vec::new();
     for file_id in salsa.file_ids() {
         let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
@@ -321,7 +321,7 @@ fn alias_members_of_decl(salsa: &SalsaDatabase, decl: &SemanticId) -> Vec<Semant
 }
 
 /// Which declarations are initialized from a member alias (the `f` in `local f = require("mod").flush`).
-fn decls_aliased_to_member(salsa: &SalsaDatabase, member: &SemanticId) -> Vec<SemanticId> {
+fn decls_aliased_to_member(salsa: &SemanticDatabase, member: &SemanticId) -> Vec<SemanticId> {
     let mut out = Vec::new();
     for file_id in salsa.file_ids() {
         let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
@@ -362,7 +362,7 @@ fn push_unique(out: &mut Vec<(FileId, rowan::TextRange)>, item: (FileId, rowan::
 }
 
 fn location_of(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {

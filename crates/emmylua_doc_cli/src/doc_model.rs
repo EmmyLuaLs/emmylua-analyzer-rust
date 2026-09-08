@@ -178,7 +178,7 @@ pub struct DocModel {
 
 impl DocModel {
     pub fn build(analysis: &EmmyLuaAnalysis) -> Self {
-        let salsa = &analysis.salsa;
+        let salsa = &analysis.db;
 
         let mut file_ids = salsa.file_ids();
         file_ids.sort();

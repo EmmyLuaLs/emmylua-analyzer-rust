@@ -1,4 +1,4 @@
-use emmylua_code_analysis::SalsaDatabase;
+use emmylua_code_analysis::SemanticDatabase;
 use lsp_types::{CodeLens, Command, Location, Range, Uri};
 
 use crate::{
@@ -15,7 +15,7 @@ const VSCODE_COMMAND_NAME: &str = "emmy.showReferences";
 const OTHER_COMMAND_NAME: &str = "editor.action.showReferences";
 
 pub fn resolve_code_lens(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     code_lens: CodeLens,
     client_id: ClientId,
 ) -> Option<CodeLens> {
@@ -60,7 +60,7 @@ pub fn resolve_code_lens(
 }
 
 fn location_of(
-    salsa: &SalsaDatabase,
+    salsa: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {

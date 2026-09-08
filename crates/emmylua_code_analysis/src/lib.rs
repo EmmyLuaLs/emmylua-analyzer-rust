@@ -8,7 +8,6 @@
     )
 )]
 
-mod analysis_state;
 mod check;
 mod config;
 mod locale;
@@ -29,8 +28,7 @@ pub use crate::salsa_builder::def::{
 };
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
-pub use crate::salsa_builder::{DocumentView, SalsaDatabase};
-pub use analysis_state::{AnalysisState, FileData, WorkspaceIndex};
+pub use crate::salsa_builder::{DocumentView, SemanticDatabase};
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };
@@ -68,7 +66,7 @@ pub fn set_locale(locale: &str) {
 
 #[derive(Debug)]
 pub struct EmmyLuaAnalysis {
-    pub salsa: SalsaDatabase,
+    pub db: SemanticDatabase,
     pub diagnostic: LuaDiagnostic,
     pub emmyrc: Arc<Emmyrc>,
 }
@@ -76,10 +74,10 @@ pub struct EmmyLuaAnalysis {
 impl EmmyLuaAnalysis {
     pub fn new() -> Self {
         let emmyrc = Arc::new(Emmyrc::default());
-        let mut salsa = SalsaDatabase::new();
-        salsa.update_config(emmyrc.clone());
+        let mut db = SemanticDatabase::new();
+        db.update_config(emmyrc.clone());
         Self {
-            salsa,
+            db,
             diagnostic: LuaDiagnostic::new(),
             emmyrc,
         }
@@ -88,7 +86,7 @@ impl EmmyLuaAnalysis {
     pub fn init_std_lib(&mut self, create_resources_dir: Option<String>) {
         let is_jit = self.emmyrc.runtime.version.is_luajit();
         let (std_root, files) = load_resource_std(create_resources_dir, is_jit);
-        self.salsa.add_std_workspace(std_root);
+        self.db.add_std_workspace(std_root);
 
         let files = files
             .into_iter()
@@ -104,38 +102,38 @@ impl EmmyLuaAnalysis {
             .iter()
             .map(|(path, _)| path.clone())
             .collect::<Vec<_>>();
-        self.salsa.add_protected_paths(protected);
+        self.db.add_protected_paths(protected);
         self.update_files_by_path(files);
     }
 
     pub fn get_file_id(&self, uri: &Uri) -> Option<FileId> {
-        self.salsa.lookup_file_id(uri)
+        self.db.lookup_file_id(uri)
     }
 
     pub fn get_uri(&self, file_id: FileId) -> Option<Uri> {
-        self.salsa.file_uri(file_id)
+        self.db.file_uri(file_id)
     }
 
     pub fn add_main_workspace(&mut self, root: PathBuf) {
-        self.salsa.add_main_workspace(root);
+        self.db.add_main_workspace(root);
     }
 
     /// Register a library workspace.
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
-        self.salsa.add_library_workspace(workspace);
+        self.db.add_library_workspace(workspace);
     }
 
     /// Clear non-std workspaces (keep built-in std).
     pub fn clear_non_std_workspaces(&mut self) {
-        self.salsa.clear_non_std_workspaces();
+        self.db.clear_non_std_workspaces();
     }
 
     pub fn update_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> Option<FileId> {
-        Some(self.salsa.set_file_content(uri, text))
+        Some(self.db.set_file_content(uri, text))
     }
 
     pub fn update_remote_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        self.salsa.set_file_content(uri, text)
+        self.db.set_file_content(uri, text)
     }
 
     pub fn update_file_by_path(&mut self, path: &PathBuf, text: Option<String>) -> Option<FileId> {
@@ -146,7 +144,7 @@ impl EmmyLuaAnalysis {
     pub fn update_files_by_uri(&mut self, files: Vec<(Uri, Option<String>)>) -> Vec<FileId> {
         files
             .into_iter()
-            .map(|(uri, text)| self.salsa.set_file_content(&uri, text))
+            .map(|(uri, text)| self.db.set_file_content(&uri, text))
             .collect()
     }
 
@@ -161,8 +159,8 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn remove_file_by_uri(&mut self, uri: &Uri) -> Option<FileId> {
-        let file_id = self.salsa.lookup_file_id(uri)?;
-        self.salsa.remove_file(file_id);
+        let file_id = self.db.lookup_file_id(uri)?;
+        self.db.remove_file(file_id);
         Some(file_id)
     }
 
@@ -191,9 +189,9 @@ impl EmmyLuaAnalysis {
         let mut kept_paths = open_paths.clone();
         kept_paths.extend(files.iter().map(|(path, _)| path.clone()));
         // Built-in std and other protected files are not workspace files; they must not be deleted on reload.
-        kept_paths.extend(self.salsa.protected_paths().iter().cloned());
+        kept_paths.extend(self.db.protected_paths().iter().cloned());
 
-        let old_files = self.salsa.file_input_map();
+        let old_files = self.db.file_input_map();
 
         // Compute the local files that need to be removed.
         let stale_uris: Vec<Uri> = old_files
@@ -227,10 +225,10 @@ impl EmmyLuaAnalysis {
             let id = path_to_id
                 .get(&path)
                 .copied()
-                .unwrap_or_else(|| self.salsa.allocate_file_id());
+                .unwrap_or_else(|| self.db.allocate_file_id());
             if let Some(text) = text {
                 let input = self
-                    .salsa
+                    .db
                     .upsert_file_input(id, Some(path.clone()), uri, text);
                 path_to_id.insert(path.clone(), id);
                 new_files.insert(id, input);
@@ -244,12 +242,12 @@ impl EmmyLuaAnalysis {
         for (uri, text) in open_files {
             let path = uri_to_file_path(&uri);
             let id = self
-                .salsa
+                .db
                 .lookup_file_id(&uri)
                 .or_else(|| path.as_ref().and_then(|path| path_to_id.get(path).copied()))
-                .unwrap_or_else(|| self.salsa.allocate_file_id());
+                .unwrap_or_else(|| self.db.allocate_file_id());
             let input = self
-                .salsa
+                .db
                 .upsert_file_input(id, path.clone(), Some(uri.clone()), text);
             new_files.insert(id, input);
             if let Some(path) = &path {
@@ -257,14 +255,14 @@ impl EmmyLuaAnalysis {
             }
         }
 
-        self.salsa.replace_workspace_files(new_files);
+        self.db.replace_workspace_files(new_files);
         stale_uris
     }
 
     pub fn update_config(&mut self, config: Arc<Emmyrc>) {
         self.emmyrc = config.clone();
         self.diagnostic.update_config(config.clone());
-        self.salsa.update_config(config);
+        self.db.update_config(config);
     }
 
     pub fn get_emmyrc(&self) -> Arc<Emmyrc> {
@@ -275,7 +273,7 @@ impl EmmyLuaAnalysis {
 
     /// Semantic model: accesses only the salsa analysis layer.
     pub fn semantic_model(&self, file_id: FileId) -> Option<semantic_model::SemanticModel<'_>> {
-        semantic_model::SemanticModel::new(&self.salsa, file_id)
+        semantic_model::SemanticModel::new(&self.db, file_id)
     }
 
     pub fn diagnose_salsa(
@@ -285,8 +283,8 @@ impl EmmyLuaAnalysis {
     ) -> Option<Vec<lsp_types::Diagnostic>> {
         let model = self.semantic_model(file_id)?;
         let diagnostics = check::check_file(&model, config);
-        let line_index = self.salsa.line_index(file_id)?;
-        let text = self.salsa.get_file_text(file_id)?;
+        let line_index = self.db.line_index(file_id)?;
+        let text = self.db.get_file_text(file_id)?;
         Some(
             diagnostics
                 .into_iter()
@@ -335,8 +333,8 @@ impl EmmyLuaAnalysis {
     pub fn cleanup_nonexistent_files(&mut self) {
         let mut files_to_remove = Vec::new();
 
-        for file_id in self.salsa.file_ids() {
-            if let Some(path) = self.salsa.file_path(file_id).filter(|path| !path.exists())
+        for file_id in self.db.file_ids() {
+            if let Some(path) = self.db.file_path(file_id).filter(|path| !path.exists())
                 && let Some(uri) = file_path_to_uri(&path)
             {
                 files_to_remove.push(uri);
@@ -403,8 +401,8 @@ mod tests {
         );
 
         // Line index: TextRange → LSP line/column.
-        let index = analysis.salsa.line_index(fid).expect("line index");
-        let text = analysis.salsa.get_file_text(fid).expect("text");
+        let index = analysis.db.line_index(fid).expect("line index");
+        let text = analysis.db.get_file_text(fid).expect("text");
         let (line, col) = index
             .get_line_col(y.name_range.start(), text)
             .expect("line col");
@@ -418,7 +416,7 @@ mod tests {
         let mut analysis = EmmyLuaAnalysis::new();
         let protected_path = PathBuf::from("C:/protected/std.lua");
         analysis
-            .salsa
+            .db
             .add_protected_paths(vec![protected_path.clone()]);
         analysis
             .update_file_by_path(&protected_path, Some("return 1".to_string()))
@@ -430,7 +428,7 @@ mod tests {
         let uri = file_path_to_uri(&protected_path).unwrap();
         let fid = analysis.get_file_id(&uri).expect("file should remain");
         assert_eq!(
-            analysis.salsa.file_path(fid).as_deref(),
+            analysis.db.file_path(fid).as_deref(),
             Some(protected_path.as_path())
         );
     }

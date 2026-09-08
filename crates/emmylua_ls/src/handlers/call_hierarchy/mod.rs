@@ -30,7 +30,7 @@ pub async fn on_prepare_call_hierarchy_handler(
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let model = analysis.semantic_model(file_id)?;
-            let document = analysis.salsa.document(file_id)?;
+            let document = analysis.db.document(file_id)?;
             let root = model.chunk()?;
             let position_offset =
                 document.get_offset(position.line as usize, position.character as usize)?;
@@ -57,7 +57,7 @@ pub async fn on_prepare_call_hierarchy_handler(
 
             Some(vec![build_call_hierarchy_item(
                 &model,
-                &analysis.salsa,
+                &analysis.db,
                 &semantic_decl,
             )?])
         },
@@ -84,7 +84,7 @@ pub async fn on_incoming_calls_handler(
         context.analysis(),
         CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         cancel_token,
-        move |analysis| build_incoming_hierarchy(&analysis.salsa, &semantic_decl),
+        move |analysis| build_incoming_hierarchy(&analysis.db, &semantic_decl),
     )
     .await
 }

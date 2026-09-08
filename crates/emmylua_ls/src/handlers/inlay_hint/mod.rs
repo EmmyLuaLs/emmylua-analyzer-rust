@@ -46,7 +46,7 @@ pub fn inlay_hint(
     let model = analysis.semantic_model(file_id)?;
     let enum_param_hint = analysis.get_emmyrc().hint.enum_param_hint;
 
-    build_inlay_hints(&model, &analysis.salsa, client_id, enum_param_hint)
+    build_inlay_hints(&model, &analysis.db, client_id, enum_param_hint)
 }
 
 #[allow(unused_variables)]

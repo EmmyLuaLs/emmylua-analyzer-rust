@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 use crate::FileId;
 use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
 
-use super::SalsaDatabase;
+use super::SemanticDatabase;
 use super::inputs::ConfigInputData;
 use super::query::file_facts;
 
@@ -50,12 +50,12 @@ pub struct MemberExport {
 }
 
 /// Per-file export facts (collects identities only, no type precomputation).
-pub(crate) fn file_exports(db: &SalsaDatabase, file: FileId) -> &FileExports {
+pub(crate) fn file_exports(db: &SemanticDatabase, file: FileId) -> &FileExports {
     db.file_exports_of(file.file_id(db))
 }
 
 pub(super) fn build_file_exports(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     file: FileId,
     _config: &ConfigInputData,
     file_id: FileId,
@@ -123,12 +123,12 @@ pub fn shard_of(file_id: FileId) -> u8 {
 }
 
 /// A shard's export facts (write-time built map lookup).
-pub(crate) fn export_shard(db: &SalsaDatabase, _workspace: (), shard: u8) -> &ExportShard {
+pub(crate) fn export_shard(db: &SemanticDatabase, _workspace: (), shard: u8) -> &ExportShard {
     db.export_shard_of(shard)
 }
 
 pub(super) fn build_export_shard(
-    db: &SalsaDatabase,
+    db: &SemanticDatabase,
     _workspace: (),
     _config: &ConfigInputData,
     shard: u8,
