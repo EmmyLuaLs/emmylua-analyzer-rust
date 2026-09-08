@@ -189,7 +189,7 @@ impl EmmyLuaAnalysis {
         // Built-in std and other protected files are not workspace files; they must not be deleted on reload.
         kept_paths.extend(self.db.protected_paths().iter().cloned());
 
-        let old_files = self.db.file_input_map();
+        let old_files = self.db.file_data_map();
 
         // Compute the local files that need to be removed.
         let stale_uris: Vec<Uri> = old_files
@@ -225,7 +225,7 @@ impl EmmyLuaAnalysis {
                 .copied()
                 .unwrap_or_else(|| self.db.allocate_file_id());
             if let Some(text) = text {
-                let input = self.db.upsert_file_input(id, Some(path.clone()), uri, text);
+                let input = FileData::new(id, uri, Some(path.clone()), text);
                 path_to_id.insert(path.clone(), id);
                 new_files.insert(id, input);
             } else {
@@ -242,16 +242,14 @@ impl EmmyLuaAnalysis {
                 .lookup_file_id(&uri)
                 .or_else(|| path.as_ref().and_then(|path| path_to_id.get(path).copied()))
                 .unwrap_or_else(|| self.db.allocate_file_id());
-            let input = self
-                .db
-                .upsert_file_input(id, path.clone(), Some(uri.clone()), text);
+            let input = FileData::new(id, Some(uri.clone()), path.clone(), text);
             new_files.insert(id, input);
             if let Some(path) = &path {
                 path_to_id.insert(path.clone(), id);
             }
         }
 
-        self.db.replace_workspace_files(new_files);
+        self.db.replace_files(new_files);
         stale_uris
     }
 

@@ -169,13 +169,11 @@ impl<'db> SemanticQueries<'db> {
 
     /// Whether a global name is deprecated in any workspace.
     pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
-        let (Some(workspace), Some(config)) = (self.db.workspace_input(), self.db.config_input())
-        else {
+        let Some(config) = self.db.config_input() else {
             return false;
         };
-        for ws_id in query::all_workspace_ids(self.db, workspace) {
-            if query::deprecated_global_names_for(self.db, workspace, config, ws_id).contains(name)
-            {
+        for ws_id in query::all_workspace_ids(self.db) {
+            if query::deprecated_global_names_for(self.db, config, ws_id).contains(name) {
                 return true;
             }
         }
@@ -183,14 +181,12 @@ impl<'db> SemanticQueries<'db> {
     }
 
     pub(crate) fn is_deprecated_member_name(&self, name: &str) -> bool {
-        let (Some(workspace), Some(config)) = (self.db.workspace_input(), self.db.config_input())
-        else {
+        let Some(config) = self.db.config_input() else {
             return false;
         };
         let key = SmolStr::new(name);
-        for ws_id in query::all_workspace_ids(self.db, workspace) {
-            if query::deprecated_member_names_for(self.db, workspace, config, ws_id).contains(&key)
-            {
+        for ws_id in query::all_workspace_ids(self.db) {
+            if query::deprecated_member_names_for(self.db, config, ws_id).contains(&key) {
                 return true;
             }
         }
@@ -259,9 +255,8 @@ impl<'db> SemanticQueries<'db> {
 
     /// Workspace-global declaration (cross-file). The `Decl` key carries its defining file.
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
-        let workspace = self.db.workspace_input()?;
         let config = self.db.config_input()?;
-        query::global_decl_by_name(self.db, workspace, config, SmolStr::new(name))
+        query::global_decl_by_name(self.db, config, SmolStr::new(name))
     }
 
     /// All references to a declaration.
@@ -327,57 +322,42 @@ impl<'db> SemanticQueries<'db> {
 
     /// Cross-file merged member keys (completion candidates): runtime members (Name/Decl keys) + `@field` (TypeDef keys).
     pub fn member_keys_of_owner(&self, owner: SemanticId) -> Vec<SmolStr> {
-        let Some(workspace) = self.db.workspace_input() else {
-            return Vec::new();
-        };
         let Some(config) = self.db.config_input() else {
             return Vec::new();
         };
-        query::member_keys_of_owner(self.db, workspace, config, owner)
+        query::member_keys_of_owner(self.db, config, owner)
     }
 
     // ── Phase 2: Workspace member associations ──
 
     /// Resolve `Name("a.b")` to its real definition (global type/variable/member chain). `Decl`/`TypeDef`/`Member` are returned as-is.
     pub fn resolve_owner(&self, owner: SemanticId) -> Option<SemanticId> {
-        let workspace = self.db.workspace_input()?;
         let config = self.db.config_input()?;
-        query::resolve_owner(self.db, workspace, config, owner)
+        query::resolve_owner(self.db, config, owner)
     }
 
     /// Resolve an owner to a set of identities (dual identity: same-named type + runtime value decl).
     pub fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
-        let Some(workspace) = self.db.workspace_input() else {
-            return Vec::new();
-        };
         let Some(config) = self.db.config_input() else {
             return Vec::new();
         };
-        query::resolve_owner_set(self.db, workspace, config, owner)
+        query::resolve_owner_set(self.db, config, owner)
     }
 
     /// Members of an owner identified by `SemanticId` (cross-file).
     pub fn members_of_owner(&self, owner: SemanticId) -> MemberList {
-        let Some(workspace) = self.db.workspace_input() else {
-            return MemberList::default();
-        };
         let Some(config) = self.db.config_input() else {
             return MemberList::default();
         };
-        MemberList::from(query::members_of_owner(self.db, workspace, config, owner))
+        MemberList::from(query::members_of_owner(self.db, config, owner))
     }
 
     /// Members of an owner with a specific name.
     pub fn members_of_owner_named(&self, owner: SemanticId, name: SmolStr) -> MemberList {
-        let Some(workspace) = self.db.workspace_input() else {
-            return MemberList::default();
-        };
         let Some(config) = self.db.config_input() else {
             return MemberList::default();
         };
-        MemberList::from(query::members_of_owner_named(
-            self.db, workspace, config, owner, name,
-        ))
+        MemberList::from(query::members_of_owner_named(self.db, config, owner, name))
     }
 
     /// Constructor attribute for a type definition (from `meta("Class")` factory `---@[constructor("init")]`).
@@ -385,9 +365,8 @@ impl<'db> SemanticQueries<'db> {
         &self,
         type_def: SemanticId,
     ) -> Option<ConstructorAttribute> {
-        let workspace = self.db.workspace_input()?;
         let config = self.db.config_input()?;
-        query::constructor_attribute_of_type(self.db, workspace, config, type_def)
+        query::constructor_attribute_of_type(self.db, config, type_def)
     }
 
     // ── Signatures ──
@@ -453,9 +432,8 @@ impl<'db> SemanticQueries<'db> {
 
     /// Module name → module file (require resolution).
     pub fn module_file_of(&self, module_name: &str) -> Option<FileId> {
-        let workspace = self.db.workspace_input()?;
         let config = self.db.config_input()?;
-        query::module_file_of(self.db, workspace, config, SmolStr::new(module_name))
+        query::module_file_of(self.db, config, SmolStr::new(module_name))
     }
 
     // ── Types (named, scoped) ──
@@ -463,8 +441,7 @@ impl<'db> SemanticQueries<'db> {
     /// Resolve a named type in the current file scope (same-file Private → Internal → Global).
     pub fn resolve_type_def(&self, file_id: FileId, name: &str) -> Option<TypeDef> {
         let (file, config) = file_and_config(self.db, file_id)?;
-        let workspace = self.db.workspace_input()?;
-        resolve_type_def(self.db, workspace, config, file, SmolStr::new(name))
+        resolve_type_def(self.db, config, file, SmolStr::new(name))
     }
 
     /// Resolve **all definition locations** of a named type in the current file scope (for duplicate-type checks).
@@ -472,24 +449,16 @@ impl<'db> SemanticQueries<'db> {
         let Some((file, config)) = file_and_config(self.db, file_id) else {
             return Vec::new();
         };
-        let Some(workspace) = self.db.workspace_input() else {
-            return Vec::new();
-        };
-        query::resolve_type_def_locations(self.db, workspace, config, file, SmolStr::new(name))
-            .to_vec()
+        query::resolve_type_def_locations(self.db, config, file, SmolStr::new(name)).to_vec()
     }
 
     /// All type definitions for a scope + full name (cross-file, for member queries / inheritance chains).
     pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> TypeDefList {
-        let Some(workspace) = self.db.workspace_input() else {
-            return TypeDefList::default();
-        };
         let Some(config) = self.db.config_input() else {
             return TypeDefList::default();
         };
         TypeDefList::from(query::type_defs_in_scope(
             self.db,
-            workspace,
             config,
             scope,
             SmolStr::new(full_name),
@@ -529,8 +498,7 @@ impl<'db> SemanticQueries<'db> {
         let Some((file, config)) = file_and_config(self.db, file_id) else {
             return LuaType::Unknown;
         };
-        let workspace = self.db.workspace_input();
-        let shell = query::lower_doc_type(self.db, workspace, file, config, type_syntax, generics);
+        let shell = query::lower_doc_type(self.db, file, config, type_syntax, generics);
         let generic_names: Vec<SmolStr> = generics.iter().map(|g| g.name.clone()).collect();
         self.type_shell_lua_in(file_id, &shell, &generic_names)
     }

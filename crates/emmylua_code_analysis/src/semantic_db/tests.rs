@@ -936,11 +936,10 @@ fn test_file_exports_identity_and_shard_memo() {
     assert!(exports1.globals.iter().any(|g| g.name == "M"));
     assert!(exports1.members.iter().any(|m| m.key.to_path() == "x"));
 
-    let workspace = db.workspace_input().expect("workspace");
     let shard1 = shard_of(fid1);
     let shard2 = shard_of(fid2);
-    let _ = export_shard(&db, workspace, shard1);
-    let _ = export_shard(&db, workspace, shard2);
+    let _ = export_shard(&db, shard1);
+    let _ = export_shard(&db, shard2);
 
     // export_shard 已经是普通缓存，不再通过 query_execution_count 观察 memo。
     set_test_file(
@@ -950,8 +949,8 @@ fn test_file_exports_identity_and_shard_memo() {
         "N = {}
 N.y = 2",
     );
-    let _ = export_shard(&db, workspace, shard1);
-    let edited = export_shard(&db, workspace, shard2);
+    let _ = export_shard(&db, shard1);
+    let edited = export_shard(&db, shard2);
     assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
 }
 
@@ -972,20 +971,19 @@ fn test_module_and_deprecated_shard_memo() {
     );
     assert_ne!(shard_of(fid1), shard_of(fid2));
 
-    let workspace = db.workspace_input().expect("workspace");
     let shard1 = shard_of(fid1);
     let shard2 = shard_of(fid2);
-    let _ = deprecated_shard(&db, workspace, shard1);
-    let _ = deprecated_shard(&db, workspace, shard2);
-    let _ = module_shard(&db, workspace, shard1);
-    let _ = module_shard(&db, workspace, shard2);
+    let _ = deprecated_shard(&db, shard1);
+    let _ = deprecated_shard(&db, shard2);
+    let _ = module_shard(&db, shard1);
+    let _ = module_shard(&db, shard2);
 
     // module_shard/deprecated_shard 已是普通缓存，这里只验证编辑后仍可正常读取。
     set_test_file(&mut db, 2, "C:/ws/b.lua", "return {}");
-    let _ = deprecated_shard(&db, workspace, shard1);
-    let _ = module_shard(&db, workspace, shard1);
-    let _ = deprecated_shard(&db, workspace, shard2);
-    let _ = module_shard(&db, workspace, shard2);
+    let _ = deprecated_shard(&db, shard1);
+    let _ = module_shard(&db, shard1);
+    let _ = deprecated_shard(&db, shard2);
+    let _ = module_shard(&db, shard2);
 }
 
 #[test]

@@ -75,20 +75,16 @@ impl Default for SemanticDatabase {
 }
 
 impl SemanticDatabase {
-    pub(crate) fn file_input(&self, file_id: FileId) -> Option<FileId> {
+    pub(crate) fn file_data_id(&self, file_id: FileId) -> Option<FileId> {
         self.vfs.file(file_id).map(|_| file_id)
     }
 
-    pub(crate) fn source_file_data(&self, file_id: FileId) -> Option<&FileData> {
+    pub(crate) fn file_data(&self, file_id: FileId) -> Option<&FileData> {
         self.vfs.file(file_id)
     }
 
     pub(crate) fn workspace_roots(&self) -> &Arc<[WorkspaceRoot]> {
         &self.workspace_roots
-    }
-
-    pub(crate) fn workspace_input(&self) -> Option<()> {
-        Some(())
     }
 
     pub(crate) fn file_facts_map(&self) -> &HashMap<FileId, facts::FileFacts> {
@@ -380,16 +376,6 @@ impl SemanticDatabase {
         self.set_file_inner(file_id, path, uri, text);
     }
 
-    pub(crate) fn upsert_file_input(
-        &mut self,
-        file_id: FileId,
-        path: Option<PathBuf>,
-        uri: Option<Uri>,
-        text: String,
-    ) -> FileData {
-        FileData::new(file_id, uri, path, Arc::from(text))
-    }
-
     fn set_file_inner(
         &mut self,
         file_id: FileId,
@@ -401,8 +387,8 @@ impl SemanticDatabase {
         self.rebuild_all_caches();
     }
 
-    /// Replace the whole workspace file set in one semantic write.
-    pub(crate) fn replace_workspace_files(&mut self, file_inputs: HashMap<FileId, FileData>) {
+    /// Replace the whole workspace file set in one write.
+    pub(crate) fn replace_files(&mut self, file_data_ids: HashMap<FileId, FileData>) {
         let protected_paths = self
             .vfs
             .protected_paths()
@@ -414,7 +400,7 @@ impl SemanticDatabase {
             vfs.update_config(emmyrc);
         }
         vfs.set_protected_paths(protected_paths);
-        for (file_id, input) in file_inputs {
+        for (file_id, input) in file_data_ids {
             let text = input.text.to_string();
             let path = input.path.clone();
             let uri = input.uri.clone();
@@ -426,7 +412,7 @@ impl SemanticDatabase {
     }
 
     /// Current workspace file map (FileId -> source data).
-    pub(crate) fn file_input_map(&self) -> HashMap<FileId, FileData> {
+    pub(crate) fn file_data_map(&self) -> HashMap<FileId, FileData> {
         self.vfs
             .files()
             .into_iter()
@@ -539,12 +525,12 @@ impl SemanticDatabase {
 
     /// All use sites of a declaration (Decl) (cross-file, aggregated through sharded reference index).
     pub fn decl_reference_ranges(&self, decl: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
+        let Some(_config) = self.config_input() else {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, ws_id);
+        for ws_id in query::all_workspace_ids(self) {
+            let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.decl_refs.get(decl) {
                 out.extend(ranges.iter().copied());
             }
@@ -554,12 +540,12 @@ impl SemanticDatabase {
 
     /// All use sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_reference_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
+        let Some(_config) = self.config_input() else {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, ws_id);
+        for ws_id in query::all_workspace_ids(self) {
+            let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.member_refs.get(member) {
                 out.extend(ranges.iter().copied());
             }
@@ -569,12 +555,12 @@ impl SemanticDatabase {
 
     /// All definition sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_definition_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
+        let Some(_config) = self.config_input() else {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_reference_index_for(self, workspace, ws_id);
+        for ws_id in query::all_workspace_ids(self) {
+            let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.member_defs.get(member) {
                 out.extend(ranges.iter().copied());
             }
@@ -584,8 +570,7 @@ impl SemanticDatabase {
 
     /// File → owning workspace id.
     pub fn workspace_id_of(&self, file_id: FileId) -> Option<WorkspaceId> {
-        let workspace = self.workspace_input()?;
-        query::file_workspace_id(self, workspace, file_id)
+        query::file_workspace_id(self, file_id)
     }
 
     pub fn is_std_file(&self, file_id: FileId) -> bool {
@@ -603,11 +588,9 @@ impl SemanticDatabase {
 
     /// File → semantic module info (equivalent to ModuleIndex).
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
-        let workspace = self.workspace_input()?;
         let _config = self.config_input()?;
-        let ws_id =
-            query::file_workspace_id(self, workspace, file_id).unwrap_or(WorkspaceId::REMOTE);
-        let index = query::workspace_module_index_for(self, workspace, ws_id);
+        let ws_id = query::file_workspace_id(self, file_id).unwrap_or(WorkspaceId::REMOTE);
+        let index = query::workspace_module_index_for(self, ws_id);
         let mut info = index.module_info(file_id)?;
         if let Some(shell) = self.q().module_export_type(file_id) {
             info.export_type = Some(self.q().type_shell_lua(file_id, &shell));
@@ -617,10 +600,9 @@ impl SemanticDatabase {
 
     /// Module path → module tree node id (empty path returns the root node).
     pub fn module_node(&self, module_path: &str) -> Option<ModuleNodeId> {
-        let workspace = self.workspace_input()?;
         let _config = self.config_input()?;
-        for ws_id in query::all_workspace_ids(self, workspace) {
-            let index = query::workspace_module_index_for(self, workspace, ws_id);
+        for ws_id in query::all_workspace_ids(self) {
+            let index = query::workspace_module_index_for(self, ws_id);
             if let Some(node_id) = index.find_module_node(module_path) {
                 return Some(node_id);
             }
@@ -630,18 +612,17 @@ impl SemanticDatabase {
 
     /// Module tree node details.
     pub fn module_node_info(&self, node_id: ModuleNodeId) -> Option<ModuleNode> {
-        let workspace = self.workspace_input()?;
         let _config = self.config_input()?;
-        let index = query::workspace_module_index_for(self, workspace, node_id.workspace_id);
+        let index = query::workspace_module_index_for(self, node_id.workspace_id);
         index.module_node(node_id).cloned()
     }
 
     /// File id list under a module tree node.
     pub fn module_node_file_ids(&self, node_id: ModuleNodeId) -> Vec<FileId> {
-        let (Some(workspace), Some(_config)) = (self.workspace_input(), self.config_input()) else {
+        let Some(_config) = self.config_input() else {
             return Vec::new();
         };
-        let index = query::workspace_module_index_for(self, workspace, node_id.workspace_id);
+        let index = query::workspace_module_index_for(self, node_id.workspace_id);
         index
             .module_file_ids(node_id)
             .map(|ids| ids.to_vec())

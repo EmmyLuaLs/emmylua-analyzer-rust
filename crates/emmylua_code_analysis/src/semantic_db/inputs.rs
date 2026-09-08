@@ -16,9 +16,7 @@ use super::def::WorkspaceId;
 
 impl FileId {
     pub(crate) fn path(self, db: &SemanticDatabase) -> &Option<PathBuf> {
-        &db.source_file_data(self)
-            .expect("file data must exist")
-            .path
+        &db.file_data(self).expect("file data must exist").path
     }
 
     pub(crate) fn file_id(self, _db: &SemanticDatabase) -> FileId {
