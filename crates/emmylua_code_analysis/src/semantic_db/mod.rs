@@ -163,6 +163,14 @@ impl SemanticDatabase {
         query::rebuild_all_caches(self);
     }
 
+    fn rebuild_file_after_write(&mut self, file_id: FileId, metadata_changed: bool) {
+        query::rebuild_file_after_write(self, file_id, metadata_changed);
+    }
+
+    fn rebuild_file_after_remove(&mut self, file_id: FileId) {
+        query::rebuild_file_after_remove(self, file_id);
+    }
+
     fn reset_file_facts_cache(&mut self) {
         self.rebuild_all_caches();
     }
@@ -174,7 +182,7 @@ impl SemanticDatabase {
         self.flow_trees.remove(&file_id);
         self.file_exports.remove(&file_id);
         self.file_references.remove(&file_id);
-        self.rebuild_all_caches();
+        self.rebuild_file_after_remove(file_id);
     }
 
     // ---- Config ----
@@ -358,6 +366,28 @@ impl SemanticDatabase {
 
     // ---- File management ----
 
+    /// Update many files and rebuild derived caches once. Used for workspace
+    /// loading / batch watcher updates to avoid O(N^2) incremental rebuilds.
+    pub(crate) fn set_files(&mut self, files: Vec<(Uri, Option<String>)>) -> Vec<FileId> {
+        let mut file_ids = Vec::with_capacity(files.len());
+        for (uri, text) in files {
+            let file_id = self
+                .lookup_file_id(&uri)
+                .unwrap_or_else(|| self.vfs.allocate_file_id());
+            if let Some(text) = text {
+                let path = uri_to_file_path(&uri);
+                self.vfs.insert_at(file_id, Some(uri), path, text);
+            } else {
+                self.vfs.remove(file_id);
+            }
+            file_ids.push(file_id);
+        }
+        if !file_ids.is_empty() {
+            self.rebuild_all_caches();
+        }
+        file_ids
+    }
+
     pub fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
         let fid = self
             .lookup_file_id(uri)
@@ -383,8 +413,11 @@ impl SemanticDatabase {
         uri: Option<Uri>,
         text: String,
     ) {
+        let old_path = self.vfs.file(file_id).and_then(|file| file.path.clone());
+        let old_uri = self.vfs.file(file_id).and_then(|file| file.uri.clone());
+        let metadata_changed = old_path != path || old_uri != uri;
         self.vfs.insert_at(file_id, uri, path, text);
-        self.rebuild_all_caches();
+        self.rebuild_file_after_write(file_id, metadata_changed);
     }
 
     /// Replace the whole workspace file set in one write.

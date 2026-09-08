@@ -22,7 +22,7 @@ use emmylua_parser::{
     LuaLiteralExpr, LuaLiteralToken, LuaReturnStat, LuaSyntaxId, LuaSyntaxTree,
     LuaTypeBinaryOperator, LuaVersionCondition, UnaryOperator,
 };
-use rowan::TextSize;
+use rowan::{TextRange, TextSize};
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
@@ -177,6 +177,153 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     db.reference_shards = reference_shards;
 
     // Workspace reference indexes (depend on reference shards).
+    let workspace_references = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_reference_index(db, config, ws_id)))
+        .collect::<HashMap<_, _>>();
+    db.workspace_index.references = workspace_references;
+}
+
+pub(crate) fn rebuild_file_after_write(
+    db: &mut SemanticDatabase,
+    file_id: FileId,
+    metadata_changed: bool,
+) {
+    let Some(config) = db.config_input().cloned() else {
+        return;
+    };
+    let config = &config;
+    let Some(data) = db.file_data(file_id) else {
+        return;
+    };
+    let text = data.text.clone();
+
+    let old_exports = db.file_exports.get(&file_id).cloned();
+    let old_module_surface = db.file_facts.get(&file_id).map(|facts| {
+        (
+            facts.module_visibility,
+            facts.is_meta,
+            facts.version_conds.clone(),
+        )
+    });
+
+    let facts = build_file_facts(db, file_id, config, file_id, &text);
+    let module_surface = (
+        facts.module_visibility,
+        facts.is_meta,
+        facts.version_conds.clone(),
+    );
+    db.file_facts.insert(file_id, facts);
+
+    let flow = super::flow::build_flow_tree(db, file_id, config);
+    db.flow_trees.insert(file_id, flow);
+
+    let exports = super::exports::build_file_exports(db, file_id, config, file_id);
+    let exports_changed = old_exports.as_ref() != Some(&exports);
+    db.file_exports.insert(file_id, exports);
+
+    let shard = shard_of(file_id);
+    db.export_shards
+        .insert(shard, super::exports::build_export_shard(db, config, shard));
+    db.deprecated_shards
+        .insert(shard, build_deprecated_shard(db, config, shard));
+
+    let module_surface_changed = old_module_surface.as_ref() != Some(&module_surface);
+    let needs_global_rebuild =
+        metadata_changed || exports_changed || module_surface_changed || old_exports.is_none();
+
+    if needs_global_rebuild {
+        if metadata_changed || module_surface_changed {
+            rebuild_all_module_shards(db, config);
+        }
+        rebuild_workspace_indexes(db, config);
+        rebuild_reference_indexes(db, config);
+    } else {
+        // Public surface unchanged: only this file's reference ranges and its shard can change.
+        let references = build_file_references(db, file_id, config);
+        db.file_references.insert(file_id, references);
+        db.reference_shards
+            .insert(shard, build_reference_shard(db, config, shard));
+        rebuild_workspace_reference_indexes(db, config);
+    }
+}
+
+pub(crate) fn rebuild_file_after_remove(db: &mut SemanticDatabase, file_id: FileId) {
+    db.file_facts.remove(&file_id);
+    db.flow_trees.remove(&file_id);
+    db.file_exports.remove(&file_id);
+    db.file_references.remove(&file_id);
+
+    let Some(config) = db.config_input().cloned() else {
+        return;
+    };
+    let config = &config;
+    let shard = shard_of(file_id);
+    db.export_shards
+        .insert(shard, super::exports::build_export_shard(db, config, shard));
+    db.deprecated_shards
+        .insert(shard, build_deprecated_shard(db, config, shard));
+    rebuild_all_module_shards(db, config);
+
+    rebuild_workspace_indexes(db, config);
+    rebuild_reference_indexes(db, config);
+}
+
+fn rebuild_all_module_shards(db: &mut SemanticDatabase, config: &ConfigInputData) {
+    for shard in 0..EXPORT_SHARDS {
+        db.module_shards
+            .insert(shard, build_module_shard(db, config, shard));
+    }
+}
+
+fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+    let ws_ids = all_workspace_ids(db);
+    let workspace_types = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_type_index(db, config, ws_id)))
+        .collect::<HashMap<_, _>>();
+    let workspace_members = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_member_index(db, config, ws_id)))
+        .collect::<HashMap<_, _>>();
+    let workspace_decls = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_decl_index(db, config, ws_id)))
+        .collect::<HashMap<_, _>>();
+    let workspace_modules = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_module_index(db, config, ws_id)))
+        .collect::<HashMap<_, _>>();
+    db.workspace_index = WorkspaceIndexCache {
+        types: workspace_types,
+        members: workspace_members,
+        decls: workspace_decls,
+        modules: workspace_modules,
+        references: HashMap::new(),
+    };
+}
+
+fn rebuild_reference_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+    let file_ids = db.vfs.file_ids();
+    let mut file_references = HashMap::with_capacity(file_ids.len());
+    for file_id in file_ids.iter().copied() {
+        if let Some(file) = db.file_data_id(file_id) {
+            file_references.insert(file_id, build_file_references(db, file, config));
+        }
+    }
+    db.file_references = file_references;
+
+    let mut reference_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    for shard in 0..EXPORT_SHARDS {
+        reference_shards.insert(shard, build_reference_shard(db, config, shard));
+    }
+    db.reference_shards = reference_shards;
+
+    rebuild_workspace_reference_indexes(db, config);
+}
+
+fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+    let ws_ids = all_workspace_ids(db);
     let workspace_references = ws_ids
         .iter()
         .map(|&ws_id| (ws_id, build_workspace_reference_index(db, config, ws_id)))
@@ -584,10 +731,10 @@ pub(crate) fn workspace_member_index_for(
 /// This is the L1 layer of the reference index: each file computes independently and is memoized; editing one file recomputes one file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileReferences {
-    pub decl_refs: HashMap<SemanticId, Vec<rowan::TextRange>>,
-    pub member_refs: HashMap<SemanticId, Vec<rowan::TextRange>>,
+    pub decl_refs: HashMap<SemanticId, Vec<TextRange>>,
+    pub member_refs: HashMap<SemanticId, Vec<TextRange>>,
     /// Member definition sites (`T.x = v` / `@field x` / table field keys / method names).
-    pub member_defs: HashMap<SemanticId, Vec<rowan::TextRange>>,
+    pub member_defs: HashMap<SemanticId, Vec<TextRange>>,
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
@@ -649,9 +796,9 @@ fn build_file_references(
 /// A shard's reference index: only files in the stable shard; editing one file recomputes one shard.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReferenceShard {
-    pub decl_refs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
-    pub member_refs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
-    pub member_defs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
+    pub decl_refs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
+    pub member_refs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
+    pub member_defs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
 }
 
 /// Workspace-level reference index: aggregates `EXPORT_SHARDS` shards.
@@ -660,9 +807,9 @@ pub struct ReferenceShard {
 /// This layer just merges a few shard results rather than scanning every file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceReferenceIndex {
-    pub decl_refs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
-    pub member_refs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
-    pub member_defs: HashMap<SemanticId, Vec<(FileId, rowan::TextRange)>>,
+    pub decl_refs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
+    pub member_refs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
+    pub member_defs: HashMap<SemanticId, Vec<(FileId, TextRange)>>,
 }
 
 pub(crate) fn reference_shard(db: &SemanticDatabase, shard: u8) -> &ReferenceShard {
@@ -1825,6 +1972,11 @@ fn iter_slot_type(
     config: &ConfigInputData,
     decl: &crate::semantic_db::def::Decl,
 ) -> Option<TypeShell> {
+    let key = (file.file_id(db), decl.id.clone());
+    if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
+        return None;
+    }
+    let _guard = IterSlotGuard::enter(key);
     let owner = decl.owner_syntax?;
     let tree = syntax_tree(db, file);
     let node = owner.to_node_from_root(&tree.get_red_root())?;
@@ -2688,6 +2840,33 @@ impl ExprTypeGuard {
     }
 }
 
+thread_local! {
+    static ITER_SLOT_IN_PROGRESS: RefCell<Vec<(FileId, SemanticId)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+struct IterSlotGuard {
+    key: (FileId, SemanticId),
+}
+
+impl IterSlotGuard {
+    fn enter(key: (FileId, SemanticId)) -> Self {
+        ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow_mut().push(key.clone()));
+        Self { key }
+    }
+}
+
+impl Drop for IterSlotGuard {
+    fn drop(&mut self) {
+        ITER_SLOT_IN_PROGRESS.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if let Some(pos) = stack.iter().rposition(|key| key == &self.key) {
+                stack.remove(pos);
+            }
+        });
+    }
+}
+
 impl Drop for ExprTypeGuard {
     fn drop(&mut self) {
         EXPR_TYPE_IN_PROGRESS.with(|stack| {
@@ -2809,6 +2988,7 @@ fn expr_type_node(
             if name == "nil" {
                 return TypeShell::from_primitive(PrimitiveType::Nil);
             }
+
             let offset = name_expr.get_position();
             if let Some(decl) = facts.find_visible_decl_before_offset(&name, offset) {
                 return decl_type(db, file, config, decl.id.clone());
@@ -2937,7 +3117,7 @@ fn expr_type_index(
         if let TypeCandidate::Table(table_id) = candidate {
             let owner = SemanticId::member(
                 FileId::new(table_id.file_id),
-                rowan::TextRange::new(TextSize::from(table_id.start), TextSize::from(table_id.end)),
+                TextRange::new(TextSize::from(table_id.start), TextSize::from(table_id.end)),
             );
             if let Some(shell) = member_type_via_owner(db, config, &owner, &name) {
                 return shell;
