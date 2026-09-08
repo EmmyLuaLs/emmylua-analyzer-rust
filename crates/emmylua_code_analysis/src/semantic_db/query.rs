@@ -12,7 +12,7 @@ use super::def::{
     ConstructorAttribute, DeclKind, DocGenericParam, MemberRef, ModuleExport, ModuleInfo,
     ModuleNode, ModuleNodeId, ModuleVisibility, SemanticId, TypeDef, TypeDefKind,
 };
-use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
+use super::exports::{EXPORT_SHARDS, FileExports, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::ConfigInputData;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
@@ -220,6 +220,7 @@ pub(crate) fn rebuild_file_after_write(
 
     let exports = super::exports::build_file_exports(db, file_id, config, file_id);
     let exports_changed = old_exports.as_ref() != Some(&exports);
+    let new_exports = exports.clone();
     db.file_exports.insert(file_id, exports);
 
     let shard = shard_of(file_id);
@@ -237,7 +238,14 @@ pub(crate) fn rebuild_file_after_write(
             rebuild_all_module_shards(db, config);
         }
         rebuild_workspace_indexes(db, config);
-        rebuild_reference_indexes(db, config);
+        if !metadata_changed
+            && !module_surface_changed
+            && let Some(old_exports) = &old_exports
+        {
+            rebuild_reference_indexes_incremental(db, config, file_id, old_exports, &new_exports);
+        } else {
+            rebuild_reference_indexes(db, config);
+        }
     } else {
         // Public surface unchanged: only this file's reference ranges and its shard can change.
         let references = build_file_references(db, file_id, config);
@@ -318,6 +326,153 @@ fn rebuild_reference_indexes(db: &mut SemanticDatabase, config: &ConfigInputData
         reference_shards.insert(shard, build_reference_shard(db, config, shard));
     }
     db.reference_shards = reference_shards;
+
+    rebuild_workspace_reference_indexes(db, config);
+}
+
+#[derive(Default)]
+struct SurfaceDelta {
+    names: HashSet<SmolStr>,
+    member_names: HashSet<SmolStr>,
+}
+
+fn surface_delta(old_exports: &FileExports, new_exports: &FileExports) -> SurfaceDelta {
+    let mut delta = SurfaceDelta::default();
+
+    let old_globals: HashMap<&str, &super::exports::GlobalExport> = old_exports
+        .globals
+        .iter()
+        .map(|global| (global.name.as_str(), global))
+        .collect();
+    let new_globals: HashMap<&str, &super::exports::GlobalExport> = new_exports
+        .globals
+        .iter()
+        .map(|global| (global.name.as_str(), global))
+        .collect();
+    for (name, old_global) in &old_globals {
+        if new_globals.get(name) != Some(old_global) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+    for name in new_globals.keys() {
+        if !old_globals.contains_key(name) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+
+    let old_types: HashMap<&str, &TypeDef> = old_exports
+        .types
+        .iter()
+        .map(|def| (def.full_name.as_str(), def))
+        .collect();
+    let new_types: HashMap<&str, &TypeDef> = new_exports
+        .types
+        .iter()
+        .map(|def| (def.full_name.as_str(), def))
+        .collect();
+    for (name, old_def) in &old_types {
+        if new_types.get(name) != Some(old_def) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+    for name in new_types.keys() {
+        if !old_types.contains_key(name) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+    for def in &old_exports.types {
+        if !new_exports.types.iter().any(|new_def| new_def.id == def.id) {
+            delta.names.insert(def.name.clone());
+        }
+    }
+    for def in &new_exports.types {
+        if !old_exports.types.iter().any(|old_def| old_def.id == def.id) {
+            delta.names.insert(def.name.clone());
+        }
+    }
+
+    let old_runtime: HashMap<&str, &SemanticId> = old_exports
+        .runtime_values
+        .iter()
+        .map(|(name, decl)| (name.as_str(), decl))
+        .collect();
+    let new_runtime: HashMap<&str, &SemanticId> = new_exports
+        .runtime_values
+        .iter()
+        .map(|(name, decl)| (name.as_str(), decl))
+        .collect();
+    for (name, old_id) in &old_runtime {
+        if new_runtime.get(name) != Some(old_id) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+    for name in new_runtime.keys() {
+        if !old_runtime.contains_key(name) {
+            delta.names.insert(SmolStr::new(*name));
+        }
+    }
+
+    let member_key = |member: &super::exports::MemberExport| {
+        (member.owner.clone(), SmolStr::new(member.key.to_path()))
+    };
+    let old_members: HashMap<(SemanticId, SmolStr), &super::exports::MemberExport> = old_exports
+        .members
+        .iter()
+        .map(|member| (member_key(member), member))
+        .collect();
+    let new_members: HashMap<(SemanticId, SmolStr), &super::exports::MemberExport> = new_exports
+        .members
+        .iter()
+        .map(|member| (member_key(member), member))
+        .collect();
+    for (key, old_member) in &old_members {
+        if new_members.get(key) != Some(old_member) {
+            delta.member_names.insert(key.1.clone());
+        }
+    }
+    for key in new_members.keys() {
+        if !old_members.contains_key(key) {
+            delta.member_names.insert(key.1.clone());
+        }
+    }
+
+    delta
+}
+
+fn rebuild_reference_indexes_incremental(
+    db: &mut SemanticDatabase,
+    config: &ConfigInputData,
+    changed_file_id: FileId,
+    old_exports: &FileExports,
+    new_exports: &FileExports,
+) {
+    let delta = surface_delta(old_exports, new_exports);
+    let mut affected: HashSet<FileId> = HashSet::new();
+    affected.insert(changed_file_id);
+    for (&file_id, references) in &db.file_references {
+        if !references.name_deps.is_disjoint(&delta.names)
+            || !references.member_name_deps.is_disjoint(&delta.member_names)
+        {
+            affected.insert(file_id);
+        }
+    }
+
+    let mut affected_shards: HashSet<u8> = HashSet::new();
+    for &file_id in &affected {
+        affected_shards.insert(shard_of(file_id));
+    }
+
+    for file_id in affected {
+        if let Some(file) = db.file_data_id(file_id) {
+            let references = build_file_references(db, file, config);
+            db.file_references.insert(file_id, references);
+        }
+    }
+
+    for shard in affected_shards {
+        db.reference_shards
+            .insert(shard, build_reference_shard(db, config, shard));
+    }
 
     rebuild_workspace_reference_indexes(db, config);
 }
@@ -735,6 +890,10 @@ pub struct FileReferences {
     pub member_refs: HashMap<SemanticId, Vec<TextRange>>,
     /// Member definition sites (`T.x = v` / `@field x` / table field keys / method names).
     pub member_defs: HashMap<SemanticId, Vec<TextRange>>,
+    /// Global/type names this file's references depend on.
+    pub name_deps: HashSet<SmolStr>,
+    /// Member names this file's references depend on (coarse but safe owner-independent invalidation).
+    pub member_name_deps: HashSet<SmolStr>,
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
@@ -753,6 +912,7 @@ fn build_file_references(
 
     // Name use sites -> declarations.
     for name_use in &facts.name_uses {
+        out.name_deps.insert(name_use.name.clone());
         if let Some(decl) = resolve_name(db, file, config, name_use.syntax.get_range().start()) {
             out.decl_refs
                 .entry(decl)
@@ -779,6 +939,10 @@ fn build_file_references(
         let Some(index_expr) = LuaIndexExpr::cast(node) else {
             continue;
         };
+        if let Some((owner, name)) = member_ref_from_index_expr(&facts, &index_expr) {
+            let _ = owner;
+            out.member_name_deps.insert(name.clone());
+        }
         if let Some(member_id) = resolve_member_id(db, config, &facts, &index_expr) {
             let Some(key) = index_expr.get_index_key() else {
                 continue;
