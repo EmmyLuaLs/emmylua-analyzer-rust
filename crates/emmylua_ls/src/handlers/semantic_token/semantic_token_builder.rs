@@ -1,4 +1,4 @@
-use emmylua_code_analysis::DocumentView;
+use emmylua_code_analysis::LuaDocument;
 use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
 use rowan::{TextRange, TextSize};
@@ -239,7 +239,7 @@ enum SemanticTokenData {
 
 #[derive(Debug)]
 pub struct SemanticBuilder<'a> {
-    document: &'a DocumentView,
+    document: &'a LuaDocument<'a>,
     multi_line_support: bool,
     data: Vec<SemanticTokenData>,
     seen_positions: HashSet<TextSize>,
@@ -247,7 +247,7 @@ pub struct SemanticBuilder<'a> {
 }
 
 impl<'a> SemanticBuilder<'a> {
-    pub fn new(document: &'a DocumentView, multi_line_support: bool) -> Self {
+    pub fn new(document: &'a LuaDocument<'a>, multi_line_support: bool) -> Self {
         Self {
             document,
             multi_line_support,

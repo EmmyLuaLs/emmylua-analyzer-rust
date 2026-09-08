@@ -19,7 +19,7 @@ pub fn goto_module_file(
     let document = salsa.document(file_id)?;
     let uri = document.get_uri()?;
     // Ensure the target file exists (mirrors old semantics).
-    let file_path = document.path.as_ref()?;
+    let file_path = document.get_file_path();
     if !file_path.try_exists().unwrap_or(false) {
         return None;
     }

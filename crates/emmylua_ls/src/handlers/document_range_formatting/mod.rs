@@ -45,7 +45,7 @@ pub async fn on_range_formatting_handler(
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let document = analysis.db.document(file_id)?;
-            let file_path = document.path.clone();
+            let file_path = Some(document.get_file_path().clone());
             let normalized_path = file_path
                 .as_deref()
                 .map(|p| p.to_string_lossy().to_string().replace("\\", "/"))
@@ -59,7 +59,16 @@ pub async fn on_range_formatting_handler(
             };
             Some((
                 file_id,
-                document.clone(),
+                document.get_text().to_string(),
+                document.get_offset(
+                    request_range.start.line as usize,
+                    request_range.start.character as usize,
+                )?,
+                document.get_offset(
+                    request_range.end.line as usize,
+                    request_range.end.character as usize,
+                )?,
+                document.get_line_count(),
                 emmyrc,
                 file_path,
                 normalized_path,
@@ -76,13 +85,25 @@ pub async fn on_range_formatting_handler(
         RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
 
-    let (file_id, document, emmyrc, file_path, normalized_path, formatting_options) = extracted;
+    let (
+        file_id,
+        text,
+        start_offset,
+        end_offset,
+        line_count,
+        emmyrc,
+        file_path,
+        normalized_path,
+        formatting_options,
+    ) = extracted;
 
     if let Some(external_tool) = &emmyrc.format.external_tool_range_format {
         let Some(formatted_result) = external_tool_range_format(
             external_tool,
-            &document,
-            &request_range,
+            &text,
+            start_offset,
+            end_offset,
+            line_count,
             &normalized_path,
             formatting_options,
         )
@@ -111,47 +132,46 @@ pub async fn on_range_formatting_handler(
     }
 
     // Non-external-tool branch is pure synchronous computation, so a temporary snapshot can be reacquired.
-    let document_for_query = document.clone();
-    let output = match snapshot_query(
+    let result = match snapshot_query(
         context.analysis(),
         CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         cancel_token,
         move |analysis| {
             let model = analysis.semantic_model(file_id)?;
             let chunk = model.chunk()?;
+            let document = analysis.db.document(file_id)?;
             let config = build_workspace_formatter_config(
                 file_path.as_deref(),
                 params.options.tab_size as usize,
                 params.options.insert_spaces,
                 params.options.insert_final_newline.unwrap_or(true),
             );
-            let selection = document_for_query.to_rowan_range(request_range)?;
+            let selection = document.to_rowan_range(request_range)?;
             let output = reformat_range_in_chunk(
-                document_for_query.get_text(),
+                document.get_text(),
                 &chunk,
                 selection,
                 &config,
                 emmyrc.get_language_level(),
             )?;
-            Some(output)
+            let range = document.to_lsp_range(output.replace_range)?;
+            Some((output, range))
         },
     )
     .await
     {
-        RequestOutcome::Ready(output) => output,
+        RequestOutcome::Ready(result) => result,
         RequestOutcome::Missing => {
             return RequestOutcome::Missing;
         }
         RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
+    let (output, range) = result;
     let mut new_text = output.text;
     if client_id.is_intellij() || client_id.is_other() {
         new_text = new_text.replace("\r\n", "\n");
     }
 
-    let Some(range) = document.to_lsp_range(output.replace_range) else {
-        return RequestOutcome::Missing;
-    };
     RequestOutcome::Ready(vec![TextEdit { range, new_text }])
 }
 

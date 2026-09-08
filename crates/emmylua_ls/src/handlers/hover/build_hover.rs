@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
-    SemanticDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId, TypeDef, TypeDefKind,
+    SalsaMemberInfo, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDef, TypeDefKind,
     VariadicType, first_param_may_not_self,
 };
 use emmylua_parser::{

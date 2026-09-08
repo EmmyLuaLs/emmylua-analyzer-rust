@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use emmylua_code_analysis::{DiagnosticCode, DocumentView, Emmyrc, FileId, SalsaSemanticModel};
+use emmylua_code_analysis::{DiagnosticCode, Emmyrc, FileId, LuaDocument, SalsaSemanticModel};
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic,
     NumberOrString, Range, WorkspaceEdit,
@@ -14,7 +14,7 @@ use crate::handlers::command::{DisableAction, make_disable_code_command};
 
 pub fn build_actions(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     file_id: FileId,
     diagnostics: Vec<Diagnostic>,
@@ -64,7 +64,7 @@ pub fn build_actions(
 #[allow(unused_variables)]
 fn add_fix_code_action(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     actions: &mut Vec<CodeActionOrCommand>,
     diagnostic_code: DiagnosticCode,
     range: Range,
@@ -83,7 +83,7 @@ fn add_fix_code_action(
 #[allow(clippy::too_many_arguments)]
 fn add_disable_code_action(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     actions: &mut Vec<CodeActionOrCommand>,
     diagnostic_code: DiagnosticCode,

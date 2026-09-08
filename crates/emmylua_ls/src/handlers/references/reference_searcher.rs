@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{FileId, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDef};
+use emmylua_code_analysis::{FileId, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDef};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaIndexExpr, LuaLiteralToken, LuaSyntaxToken,
 };

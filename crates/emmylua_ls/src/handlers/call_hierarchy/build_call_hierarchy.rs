@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaStat, LuaTokenKind, PathTrait};
 use lsp_types::{CallHierarchyIncomingCall, CallHierarchyItem, Location, SymbolKind};
 use rowan::{TextRange, TokenAtOffset};
@@ -208,9 +208,8 @@ fn build_incoming_hierarchy_item(
     result.push(CallHierarchyIncomingCall {
         from: CallHierarchyItem {
             name: document
-                .path
-                .as_ref()
-                .and_then(|path| path.file_name())
+                .get_file_path()
+                .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_default(),
             kind: SymbolKind::MODULE,

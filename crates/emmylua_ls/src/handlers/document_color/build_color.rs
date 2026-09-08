@@ -1,9 +1,9 @@
-use emmylua_code_analysis::DocumentView;
+use emmylua_code_analysis::LuaDocument;
 use emmylua_parser::{LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{Color, ColorInformation};
 use rowan::{TextRange, TextSize};
 
-pub fn build_colors(root: LuaSyntaxNode, document: &DocumentView) -> Vec<ColorInformation> {
+pub fn build_colors(root: LuaSyntaxNode, document: &LuaDocument) -> Vec<ColorInformation> {
     let mut result = vec![];
     let string_tokens = root
         .descendants_with_tokens()
@@ -22,7 +22,7 @@ pub fn build_colors(root: LuaSyntaxNode, document: &DocumentView) -> Vec<ColorIn
 
 fn try_build_color_information(
     token: LuaSyntaxToken,
-    document: &DocumentView,
+    document: &LuaDocument,
     result: &mut Vec<ColorInformation>,
 ) -> Option<()> {
     let text = token.text();

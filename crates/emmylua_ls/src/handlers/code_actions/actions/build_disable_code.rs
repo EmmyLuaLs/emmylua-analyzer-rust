@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DiagnosticCode, DocumentView, Emmyrc, SalsaSemanticModel};
+use emmylua_code_analysis::{DiagnosticCode, Emmyrc, LuaDocument, SalsaSemanticModel};
 use emmylua_formatter::resolve_config_for_path;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaCommentOwner, LuaDocTag, LuaDocTagDiagnostic, LuaExpr,
@@ -69,7 +69,7 @@ fn find_expr_attached_comment(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
 
 pub fn build_disable_next_line_changes(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     start: Position,
     code: DiagnosticCode,
@@ -156,7 +156,7 @@ pub fn build_disable_next_line_changes(
 }
 
 fn get_disable_next_line_text_edit(
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     node: LuaSyntaxNode,
     offset: TextSize,
@@ -200,7 +200,7 @@ fn get_disable_next_line_text_edit(
 
 pub fn build_disable_file_changes(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     code: DiagnosticCode,
 ) -> Option<HashMap<Uri, Vec<TextEdit>>> {
@@ -275,9 +275,9 @@ pub fn build_disable_file_changes(
     Some(changes)
 }
 
-fn code_action_insert_space(emmyrc: &Emmyrc, document: &DocumentView) -> bool {
+fn code_action_insert_space(emmyrc: &Emmyrc, document: &LuaDocument) -> bool {
     emmyrc.code_action.insert_space.unwrap_or_else(|| {
-        resolve_config_for_path(document.path.as_deref(), None)
+        resolve_config_for_path(Some(document.get_file_path().as_path()), None)
             .map(|resolved| resolved.config.emmy_doc.space_between_tag_columns)
             .unwrap_or(false)
     })

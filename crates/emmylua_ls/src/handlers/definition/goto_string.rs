@@ -4,7 +4,7 @@
 //! compose the type name as "prefix + string + suffix" → type definition positions.
 //! Mirrors the old `goto_str_tpl_ref_definition`, now via salsa queries only.
 
-use emmylua_code_analysis::{LuaType, SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{LuaType, SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaStringToken};
 use lsp_types::{GotoDefinitionResponse, Location};
 

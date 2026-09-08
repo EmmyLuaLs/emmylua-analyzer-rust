@@ -31,8 +31,8 @@ use crate::LuaDocument;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
-use crate::salsa_builder::SemanticDatabase;
 use crate::salsa_builder::SalsaQueries;
+use crate::salsa_builder::SemanticDatabase;
 use crate::salsa_builder::def::{
     ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
     SemanticId, Signature, TypeDef, TypeDefKind, TypeScope, TypeVisibility,

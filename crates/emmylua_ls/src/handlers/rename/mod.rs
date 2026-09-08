@@ -4,7 +4,7 @@ mod rename_type;
 
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaDocTagParam, LuaLiteralExpr, LuaSyntaxKind, LuaSyntaxNode,
     LuaSyntaxToken, LuaTokenKind,

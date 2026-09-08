@@ -2,28 +2,35 @@ use crate::handlers::{
     document_formatting::{FormattingOptions, FormattingRange, external_tool_format},
     document_range_formatting::RangeFormatResult,
 };
-use emmylua_code_analysis::{DocumentView, EmmyrcExternalTool};
+use emmylua_code_analysis::EmmyrcExternalTool;
+use rowan::TextSize;
 
 pub async fn external_tool_range_format(
     emmyrc_external_tool: &EmmyrcExternalTool,
-    document: &DocumentView,
-    range: &lsp_types::Range,
+    text: &str,
+    start_offset: TextSize,
+    end_offset: TextSize,
+    line_count: usize,
     file_path: &str,
     options: FormattingOptions,
 ) -> Option<RangeFormatResult> {
-    let start_offset =
-        document.get_offset(range.start.line as usize, range.start.character as usize)?;
-    let end_offset = document.get_offset(range.end.line as usize, range.end.character as usize)?;
-
     let formatting_range = FormattingRange {
         start_offset,
         end_offset,
-        start_line: range.start.line,
-        end_line: range.end.line,
+        start_line: 0,
+        end_line: line_count as u32,
     };
 
-    let text = document.get_text();
-    let document_range = document.get_document_lsp_range();
+    let document_range = lsp_types::Range {
+        start: lsp_types::Position {
+            line: 0,
+            character: 0,
+        },
+        end: lsp_types::Position {
+            line: line_count as u32,
+            character: 0,
+        },
+    };
     let formatted_text = external_tool_format(
         emmyrc_external_tool,
         text,

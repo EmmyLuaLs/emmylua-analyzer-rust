@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    AsyncState, LuaType, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDefKind,
+    AsyncState, LuaType, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDefKind,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaCommentOwner, LuaDocTag, LuaExpr, LuaFuncStat,
@@ -56,7 +56,7 @@ pub fn build_inlay_hints(
 fn build_closure_param_hints(
     model: &SalsaSemanticModel<'_>,
     salsa: &SemanticDatabase,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     closure: emmylua_parser::LuaClosureExpr,
 ) -> Option<()> {
@@ -159,7 +159,7 @@ fn is_override_func_stat(
 
 fn build_local_name_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     local_name: LuaLocalName,
 ) -> Option<()> {
@@ -206,7 +206,7 @@ fn build_local_name_hint(
 /// When `function B:aaa(...)` overrides a parent member, show `override` after the parameter list.
 fn build_func_stat_override_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     func_stat: &LuaFuncStat,
 ) -> Option<()> {
@@ -268,7 +268,7 @@ fn build_func_stat_override_hint(
 /// Integer index `export[1]`: if the field definition has `---@[index_alias("nameX")]`, hint `: nameX` after the index.
 fn build_index_expr_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     index_expr: &LuaIndexExpr,
 ) -> Option<()> {
@@ -331,7 +331,7 @@ fn build_index_expr_hint(
 /// Show `await` before async function calls.
 fn build_call_expr_await_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: &LuaCallExpr,
 ) -> Option<()> {
@@ -361,7 +361,7 @@ fn build_call_expr_await_hint(
 /// Show `new` before callable classes like `Hint1("a")`.
 fn build_meta_call_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: &LuaCallExpr,
 ) -> Option<()> {
@@ -440,7 +440,7 @@ fn string_literal_of_expr(expr: &LuaExpr) -> Option<String> {
 
 fn build_call_expr_param_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: LuaCallExpr,
     enum_param_hint: bool,
@@ -569,7 +569,7 @@ fn build_call_expr_param_hint(
 
 fn build_enum_value_hint(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     arg: &LuaExpr,
     param_ty: &LuaType,
 ) -> Option<InlayHint> {

@@ -41,7 +41,8 @@ pub(crate) fn build_file_facts(
         .workspace_input()
         .and_then(|workspace| file_workspace_id(db, workspace, file_id))
         .unwrap_or(WorkspaceId::MAIN);
-    let tree = db.vfs()
+    let tree = db
+        .vfs()
         .get_syntax_tree(&file_id)
         .expect("syntax tree must be built before read");
     let chunk = tree.get_chunk_node();

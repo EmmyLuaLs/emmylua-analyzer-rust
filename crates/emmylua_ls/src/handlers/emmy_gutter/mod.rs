@@ -13,7 +13,7 @@ use crate::{
 pub use emmy_gutter_detail_request::*;
 pub use emmy_gutter_request::*;
 use emmylua_code_analysis::{
-    DocumentView, Emmyrc, LuaType, SemanticDatabase, SalsaSemanticModel, TypeScope,
+    Emmyrc, LuaDocument, LuaType, SalsaSemanticModel, SemanticDatabase, TypeScope,
 };
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaVarExpr};
 use lsp_types::Uri;
@@ -47,7 +47,7 @@ pub async fn on_emmy_gutter_handler(
 
 fn build_gutter_infos(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     salsa: &SemanticDatabase,
     emmyrc: &Emmyrc,
 ) -> Option<Vec<GutterInfo>> {
@@ -108,7 +108,7 @@ fn build_gutter_infos(
 
 fn build_func_override_gutter_info(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     salsa: &SemanticDatabase,
     emmyrc: &Emmyrc,
     gutters: &mut Vec<GutterInfo>,

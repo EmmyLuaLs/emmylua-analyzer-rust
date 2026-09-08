@@ -503,7 +503,7 @@ fn param_tpl_constraint(
 fn index_alias_name(builder: &CompletionBuilder, member_file: Option<FileId>) -> Option<String> {
     let document = member_file
         .and_then(|file_id| builder.semantic_model.document(file_id))
-        .unwrap_or_else(|| builder.document.as_ref());
+        .unwrap_or_else(|| builder.document.clone());
     let text = document.get_text();
     let marker = "index_alias(";
     let start = text.find(marker)? + marker.len();

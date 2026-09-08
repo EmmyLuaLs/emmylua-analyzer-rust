@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use ansi_term::{Color, Style};
-use emmylua_code_analysis::{DocumentView, FileId, SemanticDatabase};
+use emmylua_code_analysis::{FileId, LuaDocument, SemanticDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub struct TerminalDisplay {
 }
 
 /// LSP (line, character) → in-line byte column (for highlighting).
-fn col_offset(document: &DocumentView, line: usize, character: usize) -> Option<usize> {
+fn col_offset(document: &LuaDocument<'_>, line: usize, character: usize) -> Option<usize> {
     let offset = document.get_offset(line, character)?;
     let line_start = document.get_line_range(line)?.start();
     Some(usize::from(offset) - usize::from(line_start))
@@ -77,7 +77,7 @@ impl TerminalDisplay {
 
         // Display each diagnostic individually
         for diagnostic in diagnostics {
-            self.display_single_diagnostic(&file_path, document, &text_lines, diagnostic);
+            self.display_single_diagnostic(&file_path, &document, &text_lines, diagnostic);
         }
 
         println!(); // Add blank line separator
@@ -163,7 +163,7 @@ impl TerminalDisplay {
     fn display_single_diagnostic(
         &mut self,
         file_path: &str,
-        document: &DocumentView,
+        document: &LuaDocument<'_>,
         lines: &[&str],
         diagnostic: Diagnostic,
     ) {

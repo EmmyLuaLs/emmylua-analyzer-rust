@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{
     LuaAstNode, LuaDocNameType, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
 };

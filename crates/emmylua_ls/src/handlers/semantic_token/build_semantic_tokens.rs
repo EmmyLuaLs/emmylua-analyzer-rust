@@ -4,7 +4,7 @@
 //! Stage 2: recover names/members/types/declaration modifiers from `SalsaSemanticModel`.
 
 use emmylua_code_analysis::{
-    DeclKind, DocumentView, Emmyrc, LuaType, SalsaSemanticModel, SemanticId, SemanticInfo,
+    DeclKind, Emmyrc, LuaDocument, LuaType, SalsaSemanticModel, SemanticId, SemanticInfo,
     TypeDefKind, TypeScope,
 };
 use emmylua_parser::{
@@ -26,7 +26,7 @@ use super::semantic_token_builder::{
 
 pub fn build_semantic_tokens(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     supports_multiline_tokens: bool,
     client_id: ClientId,
     emmyrc: &Emmyrc,

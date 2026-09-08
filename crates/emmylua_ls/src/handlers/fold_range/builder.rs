@@ -1,4 +1,4 @@
-use emmylua_code_analysis::DocumentView;
+use emmylua_code_analysis::LuaDocument;
 use emmylua_parser::{LuaAstNode, LuaBlock, LuaChunk, LuaTokenKind};
 use lsp_types::{FoldingRange, FoldingRangeKind};
 use rowan::TextRange;
@@ -7,16 +7,16 @@ use crate::context::ClientId;
 
 #[derive(Debug)]
 pub struct FoldingRangeBuilder<'a> {
-    document: &'a DocumentView,
+    document: &'a LuaDocument<'a>,
     root: LuaChunk,
     folding_ranges: Vec<FoldingRange>,
     region_starts: Vec<TextRange>,
     client_id: ClientId,
 }
 
-impl FoldingRangeBuilder<'_> {
-    pub fn new<'a>(
-        document: &'a DocumentView,
+impl<'a> FoldingRangeBuilder<'a> {
+    pub fn new(
+        document: &'a LuaDocument<'a>,
         root: LuaChunk,
         client_id: ClientId,
     ) -> FoldingRangeBuilder<'a> {
@@ -33,7 +33,7 @@ impl FoldingRangeBuilder<'_> {
         &self.root
     }
 
-    pub fn get_document(&'_ self) -> &'_ DocumentView {
+    pub fn get_document(&'_ self) -> &'_ LuaDocument<'a> {
         self.document
     }
 

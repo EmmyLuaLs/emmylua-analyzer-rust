@@ -1,7 +1,7 @@
 use super::RegisterCapabilities;
 use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
 use crate::util::parse_desc;
-use emmylua_code_analysis::{DocumentView, Emmyrc, WorkspaceId};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, WorkspaceId};
 use emmylua_parser::{LuaAstNode, LuaDocDescription};
 use lsp_types::{
     ClientCapabilities, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
@@ -77,7 +77,7 @@ pub async fn on_document_selection_range_handle(
 }
 
 fn add_detail_ranges(
-    document: &DocumentView,
+    document: &LuaDocument,
     emmyrc: &Emmyrc,
     description: LuaDocDescription,
     offset: TextSize,

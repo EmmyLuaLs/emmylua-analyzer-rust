@@ -1,11 +1,11 @@
-use emmylua_code_analysis::{DocumentView, SalsaSemanticModel};
+use emmylua_code_analysis::{LuaDocument, SalsaSemanticModel};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaSyntaxKind};
 use lsp_types::{InlineValue, InlineValueVariableLookup, Position};
 use rowan::TokenAtOffset;
 
 pub fn build_inline_values(
     model: &SalsaSemanticModel<'_>,
-    document: &DocumentView,
+    document: &LuaDocument,
     position: Position,
 ) -> Option<Vec<InlineValue>> {
     let mut result = Vec::new();

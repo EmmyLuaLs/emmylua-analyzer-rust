@@ -6,7 +6,7 @@
 //! is retired; see `docs/SALSA_FROM_SCRATCH.md` §M3.
 
 use emmylua_code_analysis::{
-    Emmyrc, LuaMemberKey, SemanticDatabase, SalsaMemberInfo, SalsaSemanticModel, SemanticId,
+    Emmyrc, LuaMemberKey, SalsaMemberInfo, SalsaSemanticModel, SemanticDatabase, SemanticId,
     WorkspaceId,
 };
 use emmylua_parser::{

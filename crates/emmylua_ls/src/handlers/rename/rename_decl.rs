@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DeclKind, SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{DeclKind, SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaClosureExpr, LuaCommentOwner, LuaDocTagParam, LuaStat,
     LuaTableField,

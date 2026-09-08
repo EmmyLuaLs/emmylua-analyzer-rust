@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use emmylua_code_analysis::{DeclKind, SemanticDatabase, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{DeclKind, SalsaSemanticModel, SemanticDatabase, SemanticId};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaDocTagField, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaStat,
     LuaSyntaxToken, LuaTableField,

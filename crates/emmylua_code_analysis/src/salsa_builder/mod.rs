@@ -18,8 +18,8 @@ use std::sync::Arc;
 use emmylua_parser::{LineIndex, LuaVersionNumber};
 use lsp_types::Uri;
 
-use crate::vfs::{LuaDocument, Vfs};
 use crate::vfs::file_path_to_uri;
+use crate::vfs::{LuaDocument, Vfs};
 use crate::{Emmyrc, FileData, FileId, WorkspaceFolder, WorkspaceImport, uri_to_file_path};
 pub use def::*;
 use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
@@ -376,9 +376,9 @@ impl SemanticDatabase {
     // ---- File management ----
 
     pub fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        let fid = self.lookup_file_id(uri).unwrap_or_else(|| {
-            self.vfs.allocate_file_id()
-        });
+        let fid = self
+            .lookup_file_id(uri)
+            .unwrap_or_else(|| self.vfs.allocate_file_id());
         if let Some(text) = text {
             let path = uri_to_file_path(uri);
             self.set_file_inner(fid, path, Some(uri.clone()), text);

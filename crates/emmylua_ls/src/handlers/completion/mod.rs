@@ -6,7 +6,6 @@ mod resolve_completion;
 
 use completion_builder::CompletionBuilder;
 use completion_data::CompletionData;
-use std::sync::Arc;
 
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
@@ -95,7 +94,7 @@ pub fn completion(
     let mut builder = CompletionBuilder::new(
         token,
         model,
-        Arc::new(document.clone()),
+        document,
         emmyrc,
         trigger_kind,
         position_offset,

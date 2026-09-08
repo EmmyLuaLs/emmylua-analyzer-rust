@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use emmylua_code_analysis::{DocumentView, Emmyrc, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, LuaType, SalsaSemanticModel};
 use emmylua_parser::{LuaAstNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionTriggerKind};
 use rowan::TextSize;
@@ -20,7 +20,7 @@ use super::providers::CompletionContext;
 pub struct CompletionBuilder<'a> {
     pub trigger_token: LuaSyntaxToken,
     pub semantic_model: SalsaSemanticModel<'a>,
-    pub document: Arc<DocumentView>,
+    pub document: LuaDocument<'a>,
     pub emmyrc: Arc<Emmyrc>,
     pub context: CompletionContext,
     pub env_duplicate_name: HashSet<String>,
@@ -36,7 +36,7 @@ impl<'a> CompletionBuilder<'a> {
     pub fn new(
         trigger_token: LuaSyntaxToken,
         semantic_model: SalsaSemanticModel<'a>,
-        document: Arc<DocumentView>,
+        document: LuaDocument<'a>,
         emmyrc: Arc<Emmyrc>,
         trigger_kind: CompletionTriggerKind,
         position_offset: TextSize,
@@ -105,7 +105,7 @@ impl<'a> CompletionBuilder<'a> {
         self.emmyrc.clone()
     }
 
-    pub fn get_document(&self) -> &DocumentView {
+    pub fn get_document(&self) -> &LuaDocument<'a> {
         &self.document
     }
 

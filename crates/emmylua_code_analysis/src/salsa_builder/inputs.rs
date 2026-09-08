@@ -2,9 +2,7 @@
 
 use std::path::PathBuf;
 
-use emmylua_parser::{
-    LuaFeatures, LuaLanguageLevel, LuaVersionNumber, SpecialFunction,
-};
+use emmylua_parser::{LuaFeatures, LuaLanguageLevel, LuaVersionNumber, SpecialFunction};
 use smol_str::SmolStr;
 
 use crate::{Emmyrc, FileId, WorkspaceImport};
@@ -177,7 +175,6 @@ impl ConfigInputData {
             emmyrc.strict.array_index,
         )
     }
-
 }
 
 /// Workspace root metadata for std / main / library.

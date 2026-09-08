@@ -1,6 +1,6 @@
 //! # goto_label — pure-salsa label definition lookup (same-named label within the same closure).
 
-use emmylua_code_analysis::{SemanticDatabase, SalsaSemanticModel};
+use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase};
 use emmylua_parser::{LuaAstNode, LuaGotoStat, LuaLabelStat, LuaSyntaxToken};
 use lsp_types::{GotoDefinitionResponse, Location};
 

@@ -42,11 +42,11 @@ pub async fn on_formatting_handler(
     let extracted = match snapshot_query(
         context.analysis(),
         CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
+        cancel_token.clone(),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let document = analysis.db.document(file_id)?;
-            let file_path = document.path.clone();
+            let file_path = Some(document.get_file_path().clone());
             let normalized_path = file_path
                 .as_deref()
                 .map(|p| p.to_string_lossy().to_string().replace("\\", "/"))
@@ -59,7 +59,8 @@ pub async fn on_formatting_handler(
                 non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
             };
             Some((
-                document.clone(),
+                file_id,
+                document.get_text().to_string(),
                 emmyrc,
                 file_path,
                 normalized_path,
@@ -76,9 +77,8 @@ pub async fn on_formatting_handler(
         RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
 
-    let (document, emmyrc, file_path, normalized_path, formatting_options) = extracted;
+    let (file_id, text, emmyrc, file_path, normalized_path, formatting_options) = extracted;
 
-    let text = document.get_text().to_string();
     let mut formatted_text = if let Some(external_config) = &emmyrc.format.external_tool {
         match external_tool_format(
             external_config,
@@ -108,14 +108,36 @@ pub async fn on_formatting_handler(
     }
 
     let replace_all_limit = 50;
-    let text_edits = if emmyrc.format.use_diff {
-        format_diff(&text, &formatted_text, &document, replace_all_limit)
-    } else {
-        let document_range = document.get_document_lsp_range();
-        vec![TextEdit {
-            range: document_range,
-            new_text: formatted_text,
-        }]
+    let use_diff = emmyrc.format.use_diff;
+    let text_edits = match snapshot_query(
+        context.analysis(),
+        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
+        cancel_token,
+        move |analysis| {
+            let document = analysis.db.document(file_id)?;
+            if use_diff {
+                Some(format_diff(
+                    &text,
+                    &formatted_text,
+                    &document,
+                    replace_all_limit,
+                ))
+            } else {
+                let document_range = document.get_document_lsp_range();
+                Some(vec![TextEdit {
+                    range: document_range,
+                    new_text: formatted_text.clone(),
+                }])
+            }
+        },
+    )
+    .await
+    {
+        RequestOutcome::Ready(edits) => edits,
+        RequestOutcome::Missing => {
+            return RequestOutcome::Missing;
+        }
+        RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
 
     RequestOutcome::Ready(text_edits)

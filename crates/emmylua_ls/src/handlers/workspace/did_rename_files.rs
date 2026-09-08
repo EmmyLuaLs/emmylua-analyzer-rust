@@ -1,8 +1,8 @@
 use std::{collections::HashMap, path::Path, str::FromStr};
 
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, SemanticDatabase, SalsaSemanticModel, file_path_to_uri, read_file_with_encoding,
-    uri_to_file_path,
+    EmmyLuaAnalysis, SalsaSemanticModel, SemanticDatabase, file_path_to_uri,
+    read_file_with_encoding, uri_to_file_path,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaLiteralToken};
 use lsp_types::{
@@ -138,7 +138,11 @@ struct RenameInfo {
     new_module_path: String,
 }
 
-fn collect_rename_info(old_uri: &Uri, new_uri: &Uri, salsa: &SemanticDatabase) -> Option<RenameInfo> {
+fn collect_rename_info(
+    old_uri: &Uri,
+    new_uri: &Uri,
+    salsa: &SemanticDatabase,
+) -> Option<RenameInfo> {
     let old_module_path = salsa
         .module_name_from_path(&uri_to_file_path(old_uri)?)?
         .replace(['\\', '/'], ".");

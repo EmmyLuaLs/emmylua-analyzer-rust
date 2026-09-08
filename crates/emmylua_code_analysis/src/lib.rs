@@ -18,6 +18,7 @@ mod test_lib;
 mod vfs;
 
 use crate::check::LuaDiagnostic;
+pub use crate::salsa_builder::SemanticDatabase;
 pub use crate::salsa_builder::def::ModuleVisibility as SalsaModuleVisibility;
 /// Public types for the salsa semantic layer.
 pub use crate::salsa_builder::def::{
@@ -28,7 +29,6 @@ pub use crate::salsa_builder::def::{
 };
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
-pub use crate::salsa_builder::SemanticDatabase;
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };
@@ -227,9 +227,7 @@ impl EmmyLuaAnalysis {
                 .copied()
                 .unwrap_or_else(|| self.db.allocate_file_id());
             if let Some(text) = text {
-                let input = self
-                    .db
-                    .upsert_file_input(id, Some(path.clone()), uri, text);
+                let input = self.db.upsert_file_input(id, Some(path.clone()), uri, text);
                 path_to_id.insert(path.clone(), id);
                 new_files.insert(id, input);
             } else {

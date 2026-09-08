@@ -1123,7 +1123,8 @@ mod tests {
     use lsp_types::Uri;
 
     use crate::{
-        Emmyrc, LuaArrayType, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDatabase,
+        Emmyrc, LuaArrayType, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType,
+        SemanticDatabase,
     };
 
     use super::super::SemanticModel;

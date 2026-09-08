@@ -7,7 +7,7 @@
 //! - type references: `resolve_type_def` per doc name type + `type_defs_in_scope` definition sites;
 //! - label references: same-file pure syntax (same-named goto/label in the same closure).
 
-use emmylua_code_analysis::{FileId, SemanticDatabase, SalsaSemanticModel, SemanticId, TypeDef};
+use emmylua_code_analysis::{FileId, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDef};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaDocNameType, LuaExpr, LuaGotoStat, LuaIndexExpr,
     LuaLabelStat, LuaLiteralToken, LuaSyntaxKind, LuaSyntaxToken,
@@ -62,7 +62,10 @@ pub fn member_reference_ranges(
 
 /// `---@[constructor("init")]` class call sites: when a member is its type constructor,
 /// call prefixes on the type runtime value (`A()`) are counted as references to that constructor member.
-fn constructor_call_ranges(salsa: &SemanticDatabase, member: &SemanticId) -> Vec<(FileId, TextRange)> {
+fn constructor_call_ranges(
+    salsa: &SemanticDatabase,
+    member: &SemanticId,
+) -> Vec<(FileId, TextRange)> {
     let Some((def, runtime_owner)) = member_constructor(salsa, member) else {
         return Vec::new();
     };

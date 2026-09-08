@@ -10,7 +10,7 @@ use std::sync::Arc;
 use lsp_types::Uri;
 
 use crate::DiagnosticCode;
-use crate::{Emmyrc, SemanticDatabase, SalsaSemanticModel};
+use crate::{Emmyrc, SalsaSemanticModel, SemanticDatabase};
 
 use super::{Diagnostic, check_source, count_by_code};
 

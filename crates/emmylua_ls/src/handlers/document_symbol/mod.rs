@@ -58,7 +58,7 @@ fn non_empty_symbol_name(raw: String, fallback: impl FnOnce() -> String) -> Stri
 
 fn build_document_symbol(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
 ) -> Vec<DocumentSymbol> {
     let mut symbols = Vec::new();
     let Some(chunk) = model.chunk() else {
@@ -170,7 +170,7 @@ fn decl_kind(
 
 fn build_table_field_symbol(
     model: &SalsaSemanticModel<'_>,
-    document: &emmylua_code_analysis::DocumentView,
+    document: &emmylua_code_analysis::LuaDocument,
     table_field: &LuaTableField,
 ) -> Option<DocumentSymbol> {
     if !table_field.is_assign_field() {
