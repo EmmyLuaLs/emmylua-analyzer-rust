@@ -1,6 +1,6 @@
 mod reference_searcher;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::{LuaAstNode, LuaTokenKind};
 use lsp_types::{
@@ -26,7 +26,6 @@ pub async fn on_references_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

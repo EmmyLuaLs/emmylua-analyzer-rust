@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use crate::handlers::command::make_auto_doc_tag_command;
-use emmylua_code_analysis::{LuaDocument, SalsaSemanticModel};
+use emmylua_code_analysis::{LuaDocument, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaExpr};
 use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, Range, TextEdit, WorkspaceEdit};
 use rowan::{NodeOrToken, TokenAtOffset};
 
 pub fn build_need_check_nil(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     actions: &mut Vec<CodeActionOrCommand>,
     range: Range,

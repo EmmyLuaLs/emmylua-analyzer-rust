@@ -153,7 +153,7 @@ m.foo()
     }
 
     #[cfg(feature = "slow-tests")]
-    // M4 retirement: require alias namespace / return overload / mapped type highlighting depends on the old DbIndex semantic token stack; see docs/SALSA_FROM_SCRATCH.md §M4.
+    // M4 retirement: require alias namespace / return overload / mapped type highlighting depends on the old DbIndex semantic token stack; see migration notes §M4.
     #[ignore]
     #[gtest]
     fn test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain() -> Result<()> {

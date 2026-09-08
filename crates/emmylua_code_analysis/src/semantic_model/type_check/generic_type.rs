@@ -158,7 +158,7 @@ fn check_generic_type_compact_ref_type(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     if context.is_alias(ref_id) {
-        // salsa has no alias origin, so this is a nominal failure (unless the generic parameter is `any`).
+        // semantic has no alias origin, so this is a nominal failure (unless the generic parameter is `any`).
     }
     let base_id = source_generic.get_base_type_id();
     if &base_id == ref_id

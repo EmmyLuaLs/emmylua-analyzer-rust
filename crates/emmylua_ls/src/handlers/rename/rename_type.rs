@@ -8,15 +8,15 @@ use crate::handlers::common::type_def_rename_ranges;
 
 #[allow(clippy::mutable_key_type)]
 pub fn rename_type_references(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     def: &TypeDef,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
 ) -> Option<()> {
     // Definition sites + use sites (replacing display name / full-name tail).
-    let ranges = type_def_rename_ranges(salsa, def, &new_name);
+    let ranges = type_def_rename_ranges(db, def, &new_name);
     for (file_id, range, text) in ranges {
-        push_edit(salsa, file_id, range, text, result);
+        push_edit(db, file_id, range, text, result);
     }
     Some(())
 }

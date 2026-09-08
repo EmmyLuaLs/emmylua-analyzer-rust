@@ -4,9 +4,9 @@ use emmylua_parser::LuaSyntaxId;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::{FileId, salsa_builder::def::WorkspaceId};
+use crate::{FileId, semantic_db::def::WorkspaceId};
 
-use super::{SalsaGenericParam, SemanticId};
+use super::{DocGenericParam, SemanticId};
 
 /// Type scope (corresponding to old `LuaTypeIdentifier`: Global / Internal / File).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,7 +58,7 @@ pub struct TypeDef {
     /// Parent type full names from `---@class Foo : Bar, Baz`.
     pub super_names: Vec<SmolStr>,
     /// Generic parameters (`---@class Foo<T: Base>` / `---@alias Foo<T>`).
-    pub generic_params: Vec<SalsaGenericParam>,
+    pub generic_params: Vec<DocGenericParam>,
     /// Target type node of `---@alias Dir -1|1` (Alias only).
     pub alias_type: Option<LuaSyntaxId>,
     /// `---@overload fun(...)` (owned by this type; consumed by `---@operator call` / attribute checks).

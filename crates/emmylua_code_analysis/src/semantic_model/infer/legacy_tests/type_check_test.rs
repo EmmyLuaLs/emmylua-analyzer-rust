@@ -47,7 +47,7 @@ mod test {
         ));
     }
 
-    // Migrated to salsa check/ (new pipeline); enum bitwise assignment checks pending salsa support.
+    // Migrated to semantic check/ (new pipeline); enum bitwise assignment checks pending semantic support.
     #[test]
     fn test_enum_flag_bitop_assignment_keeps_later_assign_check() {
         let mut ws = VirtualWorkspace::new();

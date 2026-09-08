@@ -97,7 +97,7 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             let Some(def) = type_def_of(model, id) else {
                 return true;
             };
-            if def.kind == crate::salsa_builder::def::TypeDefKind::Alias
+            if def.kind == crate::semantic_db::def::TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
                 return is_callable(model, &target);

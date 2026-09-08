@@ -165,7 +165,7 @@ pub fn render_type_style(
             .map(html_escape)
             .unwrap_or_else(|| "module".to_string()),
 
-        // ─── complex / exotic → salsa text-rendering fallback ───────────
+        // ─── complex / exotic → semantic text-rendering fallback ───────────
         LuaType::TableConst(_)
         | LuaType::Object(_)
         | LuaType::StrTplRef(_)

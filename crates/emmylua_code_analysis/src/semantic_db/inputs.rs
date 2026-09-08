@@ -1,4 +1,4 @@
-//! Salsa inputs.
+//! Inputs.
 
 use std::path::PathBuf;
 
@@ -179,7 +179,7 @@ impl ConfigInputData {
 
 /// Workspace root metadata for std / main / library.
 ///
-/// File sets are managed by `SalsaDatabase`; workspace_id is derived by
+/// File sets are managed by `SemanticDatabase`; workspace_id is derived by
 /// matching path prefixes against `roots`, while `import` controls which relative paths participate in module indexing.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct WorkspaceRoot {

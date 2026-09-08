@@ -1,7 +1,7 @@
 //! Inference/diagnostic cases migrated from the old `compilation/test`.
 //!
 //! These cases only depend on `VirtualWorkspace`'s high-level API (`def/ty/expr_ty/has_no_diagnostic`),
-//! not on the old `DbIndex` internals, so they can run directly in the new salsa system.
+//! not on the old `DbIndex` internals, so they can run directly in the new semantic system.
 
 mod and_or_test;
 mod annotation_test;

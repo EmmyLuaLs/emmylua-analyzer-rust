@@ -4,7 +4,7 @@ mod keyword_hover;
 pub(crate) mod render;
 
 use super::RegisterCapabilities;
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_hover::build_semantic_info_hover;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::{LuaAstNode, LuaTokenKind};
@@ -29,7 +29,6 @@ pub async fn on_hover(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

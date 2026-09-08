@@ -1,6 +1,6 @@
 mod build_link;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 use build_link::build_links;
 pub use build_link::is_require_path;
 use emmylua_parser::LuaAstNode;
@@ -17,20 +17,15 @@ pub async fn on_document_link_handler(
     cancel_token: CancellationToken,
 ) -> RequestOutcome<Vec<DocumentLink>> {
     let uri = params.text_document.uri;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let file_id = analysis.get_file_id(&uri)?;
-            let semantic_model = analysis.semantic_model(file_id)?;
-            let root = semantic_model.chunk()?;
-            let document = analysis.db.document(file_id)?;
-            let emmyrc = analysis.get_emmyrc();
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let file_id = analysis.get_file_id(&uri)?;
+        let semantic_model = analysis.semantic_model(file_id)?;
+        let root = semantic_model.chunk()?;
+        let document = analysis.db.document(file_id)?;
+        let emmyrc = analysis.get_emmyrc();
 
-            build_links(&analysis.db, root.syntax().clone(), &document, &emmyrc)
-        },
-    )
+        build_links(&analysis.db, root.syntax().clone(), &document, &emmyrc)
+    })
     .await
 }
 

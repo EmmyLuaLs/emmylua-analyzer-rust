@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaTableExpr, LuaTableField};
 
-use crate::salsa_builder::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeScope};
+use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeScope};
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::{
     FileId, GenericTplId, LuaMemberKey, LuaType, LuaTypeDeclId, LuaTypeIdentifier, WorkspaceId,
 };
-use crate::{Member, salsa_builder::facts::FileFacts};
+use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
 use super::SemanticModel;
@@ -173,7 +173,7 @@ fn direct_member_info_alias(
             return None;
         }
         let def = type_def_of(model, &id)?;
-        if def.kind != crate::salsa_builder::def::TypeDefKind::Alias {
+        if def.kind != crate::semantic_db::def::TypeDefKind::Alias {
             return direct_member_info(model, &current, key);
         }
         visited.push(id.clone());
@@ -189,7 +189,7 @@ fn direct_member_info(
     match prefix_type {
         LuaType::Ref(id) | LuaType::Def(id) => {
             let def = type_def_of(model, id)?;
-            if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+            if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
                 return direct_member_info_alias(model, prefix_type, key);
             }
             let mut visited = Vec::new();
@@ -229,7 +229,7 @@ fn direct_member_info(
         }
         LuaType::Generic(generic) => {
             let def = type_def_of(model, &generic.get_base_type_id())?;
-            if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+            if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
                 let expanded =
                     crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
                 return direct_member_info(model, &expanded, key);
@@ -564,7 +564,7 @@ fn collect_members(
             if let Some(def) = type_def_of(model, decl_id) {
                 // Alias: collect members of the alias target instead of looking for `@field` on the alias
                 // definition itself. The visited set also guards recursive aliases.
-                if def.kind == crate::salsa_builder::def::TypeDefKind::Alias {
+                if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
                     if visited.contains(&def.id) {
                         return;
                     }
@@ -623,7 +623,7 @@ fn collect_members(
         // Generic instance: base type members + argument substitution.
         LuaType::Generic(generic) => {
             if let Some(def) = type_def_of(model, &generic.get_base_type_id())
-                && def.kind == crate::salsa_builder::def::TypeDefKind::Alias
+                && def.kind == crate::semantic_db::def::TypeDefKind::Alias
             {
                 let expanded =
                     crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);

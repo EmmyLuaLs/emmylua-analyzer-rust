@@ -1,9 +1,9 @@
-//! Pure Salsa doc model: projects the data needed for documentation generation
+//! Pure Semantic doc model: projects the data needed for documentation generation
 //! (modules / types / members / globals / function signatures / type rendering)
-//! directly from `SalsaDatabase` / `SemanticModel` / `FileFacts`.
+//! directly from `SemanticDatabase` / `SemanticModel` / `FileFacts`.
 //!
 //! It bypasses the old `DbIndex` index and property/signature structures; `LuaType`
-//! is just the value type projected by the Salsa facade, and rendering is done here.
+//! is just the value type projected by the Semantic facade, and rendering is done here.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
-    LuaTypeDeclId, Member, ModuleExport, RenderLevel, SalsaSemanticModel, SalsaSignature,
-    SemanticId, TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    LuaTypeDeclId, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel, Signature,
+    TypeDef, TypeDefKind, TypeVisibility, VariadicType,
 };
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
@@ -74,7 +74,7 @@ pub struct DocLoc {
     pub line: usize,
 }
 
-/// Property annotations (Salsa facts only carry visibility and deprecated; description text is not in facts yet).
+/// Property annotations (Semantic facts only carry visibility and deprecated; description text is not in facts yet).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocProperty {
     pub visibility: Option<VisibilityKind>,
@@ -102,7 +102,7 @@ pub struct DocFnParam {
     pub ty: Option<LuaType>,
 }
 
-/// Additional function info projected from Salsa `Signature`/`SignatureDoc`.
+/// Additional function info projected from Semantic `Signature`/`SignatureDoc`.
 #[derive(Debug, Clone)]
 pub struct DocSignature {
     pub overloads: Vec<LuaType>,
@@ -178,14 +178,13 @@ pub struct DocModel {
 
 impl DocModel {
     pub fn build(analysis: &EmmyLuaAnalysis) -> Self {
-        let salsa = &analysis.db;
+        let db = &analysis.db;
 
-        let mut file_ids = salsa.file_ids();
+        let mut file_ids = db.file_ids();
         file_ids.sort();
-        let mut main_file_ids: HashSet<FileId> =
-            salsa.main_workspace_file_ids().into_iter().collect();
-        // When main_root is not set, Salsa falls back to all files; old doc behavior also used all main workspace files.
-        if salsa.main_root().is_none() {
+        let mut main_file_ids: HashSet<FileId> = db.main_workspace_file_ids().into_iter().collect();
+        // When main_root is not set, Semantic falls back to all files; old doc behavior also used all main workspace files.
+        if db.main_root().is_none() {
             main_file_ids.extend(file_ids.iter().copied());
         }
 
@@ -197,23 +196,23 @@ impl DocModel {
         let mut all_type_defs: Vec<TypeDef> = Vec::new();
         #[allow(clippy::type_complexity)]
         let mut member_sources: HashMap<SemanticId, Vec<(FileId, Member)>> = HashMap::new();
-        let mut signature_sources: HashMap<LuaSyntaxId, (FileId, SalsaSignature)> = HashMap::new();
+        let mut signature_sources: HashMap<LuaSyntaxId, (FileId, Signature)> = HashMap::new();
         let mut global_sources: Vec<(FileId, Decl)> = Vec::new();
         let mut module_sources: Vec<ModuleSource> = Vec::new();
         let mut properties: HashMap<DocOwner, DocProperty> = HashMap::new();
 
         for file_id in file_ids {
-            let Some(path) = salsa.file_path(file_id) else {
+            let Some(path) = db.file_path(file_id) else {
                 continue;
             };
             file_paths.insert(file_id, path.clone());
             if main_file_ids.contains(&file_id)
-                && let Some(name) = salsa.module_name_of(file_id)
+                && let Some(name) = db.module_name_of(file_id)
             {
                 module_name_by_file.insert(file_id, name);
             }
 
-            let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
+            let Some(model) = SemanticModel::new(db, file_id) else {
                 continue;
             };
             let Some(facts) = model.file_facts() else {
@@ -280,7 +279,7 @@ impl DocModel {
         // Project signatures.
         let mut signatures: HashMap<LuaSyntaxId, DocSignature> = HashMap::new();
         for (syntax, (file_id, signature)) in &signature_sources {
-            if let Some(model) = SalsaSemanticModel::new(salsa, *file_id) {
+            if let Some(model) = SemanticModel::new(db, *file_id) {
                 signatures.insert(*syntax, project_signature(&model, signature));
             }
         }
@@ -293,7 +292,7 @@ impl DocModel {
                 if member_by_id.contains_key(&member.id) {
                     continue;
                 }
-                let Some(model) = SalsaSemanticModel::new(salsa, *file_id) else {
+                let Some(model) = SemanticModel::new(db, *file_id) else {
                     continue;
                 };
                 let signature = member
@@ -312,7 +311,7 @@ impl DocModel {
         for (key, mut defs) in type_builders {
             defs.sort_by(|a, b| (a.file_id, a.name.as_str()).cmp(&(b.file_id, b.name.as_str())));
             let first = defs.first().expect("type defs non-empty").clone();
-            let Some(model) = SalsaSemanticModel::new(salsa, first.file_id) else {
+            let Some(model) = SemanticModel::new(db, first.file_id) else {
                 continue;
             };
             let kind = match first.kind {
@@ -395,7 +394,7 @@ impl DocModel {
         // Finalize globals.
         let mut globals = Vec::new();
         for (file_id, decl) in &global_sources {
-            let Some(model) = SalsaSemanticModel::new(salsa, *file_id) else {
+            let Some(model) = SemanticModel::new(db, *file_id) else {
                 continue;
             };
             let ty = model.type_of_decl(&decl.id).unwrap_or(LuaType::Unknown);
@@ -417,7 +416,7 @@ impl DocModel {
         // Finalize modules.
         let mut modules = Vec::new();
         for source in module_sources {
-            let Some(model) = SalsaSemanticModel::new(salsa, source.file_id) else {
+            let Some(model) = SemanticModel::new(db, source.file_id) else {
                 continue;
             };
             let export = match &source.module_export {
@@ -637,7 +636,7 @@ fn type_visibility(visibility: TypeVisibility) -> Option<VisibilityKind> {
 }
 
 fn make_loc(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     file_paths: &HashMap<FileId, PathBuf>,
     file_id: FileId,
     range: TextRange,
@@ -655,7 +654,7 @@ fn make_loc(
 }
 
 fn project_member(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     member: &Member,
     file_paths: &HashMap<FileId, PathBuf>,
     signature: Option<&DocSignature>,
@@ -694,7 +693,7 @@ fn member_file_id(id: &SemanticId) -> FileId {
     }
 }
 
-fn project_signature(model: &SalsaSemanticModel<'_>, signature: &SalsaSignature) -> DocSignature {
+fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSignature {
     let Some(docs) = signature.docs.as_deref() else {
         return DocSignature {
             overloads: Vec::new(),
@@ -724,7 +723,7 @@ fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
     }
 }
 
-// --- Pure Salsa type text rendering ---
+// --- Pure Semantic type text rendering ---
 
 struct TypeTextRenderer<'a> {
     model: &'a DocModel,

@@ -1,8 +1,8 @@
 use std::{collections::HashMap, path::Path, str::FromStr};
 
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, SalsaSemanticModel, SemanticDatabase, file_path_to_uri,
-    read_file_with_encoding, uri_to_file_path,
+    EmmyLuaAnalysis, SemanticDatabase, SemanticModel, file_path_to_uri, read_file_with_encoding,
+    uri_to_file_path,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaLiteralToken};
 use lsp_types::{
@@ -35,7 +35,7 @@ pub async fn process_did_rename_files_handler(
     let all_renames = context
         .analysis()
         .try_with_snapshot(|analysis| {
-            let salsa = &analysis.db;
+            let db = &analysis.db;
             let mut all_renames: Vec<RenameInfo> = vec![];
 
             for file_rename in params.files {
@@ -47,11 +47,11 @@ pub async fn process_did_rename_files_handler(
                 let old_path = uri_to_file_path(&old_uri)?;
                 let new_path = uri_to_file_path(&new_uri)?;
 
-                let rename_info = collect_rename_info(&old_uri, &new_uri, &salsa);
+                let rename_info = collect_rename_info(&old_uri, &new_uri, &db);
                 if let Some(rename_info) = rename_info {
                     all_renames.push(rename_info.clone());
                 } else if let Some(collected_renames) =
-                    collect_directory_lua_files(&old_path, &new_path, &salsa)
+                    collect_directory_lua_files(&old_path, &new_path, &db)
                 {
                     all_renames.extend(collected_renames);
                 }
@@ -138,15 +138,11 @@ struct RenameInfo {
     new_module_path: String,
 }
 
-fn collect_rename_info(
-    old_uri: &Uri,
-    new_uri: &Uri,
-    salsa: &SemanticDatabase,
-) -> Option<RenameInfo> {
-    let old_module_path = salsa
+fn collect_rename_info(old_uri: &Uri, new_uri: &Uri, db: &SemanticDatabase) -> Option<RenameInfo> {
+    let old_module_path = db
         .module_name_from_path(&uri_to_file_path(old_uri)?)?
         .replace(['\\', '/'], ".");
-    let new_module_path = salsa
+    let new_module_path = db
         .module_name_from_path(&uri_to_file_path(new_uri)?)?
         .replace(['\\', '/'], ".");
 
@@ -162,7 +158,7 @@ fn collect_rename_info(
 fn collect_directory_lua_files(
     old_path: &Path,
     new_path: &Path,
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
 ) -> Option<Vec<RenameInfo>> {
     // Check that the new path is a directory (the old path no longer exists).
     if !new_path.is_dir() {
@@ -189,7 +185,7 @@ fn collect_directory_lua_files(
                 file_path_to_uri(&old_file_path),
                 file_path_to_uri(&new_file_path.to_path_buf()),
             ) {
-                let rename_info = collect_rename_info(&old_file_uri, &new_file_uri, salsa);
+                let rename_info = collect_rename_info(&old_file_uri, &new_file_uri, db);
                 if let Some(rename_info) = rename_info {
                     renames.push(rename_info);
                 }
@@ -229,9 +225,9 @@ fn try_modify_require_path(
 ) -> Option<HashMap<Uri, Vec<TextEdit>>> {
     #[allow(clippy::mutable_key_type)]
     let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
-    let salsa = &analysis.db;
-    for file_id in salsa.file_ids() {
-        let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
+    let db = &analysis.db;
+    for file_id in db.file_ids() {
+        let Some(model) = SemanticModel::new(db, file_id) else {
             continue;
         };
         let Some(chunk) = model.chunk() else {
@@ -239,7 +235,7 @@ fn try_modify_require_path(
         };
         for call_expr in chunk.descendants::<LuaCallExpr>() {
             if call_expr.is_require() {
-                try_convert(analysis, &salsa, file_id, call_expr, renames, &mut changes);
+                try_convert(analysis, &db, file_id, call_expr, renames, &mut changes);
             }
         }
     }
@@ -249,7 +245,7 @@ fn try_modify_require_path(
 #[allow(clippy::mutable_key_type)]
 fn try_convert(
     analysis: &EmmyLuaAnalysis,
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     call_expr: LuaCallExpr,
     renames: &[RenameInfo],
@@ -282,7 +278,7 @@ fn try_convert(
         };
 
         if is_matched {
-            let document = salsa.document(file_id)?;
+            let document = db.document(file_id)?;
             let range = arg_expr.syntax().text_range();
             let lsp_range = document.to_lsp_range(range)?;
             let current_uri = document.get_uri()?;

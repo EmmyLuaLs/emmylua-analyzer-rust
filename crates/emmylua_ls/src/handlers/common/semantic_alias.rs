@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{ModuleExport, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{ModuleExport, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr};
 
 /// Follow the value initialization chain of a local variable / member to its final declared identity.
@@ -13,10 +13,7 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr};
 /// - `local a = b` → the declaration of `b`
 /// - `local f = t.func` → the member declaration of `t.func`
 /// - `function M:f() end` / `local function f() end` return themselves directly
-pub fn resolve_alias_origin(
-    model: &SalsaSemanticModel<'_>,
-    decl: &SemanticId,
-) -> Option<SemanticId> {
+pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Option<SemanticId> {
     let mut visited = HashSet::new();
     let mut current = decl.clone();
     loop {
@@ -104,7 +101,7 @@ pub fn resolve_alias_origin(
 /// Resolves a direct `require("mod").field` member expression. When `resolve_member`
 /// does not recognize a require call prefix, this looks up the member via the module export owner.
 fn resolve_require_index_member(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     index_expr: &LuaIndexExpr,
 ) -> Option<SemanticId> {
     let LuaExpr::CallExpr(call) = index_expr.get_prefix_expr()? else {

@@ -107,7 +107,7 @@ pub struct SemanticModel<'a> {
 
 - [ ] `self.q()` / `self.db()` 全部替换为直接访问 `Vfs` / `WorkspaceIndex`
 - [ ] LS / doc_cli 中通过 `model.db()` 创建其他文件 model 的调用改为 `model.model_for(file_id)`
-- [ ] `SalsaSemanticModel` 改名为 `SemanticModel` 或保留别名过渡
+- [x] `SalsaSemanticModel` 改名为 `SemanticModel`（公共根导出）
 
 ## Phase 5：逐模块替换 tracked query
 
@@ -167,9 +167,9 @@ struct SemanticLocalCache {
 ## Phase 7：删除 salsa 依赖
 
 - [x] 删除 Cargo.toml 中 `salsa` 依赖
-- [x] 删除 `salsa_builder/query.rs` 中所有 `#[salsa::tracked]`
+- [x] 删除 `semantic_db/query.rs` 中所有 `#[salsa::tracked]`
 - [x] 清理所有 `salsa::` 引用
-- [ ] 后续可重命名 `salsa_builder` / `SalsaDatabase` / `SalsaSemanticModel` 等兼容名称
+- [x] 重命名 `salsa_builder` → `semantic_db`、`SalsaDatabase` → `SemanticDatabase`、`SalsaSemanticModel` → `SemanticModel`、`SalsaMemberInfo` → `MemberInfo`、`SalsaGenericParam` → `DocGenericParam` 等兼容名称
 
 ## 成功标准
 

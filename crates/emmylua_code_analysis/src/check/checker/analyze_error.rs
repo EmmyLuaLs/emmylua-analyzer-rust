@@ -1,7 +1,7 @@
 //! # analyze_error — errors during doc type resolution (TypeNotFound / AnnotationUsageError / MissingTypeArgument)
 //!
 //! The old implementation read errors accumulated during `analyze_doc_type` from the DbIndex `DiagnosticIndex`;
-//! the salsa layer splits this into two paths:
+//! the semantic layer splits this into two paths:
 //! - annotation usage errors such as `@field` without `@class` are accumulated in `FileFacts.annotation_errors` during fact extraction;
 //! - `TypeNotFound` / `MissingTypeArgument` are checked by traversing all `LuaDocType` nodes in the file on demand.
 

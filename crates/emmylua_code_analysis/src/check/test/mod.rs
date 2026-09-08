@@ -1,4 +1,4 @@
-//! Diagnostic tests for check (mirrors the old `diagnostic/test` via the new SalsaDatabase → check_file path).
+//! Diagnostic tests for check (mirrors the old `diagnostic/test` via the new SemanticDatabase → check_file path).
 
 mod access_invisible_test;
 mod analyze_error_test;
@@ -71,7 +71,7 @@ pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diag
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let model = crate::SalsaSemanticModel::new(&db, fid).expect("salsa semantic model");
+    let model = crate::SemanticModel::new(&db, fid).expect("semantic model");
     let config = Arc::new(super::CheckConfig::new(&emmyrc));
     super::check_file(&model, config)
 }
@@ -81,9 +81,9 @@ pub(crate) fn count_by_code(diagnostics: &[Diagnostic], code: DiagnosticCode) ->
     diagnostics.iter().filter(|d| d.code == code).count()
 }
 
-/// End-to-end: EmmyLuaAnalysis::diagnose_salsa → lsp Diagnostic (range/code/severity).
+/// End-to-end: EmmyLuaAnalysis::diagnose_file_with_config → lsp Diagnostic (range/code/severity).
 #[test]
-fn test_diagnose_salsa_end_to_end() {
+fn test_diagnose_semantic_end_to_end() {
     let mut analysis = crate::EmmyLuaAnalysis::new();
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let source = "local x = undefined_global\nlocal y = x + 1";
@@ -93,7 +93,9 @@ fn test_diagnose_salsa_end_to_end() {
 
     let emmyrc = analysis.get_emmyrc();
     let config = Arc::new(super::CheckConfig::new(&emmyrc));
-    let diagnostics = analysis.diagnose_salsa(fid, config).expect("diagnostics");
+    let diagnostics = analysis
+        .diagnose_file_with_config(fid, config)
+        .expect("diagnostics");
 
     // undefined_global → code + range points at the name.
     let undefined: Vec<_> = diagnostics

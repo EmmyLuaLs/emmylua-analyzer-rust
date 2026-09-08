@@ -1,10 +1,10 @@
-//! # build_signature_helper — Salsa-based signature help
+//! # build_signature_helper — Semantic-based signature help
 //!
 //! Core subset: callee type → DocFunction → parameter/return labels + comma-count active parameter.
 //! The old DbIndex version (`@overload` matching / operator calls / generic alias substitution / best parameter reordering)
-//! has been retired; see `docs/SALSA_FROM_SCRATCH.md` §M3.
+//! has been retired; see `migration notes` §M3.
 
-use emmylua_code_analysis::{LuaFunctionType, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{LuaFunctionType, LuaType, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation};
 use rowan::NodeOrToken;
@@ -12,7 +12,7 @@ use rowan::NodeOrToken;
 use crate::handlers::hover::render;
 
 pub fn build_signature_helper(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     call_expr: LuaCallExpr,
     token: LuaSyntaxToken,
 ) -> Option<SignatureHelp> {
@@ -94,7 +94,7 @@ pub fn build_signature_helper(
 
 /// Collect a closure's main signature plus `---@overload fun(...)` candidates.
 fn signature_candidates(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure_syntax: emmylua_parser::LuaSyntaxId,
 ) -> Vec<LuaFunctionType> {
     let mut out = Vec::new();
@@ -120,7 +120,7 @@ fn signature_candidates(
 
 /// Render multiple signature candidates and pick the one matching the current parameter position as active.
 fn build_signature_help_candidates(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     candidates: &[LuaFunctionType],
     colon_call: bool,
     current_idx: usize,
@@ -152,7 +152,7 @@ fn build_signature_help_candidates(
 /// `pcall(f, f's args...)` / `xpcall(f, err, f's args...)`:
 /// Synthesize help from the first argument's function signature (the args after f are passed through to that function).
 fn build_pcall_signature_help(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     call_expr: &LuaCallExpr,
     current_idx: usize,
 ) -> Option<SignatureHelp> {
@@ -211,7 +211,7 @@ fn build_pcall_signature_help(
 }
 
 fn build_doc_function_signature_help(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     func_type: &LuaFunctionType,
     colon_call: bool,
     current_idx: usize,
@@ -286,7 +286,7 @@ fn build_doc_function_signature_help(
     })
 }
 
-fn render_type(model: &SalsaSemanticModel<'_>, ty: &LuaType) -> String {
+fn render_type(model: &SemanticModel<'_>, ty: &LuaType) -> String {
     render::humanize(model, ty)
 }
 

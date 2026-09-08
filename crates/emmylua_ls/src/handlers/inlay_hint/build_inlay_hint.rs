@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    AsyncState, LuaType, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDefKind,
+    AsyncState, LuaType, SemanticDatabase, SemanticId, SemanticModel, TypeDefKind,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaCommentOwner, LuaDocTag, LuaExpr, LuaFuncStat,
@@ -12,19 +12,19 @@ use crate::context::ClientId;
 use crate::handlers::hover::render::humanize;
 
 pub fn build_inlay_hints(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     client_id: ClientId,
     enum_param_hint: bool,
 ) -> Option<Vec<InlayHint>> {
     let mut result = Vec::new();
     let _ = client_id;
     let root = model.chunk()?;
-    let document = salsa.document(model.file_id())?;
+    let document = db.document(model.file_id())?;
     for node in root.descendants::<LuaAst>() {
         match node {
             LuaAst::LuaClosureExpr(closure) => {
-                build_closure_param_hints(model, salsa, &document, &mut result, closure);
+                build_closure_param_hints(model, db, &document, &mut result, closure);
             }
             LuaAst::LuaLocalName(local_name) => {
                 build_local_name_hint(model, &document, &mut result, local_name);
@@ -54,8 +54,8 @@ pub fn build_inlay_hints(
 
 /// Closure parameter hint: `---@param` annotated type → `: T` after the parameter name.
 fn build_closure_param_hints(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     closure: emmylua_parser::LuaClosureExpr,
@@ -90,7 +90,7 @@ fn build_closure_param_hints(
         };
         let label_text = format!(": {}", humanize(model, &ty));
         let location = if is_primitive_type(&ty) {
-            builtin_file_location(salsa)
+            builtin_file_location(db)
         } else {
             document.get_uri().map(|uri| Location {
                 uri,
@@ -117,7 +117,7 @@ fn build_closure_param_hints(
 
 /// Whether the closure belongs to `function X:method(...)` / `function X.method(...)` and overrides a parent member.
 fn is_override_func_stat(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure: &emmylua_parser::LuaClosureExpr,
 ) -> bool {
     let Some(func_stat) = closure.get_parent::<LuaFuncStat>() else {
@@ -158,7 +158,7 @@ fn is_override_func_stat(
 }
 
 fn build_local_name_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     local_name: LuaLocalName,
@@ -205,7 +205,7 @@ fn build_local_name_hint(
 
 /// When `function B:aaa(...)` overrides a parent member, show `override` after the parameter list.
 fn build_func_stat_override_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     func_stat: &LuaFuncStat,
@@ -267,7 +267,7 @@ fn build_func_stat_override_hint(
 
 /// Integer index `export[1]`: if the field definition has `---@[index_alias("nameX")]`, hint `: nameX` after the index.
 fn build_index_expr_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     index_expr: &LuaIndexExpr,
@@ -330,7 +330,7 @@ fn build_index_expr_hint(
 
 /// Show `await` before async function calls.
 fn build_call_expr_await_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: &LuaCallExpr,
@@ -360,7 +360,7 @@ fn build_call_expr_await_hint(
 
 /// Show `new` before callable classes like `Hint1("a")`.
 fn build_meta_call_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: &LuaCallExpr,
@@ -407,7 +407,7 @@ fn build_meta_call_hint(
 
 /// `local A = meta("MyClass")`: infer the class definition from the string argument of a meta call.
 fn constructor_type_from_meta(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix: &LuaExpr,
 ) -> Option<emmylua_code_analysis::TypeDef> {
     let LuaExpr::NameExpr(name_expr) = prefix else {
@@ -439,7 +439,7 @@ fn string_literal_of_expr(expr: &LuaExpr) -> Option<String> {
 }
 
 fn build_call_expr_param_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     result: &mut Vec<InlayHint>,
     call_expr: LuaCallExpr,
@@ -568,7 +568,7 @@ fn build_call_expr_param_hint(
 }
 
 fn build_enum_value_hint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     arg: &LuaExpr,
     param_ty: &LuaType,
@@ -657,9 +657,9 @@ fn is_primitive_type(ty: &LuaType) -> bool {
 }
 
 /// Find the built-in library file (`builtin.lua`) location; return `None` if not found.
-fn builtin_file_location(salsa: &SemanticDatabase) -> Option<Location> {
-    for file_id in salsa.file_ids() {
-        let document = salsa.document(file_id)?;
+fn builtin_file_location(db: &SemanticDatabase) -> Option<Location> {
+    for file_id in db.file_ids() {
+        let document = db.document(file_id)?;
         if document
             .get_uri()
             .is_some_and(|uri| uri.as_str().ends_with("builtin.lua"))

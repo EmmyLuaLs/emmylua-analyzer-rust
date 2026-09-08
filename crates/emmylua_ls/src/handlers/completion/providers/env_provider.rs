@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{DeclKind, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{DeclKind, LuaType, SemanticModel};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaCallArgList, LuaParamList, LuaTokenKind};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionTriggerKind,
@@ -102,7 +102,7 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
     true
 }
 
-fn has_std_library(model: &SalsaSemanticModel<'_>) -> bool {
+fn has_std_library(model: &SemanticModel<'_>) -> bool {
     model
         .file_ids()
         .iter()
@@ -129,7 +129,7 @@ fn add_builtin_types(builder: &mut CompletionBuilder, duplicated: &mut HashSet<S
 
 /// Declarations visible in the lexical scope at the current position (facts visibility scope).
 pub fn visible_local_decls(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     position_offset: rowan::TextSize,
 ) -> Vec<emmylua_code_analysis::SemanticId> {
     let Some(facts) = model.file_facts() else {

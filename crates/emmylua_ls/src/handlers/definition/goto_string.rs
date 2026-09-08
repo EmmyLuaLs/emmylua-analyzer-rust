@@ -2,15 +2,15 @@
 //!
 //! `f("Name")` and `f`'s corresponding parameter has `StrTplRef` (`` `T` `` / `` `prefix.T` ``) →
 //! compose the type name as "prefix + string + suffix" → type definition positions.
-//! Mirrors the old `goto_str_tpl_ref_definition`, now via salsa queries only.
+//! Mirrors the old `goto_str_tpl_ref_definition`, now via semantic queries only.
 
-use emmylua_code_analysis::{LuaType, SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{LuaType, SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaStringToken};
 use lsp_types::{GotoDefinitionResponse, Location};
 
 pub fn goto_str_tpl_ref_definition(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     string_token: LuaStringToken,
 ) -> Option<GotoDefinitionResponse> {
     let name = string_token.get_value();
@@ -28,7 +28,7 @@ pub fn goto_str_tpl_ref_definition(
     })?;
 
     // Callee signature (doc parameter projection; cross-file declarations resolve through their file model).
-    let fun = callee_signature(model, salsa, &call_expr)?;
+    let fun = callee_signature(model, db, &call_expr)?;
     let params = fun.get_params();
 
     // Match StrTplRef directly; try union members one by one.
@@ -45,14 +45,13 @@ pub fn goto_str_tpl_ref_definition(
     }?;
 
     // Match StrTplRef directly; try union members one by one.
-    if let Some(locations) = try_extract_str_tpl_ref_locations(model, salsa, &target_param.1, &name)
-    {
+    if let Some(locations) = try_extract_str_tpl_ref_locations(model, db, &target_param.1, &name) {
         return Some(GotoDefinitionResponse::Array(locations));
     }
     if let Some(LuaType::Union(union_type)) = target_param.1.clone() {
         for union_member in union_type.into_vec().iter() {
             if let Some(locations) =
-                try_extract_str_tpl_ref_locations(model, salsa, &Some(union_member.clone()), &name)
+                try_extract_str_tpl_ref_locations(model, db, &Some(union_member.clone()), &name)
             {
                 return Some(GotoDefinitionResponse::Array(locations));
             }
@@ -64,8 +63,8 @@ pub fn goto_str_tpl_ref_definition(
 
 /// Callee's doc signature: name expression → declared closure (cross-file via the declaration file model); closure expression → itself.
 fn callee_signature(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     call_expr: &LuaCallExpr,
 ) -> Option<emmylua_code_analysis::LuaFunctionType> {
     let prefix = call_expr.get_prefix_expr()?;
@@ -79,7 +78,7 @@ fn callee_signature(
             let decl_model = if key.file_id == model.file_id() {
                 None
             } else {
-                SalsaSemanticModel::new(salsa, key.file_id)
+                SemanticModel::new(db, key.file_id)
             };
             let decl_model = decl_model.as_ref().unwrap_or(model);
             let decls = decl_model.decls()?;
@@ -93,8 +92,8 @@ fn callee_signature(
 }
 
 fn try_extract_str_tpl_ref_locations(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     param_type: &Option<LuaType>,
     name: &str,
 ) -> Option<Vec<Location>> {
@@ -103,11 +102,11 @@ fn try_extract_str_tpl_ref_locations(
     };
     let type_name = format!("{}{}{}", str_tpl.get_prefix(), name, str_tpl.get_suffix());
 
-    // Resolve in the current file scope (namespace/using aware); cross-file resolution is guaranteed by the salsa index.
+    // Resolve in the current file scope (namespace/using aware); cross-file resolution is guaranteed by the semantic index.
     let def = model.resolve_type_def(&type_name)?;
     let mut locations = Vec::new();
     for d in model.type_defs_in_scope(def_scope(&def), &type_name) {
-        let Some(document) = salsa.document(d.file_id) else {
+        let Some(document) = db.document(d.file_id) else {
             continue;
         };
         let Some(uri) = document.get_uri() else {

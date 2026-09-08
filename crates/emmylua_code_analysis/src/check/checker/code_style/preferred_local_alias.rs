@@ -12,7 +12,7 @@ use rowan::TextRange;
 
 use crate::DiagnosticCode;
 use crate::LuaType;
-use crate::salsa_builder::def::SemanticId;
+use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 
 use super::super::{CheckContext, Checker};

@@ -141,7 +141,7 @@ impl ProviderVirtualWorkspace {
     }
 
     pub fn def_files(&mut self, files: Vec<(&str, &str)>) -> Vec<FileId> {
-        // M4: salsa has no remove_index/update_index; writing the file directly takes effect.
+        // M4: semantic has no remove_index/update_index; writing the file directly takes effect.
         let mut file_ids = files
             .into_iter()
             .map(|(file_name, content)| self.def_file(file_name, content))

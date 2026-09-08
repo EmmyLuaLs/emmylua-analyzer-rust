@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 /// Type definition: `---@class Foo<T: Base, U = Default>`; function: `---@generic T`.
 /// `constraint` / `default` store doc type node references; resolved in the query layer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SalsaGenericParam {
+pub struct DocGenericParam {
     pub name: SmolStr,
     /// `T: Constraint` constraint type node.
     pub constraint: Option<LuaSyntaxId>,
@@ -20,7 +20,7 @@ pub struct SalsaGenericParam {
     pub is_variadic: bool,
 }
 
-impl SalsaGenericParam {
+impl DocGenericParam {
     pub fn new(
         name: SmolStr,
         constraint: Option<LuaSyntaxId>,

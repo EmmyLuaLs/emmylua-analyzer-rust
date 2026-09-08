@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, VirtualUrlGenerator};
 
-/// A virtual workspace for testing (M4: via the salsa analysis layer only).
+/// A virtual workspace for testing (M4: via the semantic analysis layer only).
 #[allow(unused)]
 #[derive(Debug)]
 pub struct VirtualWorkspace {
@@ -102,7 +102,10 @@ impl VirtualWorkspace {
     }
 
     pub fn get_node<Ast: LuaAstNode>(&self, file_id: FileId) -> Ast {
-        let model = self.analysis.semantic_model(file_id).expect("salsa model");
+        let model = self
+            .analysis
+            .semantic_model(file_id)
+            .expect("semantic model");
         let chunk = model.chunk().expect("chunk");
         chunk.descendants::<Ast>().next().expect("Node must exist")
     }
@@ -111,7 +114,10 @@ impl VirtualWorkspace {
         let virtual_content = format!("---@type {}\nlocal t", type_repr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let model = self.analysis.semantic_model(file_id).expect("salsa model");
+        let model = self
+            .analysis
+            .semantic_model(file_id)
+            .expect("semantic model");
         let token = local_name.get_name_token().expect("Name token must exist");
         let decl = model
             .decl_by_offset(token.get_position())
@@ -123,7 +129,10 @@ impl VirtualWorkspace {
         let virtual_content = format!("local t = {}", expr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let model = self.analysis.semantic_model(file_id).expect("salsa model");
+        let model = self
+            .analysis
+            .semantic_model(file_id)
+            .expect("semantic model");
         let token = local_name.get_name_token().expect("Name token must exist");
         let decl = model
             .decl_by_offset(token.get_position())

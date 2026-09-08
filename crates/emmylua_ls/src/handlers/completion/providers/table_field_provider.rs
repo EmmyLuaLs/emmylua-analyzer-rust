@@ -1,6 +1,6 @@
 //! Table-field completion: `{ name = <??> }` / `{ <??> }` / expected types for table constructor arguments.
 
-use emmylua_code_analysis::{LuaMemberKey, LuaType, SalsaMemberInfo, SemanticId};
+use emmylua_code_analysis::{LuaMemberKey, LuaType, MemberInfo, SemanticId};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaKind, LuaTableExpr, LuaTableField, LuaTokenKind,
 };
@@ -130,7 +130,7 @@ fn add_table_field_key_completion(
     Some(ProviderDecision::Continue)
 }
 
-fn add_field_key_completion(builder: &mut CompletionBuilder, member: &SalsaMemberInfo) {
+fn add_field_key_completion(builder: &mut CompletionBuilder, member: &MemberInfo) {
     let name = match &member.key {
         LuaMemberKey::Name(name) => name.to_string(),
         LuaMemberKey::Integer(index) => format!("[{}]", index),
@@ -149,7 +149,7 @@ fn add_field_key_completion(builder: &mut CompletionBuilder, member: &SalsaMembe
 
 fn member_completion_data(
     builder: &CompletionBuilder,
-    member: &SalsaMemberInfo,
+    member: &MemberInfo,
 ) -> Option<serde_json::Value> {
     let id = member.id.as_ref()?;
     let SemanticId::Member(key) = id else {

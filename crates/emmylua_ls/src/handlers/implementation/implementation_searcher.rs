@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use emmylua_code_analysis::{DeclKind, SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{DeclKind, SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaDocTagField, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaStat,
     LuaSyntaxToken, LuaTableField,
@@ -10,8 +10,8 @@ use lsp_types::Location;
 use crate::handlers::common::{decl_reference_ranges, member_reference_ranges};
 
 pub fn search_implementations(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
@@ -19,14 +19,14 @@ pub fn search_implementations(
     match &semantic_decl {
         SemanticId::TypeDef(key) => {
             for def in model.type_defs_in_scope(key.scope, &key.full_name) {
-                push_location(salsa, def.file_id, def.name_range, &mut result);
+                push_location(db, def.file_id, def.name_range, &mut result);
             }
         }
         SemanticId::Member(_) => {
-            search_member_implementations(salsa, &semantic_decl, &mut result);
+            search_member_implementations(db, &semantic_decl, &mut result);
         }
         SemanticId::Decl(_) => {
-            search_decl_implementations(salsa, &semantic_decl, &mut result);
+            search_decl_implementations(db, &semantic_decl, &mut result);
         }
         _ => {}
     }
@@ -34,15 +34,15 @@ pub fn search_implementations(
 }
 
 fn search_member_implementations(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     member: &SemanticId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
-    let mut ranges = member_reference_ranges(salsa, member, true);
+    let mut ranges = member_reference_ranges(db, member, true);
     // Other definition sites of the same member key (`@field` / table field / runtime assignment / method implementation) are also implementation positions.
-    if let Some(key_text) = member_key_text(salsa, member) {
+    if let Some(key_text) = member_key_text(db, member) {
         let discovered = Mutex::new(Vec::new());
-        salsa.parallel_for_each_file(|file_id, model| {
+        db.parallel_for_each_file(|file_id, model| {
             let Some(members) = model.members() else {
                 return;
             };
@@ -65,7 +65,7 @@ fn search_member_implementations(
     let mut signatures = Vec::new();
     let mut others = Vec::new();
     for (file_id, range) in ranges {
-        let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
+        let Some(model) = SemanticModel::new(db, file_id) else {
             continue;
         };
         if !is_implementation_position(&model, range) {
@@ -78,7 +78,7 @@ fn search_member_implementations(
         } else {
             &mut others
         };
-        push_location(salsa, file_id, range, target);
+        push_location(db, file_id, range, target);
     }
     signatures.append(&mut others);
     result.append(&mut signatures);
@@ -86,7 +86,7 @@ fn search_member_implementations(
 }
 
 /// Whether a position is an implementation position: an index key that is a `function T:m()` method name or a `T.x = v` lvalue.
-fn is_implementation_position(model: &SalsaSemanticModel<'_>, range: rowan::TextRange) -> bool {
+fn is_implementation_position(model: &SemanticModel<'_>, range: rowan::TextRange) -> bool {
     let Some(chunk) = model.chunk() else {
         return false;
     };
@@ -124,7 +124,7 @@ fn is_implementation_position(model: &SalsaSemanticModel<'_>, range: rowan::Text
 }
 
 /// Whether this is a method signature definition (a function member definition position).
-fn is_signature_position(model: &SalsaSemanticModel<'_>, range: rowan::TextRange) -> bool {
+fn is_signature_position(model: &SemanticModel<'_>, range: rowan::TextRange) -> bool {
     let Some(chunk) = model.chunk() else {
         return false;
     };
@@ -141,29 +141,29 @@ fn is_signature_position(model: &SalsaSemanticModel<'_>, range: rowan::TextRange
 }
 
 fn search_decl_implementations(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
     // Implementation positions are declaration names plus assignment lvalues; plain reads are not implementations.
-    let ranges = decl_reference_ranges(salsa, decl, true);
+    let ranges = decl_reference_ranges(db, decl, true);
     for (file_id, range) in ranges {
-        let Some(model) = SalsaSemanticModel::new(salsa, file_id) else {
+        let Some(model) = SemanticModel::new(db, file_id) else {
             continue;
         };
         if is_decl_implementation_position(&model, decl, range) {
-            push_location(salsa, file_id, range, result);
+            push_location(db, file_id, range, result);
         }
     }
     // Same-name globals: partial classes / global variables may each use `x = {}` in multiple files,
     // and these assignments are implementation positions for the same global name.
     if let SemanticId::Decl(decl_key) = decl {
-        let model = SalsaSemanticModel::new(salsa, decl_key.file_id)?;
+        let model = SemanticModel::new(db, decl_key.file_id)?;
         let decl_info = model.file_facts()?.decl_by_id(decl)?;
         if matches!(decl_info.kind, DeclKind::Global) {
             let name = decl_info.name.clone();
             let matched = Mutex::new(Vec::new());
-            salsa.parallel_for_each_file(|file_id, file_model| {
+            db.parallel_for_each_file(|file_id, file_model| {
                 let Some(facts) = file_model.file_facts() else {
                     return;
                 };
@@ -177,7 +177,7 @@ fn search_decl_implementations(
             let mut matched = matched.into_inner().expect("implementation locations lock");
             matched.sort_by_key(|(file_id, _)| file_id.id);
             for (file_id, range) in matched {
-                if let Some(location) = make_location(salsa, file_id, range)
+                if let Some(location) = make_location(db, file_id, range)
                     && !result.contains(&location)
                 {
                     result.push(location);
@@ -190,7 +190,7 @@ fn search_decl_implementations(
 
 /// Whether a decl reference position is an "assignment implementation position" (the target of `x = v`, or the declaration name itself).
 fn is_decl_implementation_position(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     decl: &SemanticId,
     range: rowan::TextRange,
 ) -> bool {
@@ -219,11 +219,11 @@ fn is_decl_implementation_position(
         .any(|var| var.to_expr().get_syntax_id() == name_expr.get_syntax_id())
 }
 
-fn member_key_text(salsa: &SemanticDatabase, member: &SemanticId) -> Option<String> {
+fn member_key_text(db: &SemanticDatabase, member: &SemanticId) -> Option<String> {
     let SemanticId::Member(key) = member else {
         return None;
     };
-    let model = SalsaSemanticModel::new(salsa, key.file_id)?;
+    let model = SemanticModel::new(db, key.file_id)?;
     let members = model.members()?;
     members
         .iter()
@@ -232,11 +232,11 @@ fn member_key_text(salsa: &SemanticDatabase, member: &SemanticId) -> Option<Stri
 }
 
 fn make_location(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {
-    let document = salsa.document(file_id)?;
+    let document = db.document(file_id)?;
     let uri = document.get_uri()?;
     let lsp_range = document.to_lsp_range(range)?;
     Some(Location {
@@ -246,12 +246,12 @@ fn make_location(
 }
 
 fn push_location(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
     result: &mut Vec<Location>,
 ) {
-    let Some(location) = make_location(salsa, file_id, range) else {
+    let Some(location) = make_location(db, file_id, range) else {
         return;
     };
     if !result.contains(&location) {

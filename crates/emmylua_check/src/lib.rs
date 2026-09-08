@@ -66,7 +66,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     let analysis = Arc::new(analysis);
     let total_count = need_check_files.len();
     let task_analysis = analysis.clone();
-    // Run the files sequentially in one worker. Salsa's database is shared and
+    // Run the files sequentially in one worker. the semantic database is shared and
     // concurrent diagnose calls on the same database are not safe here; sequential
     // execution is also a more accurate representation of the single-core LS path.
     let sender_for_task = sender.clone();
@@ -74,7 +74,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
         for file_id in need_check_files {
             let cancel_token = CancellationToken::new();
             let diagnostics = if let Some((_, config)) = &profile_task {
-                task_analysis.diagnose_salsa(file_id, config.clone())
+                task_analysis.diagnose_file_with_config(file_id, config.clone())
             } else {
                 task_analysis.diagnose_file(file_id, cancel_token)
             };

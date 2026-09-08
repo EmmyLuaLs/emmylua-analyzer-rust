@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DiagnosticCode, Emmyrc, LuaDocument, SalsaSemanticModel};
+use emmylua_code_analysis::{DiagnosticCode, Emmyrc, LuaDocument, SemanticModel};
 use emmylua_formatter::resolve_config_for_path;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaCommentOwner, LuaDocTag, LuaDocTagDiagnostic, LuaExpr,
@@ -68,7 +68,7 @@ fn find_expr_attached_comment(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
 }
 
 pub fn build_disable_next_line_changes(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     emmyrc: &Emmyrc,
     start: Position,
@@ -199,7 +199,7 @@ fn get_disable_next_line_text_edit(
 }
 
 pub fn build_disable_file_changes(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     emmyrc: &Emmyrc,
     code: DiagnosticCode,

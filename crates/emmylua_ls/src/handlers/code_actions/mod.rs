@@ -9,7 +9,7 @@ use lsp_types::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 
 use super::RegisterCapabilities;
 
@@ -27,7 +27,6 @@ pub async fn on_code_action_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(external_cancel),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

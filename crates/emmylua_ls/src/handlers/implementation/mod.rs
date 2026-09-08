@@ -1,6 +1,6 @@
 mod implementation_searcher;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
 use implementation_searcher::search_implementations;
@@ -20,15 +20,10 @@ pub async fn on_implementation_handler(
 ) -> RequestOutcome<GotoDefinitionResponse> {
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let file_id = analysis.get_file_id(&uri)?;
-            implementation(analysis, file_id, position)
-        },
-    )
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let file_id = analysis.get_file_id(&uri)?;
+        implementation(analysis, file_id, position)
+    })
     .await
 }
 

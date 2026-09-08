@@ -5,15 +5,13 @@ use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::{
-    context::{
-        CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query, snapshot_query,
-    },
+    context::{RequestOutcome, ServerContextSnapshot, analysis_query, snapshot_query},
     handlers::emmy_gutter::emmy_gutter_request::{EmmyGutterParams, GutterInfo},
 };
 pub use emmy_gutter_detail_request::*;
 pub use emmy_gutter_request::*;
 use emmylua_code_analysis::{
-    Emmyrc, LuaDocument, LuaType, SalsaSemanticModel, SemanticDatabase, TypeScope,
+    Emmyrc, LuaDocument, LuaType, SemanticDatabase, SemanticModel, TypeScope,
 };
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaVarExpr};
 use lsp_types::Uri;
@@ -32,7 +30,6 @@ pub async fn on_emmy_gutter_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
@@ -46,9 +43,9 @@ pub async fn on_emmy_gutter_handler(
 }
 
 fn build_gutter_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     emmyrc: &Emmyrc,
 ) -> Option<Vec<GutterInfo>> {
     let root = model.chunk()?;
@@ -93,7 +90,7 @@ fn build_gutter_infos(
                 build_func_override_gutter_info(
                     model,
                     document,
-                    salsa,
+                    db,
                     emmyrc,
                     &mut gutters,
                     func_stat,
@@ -107,9 +104,9 @@ fn build_gutter_infos(
 }
 
 fn build_func_override_gutter_info(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     emmyrc: &Emmyrc,
     gutters: &mut Vec<GutterInfo>,
     func_stat: emmylua_parser::LuaFuncStat,
@@ -155,7 +152,7 @@ fn build_func_override_gutter_info(
                 let Some(range) = member_ref.id.member_key_range() else {
                     continue;
                 };
-                let Some(target_document) = salsa.document(member_ref.file_id) else {
+                let Some(target_document) = db.document(member_ref.file_id) else {
                     continue;
                 };
                 let Some(uri) = target_document.get_uri() else {
@@ -193,44 +190,39 @@ pub async fn on_emmy_gutter_detail_handler(
     cancel_token: CancellationToken,
 ) -> RequestOutcome<GutterDetailResponse> {
     let type_name = params.data;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let locations = Mutex::new(Vec::new());
-            analysis.db.parallel_for_each_file(|file_id, model| {
-                let Some(facts) = model.file_facts() else {
-                    return;
-                };
-                let Some(document) = model.document(file_id) else {
-                    return;
-                };
-                let Some(uri) = document.get_uri() else {
-                    return;
-                };
-                let mut locations = locations.lock().expect("gutter locations lock");
-                for def in facts.type_defs.iter() {
-                    if !def
-                        .super_names
-                        .iter()
-                        .any(|super_name| super_name.as_str() == type_name)
-                    {
-                        continue;
-                    }
-                    if let Some(lsp_range) = document.to_lsp_range(def.name_range) {
-                        locations.push(GutterLocation {
-                            uri: uri.to_string(),
-                            line: lsp_range.start.line as i32,
-                            kind: GutterKind::Class,
-                        });
-                    }
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let locations = Mutex::new(Vec::new());
+        analysis.db.parallel_for_each_file(|file_id, model| {
+            let Some(facts) = model.file_facts() else {
+                return;
+            };
+            let Some(document) = model.document(file_id) else {
+                return;
+            };
+            let Some(uri) = document.get_uri() else {
+                return;
+            };
+            let mut locations = locations.lock().expect("gutter locations lock");
+            for def in facts.type_defs.iter() {
+                if !def
+                    .super_names
+                    .iter()
+                    .any(|super_name| super_name.as_str() == type_name)
+                {
+                    continue;
                 }
-            });
-            Some(GutterDetailResponse {
-                locations: locations.into_inner().expect("gutter locations lock"),
-            })
-        },
-    )
+                if let Some(lsp_range) = document.to_lsp_range(def.name_range) {
+                    locations.push(GutterLocation {
+                        uri: uri.to_string(),
+                        line: lsp_range.start.line as i32,
+                        kind: GutterKind::Class,
+                    });
+                }
+            }
+        });
+        Some(GutterDetailResponse {
+            locations: locations.into_inner().expect("gutter locations lock"),
+        })
+    })
     .await
 }

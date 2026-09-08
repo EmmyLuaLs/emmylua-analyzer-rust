@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAstNode, LuaDocNameType, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
 };
@@ -10,8 +10,8 @@ use crate::handlers::common::{
 };
 
 pub fn highlight_tokens(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
 ) -> Option<Vec<DocumentHighlight>> {
     let mut result = Vec::new();
@@ -20,13 +20,13 @@ pub fn highlight_tokens(
         if let Some(name) = name_type.get_name_text()
             && let Some(def) = model.resolve_type_def(&name)
         {
-            for (file_id, range) in type_def_reference_ranges(salsa, &def, true) {
+            for (file_id, range) in type_def_reference_ranges(db, &def, true) {
                 if file_id != model.file_id() {
                     continue;
                 }
                 push_highlight(
                     model,
-                    salsa,
+                    db,
                     range,
                     Some(DocumentHighlightKind::TEXT),
                     &mut result,
@@ -38,26 +38,26 @@ pub fn highlight_tokens(
     match token.kind().into() {
         LuaTokenKind::TkName => {
             let Some(decl) = model.find_decl(token.clone().into()) else {
-                highlight_name(model, salsa, token, &mut result);
+                highlight_name(model, db, token, &mut result);
                 return Some(result);
             };
             match &decl {
-                SemanticId::Decl(_) => highlight_decl_references(model, salsa, &decl, &mut result),
+                SemanticId::Decl(_) => highlight_decl_references(model, db, &decl, &mut result),
                 SemanticId::Member(_) => {
-                    for (file_id, range) in member_reference_ranges(salsa, &decl, true) {
+                    for (file_id, range) in member_reference_ranges(db, &decl, true) {
                         if file_id != model.file_id() {
                             continue;
                         }
-                        push_highlight(model, salsa, range, None, &mut result);
+                        push_highlight(model, db, range, None, &mut result);
                     }
                 }
                 _ => {
-                    let _ = highlight_name(model, salsa, token, &mut result);
+                    let _ = highlight_name(model, db, token, &mut result);
                 }
             }
         }
         token_kind if is_keyword(token_kind) => {
-            highlight_keywords(model, salsa, token, &mut result);
+            highlight_keywords(model, db, token, &mut result);
         }
         _ => {}
     }
@@ -66,18 +66,18 @@ pub fn highlight_tokens(
 }
 
 fn highlight_decl_references(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     result: &mut Vec<DocumentHighlight>,
 ) {
-    let ranges = decl_reference_ranges(salsa, decl, false);
+    let ranges = decl_reference_ranges(db, decl, false);
     for (file_id, range) in ranges {
         // document_highlight only cares about the current file.
         if file_id != model.file_id() {
             continue;
         }
-        push_highlight(model, salsa, range, None, result);
+        push_highlight(model, db, range, None, result);
     }
     // Declaration name (write position): only handle declarations in the current file to avoid converting ranges from other files into this document.
     if let SemanticId::Decl(key) = decl
@@ -85,7 +85,7 @@ fn highlight_decl_references(
     {
         push_highlight(
             model,
-            salsa,
+            db,
             key.name_range,
             Some(DocumentHighlightKind::WRITE),
             result,
@@ -94,8 +94,8 @@ fn highlight_decl_references(
 }
 
 fn highlight_name(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -108,7 +108,7 @@ fn highlight_name(
         {
             push_highlight(
                 model,
-                salsa,
+                db,
                 token.text_range(),
                 Some(DocumentHighlightKind::TEXT),
                 result,
@@ -143,22 +143,22 @@ fn is_keyword(kind: LuaTokenKind) -> bool {
 }
 
 fn highlight_keywords(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
     let parent_node = token.parent()?;
     match parent_node.kind().into() {
         LuaSyntaxKind::LocalFuncStat | LuaSyntaxKind::FuncStat => {
-            highlight_node_keywords(model, salsa, parent_node.clone(), result);
+            highlight_node_keywords(model, db, parent_node.clone(), result);
             let closure_node = parent_node
                 .children()
                 .find(|node| node.kind() == LuaSyntaxKind::ClosureExpr.into())?;
-            highlight_node_keywords(model, salsa, closure_node, result);
+            highlight_node_keywords(model, db, closure_node, result);
         }
         _ => {
-            highlight_node_keywords(model, salsa, parent_node, result);
+            highlight_node_keywords(model, db, parent_node, result);
         }
     }
 
@@ -166,8 +166,8 @@ fn highlight_keywords(
 }
 
 fn highlight_node_keywords(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     node: LuaSyntaxNode,
     result: &mut Vec<DocumentHighlight>,
 ) -> Option<()> {
@@ -177,7 +177,7 @@ fn highlight_node_keywords(
         {
             push_highlight(
                 model,
-                salsa,
+                db,
                 token.text_range(),
                 Some(DocumentHighlightKind::TEXT),
                 result,
@@ -189,13 +189,13 @@ fn highlight_node_keywords(
 }
 
 fn push_highlight(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     range: rowan::TextRange,
     kind: Option<DocumentHighlightKind>,
     result: &mut Vec<DocumentHighlight>,
 ) {
-    let Some(document) = salsa.document(model.file_id()) else {
+    let Some(document) = db.document(model.file_id()) else {
         return;
     };
     let Some(lsp_range) = document.to_lsp_range(range) else {

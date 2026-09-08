@@ -8,7 +8,7 @@ use lsp_types::Uri;
 use emmylua_parser::{LuaAstNode, LuaClosureExpr};
 
 use crate::member_key::LuaMemberKey;
-use crate::salsa_builder::def::SemanticId;
+use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 use crate::{Emmyrc, LuaType};
 
@@ -21,7 +21,7 @@ fn model_of(source: &str) -> (&'static SemanticModel<'static>, Arc<Emmyrc>) {
     let uri = Uri::from_str("file:///C:/ws/infer.lua").unwrap();
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     // Leak for tests.
-    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
     (model, emmyrc)
@@ -129,7 +129,7 @@ fn test_infer_expr_member_cross_file() {
     let fid = db.set_file_content(&uri_a, Some("local y = M.x".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -846,7 +846,7 @@ fn test_require_via_variable() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -875,7 +875,7 @@ fn test_require_literal_vm() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
 
@@ -940,7 +940,7 @@ fn test_is_visible_private_field() {
     let uri_a = Uri::from_str("file:///C:/ws/a.lua").unwrap();
     let fid = db.set_file_content(&uri_a, Some("local c = {}\nlocal v = c.secret".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let db: &'static crate::salsa_builder::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
     let model_b: &'static SemanticModel<'static> =

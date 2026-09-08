@@ -113,7 +113,7 @@ fn test_decl_type_name_resolution_chain() {
 #[test]
 fn test_decl_type_self_reference_cycle_fixpoint() {
     let mut db = setup();
-    // `local a = a or 1`: a's type depends on itself → triggers salsa's native fixpoint.
+    // `local a = a or 1`: a's type depends on itself → triggers semantic's native fixpoint.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = a or 1");
 
     let facts = db.q().file_facts(fid).expect("facts");
@@ -617,7 +617,7 @@ fn test_member_phase2_name_chain_resolution() {
 #[test]
 fn test_member_cycle_converges() {
     let mut db = setup();
-    // Real member cycle: T.a = T.b; T.b = T.a → salsa cycle_fn converges (Unknown, no panic).
+    // Real member cycle: T.a = T.b; T.b = T.a → semantic cycle_fn converges (Unknown, no panic).
     let fid = set_test_file(
         &mut db,
         1,
@@ -999,7 +999,7 @@ fn test_semantic_model_file_exports_and_signature_api() {
     );
     let fid_use = set_test_file(&mut db, 2, "C:/ws/use.lua", "local n = 1");
 
-    let model = crate::SalsaSemanticModel::new(&db, fid_use).expect("model");
+    let model = crate::SemanticModel::new(&db, fid_use).expect("model");
     let exports = model.file_exports(fid_impl).expect("exports");
     assert!(exports.globals.iter().any(|g| g.name == "f"));
     assert!(exports.members.iter().any(|m| m.key.to_path() == "v"));
@@ -1281,7 +1281,7 @@ fn test_flow_tree_builds_cfg() {
 }
 
 #[test]
-fn test_lua_compilation_salsa_sync_and_check() {
+fn test_lua_compilation_semantic_sync_and_check() {
     use lsp_types::Uri;
     use std::str::FromStr;
 
@@ -1303,8 +1303,8 @@ fn test_lua_compilation_salsa_sync_and_check() {
     );
     db.update_main_root(PathBuf::from("C:/ws"));
 
-    // The salsa side can retrieve facts and types.
-    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("salsa semantic model");
+    // The semantic side can retrieve facts and types.
+    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
     let x = model
         .decls()
         .expect("decls")
@@ -1368,8 +1368,7 @@ fn test_syntax_error_checks() {
         let uri = Uri::from_str("file:///C:/ws/syntax.lua").unwrap();
         let fid = db.set_file_content(&uri, Some(source.to_string()));
         db.update_main_root(PathBuf::from("C:/ws"));
-        let model =
-            crate::semantic_model::SemanticModel::new(&db, fid).expect("salsa semantic model");
+        let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
         let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
         let diagnostics = crate::check::check_file(&model, config);
         let has_syntax_error = diagnostics
@@ -1390,7 +1389,7 @@ fn test_syntax_error_checks() {
 }
 
 #[test]
-fn test_salsa_snapshot_query_from_other_thread() {
+fn test_semantic_snapshot_query_from_other_thread() {
     use lsp_types::Uri;
     use std::str::FromStr;
 
@@ -1613,7 +1612,7 @@ fn test_signature_doc_return() {
 #[test]
 fn test_signature_mutual_recursion_converges() {
     let mut db = setup();
-    // foo → bar → foo: salsa cycle_fn converges, no panic.
+    // foo → bar → foo: semantic cycle_fn converges, no panic.
     let fid = set_test_file(
         &mut db,
         1,
@@ -2089,7 +2088,7 @@ fn test_parallel_for_each_file_runs_on_shared_snapshots() {
 
     let visited = std::sync::atomic::AtomicUsize::new(0);
     db.parallel_for_each_file(|_file_id, model| {
-        // Touch salsa-backed per-file facts from worker-owned database clones.
+        // Touch semantic-backed per-file facts from worker-owned database clones.
         let _ = model.file_facts();
         visited.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     });

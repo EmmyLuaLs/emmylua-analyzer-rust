@@ -1,11 +1,11 @@
-//! # build_semantic_tokens — Salsa-based semantic tokens (Stage 1 + Stage 2)
+//! # build_semantic_tokens — Semantic-based semantic tokens (Stage 1 + Stage 2)
 //!
 //! Stage 1: recover purely syntactic token classifications (keywords/operators/delimiters/comments/strings/numbers/doc tags).
-//! Stage 2: recover names/members/types/declaration modifiers from `SalsaSemanticModel`.
+//! Stage 2: recover names/members/types/declaration modifiers from `SemanticModel`.
 
 use emmylua_code_analysis::{
-    DeclKind, Emmyrc, LuaDocument, LuaType, SalsaSemanticModel, SemanticId, SemanticInfo,
-    TypeDefKind, TypeScope,
+    DeclKind, Emmyrc, LuaDocument, LuaType, SemanticId, SemanticInfo, SemanticModel, TypeDefKind,
+    TypeScope,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
@@ -25,7 +25,7 @@ use super::semantic_token_builder::{
 };
 
 pub fn build_semantic_tokens(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     supports_multiline_tokens: bool,
     client_id: ClientId,
@@ -338,7 +338,7 @@ fn is_doc_type_literal_token(token: &LuaSyntaxToken) -> bool {
 }
 
 fn build_node_semantic_token(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     builder: &mut SemanticBuilder,
     node: LuaSyntaxNode,
     emmyrc: &Emmyrc,
@@ -586,7 +586,7 @@ fn build_node_semantic_token(
 }
 
 fn handle_name_node(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     builder: &mut SemanticBuilder,
     node: &LuaSyntaxNode,
     name_token: &LuaSyntaxToken,
@@ -670,7 +670,7 @@ fn handle_name_node(
 }
 
 fn classify_semantic_info(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     info: &SemanticInfo,
     name_token: &LuaSyntaxToken,
 ) -> (SemanticTokenTypeKind, SemanticTokenModifierKind) {
@@ -814,7 +814,7 @@ fn is_builtin_global(name_text: &str) -> bool {
     )
 }
 
-fn is_require_alias_name(model: &SalsaSemanticModel<'_>, name_token: &LuaSyntaxToken) -> bool {
+fn is_require_alias_name(model: &SemanticModel<'_>, name_token: &LuaSyntaxToken) -> bool {
     let decl = model
         .resolve_name(name_token.text_range().start())
         .or_else(|| model.decl_by_offset(name_token.text_range().start()));

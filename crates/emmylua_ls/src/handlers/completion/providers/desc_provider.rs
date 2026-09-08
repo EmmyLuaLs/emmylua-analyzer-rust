@@ -1,6 +1,6 @@
 //! Doc description reference completion: `:lua:obj:`...`` / `{lua:obj}`...`` (Rst / Myst).
 //!
-//! The salsa version resolves the reference path segment by segment: an empty path offers
+//! The semantic version resolves the reference path segment by segment: an empty path offers
 //! global types/namespaces/modules/files/current-scope members; a non-empty path resolves the
 //! prefix (type / module export) and completes members while also enumerating sub-namespaces
 //! and submodule files.
@@ -372,7 +372,7 @@ fn desc_plain_type_kind(typ: &emmylua_code_analysis::LuaType) -> CompletionItemK
 
 fn desc_member_kind(
     builder: &CompletionBuilder,
-    info: &emmylua_code_analysis::SalsaMemberInfo,
+    info: &emmylua_code_analysis::MemberInfo,
     module_type: Option<String>,
 ) -> CompletionItemKind {
     let typ = &info.typ;
@@ -406,7 +406,7 @@ fn desc_member_kind(
 /// so use the value expression's constant type to restore constant semantics in doc references.
 fn is_literal_member(
     builder: &CompletionBuilder,
-    info: &emmylua_code_analysis::SalsaMemberInfo,
+    info: &emmylua_code_analysis::MemberInfo,
 ) -> bool {
     let Some(emmylua_code_analysis::SemanticId::Member(key)) = &info.id else {
         return false;
@@ -545,7 +545,7 @@ fn add_comment_scope_members(builder: &mut CompletionBuilder, seen: &mut HashSet
             if matches!(ty, emmylua_code_analysis::LuaType::Unknown) {
                 continue;
             }
-            let info = emmylua_code_analysis::SalsaMemberInfo {
+            let info = emmylua_code_analysis::MemberInfo {
                 key: LuaMemberKey::Name(label.clone().into()),
                 typ: ty.clone(),
                 id: None,

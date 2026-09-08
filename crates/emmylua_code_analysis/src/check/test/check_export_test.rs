@@ -7,7 +7,7 @@ use std::sync::Arc;
 use lsp_types::Uri;
 
 use crate::DiagnosticCode;
-use crate::{Emmyrc, SalsaSemanticModel, SemanticDatabase};
+use crate::{Emmyrc, SemanticDatabase, SemanticModel};
 
 use super::{Diagnostic, check_source, count_by_code};
 
@@ -22,7 +22,7 @@ fn check_export(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     let use_file = db.set_file_content(&use_uri, Some(use_source.to_string()));
     db.update_main_root(PathBuf::from("C:/ws"));
 
-    let model = SalsaSemanticModel::new(&db, use_file).expect("semantic model");
+    let model = SemanticModel::new(&db, use_file).expect("semantic model");
     let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
     crate::check::check_file(&model, config)
 }

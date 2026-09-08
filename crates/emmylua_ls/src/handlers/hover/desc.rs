@@ -1,10 +1,10 @@
-//! # desc -- Extract comment descriptions for declarations / members / types (pure salsa + parser)
+//! # desc -- Extract comment descriptions for declarations / members / types (pure semantic + parser)
 //!
 //! - decl / types: plain-text description from the owner statement (or table field) comment block, plus extra tag rendering (e.g. `@see`);
 //! - `@field` members: description text from the `@field` tag itself; runtime members: description from the owner statement comment block;
 //! - parameter declarations: description text from the `@param` tag.
 
-use emmylua_code_analysis::{SalsaSemanticModel, SemanticId, TypeDef};
+use emmylua_code_analysis::{SemanticId, SemanticModel, TypeDef};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaChunk, LuaComment, LuaCommentOwner, LuaDocDescriptionOwner, LuaDocTag,
     LuaDocTagField, LuaDocTagParam, LuaDocTagReturn, LuaDocTagReturnOverload, LuaStat,
@@ -38,7 +38,7 @@ impl HoverDescription {
     }
 }
 
-pub fn decl_description(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> HoverDescription {
+pub fn decl_description(model: &SemanticModel<'_>, decl: &SemanticId) -> HoverDescription {
     let Some(decls) = model.decls() else {
         return HoverDescription::empty();
     };
@@ -67,7 +67,7 @@ pub fn decl_description(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> Ho
     comments_description(&comments)
 }
 
-pub fn member_description(model: &SalsaSemanticModel<'_>, member: &SemanticId) -> HoverDescription {
+pub fn member_description(model: &SemanticModel<'_>, member: &SemanticId) -> HoverDescription {
     let Some((member_info, member_file_id)) = member_decl(model, member) else {
         return HoverDescription::empty();
     };
@@ -130,7 +130,7 @@ pub fn member_description(model: &SalsaSemanticModel<'_>, member: &SemanticId) -
 
 /// Member declaration (cross-file: the Member identity carries its own file_id).
 fn member_decl(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     member: &SemanticId,
 ) -> Option<(emmylua_code_analysis::Member, emmylua_code_analysis::FileId)> {
     let SemanticId::Member(member_key) = member else {
@@ -141,7 +141,7 @@ fn member_decl(
     Some((member_info, member_key.file_id))
 }
 
-pub fn type_def_description(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> HoverDescription {
+pub fn type_def_description(model: &SemanticModel<'_>, def: &TypeDef) -> HoverDescription {
     let Some(tree) = model.syntax_tree_of(def.file_id) else {
         return HoverDescription::empty();
     };
@@ -255,10 +255,7 @@ pub(crate) fn signature_tags_from_comments(comments: &[LuaComment]) -> Vec<Strin
     tags
 }
 
-pub(crate) fn decl_signature_tags(
-    model: &SalsaSemanticModel<'_>,
-    decl: &SemanticId,
-) -> Vec<String> {
+pub(crate) fn decl_signature_tags(model: &SemanticModel<'_>, decl: &SemanticId) -> Vec<String> {
     let Some(decls) = model.decls() else {
         return Vec::new();
     };
@@ -271,10 +268,7 @@ pub(crate) fn decl_signature_tags(
     signature_tags_from_comments(&comments)
 }
 
-pub(crate) fn member_signature_tags(
-    model: &SalsaSemanticModel<'_>,
-    member: &SemanticId,
-) -> Vec<String> {
+pub(crate) fn member_signature_tags(model: &SemanticModel<'_>, member: &SemanticId) -> Vec<String> {
     let Some((member_info, member_file_id)) = member_decl(model, member) else {
         return Vec::new();
     };
@@ -354,7 +348,7 @@ fn comment_text(comment: &LuaComment) -> Option<String> {
 }
 
 /// Description text for `@param name`.
-fn param_tag_description(model: &SalsaSemanticModel<'_>, param_name: &str) -> Option<String> {
+fn param_tag_description(model: &SemanticModel<'_>, param_name: &str) -> Option<String> {
     let chunk = model.chunk()?;
     for comment in chunk.descendants::<LuaComment>() {
         for tag in comment.get_doc_tags() {
@@ -389,7 +383,7 @@ fn inline_type_description(comments: &[LuaComment]) -> Option<String> {
 
 /// Description text for `@field key` (owner type definition, cross-file).
 fn field_tag_description(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     file_id: emmylua_code_analysis::FileId,
     owner: &SemanticId,
     key: &emmylua_code_analysis::LuaMemberKey,
@@ -507,7 +501,7 @@ fn comments_of_ast(ast: &LuaAst) -> Vec<LuaComment> {
 }
 
 fn comments_of_syntax(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     owner_syntax: Option<emmylua_parser::LuaSyntaxId>,
 ) -> Option<Vec<LuaComment>> {
     let chunk = model.chunk()?;

@@ -77,7 +77,7 @@ impl ReturnExpectation {
 /// Signature doc annotation + contextual member annotation -> expected return count.
 fn return_expectation_of(
     semantic_model: &SemanticModel<'_>,
-    signature: &crate::salsa_builder::def::Signature,
+    signature: &crate::semantic_db::def::Signature,
     closure: &LuaClosureExpr,
 ) -> ReturnExpectation {
     let mut syntaxes: Vec<(rowan::TextSize, emmylua_parser::LuaSyntaxId)> = Vec::new();
@@ -365,13 +365,12 @@ fn call_return_annotations(
     let (file_id, closure_syntax) = match &callee {
         LuaExpr::NameExpr(name_expr) => {
             let decl = semantic_model.resolve_name(name_expr.get_position())?;
-            let crate::salsa_builder::def::SemanticId::Decl(decl_key) = decl else {
+            let crate::semantic_db::def::SemanticId::Decl(decl_key) = decl else {
                 return None;
             };
             let facts = semantic_model.file_facts_of(decl_key.file_id)?;
-            let decl = facts.decl_by_id(&crate::salsa_builder::def::SemanticId::Decl(
-                decl_key.clone(),
-            ))?;
+            let decl =
+                facts.decl_by_id(&crate::semantic_db::def::SemanticId::Decl(decl_key.clone()))?;
             (decl.file_id, decl.value_expr_syntax?)
         }
         LuaExpr::IndexExpr(index_expr) => {

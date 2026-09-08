@@ -487,7 +487,7 @@ mod test {
         assert_eq!(ws.humanize_type_detailed(result_ty), "B<\"one\",A> = 1");
     }
 
-    // Migrated to salsa check/ (new pipeline); keyof constraint pending salsa support.
+    // Migrated to semantic check/ (new pipeline); keyof constraint pending semantic support.
     #[test]
     fn test_later_keyof_constraint_still_reports_invalid_key() {
         let mut ws = VirtualWorkspace::new();

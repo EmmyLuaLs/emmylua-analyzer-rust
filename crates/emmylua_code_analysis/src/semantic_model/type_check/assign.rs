@@ -1,6 +1,6 @@
 //! Assignment-specific compatibility checks: assignment semantics not yet covered by the general type_check path.
 //!
-//! These checks use salsa member/type-definition facilities; the goal is to gradually fold them into the general checks.
+//! These checks use semantic member/type-definition facilities; the goal is to gradually fold them into the general checks.
 
 use crate::{LuaMemberKey, LuaType, SemanticId, TypeDef, TypeScope};
 

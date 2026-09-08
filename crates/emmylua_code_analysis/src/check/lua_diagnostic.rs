@@ -1,8 +1,8 @@
-//! # LuaDiagnostic — diagnostic entry point (pure salsa path since M2)
+//! # LuaDiagnostic — diagnostic entry point (pure semantic path since M2)
 //!
-//! As of M2: `diagnose_file` only runs `analysis.diagnose_salsa` (the full `check/` checker set).
+//! As of M2: `diagnose_file` only runs `analysis.diagnose_file_with_config` (the full `check/` checker set).
 //! The old checker chain (`diagnostic/checker` + DbIndex + old SemanticModel) is disabled;
-//! see `docs/SALSA_FROM_SCRATCH.md` §M2 for the decommission list.
+//! see `migration notes` §M2 for the decommission list.
 
 use std::sync::Arc;
 
@@ -61,7 +61,7 @@ impl LuaDiagnostic {
             return None;
         }
         // Do not diagnose non-main workspace files (mirrors the old module_index.is_main semantics;
-        // once salsa workspace scoping is mirrored, filter by workspace id).
-        analysis.diagnose_salsa(file_id, self.check_config.clone())
+        // once semantic workspace scoping is mirrored, filter by workspace id).
+        analysis.diagnose_file_with_config(file_id, self.check_config.clone())
     }
 }

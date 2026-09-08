@@ -13,7 +13,7 @@ use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
 use super::RegisterCapabilities;
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 
 pub async fn on_goto_definition_handler(
     context: ServerContextSnapshot,
@@ -22,15 +22,10 @@ pub async fn on_goto_definition_handler(
 ) -> RequestOutcome<GotoDefinitionResponse> {
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let file_id = analysis.get_file_id(&uri)?;
-            definition(analysis, file_id, position)
-        },
-    )
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let file_id = analysis.get_file_id(&uri)?;
+        definition(analysis, file_id, position)
+    })
     .await
 }
 

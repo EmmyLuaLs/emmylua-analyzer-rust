@@ -51,7 +51,7 @@ fn test_library_file_has_no_diagnostics() {
         Some("local undefined_global = 1\nlocal x = 1\nx = \"string\"".to_string()),
     );
 
-    let model = crate::SalsaSemanticModel::new(&db, fid).expect("model");
+    let model = crate::SemanticModel::new(&db, fid).expect("model");
     let diagnostics =
         crate::check::check_file(&model, Arc::new(crate::check::CheckConfig::new(&emmyrc)));
     assert_eq!(

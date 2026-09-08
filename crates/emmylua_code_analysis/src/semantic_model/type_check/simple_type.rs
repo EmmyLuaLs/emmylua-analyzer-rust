@@ -1,5 +1,5 @@
 //! Compatibility of base types and constants (fully ported from the old
-//! `semantic::type_check::simple_type`, with db access going through the salsa context).
+//! `semantic::type_check::simple_type`, with db access going through the semantic context).
 
 use std::ops::Deref;
 
@@ -275,7 +275,7 @@ pub fn check_simple_type_compact(
     Err(context.mismatch(source, compact_type))
 }
 
-/// Base-type matching against custom types (scenarios like `---@alias integer = ...`; when salsa has no origin, compare by base type name).
+/// Base-type matching against custom types (scenarios like `---@alias integer = ...`; when semantic has no origin, compare by base type name).
 fn check_base_type_for_ref_compact(
     context: &mut TypeCheckContext,
     source: &LuaType,
@@ -283,7 +283,7 @@ fn check_base_type_for_ref_compact(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     if let LuaType::Ref(type_decl_id) = compact_type {
-        // Alias expansion (salsa has no origin type, so use the base type name).
+        // Alias expansion (semantic has no origin type, so use the base type name).
         if let Some(base_type) = base_type_name_of_ref(context, type_decl_id, check_guard) {
             if let Some(source_name) = base_type_name(source)
                 && source_name == base_type
@@ -301,7 +301,7 @@ fn check_base_type_for_ref_compact(
     Err(context.mismatch(source, compact_type))
 }
 
-/// Alias → base type name (walk the alias chain to find a non-alias base name). Since salsa has no origin type, fall back to direct name matching.
+/// Alias → base type name (walk the alias chain to find a non-alias base name). Since semantic has no origin type, fall back to direct name matching.
 fn base_type_name_of_ref(
     context: &mut TypeCheckContext,
     id: &crate::LuaTypeDeclId,

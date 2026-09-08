@@ -31,22 +31,22 @@ use crate::LuaDocument;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
-use crate::salsa_builder::SalsaQueries;
-use crate::salsa_builder::SemanticDatabase;
-use crate::salsa_builder::def::{
+use crate::semantic_db::SemanticDatabase;
+use crate::semantic_db::SemanticQueries;
+use crate::semantic_db::def::{
     ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
     SemanticId, Signature, TypeDef, TypeDefKind, TypeScope, TypeVisibility,
 };
-use crate::salsa_builder::flow::FlowTree;
+use crate::semantic_db::flow::FlowTree;
 use crate::signature::LuaSignatureId;
 use crate::{
-    AsyncState, FileExports, FileFacts, FileId, GenericParam, GenericTpl, GenericTplId,
-    LuaAliasCallKind, LuaAliasCallType, LuaFunctionType, LuaIntersectionType, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaTypeDeclId, LuaUnionType, SalsaGenericParam, VariadicType,
+    AsyncState, DocGenericParam, FileExports, FileFacts, FileId, GenericParam, GenericTpl,
+    GenericTplId, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType, LuaIntersectionType,
+    LuaObjectType, LuaTupleStatus, LuaTupleType, LuaTypeDeclId, LuaUnionType, VariadicType,
     WorkspaceId,
 };
 
-/// Semantic model: a per-file access handle, only through the salsa analysis layer.
+/// Semantic model: a per-file access handle, only through the semantic analysis layer.
 pub struct SemanticModel<'db> {
     db: &'db SemanticDatabase,
     file_id: FileId,
@@ -223,8 +223,8 @@ impl<'db> SemanticModel<'db> {
         self.db.is_main_file(file_id)
     }
 
-    fn q(&self) -> SalsaQueries<'db> {
-        SalsaQueries::new(self.db)
+    fn q(&self) -> SemanticQueries<'db> {
+        SemanticQueries::new(self.db)
     }
 
     // -- File / syntax --
@@ -1248,7 +1248,7 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// Type of a declaration: `---@type` annotation takes priority; closure -> `DocFunction` signature; otherwise VM infers the initializer
-    /// (table identity / constants / setmetatable / require special cases); falls back to salsa shell projection when VM fails.
+    /// (table identity / constants / setmetatable / require special cases); falls back to semantic shell projection when VM fails.
     pub fn type_of_decl(&self, decl: &SemanticId) -> Option<LuaType> {
         let cache_file = match decl {
             SemanticId::Decl(key) => key.file_id,
@@ -2002,7 +2002,7 @@ impl<'db> SemanticModel<'db> {
         }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
-        // Cycles are handled by the Salsa tracked `semantic_member_type` / `semantic_expr_type` queries.
+        // Cycles are handled by the Semantic tracked `semantic_member_type` / `semantic_expr_type` queries.
         if let Some(facts) = self.file_facts_of(member_file)
             && let Some(member_def) = facts.member_by_id(member)
             && !matches!(member_def.owner, SemanticId::TypeDef(_))
@@ -2010,7 +2010,7 @@ impl<'db> SemanticModel<'db> {
         {
             // Table-literal fields keep the expression type from construction (`[key] = 1`, named fields
             // `foo = 123` keep `IntegerConst`; flow/type matching widens when `number` is needed).
-            // Reentry is handled by the Salsa tracked `semantic_expr_type` / `semantic_member_type`.
+            // Reentry is handled by the Semantic tracked `semantic_expr_type` / `semantic_member_type`.
             let vm_ty = (|| {
                 let tree = self.syntax_tree_of(member_file)?;
                 let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
@@ -2577,7 +2577,7 @@ impl<'db> SemanticModel<'db> {
         &self,
         scope: TypeScope,
         full_name: &str,
-    ) -> crate::salsa_builder::TypeDefList {
+    ) -> crate::semantic_db::TypeDefList {
         self.q().type_defs_in_scope(scope, full_name)
     }
 
@@ -2680,17 +2680,17 @@ impl<'db> SemanticModel<'db> {
         &self,
         file_id: FileId,
         type_syntax: LuaSyntaxId,
-        generics: &[SalsaGenericParam],
+        generics: &[DocGenericParam],
     ) -> LuaType {
         self.q().doc_type_lua(file_id, type_syntax, generics)
     }
 
-    /// Builds `GenericTpl` with full metadata (constraint/default/is_const) from `SalsaGenericParam`.
+    /// Builds `GenericTpl` with full metadata (constraint/default/is_const) from `DocGenericParam`.
     /// All signature projection paths go through here so constraints/defaults are not lost at different call sites.
     pub fn generic_tpls_with_metadata(
         &self,
         file_id: FileId,
-        params: &[SalsaGenericParam],
+        params: &[DocGenericParam],
     ) -> Vec<GenericTpl> {
         params
             .iter()
@@ -3293,7 +3293,7 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// Members whose owner is a `SemanticId` (cross-file).
-    pub fn members_of_owner(&self, owner: &SemanticId) -> crate::salsa_builder::MemberList {
+    pub fn members_of_owner(&self, owner: &SemanticId) -> crate::semantic_db::MemberList {
         if let Some(cached) = self.cache.borrow().members_of_owner.get(owner) {
             return cached.clone();
         }
@@ -3310,7 +3310,7 @@ impl<'db> SemanticModel<'db> {
         &self,
         owner: &SemanticId,
         name: &str,
-    ) -> crate::salsa_builder::MemberList {
+    ) -> crate::semantic_db::MemberList {
         let key = (owner.clone(), SmolStr::new(name));
         if let Some(cached) = self.cache.borrow().members_of_owner_named.get(&key) {
             return cached.clone();
@@ -3415,7 +3415,7 @@ impl<'db> SemanticModel<'db> {
         self.q().resolve_type_def(file_id, name)
     }
 
-    /// Type name string -> `LuaType` (salsa facade uniformly handles built-in and named types).
+    /// Type name string -> `LuaType` (semantic facade uniformly handles built-in and named types).
     /// Named types that are aliases expand to the alias target type.
     pub fn type_from_name(&self, name: &str) -> LuaType {
         let ty = self.q().resolve_named(self.file_id, name);
@@ -4048,7 +4048,7 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// `---@param` / `---@return` annotations on table-literal fields override the closure's bare signature.
-    /// salsa currently does not merge these field-level docs into `Signature.docs`, but `setmetatable`'s
+    /// semantic currently does not merge these field-level docs into `Signature.docs`, but `setmetatable`'s
     /// `__call` / `__index` metamethod fields depend on them to preserve the function signature.
     fn table_field_signature_override(
         &self,
@@ -4294,7 +4294,7 @@ fn type_def_ref(def: &TypeDef) -> LuaType {
 }
 
 impl<'db> SemanticModel<'db> {
-    /// Declaration inference. Reentry/cycles are handled by the Salsa tracked
+    /// Declaration inference. Reentry/cycles are handled by the Semantic tracked
     /// `semantic_decl_type` / `semantic_expr_type` queries; no manual guard is needed here.
     fn infer_decl_guarded(
         &self,

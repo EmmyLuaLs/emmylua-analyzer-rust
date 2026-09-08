@@ -74,7 +74,7 @@ fn check_pair(
     let Some(def) = type_def_of(semantic_model, id) else {
         return;
     };
-    if def.kind != crate::salsa_builder::def::TypeDefKind::Enum {
+    if def.kind != crate::semantic_db::def::TypeDefKind::Enum {
         return;
     }
     // Constant literal text.

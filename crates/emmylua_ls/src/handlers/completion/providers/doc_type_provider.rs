@@ -1,6 +1,6 @@
 //! Doc type completion: type names in `---@type` / `@param` / `@field` etc.
 //!
-//! The salsa version currently uses the full `FileExports::types` set with prefix/path filtering;
+//! The semantic version currently uses the full `FileExports::types` set with prefix/path filtering;
 //! attribute contexts only suggest known built-in attribute classes like `constructor`
 //! (Attribute class inheritance detection is a later step).
 

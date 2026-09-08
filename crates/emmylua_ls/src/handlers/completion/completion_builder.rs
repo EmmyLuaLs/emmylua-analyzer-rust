@@ -1,15 +1,15 @@
 //! # CompletionBuilder — Completion builder
 //!
-//! Unified carrier for the salsa model / document view / config, providing the
+//! Unified carrier for the semantic model / document view / config, providing the
 //! context detection and common completion item writes required by the provider
 //! pipeline. Fields remain consistent with the old provider pipeline
 //! (`trigger_token` / `context` / `env_duplicate_name` / `is_space_trigger_character`),
-//! with the semantic model replaced by `SalsaSemanticModel`.
+//! with the semantic model replaced by `SemanticModel`.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use emmylua_code_analysis::{Emmyrc, LuaDocument, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, LuaType, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionTriggerKind};
 use rowan::TextSize;
@@ -19,7 +19,7 @@ use super::providers::CompletionContext;
 
 pub struct CompletionBuilder<'a> {
     pub trigger_token: LuaSyntaxToken,
-    pub semantic_model: SalsaSemanticModel<'a>,
+    pub semantic_model: SemanticModel<'a>,
     pub document: LuaDocument<'a>,
     pub emmyrc: Arc<Emmyrc>,
     pub context: CompletionContext,
@@ -35,7 +35,7 @@ pub struct CompletionBuilder<'a> {
 impl<'a> CompletionBuilder<'a> {
     pub fn new(
         trigger_token: LuaSyntaxToken,
-        semantic_model: SalsaSemanticModel<'a>,
+        semantic_model: SemanticModel<'a>,
         document: LuaDocument<'a>,
         emmyrc: Arc<Emmyrc>,
         trigger_kind: CompletionTriggerKind,
@@ -307,7 +307,7 @@ impl<'a> CompletionBuilder<'a> {
 
 /// Call expression return type fallback: class `---@overload` / declared signatures.
 fn call_return_type(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     call: &emmylua_parser::LuaCallExpr,
 ) -> Option<LuaType> {
     let prefix = call.get_prefix_expr()?;

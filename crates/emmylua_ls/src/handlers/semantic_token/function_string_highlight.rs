@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{LuaFunctionType, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{LuaFunctionType, LuaType, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaStringToken};
 use emmylua_parser_desc::CodeBlockLang;
 
@@ -8,7 +8,7 @@ use crate::handlers::semantic_token::{
 
 pub fn fun_string_highlight(
     builder: &mut SemanticBuilder,
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     call_expr: LuaCallExpr,
     string_token: &LuaStringToken,
 ) -> Option<()> {

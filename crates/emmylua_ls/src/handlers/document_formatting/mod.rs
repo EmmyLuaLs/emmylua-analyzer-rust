@@ -12,7 +12,7 @@ use lsp_types::{
 use rowan::NodeCache;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 pub use external_format::{FormattingRange, external_tool_format};
 pub(crate) use format_diff::format_diff;
 
@@ -39,11 +39,8 @@ pub async fn on_formatting_handler(
         let workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.client_config.client_id
     };
-    let extracted = match snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token.clone(),
-        move |analysis| {
+    let extracted =
+        match snapshot_query(context.analysis(), cancel_token.clone(), move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let document = analysis.db.document(file_id)?;
             let file_path = Some(document.get_file_path().clone());
@@ -66,16 +63,15 @@ pub async fn on_formatting_handler(
                 normalized_path,
                 formatting_options,
             ))
-        },
-    )
-    .await
-    {
-        RequestOutcome::Ready(data) => data,
-        RequestOutcome::Missing => {
-            return RequestOutcome::Missing;
-        }
-        RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
-    };
+        })
+        .await
+        {
+            RequestOutcome::Ready(data) => data,
+            RequestOutcome::Missing => {
+                return RequestOutcome::Missing;
+            }
+            RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
+        };
 
     let (file_id, text, emmyrc, file_path, normalized_path, formatting_options) = extracted;
 
@@ -109,28 +105,23 @@ pub async fn on_formatting_handler(
 
     let replace_all_limit = 50;
     let use_diff = emmyrc.format.use_diff;
-    let text_edits = match snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let document = analysis.db.document(file_id)?;
-            if use_diff {
-                Some(format_diff(
-                    &text,
-                    &formatted_text,
-                    &document,
-                    replace_all_limit,
-                ))
-            } else {
-                let document_range = document.get_document_lsp_range();
-                Some(vec![TextEdit {
-                    range: document_range,
-                    new_text: formatted_text.clone(),
-                }])
-            }
-        },
-    )
+    let text_edits = match snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let document = analysis.db.document(file_id)?;
+        if use_diff {
+            Some(format_diff(
+                &text,
+                &formatted_text,
+                &document,
+                replace_all_limit,
+            ))
+        } else {
+            let document_range = document.get_document_lsp_range();
+            Some(vec![TextEdit {
+                range: document_range,
+                new_text: formatted_text.clone(),
+            }])
+        }
+    })
     .await
     {
         RequestOutcome::Ready(edits) => edits,

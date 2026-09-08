@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{DeclKind, SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{DeclKind, SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaClosureExpr, LuaCommentOwner, LuaDocTagParam, LuaStat,
     LuaTableField,
@@ -11,27 +11,27 @@ use crate::handlers::common::decl_reference_ranges;
 
 #[allow(clippy::mutable_key_type)]
 pub fn rename_decl_references(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
 ) -> Option<()> {
     // Reference ranges (cross-file) + declaration name.
-    let ranges = decl_reference_ranges(salsa, decl, true);
+    let ranges = decl_reference_ranges(db, decl, true);
     for (file_id, range) in ranges {
-        push_edit(salsa, file_id, range, new_name.clone(), result);
+        push_edit(db, file_id, range, new_name.clone(), result);
     }
 
     // Rename the matching `---@param` name for parameter declarations.
     if is_param(model, decl) {
-        rename_doc_param(model, salsa, decl, new_name, result);
+        rename_doc_param(model, db, decl, new_name, result);
     }
 
     Some(())
 }
 
-fn is_param(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> bool {
+fn is_param(model: &SemanticModel<'_>, decl: &SemanticId) -> bool {
     model
         .decls()
         .and_then(|decls| decls.iter().find(|d| &d.id == decl))
@@ -40,8 +40,8 @@ fn is_param(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> bool {
 
 #[allow(clippy::mutable_key_type)]
 fn rename_doc_param(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
@@ -72,7 +72,7 @@ fn rename_doc_param(
                     continue;
                 }
                 push_edit(
-                    salsa,
+                    db,
                     model.file_id(),
                     name_token.get_range(),
                     new_name.clone(),
@@ -87,13 +87,13 @@ fn rename_doc_param(
 
 #[allow(clippy::mutable_key_type)]
 pub(crate) fn push_edit(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
     new_text: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
 ) -> Option<()> {
-    let document = salsa.document(file_id)?;
+    let document = db.document(file_id)?;
     let uri = document.get_uri()?;
     let lsp_range = document.to_lsp_range(range)?;
     result.entry(uri).or_default().insert(lsp_range, new_text);

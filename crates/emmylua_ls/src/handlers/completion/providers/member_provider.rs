@@ -1,8 +1,8 @@
-//! Member completion: `.` / `:` / `[]` / string-key contexts, based on salsa `member_infos`.
+//! Member completion: `.` / `:` / `[]` / string-key contexts, based on semantic `member_infos`.
 
 use emmylua_code_analysis::{
     DeclKind, FileId, LuaAliasCallKind, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
-    LuaTypeDeclId, SalsaMemberInfo, SalsaSemanticModel, SemanticId, TypeDefKind,
+    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDefKind,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
@@ -27,7 +27,7 @@ pub enum CompletionTriggerStatus {
 /// Add completion items for a group of member infos (reused by the desc provider; Dot display semantics).
 pub(crate) fn add_member_completions(
     builder: &mut CompletionBuilder,
-    members: &[SalsaMemberInfo],
+    members: &[MemberInfo],
 ) -> Option<()> {
     for member in members {
         add_member_completion(builder, member.clone(), CompletionTriggerStatus::Dot)?;
@@ -171,9 +171,9 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 
 /// `---@class box<T>: T`: replace parent-type placeholders with argument type members using generic arguments.
 fn generic_super_member_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     generic: &LuaGenericType,
-) -> Vec<SalsaMemberInfo> {
+) -> Vec<MemberInfo> {
     let base = generic.get_base_type_id();
     let Some(def) = model.type_def_of(&base) else {
         return Vec::new();
@@ -188,7 +188,7 @@ fn generic_super_member_infos(
         return model
             .member_infos(bound)
             .into_iter()
-            .map(|info| SalsaMemberInfo { id: None, ..info })
+            .map(|info| MemberInfo { id: None, ..info })
             .collect();
     }
 
@@ -255,10 +255,10 @@ fn generic_super_member_infos(
 
 /// When projection lowers `keyof A` to Unknown, restore from the local declaration's doc-generic parameter text.
 fn doc_generic_keyof_member_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix_expr: &emmylua_parser::LuaExpr,
     generic: &LuaGenericType,
-) -> Vec<SalsaMemberInfo> {
+) -> Vec<MemberInfo> {
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
         return Vec::new();
     };
@@ -307,7 +307,7 @@ fn doc_generic_keyof_member_infos(
         .member_infos(&model.type_def_ref(&def))
         .into_iter()
         .filter_map(|info| match info.key {
-            LuaMemberKey::Name(name) => Some(SalsaMemberInfo {
+            LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
                 id: None,
@@ -321,9 +321,9 @@ fn doc_generic_keyof_member_infos(
 
 /// `table<keyof A, string>`: member keys of the keyof enum generic argument become member candidates.
 fn generic_keyof_member_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     generic: &LuaGenericType,
-) -> Vec<SalsaMemberInfo> {
+) -> Vec<MemberInfo> {
     let Some(operand) = generic.get_params().first() else {
         return Vec::new();
     };
@@ -340,7 +340,7 @@ fn generic_keyof_member_infos(
         .member_infos(operand)
         .into_iter()
         .filter_map(|info| match info.key {
-            LuaMemberKey::Name(name) => Some(SalsaMemberInfo {
+            LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
                 id: None,
@@ -354,9 +354,9 @@ fn generic_keyof_member_infos(
 
 /// When cross-file `member_infos` is empty, directly scan runtime members in the type definition file's facts.
 fn type_def_member_infos_from_facts(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     type_id: LuaTypeDeclId,
-) -> Vec<SalsaMemberInfo> {
+) -> Vec<MemberInfo> {
     let Some(def) = model.type_def_of(&type_id) else {
         return Vec::new();
     };
@@ -368,7 +368,7 @@ fn type_def_member_infos_from_facts(
         .iter()
         .map(|member| {
             let key = member.key.clone();
-            SalsaMemberInfo {
+            MemberInfo {
                 key,
                 typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
                 id: Some(member.id.clone()),
@@ -383,9 +383,9 @@ fn type_def_member_infos_from_facts(
 /// variable name), `member_infos` may return empty for the table identity; here complete members
 /// directly from the type definition associated with the same owner statement.
 fn associated_type_member_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix_expr: &emmylua_parser::LuaExpr,
-) -> Vec<SalsaMemberInfo> {
+) -> Vec<MemberInfo> {
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
         return Vec::new();
     };
@@ -438,7 +438,7 @@ fn associated_type_member_infos(
                 continue;
             }
             seen_keys.push(key.clone());
-            out.push(SalsaMemberInfo {
+            out.push(MemberInfo {
                 key,
                 typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
                 id: Some(member.id.clone()),
@@ -450,7 +450,7 @@ fn associated_type_member_infos(
     out
 }
 
-fn is_local_prefix(model: &SalsaSemanticModel<'_>, prefix_expr: &emmylua_parser::LuaExpr) -> bool {
+fn is_local_prefix(model: &SemanticModel<'_>, prefix_expr: &emmylua_parser::LuaExpr) -> bool {
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
         return false;
     };
@@ -480,7 +480,7 @@ fn constraint_refers_to_tpl(constraint: &LuaType, tpl_name: &str) -> bool {
 }
 
 fn param_tpl_constraint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix_expr: &emmylua_parser::LuaExpr,
 ) -> Option<LuaType> {
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
@@ -519,7 +519,7 @@ fn index_alias_name(builder: &CompletionBuilder, member_file: Option<FileId>) ->
 
 fn add_member_completion(
     builder: &mut CompletionBuilder,
-    info: SalsaMemberInfo,
+    info: MemberInfo,
     status: CompletionTriggerStatus,
 ) -> Option<()> {
     let member_key = &info.key;
@@ -642,7 +642,7 @@ fn add_member_completion(
 /// using literal parameter values + return value in the detail (consistent with old `show_literal_params`).
 fn add_member_overloads(
     builder: &mut CompletionBuilder,
-    info: &SalsaMemberInfo,
+    info: &MemberInfo,
     base: &CompletionItem,
     status: CompletionTriggerStatus,
 ) {
@@ -708,7 +708,7 @@ fn add_member_overloads(
     }
 }
 
-fn overload_detail(model: &SalsaSemanticModel<'_>, func: &LuaFunctionType) -> String {
+fn overload_detail(model: &SemanticModel<'_>, func: &LuaFunctionType) -> String {
     let params = func
         .get_params()
         .iter()
@@ -758,8 +758,8 @@ enum CallDisplay {
 }
 
 fn member_main_detail(
-    model: &SalsaSemanticModel<'_>,
-    info: &SalsaMemberInfo,
+    model: &SemanticModel<'_>,
+    info: &MemberInfo,
     display: CallDisplay,
     _skip_self: bool,
 ) -> Option<String> {

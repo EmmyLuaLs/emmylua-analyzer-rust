@@ -521,7 +521,7 @@ fn check_candidate(
     let self_param = first_param_is_self(func);
     let param_start = usize::from(colon_call && self_param).min(params.len());
     // Method definition called with dot syntax (`obj.method(obj, ...)` / `pcall(obj.method, obj, ...)`):
-    // the salsa method signature contains only user parameters; the first actual argument is an explicit receiver and must be skipped.
+    // the semantic method signature contains only user parameters; the first actual argument is an explicit receiver and must be skipped.
     let dot_method_receiver = !colon_call && !self_param && func.is_colon_define();
     let arg_offset = usize::from(dot_method_receiver).min(args.len());
 

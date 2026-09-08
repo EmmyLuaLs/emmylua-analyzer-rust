@@ -24,7 +24,7 @@ use crate::{Emmyrc, FileData, FileId, WorkspaceFolder, WorkspaceImport, uri_to_f
 pub use def::*;
 use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
 
-pub(crate) use facade::SalsaQueries;
+pub(crate) use facade::SemanticQueries;
 pub use facade::{MemberList, TypeDefList};
 pub struct SemanticDatabase {
     // ── Plain config/data ──
@@ -32,7 +32,7 @@ pub struct SemanticDatabase {
     /// Registered workspace roots.
     workspace_roots: Arc<[WorkspaceRoot]>,
 
-    /// Plain VFS state independent of Salsa inputs.
+    /// Plain VFS state independent of workspace/config inputs.
     vfs: Vfs,
 
     /// Plain per-file facts cache, built eagerly on every write.
@@ -143,7 +143,7 @@ impl SemanticDatabase {
 }
 impl fmt::Debug for SemanticDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SalsaDatabase")
+        f.debug_struct("SemanticDatabase")
             .field("file_count", &self.vfs.len())
             .field("has_config", &self.config.is_some())
             .finish()
@@ -239,19 +239,19 @@ impl SemanticDatabase {
 
     /// Run `f` for every workspace file on scoped worker threads.
     ///
-    /// Each worker owns its own `SalsaDatabase` clone, sharing the same salsa memo
+    /// Each worker owns its own `SemanticDatabase` clone, sharing the same semantic memo
     /// and the shared high-level semantic cache. `f` must be `Sync` because it is
     /// invoked concurrently from multiple scoped threads.
     pub fn parallel_for_each_file<F>(&self, f: F)
     where
-        F: Fn(FileId, &crate::SalsaSemanticModel<'_>) + Sync,
+        F: Fn(FileId, &crate::SemanticModel<'_>) + Sync,
     {
         let file_ids: Vec<FileId> = self.file_ids().to_vec();
         std::thread::scope(|scope| {
             for file_id in file_ids {
                 let f = &f;
                 scope.spawn(move || {
-                    if let Some(model) = crate::SalsaSemanticModel::new(self, file_id) {
+                    if let Some(model) = crate::SemanticModel::new(self, file_id) {
                         f(file_id, &model);
                     }
                 });
@@ -401,7 +401,7 @@ impl SemanticDatabase {
         self.rebuild_all_caches();
     }
 
-    /// Replace the whole workspace file set in one salsa write.
+    /// Replace the whole workspace file set in one semantic write.
     pub(crate) fn replace_workspace_files(&mut self, file_inputs: HashMap<FileId, FileData>) {
         let protected_paths = self
             .vfs
@@ -601,7 +601,7 @@ impl SemanticDatabase {
             .is_some_and(|id| id.is_library())
     }
 
-    /// File → salsa module info (equivalent to ModuleIndex).
+    /// File → semantic module info (equivalent to ModuleIndex).
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
         let workspace = self.workspace_input()?;
         let _config = self.config_input()?;
@@ -668,7 +668,7 @@ impl SemanticDatabase {
 
     /// Query facade (crate-internal: used by semantic_model and tests).
     #[allow(dead_code)]
-    pub(crate) fn q(&self) -> SalsaQueries<'_> {
-        SalsaQueries::new(self)
+    pub(crate) fn q(&self) -> SemanticQueries<'_> {
+        SemanticQueries::new(self)
     }
 }

@@ -7,7 +7,7 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaExpr};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
-use crate::salsa_builder::def::SemanticId;
+use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};

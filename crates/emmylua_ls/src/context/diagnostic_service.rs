@@ -128,7 +128,7 @@ impl DiagnosticService {
                             Some(analysis.db.main_workspace_file_ids())
                         })
                         .unwrap_or_default();
-                    // Full-workspace diagnostics can be cancelled by salsa's pending-write
+                    // Full-workspace diagnostics can be cancelled by semantic's pending-write
                     // (`cancel_others` triggered by Open/DidChange). Don't give up on a required
                     // full pass: after cancellation, wait and rerun with the latest snapshot until done or cancelled.
                     loop {

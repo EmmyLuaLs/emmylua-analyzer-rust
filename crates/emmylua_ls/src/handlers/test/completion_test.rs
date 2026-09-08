@@ -1104,7 +1104,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_issue_502() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1132,7 +1132,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_class_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1159,7 +1159,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_class_function_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1247,7 +1247,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1276,7 +1276,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require_table_field() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1404,7 +1404,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1530,7 +1530,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_file_start() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
@@ -2417,7 +2417,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_colon_member_completion_after_method_trigger() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

@@ -30,20 +30,20 @@ impl Checker for DuplicateFieldChecker {
             check_cross_file_member_assign(context, semantic_model, &root);
         }
         let mut by_owner: HashMap<
-            &crate::salsa_builder::def::SemanticId,
-            Vec<&crate::salsa_builder::def::Member>,
+            &crate::semantic_db::def::SemanticId,
+            Vec<&crate::semantic_db::def::Member>,
         > = HashMap::new();
         for member in &facts.members {
             by_owner.entry(&member.owner).or_default().push(member);
         }
         for (owner, members) in by_owner {
             // Group by key.
-            let mut by_key: HashMap<String, Vec<&&crate::salsa_builder::def::Member>> =
+            let mut by_key: HashMap<String, Vec<&&crate::semantic_db::def::Member>> =
                 HashMap::new();
             for member in &members {
                 by_key.entry(member.key.to_path()).or_default().push(member);
             }
-            let is_type_def = matches!(owner, crate::salsa_builder::def::SemanticId::TypeDef(_));
+            let is_type_def = matches!(owner, crate::semantic_db::def::SemanticId::TypeDef(_));
             for (name, dupes) in by_key {
                 if dupes.len() <= 1 {
                     continue;

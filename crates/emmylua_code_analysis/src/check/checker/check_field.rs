@@ -4,7 +4,7 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::SemanticId;
+use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 use crate::{LuaMemberKey, LuaType};
 
@@ -177,7 +177,7 @@ fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option
             }
         };
         let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
-        if def.kind != crate::salsa_builder::def::TypeDefKind::Alias {
+        if def.kind != crate::semantic_db::def::TypeDefKind::Alias {
             return if visited.is_empty() {
                 None
             } else {
@@ -240,7 +240,7 @@ fn key_type_contains(key_ty: &LuaType, expected: &LuaType) -> bool {
 /// `---@class C: { a: number }`: when the parent type is an object literal, complete the field surface.
 fn object_super_fields(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::salsa_builder::def::TypeDef,
+    def: &crate::semantic_db::def::TypeDef,
 ) -> Vec<(String, LuaType)> {
     let Some(tree) = semantic_model.syntax_tree_of(def.file_id) else {
         return Vec::new();
@@ -291,7 +291,7 @@ fn object_super_fields(
 /// Whether the alias target is a mapped type.
 fn is_mapped_alias(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::salsa_builder::def::TypeDef,
+    def: &crate::semantic_db::def::TypeDef,
 ) -> bool {
     let Some(syntax) = def.alias_type else {
         return false;
@@ -542,7 +542,7 @@ fn collect_fields(
 fn find_type_def(
     semantic_model: &SemanticModel<'_>,
     type_def_id: &SemanticId,
-) -> Option<crate::salsa_builder::def::TypeDef> {
+) -> Option<crate::semantic_db::def::TypeDef> {
     let SemanticId::TypeDef(key) = type_def_id else {
         return None;
     };
@@ -554,9 +554,9 @@ fn find_type_def(
 fn super_type_def(
     semantic_model: &SemanticModel<'_>,
     full_name: &str,
-) -> Option<crate::salsa_builder::def::TypeDef> {
+) -> Option<crate::semantic_db::def::TypeDef> {
     semantic_model
-        .type_defs_in_scope(crate::salsa_builder::def::TypeScope::Global, full_name)
+        .type_defs_in_scope(crate::semantic_db::def::TypeScope::Global, full_name)
         .into_iter()
         .next()
 }

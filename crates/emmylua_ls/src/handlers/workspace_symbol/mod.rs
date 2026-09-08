@@ -6,7 +6,7 @@ use lsp_types::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 
 use super::RegisterCapabilities;
 
@@ -16,12 +16,9 @@ pub async fn on_workspace_symbol_handler(
     cancel_token: CancellationToken,
 ) -> RequestOutcome<WorkspaceSymbolResponse> {
     let query = params.query;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token.clone(),
-        move |analysis| build_workspace_symbols(analysis, query.clone(), cancel_token.clone()),
-    )
+    snapshot_query(context.analysis(), cancel_token.clone(), move |analysis| {
+        build_workspace_symbols(analysis, query.clone(), cancel_token.clone())
+    })
     .await
 }
 

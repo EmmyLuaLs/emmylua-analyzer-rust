@@ -1,7 +1,7 @@
 //! # FileFacts: the minimal per-file fact arena
 //!
 //! Only stores raw facts that require whole-file inspection: declarations + lexical scopes + type definitions.
-//! Everything else (types, resolution, narrowing) is node-keyed salsa queries.
+//! Everything else (types, resolution, narrowing) is node-keyed queries.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -27,9 +27,9 @@ use super::index::{Bucket, build_buckets, find_bucket};
 // ──────────────────────────────────────────────
 
 use super::def::{
-    ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, LuaMemberKey, Member,
-    ModuleExport, ModuleVisibility, NameUse, OperatorDef, SalsaGenericParam, Scope, ScopeChild,
-    ScopeKind, SemanticId, Signature, SignatureDoc, TypeDef, TypeDefFlags, TypeDefKind, TypeScope,
+    ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam, LuaMemberKey,
+    Member, ModuleExport, ModuleVisibility, NameUse, OperatorDef, Scope, ScopeChild, ScopeKind,
+    SemanticId, Signature, SignatureDoc, TypeDef, TypeDefFlags, TypeDefKind, TypeScope,
     TypeVisibility,
 };
 use crate::WorkspaceId;
@@ -1120,7 +1120,7 @@ impl FactsBuilder {
                         };
                         let fallback = op_types.get(1).and_then(|op| op.get_type());
                         let entry = self.signature_doc_map.entry(owner_syntax).or_default();
-                        entry.return_cast = Some(crate::salsa_builder::def::SignatureReturnCast {
+                        entry.return_cast = Some(crate::semantic_db::def::SignatureReturnCast {
                             name: name_token.get_name_text().into(),
                             cast: cast_type.get_syntax_id(),
                             fallback: fallback.map(|ty| ty.get_syntax_id()),
@@ -1294,7 +1294,7 @@ impl FactsBuilder {
         kind: TypeDefKind,
         flag: Option<LuaDocTypeFlag>,
         super_names: Vec<SmolStr>,
-        generic_params: Vec<SalsaGenericParam>,
+        generic_params: Vec<DocGenericParam>,
         deprecated: bool,
         alias_type: Option<LuaSyntaxId>,
         owner_syntax: Option<LuaSyntaxId>,
@@ -2091,7 +2091,7 @@ fn field_key_range(field: &LuaTableField) -> TextRange {
 }
 
 /// `LuaDocGenericDeclList` → generic parameters (doc node references).
-fn collect_generics(list: Option<LuaDocGenericDeclList>) -> Vec<SalsaGenericParam> {
+fn collect_generics(list: Option<LuaDocGenericDeclList>) -> Vec<DocGenericParam> {
     let Some(list) = list else {
         return Vec::new();
     };
@@ -2101,7 +2101,7 @@ fn collect_generics(list: Option<LuaDocGenericDeclList>) -> Vec<SalsaGenericPara
                 .get_name_token()
                 .map(|token| token.get_name_text().into())
                 .unwrap_or_default();
-            SalsaGenericParam::new(
+            DocGenericParam::new(
                 name,
                 decl.get_constraint_type().map(|t| t.get_syntax_id()),
                 decl.get_default_type().map(|t| t.get_syntax_id()),

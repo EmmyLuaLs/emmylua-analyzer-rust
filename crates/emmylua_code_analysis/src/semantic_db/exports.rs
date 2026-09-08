@@ -11,7 +11,7 @@
 use smol_str::SmolStr;
 
 use crate::FileId;
-use crate::salsa_builder::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
+use crate::semantic_db::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
 
 use super::SemanticDatabase;
 use super::inputs::ConfigInputData;
@@ -67,7 +67,7 @@ pub(super) fn build_file_exports(
     let globals = facts
         .decls
         .iter()
-        .filter(|decl| matches!(decl.kind, crate::salsa_builder::def::DeclKind::Global))
+        .filter(|decl| matches!(decl.kind, crate::semantic_db::def::DeclKind::Global))
         .map(|decl| GlobalExport {
             file_id,
             name: decl.name.clone(),

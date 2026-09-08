@@ -19,9 +19,7 @@ pub use lsp_features::LspFeatures;
 use lsp_server::{Connection, ErrorCode, RequestId, Response};
 use lsp_types::ClientCapabilities;
 pub use pull_cache::RequestManager;
-pub use query_runner::{
-    CancelSource, CancelStrategy, RequestOutcome, analysis_query, snapshot_query,
-};
+pub use query_runner::{CancelSource, RequestOutcome, analysis_query, snapshot_query};
 pub use snapshot::ServerContextSnapshot;
 pub use status_bar::ProgressTask;
 pub use status_bar::StatusBar;
@@ -103,7 +101,7 @@ impl ServerContext {
         let cancellations = self.cancellations.clone();
 
         tokio::spawn(async move {
-            // Run the handler in a child task: salsa's Cancelled is thrown as a panic,
+            // Run the handler in a child task: semantic's Cancelled is thrown as a panic,
             // so capture it here via JoinHandle to avoid interrupting the request task without a reply.
             let res = tokio::spawn(exec(cancel_token.clone())).await.ok();
 

@@ -15,7 +15,7 @@ const VSCODE_COMMAND_NAME: &str = "emmy.showReferences";
 const OTHER_COMMAND_NAME: &str = "editor.action.showReferences";
 
 pub fn resolve_code_lens(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     code_lens: CodeLens,
     client_id: ClientId,
 ) -> Option<CodeLens> {
@@ -25,13 +25,13 @@ pub fn resolve_code_lens(
         CodeLensData::Member(data) => {
             let semantic_id = data.to_semantic_id()?;
             let file_id = emmylua_code_analysis::FileId::new(data.file_id);
-            let results = member_reference_ranges(salsa, &semantic_id, true)
+            let results = member_reference_ranges(db, &semantic_id, true)
                 .into_iter()
-                .filter_map(|(fid, range)| location_of(salsa, fid, range))
+                .filter_map(|(fid, range)| location_of(db, fid, range))
                 .collect::<Vec<_>>();
             let mut ref_count = results.len();
             ref_count = ref_count.saturating_sub(1);
-            let uri = salsa.document(file_id)?.get_uri()?;
+            let uri = db.document(file_id)?.get_uri()?;
             let command = make_usage_command(uri, code_lens.range, ref_count, client_id, results);
 
             Some(CodeLens {
@@ -43,12 +43,12 @@ pub fn resolve_code_lens(
         CodeLensData::DeclId(data) => {
             let semantic_id = data.to_semantic_id()?;
             let file_id = emmylua_code_analysis::FileId::new(data.file_id);
-            let results = decl_reference_ranges(salsa, &semantic_id, true)
+            let results = decl_reference_ranges(db, &semantic_id, true)
                 .into_iter()
-                .filter_map(|(fid, range)| location_of(salsa, fid, range))
+                .filter_map(|(fid, range)| location_of(db, fid, range))
                 .collect::<Vec<_>>();
             let ref_count = results.len();
-            let uri = salsa.document(file_id)?.get_uri()?;
+            let uri = db.document(file_id)?.get_uri()?;
             let command = make_usage_command(uri, code_lens.range, ref_count, client_id, results);
             Some(CodeLens {
                 range: code_lens.range,
@@ -60,11 +60,11 @@ pub fn resolve_code_lens(
 }
 
 fn location_of(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {
-    let document = salsa.document(file_id)?;
+    let document = db.document(file_id)?;
     Some(Location {
         uri: document.get_uri()?,
         range: document.to_lsp_range(range)?,

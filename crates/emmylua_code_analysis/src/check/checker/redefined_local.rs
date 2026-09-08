@@ -6,7 +6,7 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaClosureExpr};
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::{DeclKind, ScopeChild, ScopeKind, SemanticId};
+use crate::semantic_db::def::{DeclKind, ScopeChild, ScopeKind, SemanticId};
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};
@@ -35,8 +35,8 @@ impl Checker for RedefinedLocalChecker {
 fn check_scope(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
-    decls: &[crate::salsa_builder::def::Decl],
-    scopes: &[crate::salsa_builder::def::Scope],
+    decls: &[crate::semantic_db::def::Decl],
+    scopes: &[crate::semantic_db::def::Scope],
     scope_idx: u32,
     parent_locals: &mut HashMap<String, SemanticId>,
 ) {

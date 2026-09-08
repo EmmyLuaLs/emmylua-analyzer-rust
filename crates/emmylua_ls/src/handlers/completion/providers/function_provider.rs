@@ -1,8 +1,6 @@
 //! Function context completion: call-argument type candidates / @param completion in parameter lists / function implementations for assignment targets.
 
-use emmylua_code_analysis::{
-    LuaFunctionType, LuaType, LuaTypeDeclId, SalsaSemanticModel, SemanticId,
-};
+use emmylua_code_analysis::{LuaFunctionType, LuaType, LuaTypeDeclId, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaDocTagParam,
     LuaExpr, LuaLiteralExpr, LuaParamList, LuaSyntaxKind, LuaTokenKind,
@@ -269,9 +267,9 @@ fn substitute_tpl_constraints(
 
 /// When `@param key K` for `K extends keyof T` projects to Unknown, reconstruct
 /// `Call(KeyOf, [TplRef(T)])` from the `---@generic` constraint syntax text
-/// (the old salsa layer does not lower keyof types yet).
+/// (the old semantic layer does not lower keyof types yet).
 fn doc_keyof_param_override(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix_expr: &LuaExpr,
     param_name: &str,
     generics: &[emmylua_code_analysis::GenericTpl],
@@ -387,7 +385,7 @@ fn substitute_tpl_in_type(ty: &LuaType, bindings: &[(String, LuaType)]) -> LuaTy
 /// Call prefix to function candidates: declarations' signatures (main + `---@overload`) take
 /// priority; fall back to the projected function value type (with unions expanded).
 pub(crate) fn callable_candidates(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     prefix_expr: &LuaExpr,
 ) -> Vec<LuaFunctionType> {
     // Name/member declarations: read the overload list in signature facts.
@@ -476,7 +474,7 @@ pub(crate) fn callable_candidates(
     expand_callable_types(model, &ty)
 }
 
-fn member_candidates_by_name(model: &SalsaSemanticModel<'_>, name: &str) -> Vec<LuaFunctionType> {
+fn member_candidates_by_name(model: &SemanticModel<'_>, name: &str) -> Vec<LuaFunctionType> {
     let Some(facts) = model.file_facts() else {
         return Vec::new();
     };
@@ -504,7 +502,7 @@ fn member_candidates_by_name(model: &SalsaSemanticModel<'_>, name: &str) -> Vec<
     out
 }
 
-fn expand_callable_types(_model: &SalsaSemanticModel<'_>, ty: &LuaType) -> Vec<LuaFunctionType> {
+fn expand_callable_types(_model: &SemanticModel<'_>, ty: &LuaType) -> Vec<LuaFunctionType> {
     match ty {
         LuaType::DocFunction(func) => vec![func.as_ref().clone()],
         LuaType::Function => vec![LuaFunctionType::new(
@@ -752,7 +750,7 @@ fn add_str_tpl_ref_completion(
 
 /// Whether a type definition satisfies a `` `T`` constraint (including inheritance chains / unions / primitive supers).
 fn type_def_matches_constraint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     def: &emmylua_code_analysis::TypeDef,
     constraint: &LuaType,
 ) -> bool {

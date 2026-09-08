@@ -1,4 +1,4 @@
-//! Function type checks: DocFunction structure (params/variadic/colon definition); Signature goes through salsa signatures.
+//! Function type checks: DocFunction structure (params/variadic/colon definition); Signature goes through semantic signatures.
 
 use crate::LuaFunctionType;
 use crate::LuaSignatureId;
@@ -152,7 +152,7 @@ fn check_doc_func_type_compact_for_signature(
     signature_id: &LuaSignatureId,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    // M0: convert a salsa Signature (params/doc) into a DocFunction structure for comparison.
+    // M0: convert a semantic Signature (params/doc) into a DocFunction structure for comparison.
     let Some(signature) = context.model.signature_lua_by_legacy_id(signature_id) else {
         return Err(context.mismatch(
             &LuaType::DocFunction(std::sync::Arc::new(source_func.clone())),

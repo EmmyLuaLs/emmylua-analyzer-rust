@@ -1,6 +1,6 @@
-//! Ref/Def type checks: nominal + inheritance (`is_sub_type_of` via salsa `super_names`).
+//! Ref/Def type checks: nominal + inheritance (`is_sub_type_of` via semantic `super_names`).
 //!
-//! Parts still missing from salsa fall back: alias origin, enum field unions, call operator.
+//! Parts still missing from semantic fall back: alias origin, enum field unions, call operator.
 
 use crate::{LuaType, LuaTypeDeclId};
 use emmylua_parser::{LuaAstNode, LuaDocTagClass};
@@ -140,7 +140,7 @@ fn check_ref_enum(
     if matches!(compact_type, LuaType::Def(id) | LuaType::Ref(id) if id == source_id) {
         return Ok(());
     }
-    // Integer enum: broad Integer participates (salsa has no enum field union, so this is relaxed).
+    // Integer enum: broad Integer participates (semantic has no enum field union, so this is relaxed).
     if matches!(
         compact_type,
         LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
@@ -175,7 +175,7 @@ fn check_ref_class(
             if is_sub_type_of(context, id, source_id) || is_sub_type_of(context, source_id, id) {
                 return Ok(());
             }
-            // Extra handling for enum targets (salsa has no field union, so fall back to base type name).
+            // Extra handling for enum targets (semantic has no field union, so fall back to base type name).
             if context.is_enum(id) {
                 if let Some(base_id) = get_base_type_id(&LuaType::Ref(source_id.clone()))
                     && is_sub_type_of(context, id, &base_id)
@@ -210,7 +210,7 @@ fn check_ref_class(
                 Err(context.mismatch(&LuaType::Ref(source_id.clone()), compact_type))
             }
         }
-        // Table/object/tuple/intersection structures: M0 uses base type name (`table`) plus nominal fallback (salsa member-structure checks are left for later).
+        // Table/object/tuple/intersection structures: M0 uses base type name (`table`) plus nominal fallback (semantic member-structure checks are left for later).
         LuaType::TableConst(_)
         | LuaType::Object(_)
         | LuaType::Tuple(_)

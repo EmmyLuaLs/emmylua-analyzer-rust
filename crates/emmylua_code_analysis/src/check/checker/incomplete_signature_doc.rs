@@ -1,12 +1,12 @@
 //! # incomplete_signature_doc - functions missing doc annotations / parameter annotations / return annotations
 //!
-//! Uses only salsa facts: `Signature.docs` is `None` = no comment (global functions report `MissingGlobalDoc`,
+//! Uses only semantic facts: `Signature.docs` is `None` = no comment (global functions report `MissingGlobalDoc`,
 //! others report `IncompleteSignatureDoc`); additionally report missing `@param` and return values exceeding the documented count.
 
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaReturnStat, LuaStat, LuaSyntaxKind};
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::{DeclKind, Signature};
+use crate::semantic_db::def::{DeclKind, Signature};
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};

@@ -1,11 +1,11 @@
 //! # type_check — `LuaType` type compatibility checks (standalone directory)
 //!
 //! Ported from the old `semantic::type_check` (isomorphic recursive descent + `TypeCheckFailReason`),
-//! but resolving the type environment only through `semantic_model::SemanticModel` (salsa):
+//! but resolving the type environment only through `semantic_model::SemanticModel` (semantic):
 //! - **Boolean first**: `is_compatible(source, target) -> bool` (zero reason overhead);
 //! - **Detail interface**: `check_type(...) -> TypeCheckResult` (includes failure reason strings);
 //! - Recursion + depth guard (`TypeCheckGuard`) protects against infinite types;
-//! - Parts still missing from salsa (alias origin, enum field unions, call operators) fall back to nominal checks.
+//! - Parts still missing from semantic (alias origin, enum field unions, call operators) fall back to nominal checks.
 
 mod assign;
 mod complex_type;

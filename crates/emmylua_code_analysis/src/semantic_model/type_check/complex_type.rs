@@ -154,7 +154,7 @@ pub fn check_complex_type_compact(
             Err(context.mismatch(source, compact_type))
         }
         LuaType::Call(source_call) => {
-            // M0: call types such as keyof are not expanded (salsa has no member-key union).
+            // M0: call types such as keyof are not expanded (semantic has no member-key union).
             if let LuaType::Call(compact_call) = compact_type
                 && compact_call.as_ref() == source_call.as_ref()
             {

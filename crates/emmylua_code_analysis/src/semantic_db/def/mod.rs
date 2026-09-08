@@ -25,7 +25,7 @@ mod workspace_id;
 pub use async_state::AsyncState;
 pub use builtin_attribute::*;
 pub use decl::{Decl, DeclKind};
-pub use generic_param::SalsaGenericParam;
+pub use generic_param::DocGenericParam;
 pub use lua_type::*;
 pub use member::{Member, MemberRef};
 pub use member_key::LuaMemberKey;

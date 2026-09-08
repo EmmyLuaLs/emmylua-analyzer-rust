@@ -1,5 +1,5 @@
 use super::RegisterCapabilities;
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use crate::util::parse_desc;
 use emmylua_code_analysis::{Emmyrc, LuaDocument, WorkspaceId};
 use emmylua_parser::{LuaAstNode, LuaDocDescription};
@@ -22,7 +22,6 @@ pub async fn on_document_selection_range_handle(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

@@ -1,4 +1,4 @@
-//! Type-check tests (LuaType + salsa context).
+//! Type-check tests (LuaType + semantic context).
 
 use smol_str::SmolStr;
 
@@ -13,7 +13,7 @@ fn ctx() -> TypeCheckContext<'static> {
     // Borrow a dummy model: structural checks don't trigger resolution, so use a leaked fake model.
     let model: &'static crate::semantic_model::SemanticModel<'static> = Box::leak(Box::new(
         crate::semantic_model::SemanticModel::new(
-            Box::leak(Box::new(crate::salsa_builder::SemanticDatabase::new())),
+            Box::leak(Box::new(crate::semantic_db::SemanticDatabase::new())),
             crate::FileId::new(0),
         )
         .unwrap(),
@@ -180,7 +180,7 @@ fn test_alias_nominal() {
     );
     let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("model");
     let my_str = LuaType::Ref(LuaTypeDeclId::global("MyStr"));
-    // salsa has no alias origin: nominal (same id) passes, structural expansion is degraded.
+    // semantic has no alias origin: nominal (same id) passes, structural expansion is degraded.
     assert!(super::is_compatible(&model, &my_str, &my_str));
 }
 

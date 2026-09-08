@@ -1,9 +1,7 @@
 mod build_inlay_hint;
 
 use super::RegisterCapabilities;
-use crate::context::{
-    CancelStrategy, ClientId, RequestOutcome, ServerContextSnapshot, analysis_query,
-};
+use crate::context::{ClientId, RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_inlay_hint::build_inlay_hints;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use lsp_types::{
@@ -28,7 +26,6 @@ pub async fn on_inlay_hint_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| inlay_hint(analysis, analysis.get_file_id(&uri)?, client_id),
     )

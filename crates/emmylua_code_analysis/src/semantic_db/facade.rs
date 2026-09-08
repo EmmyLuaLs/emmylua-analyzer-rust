@@ -1,7 +1,7 @@
-//! Query facade — crate-internal API for salsa_builder.
+//! Query facade — crate-internal API for semantic_db.
 //!
 //! The public contract is only through `semantic_model::SemanticModel` (the sole public entry);
-//! this facade (`SalsaQueries`) is an implementation detail of SemanticModel and stays within the crate.
+//! this facade (`SemanticQueries`) is an implementation detail of SemanticModel and stays within the crate.
 
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use emmylua_parser::{LuaChunk, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
-use crate::salsa_builder::types::LiteralShell;
+use crate::semantic_db::types::LiteralShell;
 use crate::{
     GenericTpl, GenericTplId, LuaAliasCallKind, LuaAliasCallType, LuaArrayType, LuaStringTplType,
     LuaTupleStatus, LuaTupleType, VariadicType,
@@ -17,7 +17,7 @@ use crate::{
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, Member, MemberRef, ModuleExport, NameUse, SalsaGenericParam, Scope,
+    ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, Scope,
     SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
 };
 use super::exports::{FileExports, file_exports};
@@ -35,7 +35,7 @@ use crate::{
 
 /// Owned member list wrapper.
 ///
-/// Keeping an `Arc<[MemberRef]>` internally lets salsa snapshots share member lists
+/// Keeping an `Arc<[MemberRef]>` internally lets semantic snapshots share member lists
 /// without deep cloning. Iterating by value still materializes a `Vec` for callers
 /// that need owned `MemberRef` values, mirroring the previous API shape.
 #[derive(Clone, Debug, Default)]
@@ -134,11 +134,11 @@ impl IntoIterator for TypeDefList {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct SalsaQueries<'db> {
+pub(crate) struct SemanticQueries<'db> {
     db: &'db SemanticDatabase,
 }
 
-impl<'db> SalsaQueries<'db> {
+impl<'db> SemanticQueries<'db> {
     pub fn new(db: &'db SemanticDatabase) -> Self {
         Self { db }
     }
@@ -524,7 +524,7 @@ impl<'db> SalsaQueries<'db> {
         &self,
         file_id: FileId,
         type_syntax: LuaSyntaxId,
-        generics: &[SalsaGenericParam],
+        generics: &[DocGenericParam],
     ) -> LuaType {
         let Some((file, config)) = file_and_config(self.db, file_id) else {
             return LuaType::Unknown;

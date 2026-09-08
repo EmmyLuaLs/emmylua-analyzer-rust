@@ -3,7 +3,7 @@
 //! Built on top of the TypeShell structural inference layer (bounded fixpoint):
 //! - Cycle convergence is guaranteed by the TypeShell layer (`cycle_fn`); this layer
 //!   does not perform fixpoint iteration;
-//! - This layer's "memo" is salsa queries (`decl_type`/`member_type`/`expr_type_of`),
+//! - This layer's "memo" is semantic queries (`decl_type`/`member_type`/`expr_type_of`),
 //!   and its "recursion guard" is the TypeShell layer's cycle convergence
 //!   (`Recursive -> Unknown`);
 //! - The output is a faithfully projected `LuaType`, consumed directly by `type_check`.

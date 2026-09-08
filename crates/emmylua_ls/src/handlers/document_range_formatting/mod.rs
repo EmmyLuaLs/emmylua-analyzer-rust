@@ -8,7 +8,7 @@ use lsp_types::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query},
+    context::{RequestOutcome, ServerContextSnapshot, snapshot_query},
     handlers::{
         document_formatting::{FormattingOptions, build_workspace_formatter_config},
         document_range_formatting::external_range_format::external_tool_range_format,
@@ -38,11 +38,8 @@ pub async fn on_range_formatting_handler(
         let workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.client_config.client_id
     };
-    let extracted = match snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token.clone(),
-        move |analysis| {
+    let extracted =
+        match snapshot_query(context.analysis(), cancel_token.clone(), move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
             let document = analysis.db.document(file_id)?;
             let file_path = Some(document.get_file_path().clone());
@@ -74,16 +71,15 @@ pub async fn on_range_formatting_handler(
                 normalized_path,
                 formatting_options,
             ))
-        },
-    )
-    .await
-    {
-        RequestOutcome::Ready(data) => data,
-        RequestOutcome::Missing => {
-            return RequestOutcome::Missing;
-        }
-        RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
-    };
+        })
+        .await
+        {
+            RequestOutcome::Ready(data) => data,
+            RequestOutcome::Missing => {
+                return RequestOutcome::Missing;
+            }
+            RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
+        };
 
     let (
         file_id,
@@ -132,32 +128,27 @@ pub async fn on_range_formatting_handler(
     }
 
     // Non-external-tool branch is pure synchronous computation, so a temporary snapshot can be reacquired.
-    let result = match snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let model = analysis.semantic_model(file_id)?;
-            let chunk = model.chunk()?;
-            let document = analysis.db.document(file_id)?;
-            let config = build_workspace_formatter_config(
-                file_path.as_deref(),
-                params.options.tab_size as usize,
-                params.options.insert_spaces,
-                params.options.insert_final_newline.unwrap_or(true),
-            );
-            let selection = document.to_rowan_range(request_range)?;
-            let output = reformat_range_in_chunk(
-                document.get_text(),
-                &chunk,
-                selection,
-                &config,
-                emmyrc.get_language_level(),
-            )?;
-            let range = document.to_lsp_range(output.replace_range)?;
-            Some((output, range))
-        },
-    )
+    let result = match snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let model = analysis.semantic_model(file_id)?;
+        let chunk = model.chunk()?;
+        let document = analysis.db.document(file_id)?;
+        let config = build_workspace_formatter_config(
+            file_path.as_deref(),
+            params.options.tab_size as usize,
+            params.options.insert_spaces,
+            params.options.insert_final_newline.unwrap_or(true),
+        );
+        let selection = document.to_rowan_range(request_range)?;
+        let output = reformat_range_in_chunk(
+            document.get_text(),
+            &chunk,
+            selection,
+            &config,
+            emmyrc.get_language_level(),
+        )?;
+        let range = document.to_lsp_range(output.replace_range)?;
+        Some((output, range))
+    })
     .await
     {
         RequestOutcome::Ready(result) => result,

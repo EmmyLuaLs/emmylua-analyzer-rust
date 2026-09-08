@@ -4,7 +4,7 @@ mod rename_type;
 
 use std::collections::HashMap;
 
-use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaDocTagParam, LuaLiteralExpr, LuaSyntaxKind, LuaSyntaxNode,
     LuaSyntaxToken, LuaTokenKind,
@@ -19,7 +19,7 @@ use rename_type::rename_type_references;
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, snapshot_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, snapshot_query};
 use crate::handlers::common::type_def_of_id;
 
 use super::RegisterCapabilities;
@@ -32,15 +32,10 @@ pub async fn on_rename_handler(
     let uri = params.text_document_position.text_document.uri;
     let position = params.text_document_position.position;
     let new_name = params.new_name;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let file_id = analysis.get_file_id(&uri)?;
-            rename(analysis, file_id, position, new_name.clone())
-        },
-    )
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let file_id = analysis.get_file_id(&uri)?;
+        rename(analysis, file_id, position, new_name.clone())
+    })
     .await
 }
 
@@ -51,49 +46,44 @@ pub async fn on_prepare_rename_handler(
 ) -> RequestOutcome<PrepareRenameResponse> {
     let uri = params.text_document.uri;
     let position = params.position;
-    snapshot_query(
-        context.analysis(),
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
-        cancel_token,
-        move |analysis| {
-            let file_id = analysis.get_file_id(&uri)?;
-            let model = analysis.semantic_model(file_id)?;
-            let document = analysis.db.document(file_id)?;
-            let root = model.chunk()?;
-            let position_offset =
-                document.get_offset(position.line as usize, position.character as usize)?;
+    snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let file_id = analysis.get_file_id(&uri)?;
+        let model = analysis.semantic_model(file_id)?;
+        let document = analysis.db.document(file_id)?;
+        let root = model.chunk()?;
+        let position_offset =
+            document.get_offset(position.line as usize, position.character as usize)?;
 
-            if position_offset > root.syntax().text_range().end() {
+        if position_offset > root.syntax().text_range().end() {
+            return None;
+        }
+
+        let token = match root.syntax().token_at_offset(position_offset) {
+            TokenAtOffset::Single(token) => token,
+            TokenAtOffset::Between(left, right) => {
+                if left.kind() == LuaTokenKind::TkName.into()
+                    || left.kind() == LuaTokenKind::TkInt.into()
+                {
+                    left
+                } else {
+                    right
+                }
+            }
+            TokenAtOffset::None => {
                 return None;
             }
-
-            let token = match root.syntax().token_at_offset(position_offset) {
-                TokenAtOffset::Single(token) => token,
-                TokenAtOffset::Between(left, right) => {
-                    if left.kind() == LuaTokenKind::TkName.into()
-                        || left.kind() == LuaTokenKind::TkInt.into()
-                    {
-                        left
-                    } else {
-                        right
-                    }
-                }
-                TokenAtOffset::None => {
-                    return None;
-                }
-            };
-            if matches!(
-                token.kind().into(),
-                LuaTokenKind::TkName | LuaTokenKind::TkInt | LuaTokenKind::TkString
-            ) {
-                let range = document.to_lsp_range(token.text_range())?;
-                let placeholder = token.text().to_string();
-                Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder })
-            } else {
-                None
-            }
-        },
-    )
+        };
+        if matches!(
+            token.kind().into(),
+            LuaTokenKind::TkName | LuaTokenKind::TkInt | LuaTokenKind::TkString
+        ) {
+            let range = document.to_lsp_range(token.text_range())?;
+            let placeholder = token.text().to_string();
+            Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder })
+        } else {
+            None
+        }
+    })
     .await
 }
 
@@ -132,8 +122,8 @@ pub fn rename(
 
 #[allow(clippy::mutable_key_type)]
 fn rename_references(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
     new_name: String,
 ) -> Option<WorkspaceEdit> {
@@ -145,14 +135,14 @@ fn rename_references(
 
     match &semantic_decl {
         SemanticId::Decl(_) => {
-            rename_decl_references(model, salsa, &semantic_decl, new_name, &mut result);
+            rename_decl_references(model, db, &semantic_decl, new_name, &mut result);
         }
         SemanticId::Member(_) => {
-            rename_member_references(salsa, &semantic_decl, new_name, &mut result);
+            rename_member_references(db, &semantic_decl, new_name, &mut result);
         }
         SemanticId::TypeDef(_) => {
             if let Some(def) = type_def_of_id(model, &semantic_decl) {
-                rename_type_references(salsa, &def, new_name, &mut result);
+                rename_type_references(db, &def, new_name, &mut result);
             }
         }
         _ => {}

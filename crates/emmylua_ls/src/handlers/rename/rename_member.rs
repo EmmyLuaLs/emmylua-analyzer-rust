@@ -8,7 +8,7 @@ use crate::handlers::common::member_key_rename_ranges;
 
 #[allow(clippy::mutable_key_type)]
 pub fn rename_member_references(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     member: &SemanticId,
     new_name: String,
     result: &mut HashMap<Uri, HashMap<lsp_types::Range, String>>,
@@ -17,12 +17,12 @@ pub fn rename_member_references(
     let SemanticId::Member(key) = member else {
         return None;
     };
-    let ranges = member_key_rename_ranges(salsa, member, &new_name);
+    let ranges = member_key_rename_ranges(db, member, &new_name);
     for (file_id, range, text) in ranges {
         if file_id != key.file_id {
             continue;
         }
-        push_edit(salsa, file_id, range, text, result);
+        push_edit(db, file_id, range, text, result);
     }
     Some(())
 }

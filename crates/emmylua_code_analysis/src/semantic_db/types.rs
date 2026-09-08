@@ -1,6 +1,6 @@
 //! Fixed-point domain for type inference.
 //!
-//! Inference is a monotonic fixed point. salsa's `cycle_fn` is a fixed-point iterator, but
+//! Inference is a monotonic fixed point. semantic's `cycle_fn` is a fixed-point iterator, but
 //! **convergence must happen on a bounded value domain**. The candidate set (sorted/deduped) is from a finite set,
 //! so it converges and cannot grow unboundedly like structural types.
 

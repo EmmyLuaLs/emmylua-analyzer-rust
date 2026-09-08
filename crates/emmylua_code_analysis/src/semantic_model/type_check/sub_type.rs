@@ -1,4 +1,4 @@
-//! Subtype (inheritance) determination: iteratively traverses salsa `super_names`.
+//! Subtype (inheritance) determination: iteratively traverses semantic `super_names`.
 //!
 //! `is_sub_type_of(sub, super)`: whether sub's type definition (including the inheritance chain) contains super.
 

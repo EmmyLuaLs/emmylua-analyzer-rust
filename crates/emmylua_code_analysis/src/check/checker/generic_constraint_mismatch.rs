@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaDocType, LuaExpr, LuaIndexExpr};
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::{SalsaGenericParam, SemanticId, TypeDef};
+use crate::semantic_db::def::{DocGenericParam, SemanticId, TypeDef};
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::infer::unify;
 use crate::semantic_model::type_check::is_compatible;
@@ -709,7 +709,7 @@ fn project_doc_type_with(
     semantic_model: &SemanticModel<'_>,
     file_id: FileId,
     syntax: emmylua_parser::LuaSyntaxId,
-    generics: &[SalsaGenericParam],
+    generics: &[DocGenericParam],
     substitutions: &HashMap<String, LuaType>,
 ) -> LuaType {
     let Some(tree) = semantic_model.syntax_tree_of(file_id) else {
@@ -915,8 +915,8 @@ fn collect_key_names(
 /// - when the constraint itself is a rigid `T` / `keyof T`, the default must also reference that `T` (`U extends T = "x"` is an error).
 fn dependent_default_compatible(
     semantic_model: &SemanticModel<'_>,
-    params: &[SalsaGenericParam],
-    current: &SalsaGenericParam,
+    params: &[DocGenericParam],
+    current: &DocGenericParam,
     actual: &LuaType,
     constraint: &LuaType,
 ) -> bool {

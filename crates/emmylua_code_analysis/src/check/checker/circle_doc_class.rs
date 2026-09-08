@@ -9,7 +9,7 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaDocTagClass};
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::TypeDefKind;
+use crate::semantic_db::def::TypeDefKind;
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};

@@ -11,7 +11,7 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaSyntaxKi
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::{TypeDefKind, TypeVisibility};
+use crate::semantic_db::def::{TypeDefKind, TypeVisibility};
 use crate::semantic_model::SemanticModel;
 use crate::{LuaMemberKey, LuaType, LuaTypeDeclId};
 
@@ -292,8 +292,8 @@ fn valid_named_member(
 
 fn enum_table_access(
     semantic_model: &SemanticModel<'_>,
-    decl: &crate::salsa_builder::def::Decl,
-    _def: &crate::salsa_builder::def::TypeDef,
+    decl: &crate::semantic_db::def::Decl,
+    _def: &crate::semantic_db::def::TypeDef,
     index_key: &LuaIndexKey,
 ) -> bool {
     // Dynamic keys (parameter enum type / expression) are allowed broadly.
@@ -324,8 +324,8 @@ fn table_binding(
     file_id: crate::FileId,
     range: TextRange,
 ) -> Option<(
-    crate::salsa_builder::def::Decl,
-    crate::salsa_builder::def::TypeDef,
+    crate::semantic_db::def::Decl,
+    crate::semantic_db::def::TypeDef,
 )> {
     let facts = semantic_model.file_facts_of(file_id)?;
     let decl = facts.decls.iter().find(|decl| {
@@ -355,7 +355,7 @@ fn table_binding(
     Some((decl.clone(), def))
 }
 
-fn class_lua_type(def: &crate::salsa_builder::def::TypeDef) -> LuaType {
+fn class_lua_type(def: &crate::semantic_db::def::TypeDef) -> LuaType {
     match def.visibility {
         TypeVisibility::Public => LuaType::Ref(LuaTypeDeclId::global(&def.full_name)),
         _ => LuaType::Def(LuaTypeDeclId::file(def.file_id, &def.full_name)),
@@ -476,7 +476,7 @@ fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &Lu
 /// Whether the type definition has an index signature matching the key type (`@field [string]` / `@field [integer]`).
 fn has_index_signature(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::salsa_builder::def::TypeDef,
+    def: &crate::semantic_db::def::TypeDef,
     key_ty: &LuaType,
 ) -> bool {
     for member_ref in semantic_model.members_of_owner(&def.id) {
@@ -528,7 +528,7 @@ fn is_unconstrained_generic_name(semantic_model: &SemanticModel<'_>, ty: &LuaTyp
 fn named_type_def(
     semantic_model: &SemanticModel<'_>,
     ty: &LuaType,
-) -> Option<crate::salsa_builder::def::TypeDef> {
+) -> Option<crate::semantic_db::def::TypeDef> {
     let id = match ty {
         LuaType::Ref(id) | LuaType::Def(id) => id,
         LuaType::Generic(generic) => {
@@ -542,7 +542,7 @@ fn named_type_def(
 /// Whether the alias target is a mapped type (`{ [K in keyof T]: ... }`).
 fn is_mapped_alias(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::salsa_builder::def::TypeDef,
+    def: &crate::semantic_db::def::TypeDef,
 ) -> bool {
     let Some(syntax) = def.alias_type else {
         return false;
@@ -575,8 +575,8 @@ fn prefix_directly_names_decl(semantic_model: &SemanticModel<'_>, prefix: &LuaEx
             decl.doc_type_syntax.is_none()
                 && matches!(
                     decl.kind,
-                    crate::salsa_builder::def::DeclKind::Global
-                        | crate::salsa_builder::def::DeclKind::Local { .. }
+                    crate::semantic_db::def::DeclKind::Global
+                        | crate::semantic_db::def::DeclKind::Local { .. }
                 )
                 && decl.value_expr_syntax.is_some_and(|syntax| {
                     let Some(tree) = semantic_model.syntax_tree_of(decl.file_id) else {
@@ -668,7 +668,7 @@ fn is_export_surface_missing(
     let Some(facts) = semantic_model.file_facts_of(table.file_id) else {
         return false;
     };
-    let crate::salsa_builder::def::ModuleExport::Decl { decl, .. } = &facts.module_export else {
+    let crate::semantic_db::def::ModuleExport::Decl { decl, .. } = &facts.module_export else {
         return false;
     };
     let Some(export_decl) = facts.decl_by_id(decl) else {

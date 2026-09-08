@@ -1,9 +1,9 @@
-//! # document_symbol — pure-Salsa document symbols
+//! # document_symbol — pure-Semantic document symbols
 //!
 //! Syntax-tree traversal (functions / locals / assignments / table fields) plus type projection (`type_of_decl`).
-//! The old DbIndex-based version (decl_tree hierarchy and type cache details) is retired; see docs/SALSA_FROM_SCRATCH.md §M4.
+//! The old DbIndex-based version (decl_tree hierarchy and type cache details) is retired; see migration notes §M4.
 
-use emmylua_code_analysis::{DeclKind, LuaType, SalsaSemanticModel};
+use emmylua_code_analysis::{DeclKind, LuaType, SemanticModel};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaTableField, PathTrait};
 use lsp_types::{
     ClientCapabilities, DocumentSymbol, DocumentSymbolOptions, DocumentSymbolParams,
@@ -11,7 +11,7 @@ use lsp_types::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use crate::handlers::hover::render::humanize;
 
 use super::RegisterCapabilities;
@@ -27,7 +27,6 @@ pub async fn on_document_symbol(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(50)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
@@ -57,7 +56,7 @@ fn non_empty_symbol_name(raw: String, fallback: impl FnOnce() -> String) -> Stri
 }
 
 fn build_document_symbol(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
 ) -> Vec<DocumentSymbol> {
     let mut symbols = Vec::new();
@@ -159,7 +158,7 @@ fn build_document_symbol(
 }
 
 fn decl_kind(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     decl: &emmylua_code_analysis::SemanticId,
 ) -> Option<DeclKind> {
     model
@@ -169,7 +168,7 @@ fn decl_kind(
 }
 
 fn build_table_field_symbol(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &emmylua_code_analysis::LuaDocument,
     table_field: &LuaTableField,
 ) -> Option<DocumentSymbol> {

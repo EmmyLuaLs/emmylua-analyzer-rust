@@ -8,7 +8,7 @@ use lsp_types::{
 use resolve_code_lens::resolve_code_lens;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 
 use super::RegisterCapabilities;
 
@@ -23,7 +23,6 @@ pub async fn on_code_lens_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(50)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

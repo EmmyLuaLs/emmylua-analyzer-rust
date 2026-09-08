@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase, SemanticId};
+use emmylua_code_analysis::{SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaStat, LuaTokenKind, PathTrait};
 use lsp_types::{CallHierarchyIncomingCall, CallHierarchyItem, Location, SymbolKind};
 use rowan::{TextRange, TokenAtOffset};
@@ -55,8 +55,8 @@ impl SemanticIdData {
 }
 
 pub fn build_call_hierarchy_item(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     semantic_decl: &SemanticId,
 ) -> Option<CallHierarchyItem> {
     let data = CallHierarchyItemData {
@@ -65,13 +65,13 @@ pub fn build_call_hierarchy_item(
     };
     match semantic_decl {
         SemanticId::Decl(key) => {
-            let decl_model = model_of(salsa, key.file_id);
+            let decl_model = model_of(db, key.file_id);
             let decl = decl_model
                 .decls()?
                 .iter()
                 .find(|d| d.id == *semantic_decl)?
                 .clone();
-            let document = salsa.document(key.file_id)?;
+            let document = db.document(key.file_id)?;
             let uri = document.get_uri()?;
             let lsp_range = document.to_lsp_range(decl.name_range)?;
             Some(CallHierarchyItem {
@@ -86,13 +86,13 @@ pub fn build_call_hierarchy_item(
             })
         }
         SemanticId::Member(key) => {
-            let decl_model = model_of(salsa, key.file_id);
+            let decl_model = model_of(db, key.file_id);
             let member = decl_model
                 .members()?
                 .iter()
                 .find(|m| m.id == *semantic_decl)?
                 .clone();
-            let document = salsa.document(key.file_id)?;
+            let document = db.document(key.file_id)?;
             let uri = document.get_uri()?;
             let lsp_range = document.to_lsp_range(key.key_range)?;
             Some(CallHierarchyItem {
@@ -111,13 +111,13 @@ pub fn build_call_hierarchy_item(
 }
 
 pub fn build_incoming_hierarchy(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     semantic_decl: &SemanticId,
 ) -> Option<Vec<CallHierarchyIncomingCall>> {
     let mut result = vec![];
     let ranges = match semantic_decl {
-        SemanticId::Decl(_) => decl_reference_ranges(salsa, semantic_decl, true),
-        SemanticId::Member(_) => member_reference_ranges(salsa, semantic_decl, true),
+        SemanticId::Decl(_) => decl_reference_ranges(db, semantic_decl, true),
+        SemanticId::Member(_) => member_reference_ranges(db, semantic_decl, true),
         _ => return None,
     };
     let mut seen = std::collections::HashSet::new();
@@ -125,7 +125,7 @@ pub fn build_incoming_hierarchy(
         if !seen.insert((file_id, range)) {
             continue;
         }
-        if let Some(document) = salsa.document(file_id)
+        if let Some(document) = db.document(file_id)
             && let Some(uri) = document.get_uri()
             && let Some(lsp_range) = document.to_lsp_range(range)
         {
@@ -133,20 +133,20 @@ pub fn build_incoming_hierarchy(
                 uri,
                 range: lsp_range,
             };
-            build_incoming_hierarchy_item(salsa, &location, &mut result);
+            build_incoming_hierarchy_item(db, &location, &mut result);
         }
     }
     Some(result)
 }
 
 fn build_incoming_hierarchy_item(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     location: &Location,
     result: &mut Vec<CallHierarchyIncomingCall>,
 ) -> Option<()> {
-    let file_id = salsa.lookup_file_id(&location.uri)?;
-    let model = SalsaSemanticModel::new(salsa, file_id)?;
-    let document = salsa.document(file_id)?;
+    let file_id = db.lookup_file_id(&location.uri)?;
+    let model = SemanticModel::new(db, file_id)?;
+    let document = db.document(file_id)?;
     let chunk = model.chunk()?;
     let pos = document.get_offset(
         location.range.start.line as usize,
@@ -172,7 +172,7 @@ fn build_incoming_hierarchy_item(
                 let name_lsp_range = document.to_lsp_range(func_name.get_range())?;
                 let semantic_decl = model.find_decl(func_name.syntax().clone().into())?;
                 push_incoming_item(
-                    salsa,
+                    db,
                     result,
                     location,
                     &model,
@@ -189,7 +189,7 @@ fn build_incoming_hierarchy_item(
                 let name_token = func_name.get_name_token()?;
                 let semantic_decl = model.decl_by_offset(name_token.get_position())?;
                 push_incoming_item(
-                    salsa,
+                    db,
                     result,
                     location,
                     &model,
@@ -227,10 +227,10 @@ fn build_incoming_hierarchy_item(
 
 #[allow(clippy::too_many_arguments)]
 fn push_incoming_item(
-    _salsa: &SemanticDatabase,
+    _semantic: &SemanticDatabase,
     result: &mut Vec<CallHierarchyIncomingCall>,
     location: &Location,
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     uri: lsp_types::Uri,
     semantic_decl: &SemanticId,
     name: String,
@@ -256,8 +256,8 @@ fn push_incoming_item(
 }
 
 fn model_of<'a>(
-    salsa: &'a SemanticDatabase,
+    db: &'a SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
-) -> SalsaSemanticModel<'a> {
-    SalsaSemanticModel::new(salsa, file_id).expect("salsa model must exist")
+) -> SemanticModel<'a> {
+    SemanticModel::new(db, file_id).expect("semantic model must exist")
 }

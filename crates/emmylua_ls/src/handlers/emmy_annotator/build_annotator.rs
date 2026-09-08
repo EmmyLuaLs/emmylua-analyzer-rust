@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{EmmyAnnotator, EmmyAnnotatorType};
 use crate::util::parse_desc;
-use emmylua_code_analysis::{Emmyrc, LuaDocument, SalsaSemanticModel, WorkspaceId};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, SemanticModel, WorkspaceId};
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaDocDescription, LuaForRangeStat, LuaForStat,
     LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaParamList, LuaVarExpr,
@@ -10,9 +10,9 @@ use emmylua_parser::{
 use emmylua_parser_desc::DescItemKind;
 use rowan::TextRange;
 
-/// Salsa-based annotator: aggregates declarations and references, and switches between read-only/mutable based on whether the variable is written.
+/// Semantic-based annotator: aggregates declarations and references, and switches between read-only/mutable based on whether the variable is written.
 pub fn build_annotators(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     emmyrc: &Emmyrc,
 ) -> Vec<EmmyAnnotator> {
@@ -92,7 +92,7 @@ pub fn build_annotators(
 }
 
 fn build_local_stat_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -117,7 +117,7 @@ fn build_local_stat_annotator(
 }
 
 fn build_params_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -142,7 +142,7 @@ fn build_params_annotator(
 }
 
 fn build_for_stat_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -165,7 +165,7 @@ fn build_for_stat_annotator(
 }
 
 fn build_for_range_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -189,7 +189,7 @@ fn build_for_range_annotator(
 }
 
 fn build_local_func_stat_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -238,7 +238,7 @@ fn build_name_expr_annotator(
 }
 
 fn build_description_annotator(
-    _model: &SalsaSemanticModel<'_>,
+    _model: &SemanticModel<'_>,
     document: &LuaDocument,
     emmyrc: &Emmyrc,
     use_range_set: &mut HashSet<TextRange>,
@@ -278,7 +278,7 @@ fn build_description_annotator(
 
 #[allow(clippy::too_many_arguments)]
 fn push_decl_annotator(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     use_range_set: &mut HashSet<TextRange>,
     result: &mut Vec<EmmyAnnotator>,
@@ -313,7 +313,7 @@ fn push_decl_annotator(
     Some(())
 }
 
-fn is_write_reference(model: &SalsaSemanticModel<'_>, syntax: emmylua_parser::LuaSyntaxId) -> bool {
+fn is_write_reference(model: &SemanticModel<'_>, syntax: emmylua_parser::LuaSyntaxId) -> bool {
     let Some(tree) = model.syntax_tree() else {
         return false;
     };

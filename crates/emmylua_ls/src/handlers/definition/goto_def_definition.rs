@@ -1,13 +1,12 @@
-//! # goto_def_definition — pure-salsa declaration lookup
+//! # goto_def_definition — pure-semantic declaration lookup
 //!
 //! `SemanticId::Decl` → declaration name; `Member` → definition site + same-key members (prefix type /
 //! table field's table and declaration type); `TypeDef` → all definition positions.
 //! The old DbIndex implementation (overload matching / accessor properties / attribute source lookup)
-//! is retired; see `docs/SALSA_FROM_SCRATCH.md` §M3.
+//! is retired; see `migration notes` §M3.
 
 use emmylua_code_analysis::{
-    Emmyrc, LuaMemberKey, SalsaMemberInfo, SalsaSemanticModel, SemanticDatabase, SemanticId,
-    WorkspaceId,
+    Emmyrc, LuaMemberKey, MemberInfo, SemanticDatabase, SemanticId, SemanticModel, WorkspaceId,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocDescription, LuaExpr, LuaIndexExpr, LuaLocalStat,
@@ -20,8 +19,8 @@ use crate::handlers::common::resolve_alias_origin;
 use crate::util::parse_desc;
 
 pub fn goto_def_definition(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     token: &LuaSyntaxToken,
 ) -> Option<GotoDefinitionResponse> {
@@ -31,15 +30,15 @@ pub fn goto_def_definition(
             if let Some(origin) = resolve_alias_origin(model, decl)
                 && origin != *decl
             {
-                return goto_def_definition(model, salsa, &origin, token);
+                return goto_def_definition(model, db, &origin, token);
             }
-            location_of(salsa, key.file_id, key.name_range).map(GotoDefinitionResponse::Scalar)
+            location_of(db, key.file_id, key.name_range).map(GotoDefinitionResponse::Scalar)
         }
-        SemanticId::Member(_) => goto_member_definition(model, salsa, decl, token),
+        SemanticId::Member(_) => goto_member_definition(model, db, decl, token),
         SemanticId::TypeDef(key) => {
             let mut locations = Vec::new();
             for def in model.type_defs_in_scope(key.scope, &key.full_name) {
-                if let Some(location) = location_of(salsa, def.file_id, def.name_range) {
+                if let Some(location) = location_of(db, def.file_id, def.name_range) {
                     locations.push(location);
                 }
             }
@@ -50,8 +49,8 @@ pub fn goto_def_definition(
 }
 
 fn goto_member_definition(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     decl: &SemanticId,
     token: &LuaSyntaxToken,
 ) -> Option<GotoDefinitionResponse> {
@@ -101,7 +100,7 @@ fn goto_member_definition(
             if let Some(id) = info.id
                 && let Some(range) = id.member_key_range()
                 && let SemanticId::Member(member_key) = &id
-                && let Some(location) = location_of(salsa, member_key.file_id, range)
+                && let Some(location) = location_of(db, member_key.file_id, range)
                 && !locations.contains(&location)
             {
                 locations.push(location);
@@ -109,7 +108,7 @@ fn goto_member_definition(
         }
     }
     // Field accessor: fields with `---@[field_accessor]` also jump to get/set methods.
-    add_field_accessor_locations(model, salsa, &prefix_types, &key, &mut locations);
+    add_field_accessor_locations(model, db, &prefix_types, &key, &mut locations);
     // Usage site: return on type-level member match (old semantics no longer mix in runtime table members).
     if is_usage && !locations.is_empty() {
         return Some(GotoDefinitionResponse::Array(locations));
@@ -117,7 +116,7 @@ fn goto_member_definition(
 
     // 2. Member definition site (runtime member / table field definition).
     if let SemanticId::Member(key) = decl
-        && let Some(location) = location_of(salsa, key.file_id, key.key_range)
+        && let Some(location) = location_of(db, key.file_id, key.key_range)
         && !locations.contains(&location)
     {
         locations.push(location);
@@ -127,10 +126,10 @@ fn goto_member_definition(
 }
 
 fn filter_overload_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     token: &LuaSyntaxToken,
-    infos: &[SalsaMemberInfo],
-) -> Vec<SalsaMemberInfo> {
+    infos: &[MemberInfo],
+) -> Vec<MemberInfo> {
     let Some(call) = token.parent().and_then(|parent| {
         parent
             .ancestors()
@@ -179,7 +178,7 @@ fn filter_overload_infos(
 }
 
 /// Member declaration key lookup (passes through directly after normalizing to `LuaMemberKey`).
-fn member_key_of(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> Option<LuaMemberKey> {
+fn member_key_of(model: &SemanticModel<'_>, decl: &SemanticId) -> Option<LuaMemberKey> {
     let SemanticId::Member(key) = decl else {
         return None;
     };
@@ -189,8 +188,8 @@ fn member_key_of(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> Option<Lu
 }
 
 fn add_field_accessor_locations(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     prefix_types: &[emmylua_code_analysis::LuaType],
     key: &LuaMemberKey,
     locations: &mut Vec<Location>,
@@ -229,7 +228,7 @@ fn add_field_accessor_locations(
                 if let Some(id) = info.id
                     && let Some(range) = id.member_key_range()
                     && let Some(file_id) = info.file_id
-                    && let Some(location) = location_of(salsa, file_id, range)
+                    && let Some(location) = location_of(db, file_id, range)
                     && !locations.contains(&location)
                 {
                     locations.push(location);
@@ -240,7 +239,7 @@ fn add_field_accessor_locations(
 }
 
 fn type_has_field_accessor(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     def: &emmylua_code_analysis::TypeDef,
 ) -> bool {
     let Some(owner_syntax) = def.owner_syntax else {
@@ -268,11 +267,11 @@ fn type_has_field_accessor(
 }
 
 fn location_of(
-    salsa: &SemanticDatabase,
+    db: &SemanticDatabase,
     file_id: emmylua_code_analysis::FileId,
     range: rowan::TextRange,
 ) -> Option<Location> {
-    let document = salsa.document(file_id)?;
+    let document = db.document(file_id)?;
     let uri = document.get_uri()?;
     Some(Location {
         uri,
@@ -282,8 +281,8 @@ fn location_of(
 
 /// Goto definition for doc description references (`:lua:obj:` / `{lua:obj}` / `--- @see`).
 pub(super) fn goto_doc_definition(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: &LuaSyntaxToken,
     offset: TextSize,
     emmyrc: &Emmyrc,
@@ -322,8 +321,8 @@ pub(super) fn goto_doc_definition(
         let cursor_index = names.len().saturating_sub(1);
         (names, cursor_index)
     } else {
-        let document = salsa.document(model.file_id())?;
-        let workspace_id = salsa
+        let document = db.document(model.file_id())?;
+        let workspace_id = db
             .workspace_id_of(model.file_id())
             .unwrap_or(WorkspaceId::MAIN);
         let description = description?;
@@ -356,12 +355,12 @@ pub(super) fn goto_doc_definition(
         (names, cursor_index)
     };
 
-    resolve_doc_path(model, salsa, &names, cursor_index, &scope_types)
+    resolve_doc_path(model, db, &names, cursor_index, &scope_types)
 }
 
 fn resolve_doc_path(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     names: &[String],
     cursor_index: usize,
     scope_types: &[emmylua_code_analysis::LuaType],
@@ -369,7 +368,7 @@ fn resolve_doc_path(
     let full_name = names.join(".");
     if let Some(def) = model.resolve_type_def(&full_name) {
         return Some(GotoDefinitionResponse::Scalar(location_of(
-            salsa,
+            db,
             def.file_id,
             def.name_range,
         )?));
@@ -380,7 +379,7 @@ fn resolve_doc_path(
         if let Some(def) = model.resolve_type_def(&prefix) {
             let ty = model.type_def_ref(&def);
             if let Some(response) =
-                member_definition_response(model, salsa, &[(&ty, &names[cursor_index])])
+                member_definition_response(model, db, &[(&ty, &names[cursor_index])])
             {
                 return Some(response);
             }
@@ -391,7 +390,7 @@ fn resolve_doc_path(
                 &module_ty,
                 &LuaMemberKey::Name(names[cursor_index].clone().into()),
             );
-            if let Some(response) = infos_to_locations(salsa, &infos) {
+            if let Some(response) = infos_to_locations(db, &infos) {
                 return Some(response);
             }
         }
@@ -401,7 +400,7 @@ fn resolve_doc_path(
     if cursor_index == 0 {
         if let Some(def) = model.resolve_type_def(name) {
             return Some(GotoDefinitionResponse::Scalar(location_of(
-                salsa,
+                db,
                 def.file_id,
                 def.name_range,
             )?));
@@ -410,14 +409,14 @@ fn resolve_doc_path(
             .iter()
             .map(|ty| (ty, name.as_str()))
             .collect::<Vec<_>>();
-        if let Some(response) = member_definition_response(model, salsa, &pairs) {
+        if let Some(response) = member_definition_response(model, db, &pairs) {
             return Some(response);
         }
         // Bare names in doc references also often point to fields on the current file's types (`@class Z` + `c`).
         if let Some(facts) = model.file_facts()
             && let Some(response) = facts.type_defs.iter().find_map(|def| {
                 let ty = model.type_def_ref(def);
-                member_definition_response(model, salsa, &[(&ty, name.as_str())])
+                member_definition_response(model, db, &[(&ty, name.as_str())])
             })
         {
             return Some(response);
@@ -427,27 +426,27 @@ fn resolve_doc_path(
 }
 
 fn member_definition_response(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     pairs: &[(&emmylua_code_analysis::LuaType, &str)],
 ) -> Option<GotoDefinitionResponse> {
     let mut infos = Vec::new();
     for (ty, name) in pairs {
         let key = LuaMemberKey::Name((*name).to_string().into());
         for info in model.member_infos_with_key_all(ty, &key) {
-            if !infos.iter().any(|existing: &SalsaMemberInfo| {
+            if !infos.iter().any(|existing: &MemberInfo| {
                 existing.id == info.id && existing.file_id == info.file_id
             }) {
                 infos.push(info);
             }
         }
     }
-    infos_to_locations(salsa, &infos)
+    infos_to_locations(db, &infos)
 }
 
 /// Usable types involved in the comment's owner (mirrors the scoped member source used by desc completion).
 fn comment_scope_types(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     comment: &LuaComment,
 ) -> Vec<emmylua_code_analysis::LuaType> {
     let Some(owner) = comment.get_owner() else {
@@ -475,15 +474,15 @@ fn comment_scope_types(
 }
 
 fn infos_to_locations(
-    salsa: &SemanticDatabase,
-    infos: &[SalsaMemberInfo],
+    db: &SemanticDatabase,
+    infos: &[MemberInfo],
 ) -> Option<GotoDefinitionResponse> {
     let mut locations = Vec::new();
     for info in infos {
         if let Some(id) = &info.id
             && let Some(range) = id.member_key_range()
             && let Some(file_id) = info.file_id
-            && let Some(location) = location_of(salsa, file_id, range)
+            && let Some(location) = location_of(db, file_id, range)
             && !locations.contains(&location)
         {
             locations.push(location);

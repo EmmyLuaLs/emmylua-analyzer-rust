@@ -101,9 +101,9 @@ fn callee_candidates(
 /// when an empty body has no return, `signature_return` is None, but async/sync parameters still participate in checks).
 fn doc_signature_for_decl(
     semantic_model: &SemanticModel<'_>,
-    decl: &crate::salsa_builder::def::SemanticId,
+    decl: &crate::semantic_db::def::SemanticId,
 ) -> Option<LuaFunctionType> {
-    use crate::salsa_builder::def::SemanticId;
+    use crate::semantic_db::def::SemanticId;
     let SemanticId::Decl(decl_key) = decl else {
         return None;
     };

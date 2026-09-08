@@ -1,7 +1,7 @@
-//! # providers — Completion provider pipeline (pure salsa)
+//! # providers — Completion provider pipeline (pure semantic)
 //!
 //! The directory structure mirrors `providers_legacy/`: the old provider set is a migration
-//! reference, and old files are not deleted until each provider is rewritten on the salsa
+//! reference, and old files are not deleted until each provider is rewritten on the semantic
 //! semantic model and passes its corresponding tests.
 //!
 //! Pipeline:

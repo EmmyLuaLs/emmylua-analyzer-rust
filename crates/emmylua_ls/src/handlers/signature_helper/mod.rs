@@ -1,6 +1,6 @@
 mod build_signature_helper;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_signature_helper::build_signature_helper;
 pub use build_signature_helper::get_current_param_index;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
@@ -33,7 +33,6 @@ pub async fn on_signature_helper_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

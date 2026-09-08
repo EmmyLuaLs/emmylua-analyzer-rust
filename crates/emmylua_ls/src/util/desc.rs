@@ -4,7 +4,7 @@ use emmylua_parser_desc::{DescItem, DescParserType};
 
 /// Parse the doc comment description into a list of description items (used for text-only features such as documentation selection range).
 ///
-/// Doc reference resolution has moved to the salsa path (see `handlers/common/salsa_reference.rs`),
+/// Doc reference resolution has moved to the semantic path (see `handlers/common/semantic_reference.rs`),
 /// so the old DbIndex `resolve_ref` family is no longer retained here.
 pub fn parse_desc(
     workspace_id: WorkspaceId,

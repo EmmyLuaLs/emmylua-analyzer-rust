@@ -4,13 +4,13 @@
 //! Module visibility facts (`FileFacts.module_visibility`): `---@meta no-require`/`---@meta _` -> Hide;
 //! the export target tag of the first top-level return (NameExpr uses the declaration tag; anonymous table uses the return statement tag)
 //! `---@internal` -> Internal; default Public.
-//! M0: salsa has no multi-workspace partitioning, so Internal is always treated as not externally visible.
+//! M0: semantic has no multi-workspace partitioning, so Internal is always treated as not externally visible.
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
-use crate::salsa_builder::def::ModuleVisibility;
+use crate::semantic_db::def::ModuleVisibility;
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};

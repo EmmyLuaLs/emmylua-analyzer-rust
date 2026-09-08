@@ -15,7 +15,7 @@ use smol_str::SmolStr;
 
 use crate::FileId;
 
-use super::{SalsaGenericParam, SemanticId};
+use super::{DocGenericParam, SemanticId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Signature {
@@ -104,7 +104,7 @@ pub struct SignatureDoc {
     /// `---@overload fun(...)` type nodes.
     pub overloads: Vec<LuaSyntaxId>,
     /// `---@generic T` generic parameters.
-    pub generic_params: Vec<SalsaGenericParam>,
+    pub generic_params: Vec<DocGenericParam>,
     /// `---@deprecated`.
     pub deprecated: bool,
     /// `---@async`.

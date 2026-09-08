@@ -1,6 +1,6 @@
 //! # Node-keyed derived query layer
 //!
-//! Salsa-tracked node queries plus plain workspace indexes. Recursive cycles converge via the native `cycle_fn`.
+//! Node-keyed derived queries plus plain workspace indexes. Recursive cycles converge via the native `cycle_fn`.
 
 use hashbrown::{HashMap, HashSet};
 use std::cell::RefCell;
@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorAttribute, DeclKind, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
-    ModuleVisibility, SalsaGenericParam, SemanticId, TypeDef, TypeDefKind,
+    ConstructorAttribute, DeclKind, DocGenericParam, MemberRef, ModuleExport, ModuleInfo,
+    ModuleNode, ModuleNodeId, ModuleVisibility, SemanticId, TypeDef, TypeDefKind,
 };
 use super::exports::{EXPORT_SHARDS, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
@@ -26,9 +26,9 @@ use rowan::TextSize;
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
-/// This is no longer a Salsa tracked query: results are cached in the plain
-/// `SalsaDatabase::file_facts` map and invalidated by file/config/workspace writes.
-/// It still touches the same Salsa input fields here so callers inside tracked
+/// This is no longer a Semantic tracked query: results are cached in the plain
+/// `SemanticDatabase::file_facts` map and invalidated by file/config/workspace writes.
+/// It still touches the same Semantic input fields here so callers inside tracked
 /// queries are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn build_file_facts(
     db: &SemanticDatabase,
@@ -231,7 +231,7 @@ use smol_str::SmolStr;
 
 /// Workspace type index: plain `(scope, full_name)` -> all type definitions.
 ///
-/// This is not a Salsa query. It is built eagerly into `WorkspaceIndexCache` from
+/// This is not a Semantic query. It is built eagerly into `WorkspaceIndexCache` from
 /// export shards on every write.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceTypeIndex {
@@ -1134,7 +1134,7 @@ pub(crate) fn global_decl_by_name(
 // require / module resolution (M0: path-derived module name + suffix matching)
 // ──────────────────────────────────────────────
 
-/// Per-file module information (equivalent to a salsa ModuleIndex entry).
+/// Per-file module information (equivalent to a semantic ModuleIndex entry).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModuleEntry {
     pub file_id: FileId,
@@ -1366,7 +1366,7 @@ fn build_module_tree(
 ///
 /// Prefer the most specific (shortest relative path); tie-break in favor of non-main roots (old LuaModuleIndex semantics).
 pub(crate) fn find_workspace_root(
-    roots: &[crate::salsa_builder::inputs::WorkspaceRoot],
+    roots: &[crate::semantic_db::inputs::WorkspaceRoot],
     path: &Path,
 ) -> Option<(WorkspaceId, PathBuf)> {
     let mut best: Option<(usize, WorkspaceId, PathBuf)> = None;
@@ -1829,7 +1829,7 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 // L3 semantics: declaration types (with cycle convergence)
 // ──────────────────────────────────────────────
 
-/// Type of a declaration. Recursive dependencies (mutual references) converge via salsa's native fixed point.
+/// Type of a declaration. Recursive dependencies (mutual references) converge via semantic's native fixed point.
 /// Priority: `---@type` annotation -> initializer expression.
 /// Keyed by file: when an initializer references cross-file members, dependence on `workspace_input` keeps memoization stable.
 pub(crate) fn decl_type(
@@ -1925,7 +1925,7 @@ fn iter_slot_type(
     workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
-    decl: &crate::salsa_builder::def::Decl,
+    decl: &crate::semantic_db::def::Decl,
 ) -> Option<TypeShell> {
     let owner = decl.owner_syntax?;
     let tree = syntax_tree(db, file);
@@ -2044,7 +2044,7 @@ pub(crate) fn lower_doc_type(
     file: FileId,
     config: &ConfigInputData,
     type_syntax: LuaSyntaxId,
-    generics: &[SalsaGenericParam],
+    generics: &[DocGenericParam],
 ) -> TypeShell {
     let tree = syntax_tree(db, file);
     let root = tree.get_red_root();
@@ -2062,7 +2062,7 @@ fn lower_doc_type_node(
     workspace: Option<()>,
     file: FileId,
     config: &ConfigInputData,
-    generics: &[SalsaGenericParam],
+    generics: &[DocGenericParam],
     doc_type: &LuaDocType,
 ) -> TypeShell {
     match doc_type {
@@ -2173,13 +2173,13 @@ fn lower_doc_type_node(
         }
         LuaDocType::Func(func_type) => {
             // `fun<T, U>(...)`: merge generic declarations into scope; `T` in params/returns -> `Generic("T")`.
-            let mut local_generics: Vec<SalsaGenericParam> = generics.to_vec();
+            let mut local_generics: Vec<DocGenericParam> = generics.to_vec();
             let mut fun_generics: Vec<SmolStr> = Vec::new();
             if let Some(decl_list) = func_type.get_generic_decl_list() {
                 for decl in decl_list.get_generic_decl() {
                     if let Some(token) = decl.get_name_token() {
                         let name = token.get_name_text().to_string();
-                        local_generics.push(SalsaGenericParam::new(
+                        local_generics.push(DocGenericParam::new(
                             SmolStr::new(&name),
                             None,
                             None,
@@ -2316,7 +2316,7 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
 // L3 semantics: member types (with cycle convergence)
 // ──────────────────────────────────────────────
 
-/// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by salsa's native fixed point.
+/// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by semantic's native fixed point.
 pub(crate) fn member_type(
     db: &SemanticDatabase,
     file: FileId,
@@ -2531,7 +2531,7 @@ pub(crate) fn decl_references(
 // ──────────────────────────────────────────────
 
 /// Per-slot function return types. Doc annotations take priority (one slot per `---@return`);
-/// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via salsa fixed point.
+/// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via semantic fixed point.
 pub(crate) fn signature_returns(
     db: &SemanticDatabase,
     file: FileId,
@@ -2723,7 +2723,7 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 }
 
 /// Function return type (merged view, compatible with old consumers). Doc annotations take priority; otherwise scan the function body's `return` statements.
-/// Mutual recursion (`foo`->`bar`->`foo`) converges via salsa's native fixed point.
+/// Mutual recursion (`foo`->`bar`->`foo`) converges via semantic's native fixed point.
 pub(crate) fn signature_return(
     db: &SemanticDatabase,
     file: FileId,
@@ -2882,9 +2882,9 @@ impl Drop for ExprTypeGuard {
 
 /// Type of an expression (by syntax position, node-keyed). Entry point for the semantic/infer layer.
 ///
-/// Salsa's tracked memo/cycle handling is replaced by a per-thread in-progress guard:
+/// Semantic's tracked memo/cycle handling is replaced by a per-thread in-progress guard:
 /// re-entering the same expression while it is still being inferred returns `Unknown`,
-/// which matches the previous Salsa `cycle_initial` behavior.
+/// which matches the previous Semantic `cycle_initial` behavior.
 pub(crate) fn expr_type_of(
     db: &SemanticDatabase,
     file: FileId,
@@ -3317,7 +3317,7 @@ fn member_type_via_owner_method(
 /// Generic substitution: replace `Generic(param)` candidates in a shell with argument types (recursing into function types).
 fn substitute_generics(
     shell: &TypeShell,
-    params: &[SalsaGenericParam],
+    params: &[DocGenericParam],
     args: &[TypeShell],
 ) -> TypeShell {
     let mut out = TypeShell::unknown();

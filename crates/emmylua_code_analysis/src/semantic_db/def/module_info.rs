@@ -21,7 +21,7 @@ pub struct ModuleNode {
     pub parent: Option<ModuleNodeId>,
 }
 
-/// Module info in the salsa layer (equivalent to old `LuaModuleIndex::ModuleInfo`).
+/// Module info in the semantic layer (equivalent to old `LuaModuleIndex::ModuleInfo`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleInfo {
     pub file_id: FileId,

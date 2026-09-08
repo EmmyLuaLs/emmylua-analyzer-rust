@@ -3,9 +3,7 @@ mod function_string_highlight;
 mod language_injector;
 mod semantic_token_builder;
 
-use crate::context::{
-    CancelStrategy, ClientId, RequestOutcome, ServerContextSnapshot, analysis_query,
-};
+use crate::context::{ClientId, RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_semantic_tokens::build_semantic_tokens;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use lsp_types::{
@@ -35,7 +33,6 @@ pub async fn on_semantic_token_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(50)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

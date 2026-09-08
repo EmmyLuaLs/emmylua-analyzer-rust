@@ -140,7 +140,7 @@ async fn file_text(snapshot: &ServerContextSnapshot, uri: &Uri) -> Option<String
     snapshot.analysis().try_with_snapshot(|analysis| {
         let file_id = analysis.get_file_id(uri)?;
         analysis
-            .salsa
+            .db
             .get_file_text(file_id)
             .map(|text| text.to_string())
     })

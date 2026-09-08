@@ -21,8 +21,8 @@ use emmylua_parser::{
 };
 use rowan::TextSize;
 
-use crate::salsa_builder::def::SemanticId;
-use crate::salsa_builder::flow::{FlowAntecedent, FlowEffect, FlowId, FlowNodeKind, FlowTree};
+use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::flow::{FlowAntecedent, FlowEffect, FlowId, FlowNodeKind, FlowTree};
 use crate::{FileId, LuaMemberKey, LuaType};
 
 use super::SemanticModel;
@@ -2106,7 +2106,7 @@ fn empty_table_fallback_type(
     if narrowed_before != base_before {
         candidates.push(base_before.clone());
     }
-    // An unannotated local `local playerCache = archiveCache[0]` may have no declared base type in salsa;
+    // An unannotated local `local playerCache = archiveCache[0]` may have no declared base type in semantic;
     // in that case use the table shape inferred from the declared initializer as the empty-table fallback shape.
     if let Some(facts) = model.file_facts()
         && let Some(decl_info) = facts.decl_by_id(decl)
@@ -2140,7 +2140,7 @@ fn empty_table_fallback_type(
 }
 
 /// Compute x's declared shape directly from the initializer `local x = prefix[key]`.
-/// salsa's `type_of_expr` often returns Unknown for unannotated locals, but generic table indexes can still be resolved
+/// semantic's `type_of_expr` often returns Unknown for unannotated locals, but generic table indexes can still be resolved
 /// through the prefix declaration type and member key.
 fn index_expr_type_from_initializer(
     model: &SemanticModel,
@@ -2174,7 +2174,7 @@ fn index_expr_type_from_initializer(
     if let Some(ty) = model.member_type(&prefix_ty, &key) {
         return Some(ty);
     }
-    // salsa's member query does not handle `table<K,V>` generic indexing; use the built-in generic table semantics to take V here.
+    // semantic's member query does not handle `table<K,V>` generic indexing; use the built-in generic table semantics to take V here.
     match &prefix_ty {
         LuaType::Generic(generic) if generic.get_base_type_id().get_name() == "table" => {
             let params = generic.get_params();
@@ -2262,7 +2262,7 @@ fn call_signature(
 ) -> Option<(
     FileId,
     emmylua_parser::LuaSyntaxId,
-    crate::salsa_builder::def::signature::Signature,
+    crate::semantic_db::def::signature::Signature,
 )> {
     let LuaExpr::NameExpr(callee_name) = call.get_prefix_expr()? else {
         return None;
@@ -3544,7 +3544,7 @@ fn resolve_type_guard_generic(
     model: &SemanticModel,
     file_id: FileId,
     call: &emmylua_parser::LuaCallExpr,
-    signature: &crate::salsa_builder::def::Signature,
+    signature: &crate::semantic_db::def::Signature,
     guard_ty: LuaType,
 ) -> LuaType {
     let (generic_index, generic_name, keep_literal) = match &guard_ty {

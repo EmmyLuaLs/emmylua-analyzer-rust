@@ -12,23 +12,21 @@ mod check;
 mod config;
 mod locale;
 mod resources;
-mod salsa_builder;
+mod semantic_db;
 mod semantic_model;
 mod test_lib;
 mod vfs;
 
 use crate::check::LuaDiagnostic;
-pub use crate::salsa_builder::SemanticDatabase;
-pub use crate::salsa_builder::def::ModuleVisibility as SalsaModuleVisibility;
-/// Public types for the salsa semantic layer.
-pub use crate::salsa_builder::def::{
-    Decl, DeclKind, LuaMemberKey, Member, MemberRef, ModuleExport, SalsaGenericParam, SemanticId,
-    Signature as SalsaSignature, SignatureDoc as SalsaSignatureDoc,
-    SignatureReturnCast as SalsaSignatureReturnCast, TypeDef, TypeDefKind, TypeScope,
-    TypeVisibility,
+pub use crate::semantic_db::SemanticDatabase;
+pub use crate::semantic_db::def::ModuleVisibility;
+/// Public types for the semantic layer.
+pub use crate::semantic_db::def::{
+    Decl, DeclKind, DocGenericParam, LuaMemberKey, Member, MemberRef, ModuleExport, SemanticId,
+    Signature, SignatureDoc, SignatureReturnCast, TypeDef, TypeDefKind, TypeScope, TypeVisibility,
 };
-pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
-pub use crate::salsa_builder::facts::FileFacts;
+pub use crate::semantic_db::exports::{FileExports, GlobalExport, MemberExport};
+pub use crate::semantic_db::facts::FileFacts;
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };
@@ -38,12 +36,12 @@ use lsp_types::Uri;
 pub use resources::get_best_resources_dir;
 pub use resources::load_resource_from_include_dir;
 use resources::load_resource_std;
-pub use salsa_builder::*;
-/// Public alias for the new semantic model (rename to `SemanticModel` after the legacy semantic module is folded in).
-pub use semantic_model::SemanticModel as SalsaSemanticModel;
-/// Salsa member lookup result (completion candidate).
-pub use semantic_model::member::MemberInfo as SalsaMemberInfo;
-/// Salsa semantic-layer type rendering (unified humanize entry point).
+pub use semantic_db::*;
+/// Semantic model entry point.
+pub use semantic_model::SemanticModel;
+/// Semantic member lookup result (completion candidate).
+pub use semantic_model::member::MemberInfo;
+/// Semantic type rendering (unified humanize entry point).
 pub use semantic_model::render::{
     humanize_type as humanize_semantic_type,
     humanize_type_detailed as humanize_semantic_type_detailed,
@@ -206,7 +204,7 @@ impl EmmyLuaAnalysis {
             })
             .collect();
 
-        // Build the final file table in bulk to avoid O(n^2) salsa writes from per-file remove/update.
+        // Build the final file table in bulk to avoid O(n^2) semantic writes from per-file remove/update.
         let mut new_files = old_files;
         let mut path_to_id: HashMap<PathBuf, FileId> = new_files
             .iter()
@@ -267,14 +265,14 @@ impl EmmyLuaAnalysis {
         self.emmyrc.clone()
     }
 
-    // ── Salsa analysis layer ──
+    // ── Semantic analysis layer ──
 
-    /// Semantic model: accesses only the salsa analysis layer.
-    pub fn semantic_model(&self, file_id: FileId) -> Option<semantic_model::SemanticModel<'_>> {
-        semantic_model::SemanticModel::new(&self.db, file_id)
+    /// Semantic model: accesses only the semantic analysis layer.
+    pub fn semantic_model(&self, file_id: FileId) -> Option<SemanticModel<'_>> {
+        SemanticModel::new(&self.db, file_id)
     }
 
-    pub fn diagnose_salsa(
+    pub fn diagnose_file_with_config(
         &self,
         file_id: FileId,
         config: Arc<CheckConfig>,
@@ -324,7 +322,7 @@ impl EmmyLuaAnalysis {
         self.diagnostic.diagnose_file(self, file_id, cancel_token)
     }
 
-    /// Salsa has no index-rebuild concept (memos invalidate automatically); keep an empty implementation for compatibility.
+    /// No index rebuild is required (memos invalidate automatically); keep an empty implementation for compatibility.
     pub fn reindex(&mut self) {}
 
     /// Remove files that no longer exist on disk.
@@ -376,9 +374,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    /// M4: analysis.salsa is the only analysis layer — after file updates salsa exposes facts and types.
+    /// M4: the semantic database is the only analysis layer; after file updates it exposes facts and types.
     #[test]
-    fn test_analysis_salsa_direct_field_sync() {
+    fn test_analysis_semantic_direct_field_sync() {
         use lsp_types::Uri;
         use std::str::FromStr;
 
@@ -388,14 +386,14 @@ mod tests {
             .update_file_by_uri(&uri, Some("local x = 1\nlocal y = x".to_string()))
             .expect("file id");
 
-        let model = analysis.semantic_model(fid).expect("salsa model");
+        let model = analysis.semantic_model(fid).expect("semantic model");
         let decls = model.decls().expect("decls");
-        assert_eq!(decls.len(), 2, "salsa 事实同步");
+        assert_eq!(decls.len(), 2, "semantic 事实同步");
         let y = decls.iter().find(|d| d.name == "y").expect("y decl");
         assert_eq!(
             model.type_of_decl(&y.id),
             Some(LuaType::IntegerConst(1)),
-            "salsa 类型查询可用"
+            "semantic 类型查询可用"
         );
 
         // Line index: TextRange → LSP line/column.
@@ -431,9 +429,9 @@ mod tests {
         );
     }
 
-    /// M4: configuration is written directly to salsa.
+    /// M4: configuration is written directly to the semantic database.
     #[test]
-    fn test_update_config_salsa() {
+    fn test_update_config_semantic() {
         let mut analysis = EmmyLuaAnalysis::new();
         let emmyrc = Arc::new(Emmyrc::default());
         analysis.update_config(emmyrc.clone());

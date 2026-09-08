@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaSyntaxId};
 
-use crate::salsa_builder::def::SemanticId;
+use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 use crate::{
     LuaFunctionType, LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType,
@@ -409,7 +409,7 @@ fn match_call_candidate_impl(
     // - colon calls implicitly pass the receiver, so an explicit `self` parameter is
     //   skipped as one logical argument;
     // - dot calls explicitly pass the receiver; if the method type does not list `self`
-    //   (salsa signatures contain only user params), one actual arg must be skipped.
+    //   (semantic signatures contain only user params), one actual arg must be skipped.
     // - when a dot-defined function is called with colon syntax (`a:create()`), the
     //   receiver is the first implicit argument.
     let param_start = usize::from(has_self_param);

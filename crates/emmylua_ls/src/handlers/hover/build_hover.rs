@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
-    SalsaMemberInfo, SalsaSemanticModel, SemanticDatabase, SemanticId, TypeDef, TypeDefKind,
-    VariadicType, first_param_may_not_self,
+    MemberInfo, SemanticDatabase, SemanticId, SemanticModel, TypeDef, TypeDefKind, VariadicType,
+    first_param_may_not_self,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallExpr, LuaDocAttributeUse, LuaDocDescriptionOwner, LuaDocType,
@@ -26,13 +26,13 @@ use super::render::humanize;
 /// unbound generics that were substituted with `unknown`, so member function signatures
 /// can explicitly render `unknown`.
 struct MemberContextInfo {
-    info: SalsaMemberInfo,
+    info: MemberInfo,
     show_unknown: bool,
 }
 
 pub fn build_semantic_info_hover(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: LuaSyntaxToken,
     range: TextRange,
 ) -> Option<Hover> {
@@ -214,7 +214,7 @@ pub fn build_semantic_info_hover(
         value = value.replace("`true, R...`", "`true, R ...`");
     }
 
-    let document = salsa.document(model.file_id())?;
+    let document = db.document(model.file_id())?;
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,
@@ -235,7 +235,7 @@ fn token_is_direct_call_callee(token: &LuaSyntaxToken, call: &LuaCallExpr) -> bo
     }
 }
 
-fn semantic_type_of(model: &SalsaSemanticModel<'_>, id: &SemanticId) -> LuaType {
+fn semantic_type_of(model: &SemanticModel<'_>, id: &SemanticId) -> LuaType {
     match id {
         SemanticId::Decl(_) => model.type_of_decl(id).unwrap_or(LuaType::Unknown),
         SemanticId::Member(_) => model.type_of_member(id).unwrap_or(LuaType::Unknown),
@@ -248,7 +248,7 @@ fn semantic_type_of(model: &SalsaSemanticModel<'_>, id: &SemanticId) -> LuaType 
 /// initializers like `{ field = ... }` resolve members using the prefix/expected type at the
 /// declaration or call site, producing member info with generics substituted.
 fn member_context_infos(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     decl: &SemanticId,
     token: &LuaSyntaxToken,
 ) -> Vec<MemberContextInfo> {
@@ -343,7 +343,7 @@ fn member_context_infos(
                             _ => (ctx.info.typ, false),
                         };
                         MemberContextInfo {
-                            info: SalsaMemberInfo { typ, ..ctx.info },
+                            info: MemberInfo { typ, ..ctx.info },
                             show_unknown,
                         }
                     })
@@ -358,7 +358,7 @@ fn member_context_infos(
 
 /// Bind direct `TplRef` generics in a type-surface member using the runtime table field function's `@param` types.
 fn bind_runtime_field_generics(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     runtime_fun: &LuaFunctionType,
     type_fun: &LuaFunctionType,
 ) -> Option<LuaType> {
@@ -399,7 +399,7 @@ fn bind_runtime_field_generics(
 
 /// Replace unbound class generics (`T`/`TplRef`) in a generic context with `unknown`.
 fn substitute_class_generics_to_unknown(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     context_ty: &LuaType,
     ty: LuaType,
 ) -> LuaType {
@@ -427,7 +427,7 @@ fn substitute_class_generics_to_unknown(
 }
 
 fn table_context_type_for_token(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     token: &LuaSyntaxToken,
 ) -> Option<LuaType> {
     let field = token.parent_ancestors().find_map(LuaTableField::cast)?;
@@ -436,7 +436,7 @@ fn table_context_type_for_token(
 }
 
 fn table_context_type_for_expr(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     table_expr: &LuaTableExpr,
 ) -> Option<LuaType> {
     let syntax_id = table_expr.get_syntax_id();
@@ -520,7 +520,7 @@ fn table_context_type_for_expr(
 }
 
 /// Generic-projected member type for the member access (`x.foo` / `x:foo`) containing the current token.
-fn member_type_at_token(model: &SalsaSemanticModel<'_>, token: &LuaSyntaxToken) -> Option<LuaType> {
+fn member_type_at_token(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> Option<LuaType> {
     let index_expr = token.parent_ancestors().find_map(LuaIndexExpr::cast)?;
     let prefix = index_expr.get_prefix_expr()?;
     let prefix_ty = model.type_of_expr(prefix.get_syntax_id());
@@ -565,7 +565,7 @@ fn member_type_at_token(model: &SalsaSemanticModel<'_>, token: &LuaSyntaxToken) 
 /// Render function parameters/returns (`is_method=true` strips the implicit self first parameter).
 /// `show_unknown=true` is used for field/member type-surface display: still render explicitly when unbound generics become `unknown`.
 fn render_function_params_and_ret_mode(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     func: &LuaFunctionType,
     is_method: bool,
     multiline_returns: bool,
@@ -633,7 +633,7 @@ fn render_function_params_and_ret_mode(
 }
 
 fn decl_overload_count(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure_syntax: emmylua_parser::LuaSyntaxId,
 ) -> usize {
     model
@@ -650,7 +650,7 @@ fn decl_overload_count(
 
 /// Render `---@overload fun(...)` as separate function signature blocks (substituting call-site generic bindings when possible).
 fn render_decl_overload_blocks(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     name: &str,
     closure_syntax: emmylua_parser::LuaSyntaxId,
     is_local: bool,
@@ -710,7 +710,7 @@ fn render_decl_overload_blocks(
 }
 
 fn signature_has_named_returns(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure_syntax: Option<emmylua_parser::LuaSyntaxId>,
 ) -> bool {
     let Some(closure_syntax) = closure_syntax else {
@@ -729,7 +729,7 @@ fn signature_has_named_returns(
 
 /// Render named `---@return name type` as a multiline return block.
 fn render_named_returns(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure_syntax: Option<emmylua_parser::LuaSyntaxId>,
 ) -> String {
     let Some(closure_syntax) = closure_syntax else {
@@ -776,7 +776,7 @@ fn render_named_returns(
 
 /// Member owner (TypeDef) -> display name and reference type.
 fn member_owner_type_and_name(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     owner: &SemanticId,
 ) -> (Option<LuaType>, Option<String>) {
     if let SemanticId::Decl(decl_key) = owner {
@@ -839,7 +839,7 @@ fn member_owner_type_and_name(
 
 /// Old humanize semantics: `fun(self: Owner, ...)` is displayed as a method, `fun(self: string, ...)` as a field.
 fn display_as_method(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     func: &LuaFunctionType,
     owner_ty: Option<&LuaType>,
 ) -> bool {
@@ -875,7 +875,7 @@ fn display_as_method(
 
 /// Number of other member declarations with the same key (shown as `(+N overloads)` for `---@field` overloads).
 fn member_overload_count(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     member_info: &Member,
     _owner_ty: &LuaType,
 ) -> usize {
@@ -890,7 +890,7 @@ fn member_overload_count(
 /// Replace function generic parameters still unbound at the call site with `unknown` (call-site display semantics);
 /// already bound generics keep their substituted actual types.
 fn substitute_unbound_call_generics(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     fun: LuaFunctionType,
     bindings: &HashMap<GenericTplId, LuaType>,
 ) -> LuaFunctionType {
@@ -921,7 +921,7 @@ fn substitute_unbound_call_generics(
     fun
 }
 
-fn decl_should_show_signature_tags(model: &SalsaSemanticModel<'_>, decl: &SemanticId) -> bool {
+fn decl_should_show_signature_tags(model: &SemanticModel<'_>, decl: &SemanticId) -> bool {
     model
         .decls()
         .and_then(|decls| decls.iter().find(|d| &d.id == decl))
@@ -929,7 +929,7 @@ fn decl_should_show_signature_tags(model: &SalsaSemanticModel<'_>, decl: &Semant
 }
 
 fn build_decl_hover(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     typ: &LuaType,
     decl: &SemanticId,
     call_fun: Option<&LuaFunctionType>,
@@ -1036,10 +1036,7 @@ fn build_decl_hover(
 
 /// Call-site signature for `pcall(f, ...)`: synthesize the old full signature using the first
 /// argument callback's `@param` / `@return_overload` (source order preserved, generic types kept as raw text).
-fn build_pcall_hover_code(
-    model: &SalsaSemanticModel<'_>,
-    token: &LuaSyntaxToken,
-) -> Option<String> {
+fn build_pcall_hover_code(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> Option<String> {
     let call = token.parent_ancestors().find_map(LuaCallExpr::cast)?;
     let prefix = call.get_prefix_expr()?;
     let LuaExpr::NameExpr(name_expr) = prefix else {
@@ -1144,7 +1141,7 @@ fn normalize_tuple_brackets(text: &str) -> String {
 }
 
 /// Hover-display only: evaluate generic alias instances / conditional types first; this affects only display, not the semantic layer's default nominal form.
-fn hover_expand_type(model: &SalsaSemanticModel<'_>, ty: &LuaType) -> LuaType {
+fn hover_expand_type(model: &SemanticModel<'_>, ty: &LuaType) -> LuaType {
     let expanded = model.expand_alias_for_hover(ty);
     let ty = if matches!(expanded, LuaType::Unknown | LuaType::Any) {
         ty.clone()
@@ -1167,7 +1164,7 @@ fn widen_decl_const(ty: &LuaType) -> LuaType {
 }
 
 /// Rendered member list lines for a named type (`    field: number?,`; function members -> `function`).
-fn class_member_lines(model: &SalsaSemanticModel<'_>, ty: &LuaType) -> Option<Vec<String>> {
+fn class_member_lines(model: &SemanticModel<'_>, ty: &LuaType) -> Option<Vec<String>> {
     if !matches!(ty, LuaType::Ref(_) | LuaType::Def(_)) {
         return None;
     }
@@ -1198,10 +1195,7 @@ fn class_member_lines(model: &SalsaSemanticModel<'_>, ty: &LuaType) -> Option<Ve
 }
 
 /// Raw key text for `@field` index signatures in class expansion (`[integer]` / `[true]` / `[nil]`).
-fn member_class_key_display(
-    model: &SalsaSemanticModel<'_>,
-    info: &SalsaMemberInfo,
-) -> Option<String> {
+fn member_class_key_display(model: &SemanticModel<'_>, info: &MemberInfo) -> Option<String> {
     let id = info.id.as_ref()?;
     let range = id.member_key_range()?;
     let SemanticId::Member(key) = id else {
@@ -1219,7 +1213,7 @@ fn member_class_key_display(
     ))
 }
 
-fn member_is_nullable(model: &SalsaSemanticModel<'_>, id: &SemanticId) -> bool {
+fn member_is_nullable(model: &SemanticModel<'_>, id: &SemanticId) -> bool {
     let SemanticId::Member(key) = id else {
         return false;
     };
@@ -1231,7 +1225,7 @@ fn member_is_nullable(model: &SalsaSemanticModel<'_>, id: &SemanticId) -> bool {
 }
 
 /// Render literal types in hover as `base_type = literal` (`1` -> `integer = 1`).
-fn render_member_typ_with_default(model: &SalsaSemanticModel<'_>, ty: &LuaType) -> String {
+fn render_member_typ_with_default(model: &SemanticModel<'_>, ty: &LuaType) -> String {
     let value = humanize(model, ty);
     let base = match ty {
         LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => Some("integer"),
@@ -1261,7 +1255,7 @@ fn strip_nullable(ty: &LuaType) -> LuaType {
 
 /// Type for a parameter declaration: closure-signature `@param` projection.
 fn param_decl_type(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     decl_info: &Decl,
 ) -> Option<(LuaType, emmylua_parser::LuaSyntaxId)> {
     let chunk = model.chunk()?;
@@ -1283,7 +1277,7 @@ fn param_decl_type(
 }
 
 fn param_generic_constraint(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     closure_syntax: emmylua_parser::LuaSyntaxId,
     param_ty: &LuaType,
 ) -> Option<String> {
@@ -1303,10 +1297,7 @@ fn param_generic_constraint(
 }
 
 /// Member closure signature (cross-file fallback when a runtime member type projects to `Function`).
-fn member_signature(
-    model: &SalsaSemanticModel<'_>,
-    member_info: &Member,
-) -> Option<LuaFunctionType> {
+fn member_signature(model: &SemanticModel<'_>, member_info: &Member) -> Option<LuaFunctionType> {
     let SemanticId::Member(member_key) = &member_info.id else {
         return None;
     };
@@ -1315,7 +1306,7 @@ fn member_signature(
 }
 
 /// Member owner display name (TypeDef / Decl / Name / nested Member).
-fn member_owner_display_name(model: &SalsaSemanticModel<'_>, owner: &SemanticId) -> Option<String> {
+fn member_owner_display_name(model: &SemanticModel<'_>, owner: &SemanticId) -> Option<String> {
     match owner {
         SemanticId::TypeDef(_) => member_owner_type_and_name(model, owner).1,
         SemanticId::Decl(decl_key) => model.file_facts_of(decl_key.file_id).and_then(|facts| {
@@ -1349,7 +1340,7 @@ fn member_owner_display_name(model: &SalsaSemanticModel<'_>, owner: &SemanticId)
 }
 
 /// Type of the member owner (used for type-surface members / generic projection).
-fn runtime_owner_type(model: &SalsaSemanticModel<'_>, member: &Member) -> Option<LuaType> {
+fn runtime_owner_type(model: &SemanticModel<'_>, member: &Member) -> Option<LuaType> {
     match &member.owner {
         SemanticId::Decl(decl_key) => model.type_of_decl(&SemanticId::Decl(decl_key.clone())),
         SemanticId::TypeDef(key) => model
@@ -1363,7 +1354,7 @@ fn runtime_owner_type(model: &SalsaSemanticModel<'_>, member: &Member) -> Option
 
 /// If a runtime member definition has a same-key `@field` type member, prefer it for rendering (`function Test.e(a,b)`
 /// shows the class-field signature instead of runtime `any` params).
-fn member_typed_field(model: &SalsaSemanticModel<'_>, member_info: &Member) -> Option<Member> {
+fn member_typed_field(model: &SemanticModel<'_>, member_info: &Member) -> Option<Member> {
     let owner_ty = match &member_info.owner {
         SemanticId::Decl(decl_key) => {
             let facts = model.file_facts_of(decl_key.file_id)?;
@@ -1409,11 +1400,7 @@ fn member_typed_field(model: &SalsaSemanticModel<'_>, member_info: &Member) -> O
 }
 
 /// Collect named type definitions that a type may correspond to (union/intersection/generic/constrained generic expansion).
-fn collect_type_def_ids(
-    _model: &SalsaSemanticModel<'_>,
-    ty: &LuaType,
-    out: &mut Vec<LuaTypeDeclId>,
-) {
+fn collect_type_def_ids(_model: &SemanticModel<'_>, ty: &LuaType, out: &mut Vec<LuaTypeDeclId>) {
     match ty {
         LuaType::Ref(id) | LuaType::Def(id) => out.push(id.clone()),
         LuaType::Union(union) => {
@@ -1446,7 +1433,7 @@ fn collect_type_def_ids(
 /// `table<K,V>[index]`, fall back to the generic table built-in value type V (`t[p]` for
 /// `---@type table<string, number>` -> number).
 fn runtime_non_nil_value_type(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     runtime_member: &Member,
 ) -> Option<LuaType> {
     let syntax = runtime_member.value_syntax?;
@@ -1478,7 +1465,7 @@ fn runtime_non_nil_value_type(
 }
 
 fn build_member_hover(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     typ: &LuaType,
     member: &SemanticId,
     call_site_substituted: bool,
@@ -1900,7 +1887,7 @@ fn build_member_hover(
 
 /// Append same-key member overload blocks (each rendered as a code block with a trailing `-- description` comment).
 fn render_member_overload_blocks(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     member_info: &Member,
     owner_ty: &LuaType,
     overload_types: &[LuaType],
@@ -1946,7 +1933,7 @@ fn render_member_overload_blocks(
 
 /// Display text from the raw type syntax in the document (used for fidelity when alias generic constraints/targets cannot be evaluated).
 fn raw_type_text(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     file_id: emmylua_code_analysis::FileId,
     syntax: emmylua_parser::LuaSyntaxId,
 ) -> Option<String> {
@@ -1960,7 +1947,7 @@ fn raw_type_text(
 }
 
 /// Display alias generic parameters: `<K extends keyof T, T>`.
-fn alias_generic_suffix(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> String {
+fn alias_generic_suffix(model: &SemanticModel<'_>, def: &TypeDef) -> String {
     if def.generic_params.is_empty() {
         return String::new();
     }
@@ -1998,7 +1985,7 @@ fn alias_generic_suffix(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> String
 
 /// Render an alias: normal types show `(alias) Name = Type`;
 /// multiline unions additionally append trailing comments like `| "A" -- A1`.
-fn render_alias_hover(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> String {
+fn render_alias_hover(model: &SemanticModel<'_>, def: &TypeDef) -> String {
     let generic_suffix = alias_generic_suffix(model, def);
     let Some(alias_syntax) = def.alias_type else {
         return format!("(alias) {}{}", def.name, generic_suffix);
@@ -2060,7 +2047,7 @@ fn render_alias_hover(model: &SalsaSemanticModel<'_>, def: &TypeDef) -> String {
 
 /// Select the overload on a type definition by argument types at the attribute use site (`---@[custom_attribute(1)]`).
 fn attribute_overload_for_type(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     token: &LuaSyntaxToken,
     def: &TypeDef,
 ) -> Option<LuaFunctionType> {
@@ -2123,7 +2110,7 @@ fn attribute_params_accept_arg_count(
 }
 
 fn attribute_callable_accepts_types(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     func: &LuaFunctionType,
     arg_types: &[LuaType],
 ) -> bool {
@@ -2150,7 +2137,7 @@ fn attribute_callable_accepts_types(
 }
 
 fn build_type_hover(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     typ: &LuaType,
     decl: &SemanticId,
     token: &LuaSyntaxToken,

@@ -3,7 +3,7 @@ mod tests {
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult, check};
     use googletest::prelude::*;
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -68,7 +68,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -104,7 +104,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_3() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -131,7 +131,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_mixed_class_field_and_real_definition() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -161,7 +161,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_4() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -182,7 +182,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_overload_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -204,7 +204,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_overload_description_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -224,7 +224,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_overload_call_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -251,7 +251,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_overload_hover_short_row_keeps_nil() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -274,7 +274,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_overload_call_hover_short_generic_row_keeps_nil() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -299,7 +299,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_pcall_return_overload_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
@@ -321,7 +321,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_table_field_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -344,7 +344,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_issue_499() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -365,7 +365,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_issue_499_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -387,7 +387,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_issue_499_3() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -411,7 +411,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_issue_499_4() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -433,7 +433,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_table_field_origin_decl() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -457,7 +457,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_first_generic() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -479,7 +479,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_table_field_function() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -496,7 +496,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_return_union_function() -> Result<()> {
         // temp remove the test
@@ -519,7 +519,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_require_function() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -547,7 +547,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_generic_function() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -603,7 +603,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_hover_generic_function_params_description() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -632,7 +632,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_annotation_search() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -656,7 +656,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_field_remove_first() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -675,7 +675,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_first_strtpl() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -696,7 +696,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_call_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -721,7 +721,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_call_hover_shows_all_overloads_when_no_match() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -742,7 +742,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_call_hover_shows_all_generic_overloads_when_no_match() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -767,7 +767,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_fix_method_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -788,7 +788,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_fix_global_index_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -806,7 +806,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_fix_global_index_function_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -826,7 +826,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_fix_ref() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -851,7 +851,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_intersection_type() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -875,7 +875,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_table_const_method() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -896,7 +896,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_regression_generic_table_field_should_be_function_owner() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -930,7 +930,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_generic_table_field_value_without_inference_source() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -961,7 +961,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_generic_table_field_hover_filters_union_parent_without_field() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -996,7 +996,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_table_field_hover_keeps_same_owner_same_name_overloads() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1026,7 +1026,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_function_candidate_checks_all_origin_decls() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1051,7 +1051,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
     #[gtest]
     fn test_generic_table_field_uses_known_context_type() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

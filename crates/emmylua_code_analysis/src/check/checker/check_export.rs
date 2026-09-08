@@ -7,8 +7,8 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
-use crate::salsa_builder::def::ModuleExport;
-use crate::salsa_builder::facts::FileFacts;
+use crate::semantic_db::def::ModuleExport;
+use crate::semantic_db::facts::FileFacts;
 use crate::semantic_model::SemanticModel;
 use crate::{FileId, InFiled, LuaMemberKey, LuaType};
 

@@ -85,7 +85,7 @@ pub fn add_modules(
         if file_id == current_file {
             continue;
         }
-        // let Some(model) = SalsaSemanticModel::new(db, file_id) else {
+        // let Some(model) = SemanticModel::new(db, file_id) else {
         //     continue;
         // };
         let Some(module_name) = builder.semantic_model.module_name_of(file_id) else {

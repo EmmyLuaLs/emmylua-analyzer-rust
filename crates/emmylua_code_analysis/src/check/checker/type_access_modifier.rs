@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::DiagnosticCode;
 use crate::WorkspaceId;
-use crate::salsa_builder::def::{TypeScope, TypeVisibility};
+use crate::semantic_db::def::{TypeScope, TypeVisibility};
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};

@@ -1,4 +1,4 @@
-﻿use emmylua_code_analysis::{LuaDocument, SalsaSemanticModel, SemanticId};
+use emmylua_code_analysis::{LuaDocument, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaFuncStat, LuaLocalFuncStat, LuaVarExpr};
 use lsp_types::CodeLens;
 use serde::{Deserialize, Serialize};
@@ -49,10 +49,7 @@ impl SemanticIdData {
     }
 }
 
-pub fn build_code_lens(
-    model: &SalsaSemanticModel<'_>,
-    document: &LuaDocument,
-) -> Option<Vec<CodeLens>> {
+pub fn build_code_lens(model: &SemanticModel<'_>, document: &LuaDocument) -> Option<Vec<CodeLens>> {
     let mut result = Vec::new();
     let root = model.chunk()?;
     for node in root.descendants::<LuaAst>() {
@@ -71,7 +68,7 @@ pub fn build_code_lens(
 }
 
 fn add_func_stat_code_lens(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     result: &mut Vec<CodeLens>,
     func_stat: LuaFuncStat,
@@ -106,7 +103,7 @@ fn add_func_stat_code_lens(
 }
 
 fn add_local_func_stat_code_lens(
-    model: &SalsaSemanticModel<'_>,
+    model: &SemanticModel<'_>,
     document: &LuaDocument,
     result: &mut Vec<CodeLens>,
     local_func_stat: LuaLocalFuncStat,

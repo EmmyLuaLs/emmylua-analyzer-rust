@@ -1375,7 +1375,7 @@ print(a.field)
         ));
     }
 
-    // Migrated to salsa check/ (new pipeline); condition narrowing (previous elseif condition is false) pending salsa support.
+    // Migrated to semantic check/ (new pipeline); condition narrowing (previous elseif condition is false) pending semantic support.
     #[test]
     fn test_elseif() {
         let mut ws = VirtualWorkspace::new();
@@ -1398,7 +1398,7 @@ end
         ));
     }
 
-    // Migrated to salsa check/ (new pipeline); condition narrowing (previous elseif condition is false) pending salsa support.
+    // Migrated to semantic check/ (new pipeline); condition narrowing (previous elseif condition is false) pending semantic support.
     #[test]
     fn test_elseif_chain_keeps_previous_false_conditions() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();

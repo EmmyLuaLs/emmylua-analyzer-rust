@@ -138,7 +138,7 @@ mod test {
         assert!(!ws.check_type(&ty, &nil));
     }
 
-    // Migrated to salsa check/ (new pipeline); module export metadata block semantics pending salsa support.
+    // Migrated to semantic check/ (new pipeline); module export metadata block semantics pending semantic support.
     #[test]
     fn test_module_multiple_return_paths_preserve_export_metadata_block() {
         let mut ws = VirtualWorkspace::new();

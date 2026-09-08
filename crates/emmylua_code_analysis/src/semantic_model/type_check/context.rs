@@ -1,12 +1,12 @@
-//! Check context: accesses the type environment only through `SemanticModel` (salsa).
+//! Check context: accesses the type environment only through `SemanticModel` (semantic).
 //!
 //! The old implementation held `&DbIndex` (type/member/signature/operator indexes);
-//! this code resolves everything through salsa: `resolve_type_def` + `super_names` + the member system.
-//! Parts still missing from salsa (alias origin types, enum field unions, call operators) fall back to nominal checks.
+//! this code resolves everything through semantic: `resolve_type_def` + `super_names` + the member system.
+//! Parts still missing from semantic (alias origin types, enum field unions, call operators) fall back to nominal checks.
 
 use crate::LuaType;
 use crate::LuaTypeDeclId;
-use crate::salsa_builder::def::{TypeDef, TypeDefKind};
+use crate::semantic_db::def::{TypeDef, TypeDefKind};
 
 use super::super::SemanticModel;
 use super::super::render::humanize_type;
@@ -50,9 +50,9 @@ impl<'db> TypeCheckContext<'db> {
         }
     }
 
-    // ── Type environment (salsa resolution) ──
+    // ── Type environment (semantic resolution) ──
 
-    /// `LuaTypeDeclId` → salsa type definition.
+    /// `LuaTypeDeclId` → semantic type definition.
     pub fn type_def_of(&self, id: &LuaTypeDeclId) -> Option<TypeDef> {
         self.model.resolve_type_def(id.get_name())
     }

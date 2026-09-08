@@ -5,7 +5,7 @@
 //! fixpoint domain, so cycle re-entry pushes Unknown).
 //!
 //! Values = `LuaType` + optional owner (for member lookup). Cross-file member/declaration
-//! resolution is delegated to salsa queries.
+//! resolution is delegated to semantic queries.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -17,11 +17,11 @@ use emmylua_parser::{
 
 use smol_str::SmolStr;
 
-use crate::salsa_builder::def::{
-    ConstructorAttribute, ConstructorReturnMode, DeclKind, SalsaGenericParam, SemanticId,
-    Signature, SignatureDoc,
+use crate::semantic_db::def::{
+    ConstructorAttribute, ConstructorReturnMode, DeclKind, DocGenericParam, SemanticId, Signature,
+    SignatureDoc,
 };
-use crate::salsa_builder::types::PrimitiveType;
+use crate::semantic_db::types::PrimitiveType;
 use crate::{
     AsyncState, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind, LuaArrayType,
     LuaFunctionType, LuaGenericType, LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType,
@@ -2558,7 +2558,7 @@ impl<'a> InferVm<'a> {
         let value_syntax = member.value_syntax?;
         let mut fun = model.type_of_signature_in_file(call_file, value_syntax)?;
         // `---@return self` on a table-literal field may not be attached to a function
-        // signature (salsa attaches the field doc to the member); for the `__call`
+        // signature (semantic attaches the field doc to the member); for the `__call`
         // metamethod, when the return type is missing, treat it as the called table itself.
         if matches!(fun.get_ret(), LuaType::Unknown) {
             fun = LuaFunctionType::new(
@@ -2656,13 +2656,13 @@ impl<'a> InferVm<'a> {
         Some(out)
     }
 
-    /// Build `GenericTpl`s with default/constraint metadata from `SalsaGenericParam`.
+    /// Build `GenericTpl`s with default/constraint metadata from `DocGenericParam`.
     /// Delegates uniformly to `SemanticModel`, sharing the same implementation as other
     /// signature-projection paths.
     fn generic_tpls_with_metadata(
         &self,
         file_id: FileId,
-        params: &[SalsaGenericParam],
+        params: &[DocGenericParam],
     ) -> Vec<GenericTpl> {
         self.model.generic_tpls_with_metadata(file_id, params)
     }
@@ -2672,7 +2672,7 @@ impl<'a> InferVm<'a> {
         &self,
         file_id: FileId,
         signature: &Signature,
-        generic_params: &[SalsaGenericParam],
+        generic_params: &[DocGenericParam],
     ) -> Option<LuaFunctionType> {
         let docs = signature.docs.as_ref()?;
         let is_variadic = signature.is_variadic;
@@ -2716,7 +2716,7 @@ impl<'a> InferVm<'a> {
         &self,
         file_id: FileId,
         returns: &[LuaSyntaxId],
-        generic_params: &[SalsaGenericParam],
+        generic_params: &[DocGenericParam],
     ) -> LuaType {
         if returns.is_empty() {
             return LuaType::Unknown;
@@ -2737,7 +2737,7 @@ impl<'a> InferVm<'a> {
         &self,
         file_id: FileId,
         docs: &SignatureDoc,
-        generic_params: &[SalsaGenericParam],
+        generic_params: &[DocGenericParam],
         bindings: Option<&unify::TplBindings>,
     ) -> LuaType {
         if docs.return_overload_rows.is_empty() {
@@ -2915,7 +2915,7 @@ impl<'a> InferVm<'a> {
         &self,
         file_id: FileId,
         syntax: LuaSyntaxId,
-        generic_params: &[SalsaGenericParam],
+        generic_params: &[DocGenericParam],
         is_method: bool,
     ) -> Option<LuaFunctionType> {
         let tree = self.model.syntax_tree_of(file_id)?;
@@ -2935,17 +2935,17 @@ impl<'a> InferVm<'a> {
         &self,
         file_id: FileId,
         func: &emmylua_parser::LuaDocFuncType,
-        outer_generics: &[SalsaGenericParam],
+        outer_generics: &[DocGenericParam],
         is_method: bool,
     ) -> Option<LuaFunctionType> {
         // A function type's own generic declarations shadow same-named outer generics (when
         // `fun<T>(value: T): T` is returned inside an outer `---@generic T`, T is the returned
         // function's generic, not the outer T).
-        let mut own_generics: Vec<SalsaGenericParam> = Vec::new();
+        let mut own_generics: Vec<DocGenericParam> = Vec::new();
         if let Some(decl_list) = func.get_generic_decl_list() {
             for decl in decl_list.get_generic_decl() {
                 if let Some(token) = decl.get_name_token() {
-                    own_generics.push(SalsaGenericParam::new(
+                    own_generics.push(DocGenericParam::new(
                         SmolStr::new(token.get_name_text()),
                         decl.get_constraint_type().map(|t| t.get_syntax_id()),
                         decl.get_default_type().map(|t| t.get_syntax_id()),
@@ -3030,13 +3030,13 @@ impl<'a> InferVm<'a> {
         Some(fun)
     }
 
-    /// Doc type projection: `T...` / `fun(...)` go through AST, everything else uses salsa
+    /// Doc type projection: `T...` / `fun(...)` go through AST, everything else uses semantic
     /// projection.
     fn doc_type_lua_with_generics(
         &self,
         file_id: FileId,
         type_syntax: LuaSyntaxId,
-        generic_params: &[SalsaGenericParam],
+        generic_params: &[DocGenericParam],
     ) -> LuaType {
         let Some(tree) = self.model.syntax_tree_of(file_id) else {
             return self

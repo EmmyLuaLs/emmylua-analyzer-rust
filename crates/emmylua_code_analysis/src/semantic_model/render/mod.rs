@@ -1,6 +1,6 @@
 //! # render — unified human-readable `LuaType` rendering
 //!
-//! A lightweight type humanizer built on the new `SemanticModel` (salsa).
+//! A lightweight type humanizer built on the new `SemanticModel` (semantic).
 //! It aims to replace the ad-hoc `humanize` implementations maintained in
 //! `test_lib` / `emmylua_ls` by providing a unified rendering entry point
 //! with depth limits and cycle detection.

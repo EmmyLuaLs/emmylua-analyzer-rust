@@ -8,7 +8,7 @@ pub use emmy_annotator_request::*;
 use lsp_types::Uri;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 
 pub async fn on_emmy_annotator_handler(
     context: ServerContextSnapshot,
@@ -23,7 +23,6 @@ pub async fn on_emmy_annotator_handler(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(std::time::Duration::from_millis(30)),
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

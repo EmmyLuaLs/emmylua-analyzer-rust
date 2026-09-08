@@ -35,7 +35,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see migration notes §M3.
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -84,7 +84,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see migration notes §M3.
     #[gtest]
     fn test_3() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -124,7 +124,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see migration notes §M3.
     #[gtest]
     fn test_table_field_definition_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -155,7 +155,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see migration notes §M3.
     #[gtest]
     fn test_table_field_definition_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -184,7 +184,7 @@ mod tests {
         Ok(())
     }
 
-    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see docs/SALSA_FROM_SCRATCH.md §M3.
+    // M3 batch 3 retirement: origin-owner penetration / partial class merging / full collection of same-named global declarations depend on the old DbIndex; see migration notes §M3.
     #[gtest]
     fn test_separation_of_define_and_impl() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

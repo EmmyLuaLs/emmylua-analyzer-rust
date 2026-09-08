@@ -1,6 +1,6 @@
 //! # AnalysisState — shared analysis state protected by a read-write lock
 //!
-//! Salsa is gone. Reads are served directly from the live `EmmyLuaAnalysis` under a
+//! Reads are served directly from the live `EmmyLuaAnalysis` under a
 //! read lock; writes take the write lock exclusively. We do not clone the whole
 //! analysis to run queries.
 

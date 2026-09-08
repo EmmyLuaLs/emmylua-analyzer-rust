@@ -2,7 +2,7 @@
 //!
 //! Mirrors legacy `diagnostic::checker::attribute_check`:
 //! - the attribute type must inherit from `Attribute`;
-//! - constructors are `---@overload fun(...)` overloads on the type (extracted by the salsa layer as
+//! - constructors are `---@overload fun(...)` overloads on the type (extracted by the semantic layer as
 //!   `TypeDef.call_overloads`), selected by argument count/type;
 //! - too few / too many parameters → AttributeMissingParameter / AttributeRedundantParameter;
 //! - argument type mismatch → AttributeParamTypeMismatch.

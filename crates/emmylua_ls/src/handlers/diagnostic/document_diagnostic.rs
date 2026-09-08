@@ -1,12 +1,10 @@
-use std::time::Duration;
-
 use lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
     FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport,
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::context::{CancelStrategy, RequestOutcome, ServerContextSnapshot, analysis_query};
+use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 
 pub async fn on_pull_document_diagnostic(
     context: ServerContextSnapshot,
@@ -20,7 +18,6 @@ pub async fn on_pull_document_diagnostic(
         context.analysis(),
         context.request_manager(),
         &cache_key,
-        CancelStrategy::RetryAfter(Duration::from_millis(200)),
         Some(token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;

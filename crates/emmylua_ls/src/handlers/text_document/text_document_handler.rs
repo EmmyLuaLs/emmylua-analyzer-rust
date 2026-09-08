@@ -214,7 +214,7 @@ pub async fn process_did_close_document(
         return Some(());
     }
 
-    // Non-workspace file (not registered in salsa) -> remove.
+    // Non-workspace file (not registered in semantic) -> remove.
     let file_exists = context
         .analysis()
         .try_with_snapshot(|analysis| {

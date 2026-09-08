@@ -1,14 +1,14 @@
-//! # goto_label — pure-salsa label definition lookup (same-named label within the same closure).
+//! # goto_label — pure-semantic label definition lookup (same-named label within the same closure).
 
-use emmylua_code_analysis::{SalsaSemanticModel, SemanticDatabase};
+use emmylua_code_analysis::{SemanticDatabase, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaGotoStat, LuaLabelStat, LuaSyntaxToken};
 use lsp_types::{GotoDefinitionResponse, Location};
 
 use crate::handlers::common::label_definition_range;
 
 pub(super) fn goto_label_definition(
-    model: &SalsaSemanticModel<'_>,
-    salsa: &SemanticDatabase,
+    model: &SemanticModel<'_>,
+    db: &SemanticDatabase,
     token: &LuaSyntaxToken,
 ) -> Option<GotoDefinitionResponse> {
     let parent = token.parent()?;
@@ -17,7 +17,7 @@ pub(super) fn goto_label_definition(
     }
 
     let label_range = label_definition_range(model, token)?;
-    let document = salsa.document(model.file_id())?;
+    let document = db.document(model.file_id())?;
     let uri = document.get_uri()?;
     Some(GotoDefinitionResponse::Scalar(Location {
         uri,
