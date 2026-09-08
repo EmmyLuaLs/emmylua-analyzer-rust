@@ -54,19 +54,31 @@ impl Vfs {
 
     pub(crate) fn file(&self, file_id: FileId) -> Option<&FileData> {
         let index = file_id.id as usize;
-        self.files.get(index)
+        let file = self.files.get(index)?;
+        (file.file_id != FileId::VIRTUAL).then_some(file)
     }
 
     pub(crate) fn file_ids(&self) -> Vec<FileId> {
-        self.files.iter().map(|file| file.file_id).collect()
+        self.files
+            .iter()
+            .filter(|file| file.file_id != FileId::VIRTUAL)
+            .map(|file| file.file_id)
+            .collect()
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.files.len()
+        self.files
+            .iter()
+            .filter(|file| file.file_id != FileId::VIRTUAL)
+            .count()
     }
 
-    pub(crate) fn files(&self) -> &Vec<FileData> {
-        &self.files
+    pub(crate) fn files(&self) -> Vec<FileData> {
+        self.files
+            .iter()
+            .filter(|file| file.file_id != FileId::VIRTUAL)
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn protected_paths(&self) -> &HashSet<PathBuf> {
@@ -96,34 +108,61 @@ impl Vfs {
         text: String,
     ) {
         let index = file_id.id as usize;
-        if index >= self.next_file_id as usize {
-            return;
+        if file_id.id >= self.next_file_id {
+            self.next_file_id = file_id.id + 1;
         }
 
-        let file_data = FileData::new(file_id, uri, path, text);
-        match index {
-            i if i < self.files.len() => {
-                self.files[i].text = file_data.text;
-            }
-            i if i == self.files.len() => {
-                self.files.push(file_data);
-            }
-            _ => {}
+        if let Some(uri) = &uri {
+            self.uri_map.insert(uri.clone(), file_id);
+        }
+
+        if let Some(emmyrc) = &self.emmyrc {
+            let line_index = LineIndex::parse(&text);
+            let parse_config = emmyrc.get_parse_config(&mut self.node_cache);
+            let tree = LuaParser::parse(&text, parse_config);
+            self.line_index_map.insert(file_id, line_index);
+            self.tree_map.insert(file_id, tree);
+        }
+
+        let file_data = FileData::new(file_id, uri, path, Arc::from(text));
+        if index < self.files.len() {
+            self.files[index] = file_data;
+        } else if index == self.files.len() {
+            self.files.push(file_data);
+        } else {
+            self.files
+                .resize(index, FileData::new(FileId::VIRTUAL, None, None, ""));
+            self.files.push(file_data);
         }
     }
 
     pub(crate) fn remove(&mut self, file_id: FileId) {
         let index = file_id.id as usize;
         if let Some(file_data) = self.files.get_mut(index) {
+            if let Some(uri) = &file_data.uri {
+                self.uri_map.remove(uri);
+            }
+            file_data.file_id = FileId::VIRTUAL;
             file_data.uri = None;
             file_data.path = None;
+            file_data.text = Arc::from("");
         }
+        self.line_index_map.remove(&file_id);
+        self.tree_map.remove(&file_id);
     }
 
     fn allocate_id(&mut self) -> FileId {
         let id = FileId::new(self.next_file_id);
         self.next_file_id += 1;
         id
+    }
+
+    pub(crate) fn allocate_file_id(&mut self) -> FileId {
+        self.allocate_id()
+    }
+
+    pub(crate) fn line_index(&self, file_id: FileId) -> Option<&LineIndex> {
+        self.line_index_map.get(&file_id)
     }
 
     pub fn file_id(&mut self, uri: &Uri) -> FileId {
@@ -139,11 +178,11 @@ impl Vfs {
     }
 
     pub fn get_uri(&self, id: &FileId) -> Option<Uri> {
-        self.files.get(id.id as usize).and_then(|file| file.uri.clone())
+        self.file(*id).and_then(|file| file.uri.clone())
     }
 
     pub fn get_file_path(&self, id: &FileId) -> Option<&PathBuf> {
-        self.files.get(id.id as usize).and_then(|file| file.path.as_ref())
+        self.file(*id).and_then(|file| file.path.as_ref())
     }
 
     pub fn set_file_content(&mut self, uri: &Uri, data: Option<String>) -> FileId {
@@ -204,8 +243,12 @@ impl Vfs {
         self.emmyrc = Some(emmyrc);
     }
 
+    pub(crate) fn emmyrc(&self) -> Option<Arc<Emmyrc>> {
+        self.emmyrc.clone()
+    }
+
     pub fn get_file_content(&self, id: &FileId) -> Option<&str> {
-        self.files.get(id.id as usize).map(|file| file.text.as_ref())
+        self.file(*id).map(|file| file.text.as_ref())
     }
 
     pub fn get_document(&self, id: &FileId) -> Option<LuaDocument<'_>> {

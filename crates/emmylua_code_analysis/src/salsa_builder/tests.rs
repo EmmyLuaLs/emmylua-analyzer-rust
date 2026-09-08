@@ -1989,7 +1989,8 @@ fn test_remote_uri_stable_mapping() {
     assert_eq!(fid1, fid2);
     assert_eq!(db.lookup_file_id(&uri), Some(fid1));
     assert_eq!(db.file_uri(fid1).as_ref(), Some(&uri));
-    assert_eq!(db.document(fid1).unwrap().get_uri().as_ref(), Some(&uri));
+    // Remote files have no path, so they do not produce a path-backed LuaDocument.
+    assert!(db.document(fid1).is_none());
 
     db.set_file_content(&uri, None);
     assert_eq!(db.lookup_file_id(&uri), None);

@@ -27,7 +27,7 @@ use emmylua_parser::{
 use rowan::TextSize;
 use smol_str::SmolStr;
 
-use crate::DocumentView;
+use crate::LuaDocument;
 use crate::LuaType;
 use crate::LuaTypeNode;
 use crate::member_key::LuaMemberKey;
@@ -179,11 +179,11 @@ impl<'db> SemanticModel<'db> {
         self.db.file_path(self.file_id)
     }
 
-    pub fn document(&self, file_id: FileId) -> Option<&'db DocumentView> {
+    pub fn document(&self, file_id: FileId) -> Option<LuaDocument<'db>> {
         self.db.document(file_id)
     }
 
-    pub fn document_current(&self) -> Option<&'db DocumentView> {
+    pub fn document_current(&self) -> Option<LuaDocument<'db>> {
         self.document(self.file_id)
     }
 

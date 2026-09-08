@@ -32,7 +32,7 @@ use rowan::TextSize;
 /// queries are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn build_file_facts(
     db: &SemanticDatabase,
-    file: FileId,
+    _file: FileId,
     _config: &ConfigInputData,
     file_id: FileId,
     text: &str,
@@ -46,6 +46,12 @@ pub(crate) fn build_file_facts(
         .expect("syntax tree must be built before read");
     let chunk = tree.get_chunk_node();
     FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
+}
+
+pub(crate) fn syntax_tree(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree {
+    db.vfs()
+        .get_syntax_tree(&file)
+        .expect("syntax tree must be built before read")
 }
 
 pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
@@ -534,7 +540,7 @@ fn constructor_attribute_of_decl(
     let facts = file_facts(db, file);
     let decl = facts.decl_by_id(&decl)?;
     let value_syntax = decl.value_expr_syntax?;
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
     let call = LuaCallExpr::cast(node)?;
     let prefix = call.get_prefix_expr()?;
@@ -651,7 +657,7 @@ fn build_file_references(
     config: &ConfigInputData,
 ) -> FileReferences {
     let facts = file_facts(db, file);
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let workspace = db.workspace_input();
     let mut out = FileReferences::default();
 
@@ -1921,7 +1927,7 @@ fn iter_slot_type(
     decl: &crate::salsa_builder::def::Decl,
 ) -> Option<TypeShell> {
     let owner = decl.owner_syntax?;
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let node = owner.to_node_from_root(&tree.get_red_root())?;
     let stat = emmylua_parser::LuaForRangeStat::cast(node)?;
     let vars = stat.get_var_name_list().collect::<Vec<_>>();
@@ -1994,7 +2000,7 @@ fn iter_slot_type(
             let Some(return_syntax) = docs.returns.first() else {
                 continue;
             };
-            let member_tree = parse(db, member_file);
+            let member_tree = syntax_tree(db, member_file);
             let Some(return_node) = return_syntax.to_node_from_root(&member_tree.get_red_root())
             else {
                 continue;
@@ -2039,7 +2045,7 @@ pub(crate) fn lower_doc_type(
     type_syntax: LuaSyntaxId,
     generics: &[SalsaGenericParam],
 ) -> TypeShell {
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let root = tree.get_red_root();
     let Some(node) = type_syntax.to_node_from_root(&root) else {
         return TypeShell::unknown();
@@ -2599,7 +2605,7 @@ pub(crate) fn signature_returns(
         }
     }
 
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let root = tree.get_red_root();
     let Some(node) = closure_syntax.to_node_from_root(&root) else {
         return Vec::new();
@@ -2822,7 +2828,7 @@ pub(crate) fn module_export_type(
             TypeShell::from_name(name.as_str())
         }
         ModuleExport::Expr { value_syntax } => {
-            let tree = parse(db, file);
+            let tree = syntax_tree(db, file);
             let Some(expr) = find_expr_by_syntax_id(&tree, value_syntax) else {
                 return TypeShell::unknown();
             };
@@ -2891,7 +2897,7 @@ pub(crate) fn expr_type_of(
     let _guard = ExprTypeGuard::enter(key);
     let facts = file_facts(db, file);
     let workspace = db.workspace_input();
-    let tree = parse(db, file);
+    let tree = syntax_tree(db, file);
     let Some(expr) = find_expr_by_syntax_id(&tree, &expr_syntax) else {
         return TypeShell::unknown();
     };

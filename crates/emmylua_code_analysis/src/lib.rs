@@ -28,7 +28,7 @@ pub use crate::salsa_builder::def::{
 };
 pub use crate::salsa_builder::exports::{FileExports, GlobalExport, MemberExport};
 pub use crate::salsa_builder::facts::FileFacts;
-pub use crate::salsa_builder::{DocumentView, SemanticDatabase};
+pub use crate::salsa_builder::SemanticDatabase;
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };

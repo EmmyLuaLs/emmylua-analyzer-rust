@@ -15,10 +15,10 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use emmylua_parser::{LineIndex, LuaSyntaxTree, LuaVersionNumber};
+use emmylua_parser::{LineIndex, LuaVersionNumber};
 use lsp_types::Uri;
 
-use crate::vfs::Vfs;
+use crate::vfs::{LuaDocument, Vfs};
 use crate::vfs::file_path_to_uri;
 use crate::{Emmyrc, FileData, FileId, WorkspaceFolder, WorkspaceImport, uri_to_file_path};
 pub use def::*;
@@ -26,105 +26,6 @@ use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
 
 pub(crate) use facade::SalsaQueries;
 pub use facade::{MemberList, TypeDefList};
-#[derive(Clone)]
-pub struct DocumentView {
-    pub file_id: FileId,
-    pub path: Option<PathBuf>,
-    pub uri: Option<Uri>,
-    pub text: Arc<str>,
-    pub line_index: Arc<LineIndex>,
-}
-
-impl DocumentView {
-    pub fn get_text(&self) -> &str {
-        &self.text
-    }
-
-    pub fn get_line_col(&self, offset: rowan::TextSize) -> Option<(usize, usize)> {
-        self.line_index.get_line_col(offset, &self.text)
-    }
-
-    pub fn get_offset(&self, line: usize, col: usize) -> Option<rowan::TextSize> {
-        self.line_index.get_offset(line, col, &self.text)
-    }
-
-    pub fn get_line_count(&self) -> usize {
-        self.line_index.line_count()
-    }
-
-    pub fn to_lsp_range(&self, range: rowan::TextRange) -> Option<lsp_types::Range> {
-        let start = self.get_line_col(range.start())?;
-        let end = self.get_line_col(range.end())?;
-        Some(lsp_types::Range {
-            start: lsp_types::Position {
-                line: start.0 as u32,
-                character: start.1 as u32,
-            },
-            end: lsp_types::Position {
-                line: end.0 as u32,
-                character: end.1 as u32,
-            },
-        })
-    }
-
-    pub fn to_lsp_position(&self, offset: rowan::TextSize) -> Option<lsp_types::Position> {
-        let (line, col) = self.get_line_col(offset)?;
-        Some(lsp_types::Position {
-            line: line as u32,
-            character: col as u32,
-        })
-    }
-
-    pub fn to_rowan_range(&self, range: lsp_types::Range) -> Option<rowan::TextRange> {
-        let start = self.get_offset(range.start.line as usize, range.start.character as usize)?;
-        let end = self.get_offset(range.end.line as usize, range.end.character as usize)?;
-        Some(rowan::TextRange::new(start, end))
-    }
-
-    pub fn get_text_slice(&self, range: rowan::TextRange) -> &str {
-        let start = usize::from(range.start());
-        let end = usize::from(range.end());
-        &self.text[start.min(self.text.len())..end.min(self.text.len())]
-    }
-
-    pub fn get_line_range(&self, line: usize) -> Option<rowan::TextRange> {
-        let start = self.get_offset(line, 0)?;
-        let end = if line + 1 < self.get_line_count() {
-            self.get_offset(line + 1, 0)?
-        } else {
-            rowan::TextSize::from(self.text.len() as u32)
-        };
-        Some(rowan::TextRange::new(start, end))
-    }
-
-    pub fn get_document_lsp_range(&self) -> lsp_types::Range {
-        lsp_types::Range {
-            start: lsp_types::Position {
-                line: 0,
-                character: 0,
-            },
-            end: lsp_types::Position {
-                line: self.get_line_count() as u32,
-                character: 0,
-            },
-        }
-    }
-
-    pub fn get_uri(&self) -> Option<Uri> {
-        self.uri.clone()
-    }
-}
-
-impl fmt::Debug for DocumentView {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DocumentView")
-            .field("file_id", &self.file_id)
-            .field("path", &self.path)
-            .field("line_count", &self.get_line_count())
-            .finish()
-    }
-}
-
 pub struct SemanticDatabase {
     // ── Plain config/data ──
     config: Option<ConfigInputData>,
@@ -205,10 +106,6 @@ impl SemanticDatabase {
         self.flow_trees
             .get(&file_id)
             .expect("flow tree must be built before read")
-    }
-
-    pub(crate) fn syntax_tree_of(&self, file_id: FileId) -> Option<&LuaSyntaxTree> {
-        self.vfs.get_syntax_tree(&file_id)
     }
 
     pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExports {
@@ -300,6 +197,7 @@ impl SemanticDatabase {
     // ---- Config ----
 
     pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
+        self.vfs.update_config(emmyrc.clone());
         let (
             language_level,
             special_like,
@@ -479,9 +377,7 @@ impl SemanticDatabase {
 
     pub fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
         let fid = self.lookup_file_id(uri).unwrap_or_else(|| {
-            let id = FileId::new(self.next_file_id);
-            self.next_file_id += 1;
-            id
+            self.vfs.allocate_file_id()
         });
         if let Some(text) = text {
             let path = uri_to_file_path(uri);
@@ -534,6 +430,9 @@ impl SemanticDatabase {
             .cloned()
             .collect::<Vec<_>>();
         let mut vfs = Vfs::new();
+        if let Some(emmyrc) = self.vfs.emmyrc() {
+            vfs.update_config(emmyrc);
+        }
         vfs.set_protected_paths(protected_paths);
         for (file_id, input) in file_inputs {
             let text = input.text.to_string();
@@ -552,16 +451,14 @@ impl SemanticDatabase {
     pub(crate) fn file_input_map(&self) -> HashMap<FileId, FileData> {
         self.vfs
             .files()
-            .iter()
-            .map(|file| (file.file_id, file.clone()))
+            .into_iter()
+            .map(|file| (file.file_id, file))
             .collect()
     }
 
     /// Allocate a fresh FileId.
     pub(crate) fn allocate_file_id(&mut self) -> FileId {
-        let id = FileId::new(self.next_file_id);
-        self.next_file_id += 1;
-        id
+        self.vfs.allocate_file_id()
     }
 
     pub fn remove_file(&mut self, file_id: FileId) {
@@ -578,8 +475,6 @@ impl SemanticDatabase {
         self.vfs = Vfs::new();
         self.file_facts = HashMap::new();
         self.flow_trees = HashMap::new();
-        self.syntax_trees = HashMap::new();
-        self.documents = HashMap::new();
         self.file_exports = HashMap::new();
         self.export_shards = HashMap::new();
         self.file_references = HashMap::new();
@@ -587,7 +482,6 @@ impl SemanticDatabase {
         self.module_shards = HashMap::new();
         self.reference_shards = HashMap::new();
         self.workspace_index = query::WorkspaceIndexCache::new();
-        self.next_file_id = 0;
         self.rebuild_all_caches();
     }
 
@@ -641,16 +535,14 @@ impl SemanticDatabase {
         self.vfs.file(file_id).map(|file| file.text.as_ref())
     }
 
-    /// Per-file line index. The line index is stored inside the eager document cache.
+    /// Per-file line index from the VFS.
     pub fn line_index(&self, file_id: FileId) -> Option<&LineIndex> {
-        self.documents
-            .get(&file_id)
-            .map(|document| document.line_index.as_ref())
+        self.vfs.line_index(file_id)
     }
 
-    /// Document view, built eagerly on writes and borrowed on reads.
-    pub fn document(&self, file_id: FileId) -> Option<&DocumentView> {
-        self.documents.get(&file_id)
+    /// Document view borrowed from the VFS.
+    pub fn document(&self, file_id: FileId) -> Option<LuaDocument<'_>> {
+        self.vfs.get_document(&file_id)
     }
 
     // ── Input accessors (for tracked layer / facade) ──

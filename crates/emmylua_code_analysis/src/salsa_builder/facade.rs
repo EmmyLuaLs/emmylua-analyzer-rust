@@ -152,7 +152,7 @@ impl<'db> SalsaQueries<'db> {
 
     pub fn syntax_tree(&self, file_id: FileId) -> Option<&'db LuaSyntaxTree> {
         let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(parse(self.db, file))
+        self.db.vfs().get_syntax_tree(&file)
     }
 
     pub fn chunk(&self, file_id: FileId) -> Option<LuaChunk> {
@@ -299,7 +299,7 @@ impl<'db> SalsaQueries<'db> {
     ) -> Option<(SemanticId, SmolStr)> {
         let (file, _config) = file_and_config(self.db, file_id)?;
         let facts = file_facts(self.db, file);
-        let tree = parse(self.db, file);
+        let tree = self.db.vfs().get_syntax_tree(&file)?;
         let expr = query::find_expr_by_syntax_id(tree, &index_syntax)?;
         let emmylua_parser::LuaExpr::IndexExpr(index_expr) = expr else {
             return None;

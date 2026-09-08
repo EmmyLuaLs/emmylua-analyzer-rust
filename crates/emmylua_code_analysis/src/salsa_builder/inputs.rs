@@ -1,13 +1,10 @@
 //! Salsa inputs.
 
-use lsp_types::Uri;
-use std::collections::HashMap as StdHashMap;
 use std::path::PathBuf;
 
 use emmylua_parser::{
-    LuaFeatures, LuaFeaturesSet, LuaLanguageLevel, LuaVersionNumber, ParserConfig, SpecialFunction,
+    LuaFeatures, LuaLanguageLevel, LuaVersionNumber, SpecialFunction,
 };
-use rowan::NodeCache;
 use smol_str::SmolStr;
 
 use crate::{Emmyrc, FileId, WorkspaceImport};
@@ -20,20 +17,10 @@ use super::def::WorkspaceId;
 // ──────────────────────────────────────────────
 
 impl FileId {
-    pub(crate) fn text(self, db: &SemanticDatabase) -> &str {
-        &db.source_file_data(self)
-            .expect("file data must exist")
-            .text
-    }
-
     pub(crate) fn path(self, db: &SemanticDatabase) -> &Option<PathBuf> {
         &db.source_file_data(self)
             .expect("file data must exist")
             .path
-    }
-
-    pub(crate) fn uri(self, db: &SemanticDatabase) -> &Option<Uri> {
-        &db.source_file_data(self).expect("file data must exist").uri
     }
 
     pub(crate) fn file_id(self, _db: &SemanticDatabase) -> FileId {
@@ -88,18 +75,6 @@ impl ConfigInputData {
             strict_array_index,
             main_root,
         }
-    }
-
-    pub(crate) fn language_level(&self) -> LuaLanguageLevel {
-        self.language_level
-    }
-
-    pub(crate) fn special_like(&self) -> &[(SmolStr, SpecialFunction)] {
-        &self.special_like
-    }
-
-    pub(crate) fn non_std_symbols(&self) -> &[LuaFeatures] {
-        &self.non_std_symbols
     }
 
     pub(crate) fn module_patterns(&self) -> &[SmolStr] {
@@ -203,21 +178,6 @@ impl ConfigInputData {
         )
     }
 
-    pub(crate) fn to_parse_config<'a>(&self, node_cache: &'a mut NodeCache) -> ParserConfig<'a> {
-        let mut special_like = StdHashMap::new();
-        for (name, func) in &self.special_like {
-            special_like.insert(name.as_str().to_string(), *func);
-        }
-        let mut non_std_symbols = LuaFeaturesSet::default();
-        non_std_symbols.extends(self.non_std_symbols.to_vec());
-        ParserConfig::new(
-            self.language_level,
-            Some(node_cache),
-            special_like,
-            non_std_symbols,
-            true,
-        )
-    }
 }
 
 /// Workspace root metadata for std / main / library.

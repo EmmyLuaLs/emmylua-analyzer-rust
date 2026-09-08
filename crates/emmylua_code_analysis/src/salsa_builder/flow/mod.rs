@@ -53,7 +53,7 @@ pub(super) fn build_flow_tree(
 ) -> FlowTree {
     let file_id = file.file_id(db);
     let facts = file_facts(db, file);
-    let tree = super::query::parse(db, file);
+    let tree = db.vfs().get_syntax_tree(&file).expect("syntax tree must exist");
     let chunk: LuaChunk = tree.get_chunk_node();
     let mut binder = FlowBinder::new(file_id, facts);
     let start = binder.start;
