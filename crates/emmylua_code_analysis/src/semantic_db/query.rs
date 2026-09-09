@@ -7,7 +7,6 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::SemanticDatabase;
 use super::def::{
     ConstructorAttribute, DeclKind, DocGenericParam, MemberRef, ModuleExport, ModuleInfo,
     ModuleNode, ModuleNodeId, ModuleVisibility, SemanticId, TypeDef, TypeDefKind,
@@ -15,6 +14,7 @@ use super::def::{
 use super::exports::{EXPORT_SHARDS, FileExports, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
+use super::{FileCache, SemanticDatabase, ShardCache};
 use crate::Emmyrc;
 use crate::FileId;
 use emmylua_parser::{
@@ -33,7 +33,6 @@ use rowan::{TextRange, TextSize};
 pub(crate) fn build_file_facts(
     db: &SemanticDatabase,
     _file: FileId,
-    _config: &Emmyrc,
     file_id: FileId,
     text: &str,
 ) -> FileFacts {
@@ -53,8 +52,7 @@ pub(crate) fn syntax_tree(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree
 }
 
 pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
-    db.file_facts_map()
-        .get(&file)
+    db.file_facts_of(file)
         .expect("file facts must be built before read")
 }
 
@@ -63,126 +61,81 @@ pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
 /// This is the only place where the per-file and shard caches are populated.
 /// Read-side query functions perform pure map lookups and never call `get_or_init`.
 pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
-    let Some(config) = db.config_input().cloned() else {
-        db.file_facts.clear();
-        db.flow_trees.clear();
-        db.file_exports.clear();
-        db.export_shards.clear();
-        db.file_references.clear();
-        db.deprecated_shards.clear();
-        db.module_shards.clear();
-        db.reference_shards.clear();
+    if db.config_input().is_none() {
+        db.files.clear();
+        db.shards.clear();
         db.workspace_index = WorkspaceIndexCache::new();
         return;
-    };
-    let config = &config;
+    }
     let file_ids = db.vfs.file_ids();
 
-    // Per-file facts (depends on syntax trees).
-    let mut file_facts = HashMap::with_capacity(file_ids.len());
+    let mut files = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
         let Some(data) = db.file_data(file_id) else {
             continue;
         };
-        let file = file_id;
-        let facts = build_file_facts(db, file, config, file_id, &data.text);
-        file_facts.insert(file_id, facts);
+        let facts = build_file_facts(db, file_id, file_id, &data.text);
+        files.insert(
+            file_id,
+            FileCache {
+                facts,
+                flow: Default::default(),
+                exports: Default::default(),
+                references: Default::default(),
+            },
+        );
     }
-    db.file_facts = file_facts;
+    db.files = files;
 
-    // Per-file control-flow graphs (depends on facts and syntax trees).
-    let mut flow_trees = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
-        if db.file_data(file_id).is_some() {
-            let file = file_id;
-            flow_trees.insert(file_id, super::flow::build_flow_tree(db, file, config));
+        if db.file_data(file_id).is_none() {
+            continue;
         }
+        let flow = super::flow::build_flow_tree(db, file_id);
+        let exports = super::exports::build_file_exports(db, file_id, file_id);
+        let cache = db
+            .files
+            .get_mut(&file_id)
+            .expect("file cache must exist after facts build");
+        cache.flow = flow;
+        cache.exports = exports;
     }
-    db.flow_trees = flow_trees;
 
-    // Per-file export identities (depends on facts).
-    let mut file_exports = HashMap::with_capacity(file_ids.len());
-    for file_id in file_ids.iter().copied() {
-        if let Some(file) = db.file_data_id(file_id) {
-            file_exports.insert(
-                file_id,
-                super::exports::build_file_exports(db, file, config, file_id),
-            );
-        }
-    }
-    db.file_exports = file_exports;
-
-    // Export shards (depend on file exports and the workspace file list).
-    let mut export_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
+    let mut shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
     for shard in 0..EXPORT_SHARDS {
-        export_shards.insert(shard, super::exports::build_export_shard(db, config, shard));
+        shards.insert(
+            shard,
+            ShardCache {
+                exports: super::exports::build_export_shard(db, shard),
+                deprecated: build_deprecated_shard(db, shard),
+                module: build_module_shard(db, shard),
+                references: Default::default(),
+            },
+        );
     }
-    db.export_shards = export_shards;
+    db.shards = shards;
 
-    // Deprecated shards (depend on facts).
-    let mut deprecated_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
-    for shard in 0..EXPORT_SHARDS {
-        deprecated_shards.insert(shard, build_deprecated_shard(db, config, shard));
-    }
-    db.deprecated_shards = deprecated_shards;
+    rebuild_workspace_indexes(db);
 
-    // Module shards (depend on facts and workspace roots).
-    let mut module_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
-    for shard in 0..EXPORT_SHARDS {
-        module_shards.insert(shard, build_module_shard(db, config, shard));
-    }
-    db.module_shards = module_shards;
-
-    // Workspace type/member/declaration/module indexes. These are needed while
-    // building per-file references; the reference index itself must wait until
-    // per-file references have been collected.
-    let ws_ids = all_workspace_ids(db);
-    let workspace_types = ws_ids
-        .iter()
-        .map(|&ws_id| (ws_id, build_workspace_type_index(db, config, ws_id)))
-        .collect::<HashMap<_, _>>();
-    let workspace_members = ws_ids
-        .iter()
-        .map(|&ws_id| (ws_id, build_workspace_member_index(db, config, ws_id)))
-        .collect::<HashMap<_, _>>();
-    let workspace_decls = ws_ids
-        .iter()
-        .map(|&ws_id| (ws_id, build_workspace_decl_index(db, config, ws_id)))
-        .collect::<HashMap<_, _>>();
-    let workspace_modules = ws_ids
-        .iter()
-        .map(|&ws_id| (ws_id, build_workspace_module_index(db, config, ws_id)))
-        .collect::<HashMap<_, _>>();
-    db.workspace_index = WorkspaceIndexCache {
-        types: workspace_types,
-        members: workspace_members,
-        decls: workspace_decls,
-        modules: workspace_modules,
-        references: HashMap::new(),
-    };
-
-    // Per-file reference indexes (depend on the workspace indexes above).
-    let mut file_references = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
         if let Some(file) = db.file_data_id(file_id) {
-            file_references.insert(file_id, build_file_references(db, file, config));
+            let references = build_file_references(db, file);
+            db.files
+                .get_mut(&file_id)
+                .expect("file cache must exist before references build")
+                .references = references;
         }
     }
-    db.file_references = file_references;
 
-    // Reference shards (depend on per-file reference indexes).
-    let mut reference_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
     for shard in 0..EXPORT_SHARDS {
-        reference_shards.insert(shard, build_reference_shard(db, config, shard));
+        let references = build_reference_shard(db, shard);
+        db.shards
+            .get_mut(&shard)
+            .expect("shard cache must exist before reference shard build")
+            .references = references;
     }
-    db.reference_shards = reference_shards;
 
-    // Workspace reference indexes (depend on reference shards).
-    let workspace_references = ws_ids
-        .iter()
-        .map(|&ws_id| (ws_id, build_workspace_reference_index(db, config, ws_id)))
-        .collect::<HashMap<_, _>>();
-    db.workspace_index.references = workspace_references;
+    rebuild_workspace_reference_indexes(db);
 }
 
 pub(crate) fn rebuild_file_after_write(
@@ -190,45 +143,75 @@ pub(crate) fn rebuild_file_after_write(
     file_id: FileId,
     metadata_changed: bool,
 ) {
-    let Some(config) = db.config_input().cloned() else {
+    if db.config_input().is_none() {
         return;
-    };
-    let config = &config;
+    }
     let Some(data) = db.file_data(file_id) else {
         return;
     };
     let text = data.text.clone();
 
-    let old_exports = db.file_exports.get(&file_id).cloned();
-    let old_module_surface = db.file_facts.get(&file_id).map(|facts| {
+    let old_cache = db.files.remove(&file_id);
+    let old_exports = old_cache.as_ref().map(|cache| cache.exports.clone());
+    let old_module_surface = old_cache.as_ref().map(|cache| {
         (
-            facts.module_visibility,
-            facts.is_meta,
-            facts.version_conds.clone(),
+            cache.facts.module_visibility,
+            cache.facts.is_meta,
+            cache.facts.version_conds.clone(),
         )
     });
+    let old_references = old_cache.map(|cache| cache.references);
 
-    let facts = build_file_facts(db, file_id, config, file_id, &text);
+    let facts = build_file_facts(db, file_id, file_id, &text);
     let module_surface = (
         facts.module_visibility,
         facts.is_meta,
         facts.version_conds.clone(),
     );
-    db.file_facts.insert(file_id, facts);
 
-    let flow = super::flow::build_flow_tree(db, file_id, config);
-    db.flow_trees.insert(file_id, flow);
+    // Facts must be visible before flow/export builders run.
+    db.files.insert(
+        file_id,
+        FileCache {
+            facts,
+            flow: Default::default(),
+            exports: Default::default(),
+            references: old_references.unwrap_or_default(),
+        },
+    );
 
-    let exports = super::exports::build_file_exports(db, file_id, config, file_id);
+    let flow = super::flow::build_flow_tree(db, file_id);
+    let exports = super::exports::build_file_exports(db, file_id, file_id);
     let exports_changed = old_exports.as_ref() != Some(&exports);
     let new_exports = exports.clone();
-    db.file_exports.insert(file_id, exports);
+
+    {
+        let cache = db
+            .files
+            .get_mut(&file_id)
+            .expect("file cache must exist after facts insert");
+        cache.flow = flow;
+        cache.exports = exports;
+    }
 
     let shard = shard_of(file_id);
-    db.export_shards
-        .insert(shard, super::exports::build_export_shard(db, config, shard));
-    db.deprecated_shards
-        .insert(shard, build_deprecated_shard(db, config, shard));
+    let shard_exports = super::exports::build_export_shard(db, shard);
+    let shard_deprecated = build_deprecated_shard(db, shard);
+    let shard_module = build_module_shard(db, shard);
+    let shard_references = db
+        .shards
+        .remove(&shard)
+        .map(|cache| cache.references)
+        .unwrap_or_default();
+    db.shards.insert(
+        shard,
+        ShardCache {
+            exports: shard_exports,
+            deprecated: shard_deprecated,
+            module: shard_module,
+            references: shard_references,
+        },
+    );
 
     let module_surface_changed = old_module_surface.as_ref() != Some(&module_surface);
     let needs_global_rebuild =
@@ -236,72 +219,90 @@ pub(crate) fn rebuild_file_after_write(
 
     if needs_global_rebuild {
         if metadata_changed || module_surface_changed {
-            rebuild_all_module_shards(db, config);
+            rebuild_all_module_shards(db);
         }
-        rebuild_workspace_indexes(db, config);
+        rebuild_workspace_indexes(db);
         if !metadata_changed
             && !module_surface_changed
             && let Some(old_exports) = &old_exports
         {
-            rebuild_reference_indexes_incremental(db, config, file_id, old_exports, &new_exports);
+            rebuild_reference_indexes_incremental(db, file_id, old_exports, &new_exports);
         } else {
-            rebuild_reference_indexes(db, config);
+            rebuild_reference_indexes(db);
         }
     } else {
         // Public surface unchanged: only this file's reference ranges and its shard can change.
-        let references = build_file_references(db, file_id, config);
-        db.file_references.insert(file_id, references);
-        db.reference_shards
-            .insert(shard, build_reference_shard(db, config, shard));
-        rebuild_workspace_reference_indexes(db, config);
+        let references = build_file_references(db, file_id);
+        db.files
+            .get_mut(&file_id)
+            .expect("file cache must exist after write")
+            .references = references;
+        let references = build_reference_shard(db, shard);
+        db.shards
+            .get_mut(&shard)
+            .expect("shard cache must exist after write")
+            .references = references;
+        rebuild_workspace_reference_indexes(db);
     }
 }
 
 pub(crate) fn rebuild_file_after_remove(db: &mut SemanticDatabase, file_id: FileId) {
-    db.file_facts.remove(&file_id);
-    db.flow_trees.remove(&file_id);
-    db.file_exports.remove(&file_id);
-    db.file_references.remove(&file_id);
+    db.files.remove(&file_id);
 
-    let Some(config) = db.config_input().cloned() else {
+    if db.config_input().is_none() {
         return;
-    };
-    let config = &config;
+    }
     let shard = shard_of(file_id);
-    db.export_shards
-        .insert(shard, super::exports::build_export_shard(db, config, shard));
-    db.deprecated_shards
-        .insert(shard, build_deprecated_shard(db, config, shard));
-    rebuild_all_module_shards(db, config);
+    let shard_exports = super::exports::build_export_shard(db, shard);
+    let shard_deprecated = build_deprecated_shard(db, shard);
+    let shard_module = build_module_shard(db, shard);
+    let shard_references = db
+        .shards
+        .remove(&shard)
+        .map(|cache| cache.references)
+        .unwrap_or_default();
+    db.shards.insert(
+        shard,
+        ShardCache {
+            exports: shard_exports,
+            deprecated: shard_deprecated,
+            module: shard_module,
+            references: shard_references,
+        },
+    );
+    rebuild_all_module_shards(db);
 
-    rebuild_workspace_indexes(db, config);
-    rebuild_reference_indexes(db, config);
+    rebuild_workspace_indexes(db);
+    rebuild_reference_indexes(db);
 }
 
-fn rebuild_all_module_shards(db: &mut SemanticDatabase, config: &Emmyrc) {
+fn rebuild_all_module_shards(db: &mut SemanticDatabase) {
     for shard in 0..EXPORT_SHARDS {
-        db.module_shards
-            .insert(shard, build_module_shard(db, config, shard));
+        let module = build_module_shard(db, shard);
+        db.shards
+            .get_mut(&shard)
+            .expect("shard cache must exist before module rebuild")
+            .module = module;
     }
 }
 
-fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
+fn rebuild_workspace_indexes(db: &mut SemanticDatabase) {
     let ws_ids = all_workspace_ids(db);
     let workspace_types = ws_ids
         .iter()
-        .map(|&ws_id| (ws_id, build_workspace_type_index(db, config, ws_id)))
+        .map(|&ws_id| (ws_id, build_workspace_type_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
     let workspace_members = ws_ids
         .iter()
-        .map(|&ws_id| (ws_id, build_workspace_member_index(db, config, ws_id)))
+        .map(|&ws_id| (ws_id, build_workspace_member_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
     let workspace_decls = ws_ids
         .iter()
-        .map(|&ws_id| (ws_id, build_workspace_decl_index(db, config, ws_id)))
+        .map(|&ws_id| (ws_id, build_workspace_decl_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
     let workspace_modules = ws_ids
         .iter()
-        .map(|&ws_id| (ws_id, build_workspace_module_index(db, config, ws_id)))
+        .map(|&ws_id| (ws_id, build_workspace_module_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
     db.workspace_index = WorkspaceIndexCache {
         types: workspace_types,
@@ -312,23 +313,24 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
     };
 }
 
-fn rebuild_reference_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
+fn rebuild_reference_indexes(db: &mut SemanticDatabase) {
     let file_ids = db.vfs.file_ids();
-    let mut file_references = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
         if let Some(file) = db.file_data_id(file_id) {
-            file_references.insert(file_id, build_file_references(db, file, config));
+            let references = build_file_references(db, file);
+            db.files
+                .get_mut(&file_id)
+                .expect("file cache must exist before reference rebuild")
+                .references = references;
         }
     }
-    db.file_references = file_references;
 
-    let mut reference_shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
     for shard in 0..EXPORT_SHARDS {
-        reference_shards.insert(shard, build_reference_shard(db, config, shard));
+        let references = build_reference_shard(db, shard);
+        db.shards.entry(shard).or_default().references = references;
     }
-    db.reference_shards = reference_shards;
 
-    rebuild_workspace_reference_indexes(db, config);
+    rebuild_workspace_reference_indexes(db);
 }
 
 #[derive(Default)]
@@ -442,7 +444,6 @@ fn surface_delta(old_exports: &FileExports, new_exports: &FileExports) -> Surfac
 
 fn rebuild_reference_indexes_incremental(
     db: &mut SemanticDatabase,
-    config: &Emmyrc,
     changed_file_id: FileId,
     old_exports: &FileExports,
     new_exports: &FileExports,
@@ -450,9 +451,12 @@ fn rebuild_reference_indexes_incremental(
     let delta = surface_delta(old_exports, new_exports);
     let mut affected: HashSet<FileId> = HashSet::new();
     affected.insert(changed_file_id);
-    for (&file_id, references) in &db.file_references {
-        if !references.name_deps.is_disjoint(&delta.names)
-            || !references.member_name_deps.is_disjoint(&delta.member_names)
+    for (&file_id, cache) in &db.files {
+        if !cache.references.name_deps.is_disjoint(&delta.names)
+            || !cache
+                .references
+                .member_name_deps
+                .is_disjoint(&delta.member_names)
         {
             affected.insert(file_id);
         }
@@ -465,24 +469,26 @@ fn rebuild_reference_indexes_incremental(
 
     for file_id in affected {
         if let Some(file) = db.file_data_id(file_id) {
-            let references = build_file_references(db, file, config);
-            db.file_references.insert(file_id, references);
+            let references = build_file_references(db, file);
+            if let Some(cache) = db.files.get_mut(&file_id) {
+                cache.references = references;
+            }
         }
     }
 
     for shard in affected_shards {
-        db.reference_shards
-            .insert(shard, build_reference_shard(db, config, shard));
+        let references = build_reference_shard(db, shard);
+        db.shards.entry(shard).or_default().references = references;
     }
 
-    rebuild_workspace_reference_indexes(db, config);
+    rebuild_workspace_reference_indexes(db);
 }
 
-fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
+fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase) {
     let ws_ids = all_workspace_ids(db);
     let workspace_references = ws_ids
         .iter()
-        .map(|&ws_id| (ws_id, build_workspace_reference_index(db, config, ws_id)))
+        .map(|&ws_id| (ws_id, build_workspace_reference_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
     db.workspace_index.references = workspace_references;
 }
@@ -516,11 +522,7 @@ impl WorkspaceTypeIndex {
     }
 }
 
-fn build_workspace_type_index(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    ws_id: WorkspaceId,
-) -> WorkspaceTypeIndex {
+fn build_workspace_type_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> WorkspaceTypeIndex {
     let mut by_scope_name: HashMap<(TypeScope, SmolStr), Vec<TypeDef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
         let shard = export_shard(db, shard);
@@ -568,7 +570,7 @@ pub(crate) fn deprecated_shard(db: &SemanticDatabase, shard: u8) -> &DeprecatedS
     db.deprecated_shard_of(shard)
 }
 
-fn build_deprecated_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> DeprecatedShard {
+fn build_deprecated_shard(db: &SemanticDatabase, shard: u8) -> DeprecatedShard {
     let mut names = Vec::new();
     let mut member_keys = Vec::new();
     for file_id in db.file_ids().into_iter() {
@@ -601,7 +603,6 @@ fn build_deprecated_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) ->
 /// full global-declaration pipeline.
 pub(crate) fn deprecated_global_names_for(
     db: &SemanticDatabase,
-    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
@@ -623,7 +624,6 @@ pub(crate) fn deprecated_global_names_for(
 /// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
 pub(crate) fn deprecated_member_names_for(
     db: &SemanticDatabase,
-    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
@@ -660,7 +660,7 @@ fn file_matches_workspace_id(db: &SemanticDatabase, file_id: FileId, ws_id: Work
     }
 }
 
-fn find_global_types(db: &SemanticDatabase, _config: &Emmyrc, full_name: &str) -> Arc<[TypeDef]> {
+fn find_global_types(db: &SemanticDatabase, full_name: &str) -> Arc<[TypeDef]> {
     let mut out: Vec<TypeDef> = Vec::new();
     for ws_id in all_workspace_ids(db) {
         let index = workspace_type_index_for(db, ws_id);
@@ -669,21 +669,11 @@ fn find_global_types(db: &SemanticDatabase, _config: &Emmyrc, full_name: &str) -
     Arc::from(out)
 }
 
-fn find_internal_types(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    ws: WorkspaceId,
-    full_name: &str,
-) -> Arc<[TypeDef]> {
+fn find_internal_types(db: &SemanticDatabase, ws: WorkspaceId, full_name: &str) -> Arc<[TypeDef]> {
     workspace_type_index_for(db, ws).find_all(TypeScope::Internal(ws), full_name)
 }
 
-fn find_file_types(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    file_id: FileId,
-    full_name: &str,
-) -> Arc<[TypeDef]> {
+fn find_file_types(db: &SemanticDatabase, file_id: FileId, full_name: &str) -> Arc<[TypeDef]> {
     let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
     workspace_type_index_for(db, ws).find_all(TypeScope::File(file_id), full_name)
 }
@@ -692,7 +682,6 @@ fn find_file_types(
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 pub(crate) fn resolve_type_def_locations(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     file: FileId,
     bare_name: SmolStr,
 ) -> Arc<[TypeDef]> {
@@ -702,36 +691,36 @@ pub(crate) fn resolve_type_def_locations(
 
     if let Some(ns) = &facts.namespace {
         let full = SmolStr::new(format!("{}.{}", ns, bare_name));
-        let defs = find_internal_types(db, config, ws, &full);
+        let defs = find_internal_types(db, ws, &full);
         if !defs.is_empty() {
             return defs;
         }
-        let defs = find_global_types(db, config, &full);
+        let defs = find_global_types(db, &full);
         if !defs.is_empty() {
             return defs;
         }
     }
     for us in &facts.usings {
         let full = SmolStr::new(format!("{}.{}", us, bare_name));
-        let defs = find_internal_types(db, config, ws, &full);
+        let defs = find_internal_types(db, ws, &full);
         if !defs.is_empty() {
             return defs;
         }
-        let defs = find_global_types(db, config, &full);
+        let defs = find_global_types(db, &full);
         if !defs.is_empty() {
             return defs;
         }
     }
 
-    let defs = find_file_types(db, config, file_id, &bare_name);
+    let defs = find_file_types(db, file_id, &bare_name);
     if !defs.is_empty() {
         return defs;
     }
-    let defs = find_internal_types(db, config, ws, &bare_name);
+    let defs = find_internal_types(db, ws, &bare_name);
     if !defs.is_empty() {
         return defs;
     }
-    find_global_types(db, config, &bare_name)
+    find_global_types(db, &bare_name)
 }
 
 /// Resolve a named type in the current file scope (mirrors the old `find_type_decl` order):
@@ -739,11 +728,10 @@ pub(crate) fn resolve_type_def_locations(
 /// 3. bare name (**same-file Private** -> Internal -> Global).
 pub(crate) fn resolve_type_def(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     file: FileId,
     bare_name: SmolStr,
 ) -> Option<TypeDef> {
-    resolve_type_def_locations(db, config, file, bare_name)
+    resolve_type_def_locations(db, file, bare_name)
         .first()
         .cloned()
 }
@@ -755,12 +743,11 @@ pub(crate) fn resolve_type_def(
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
 pub(crate) fn constructor_attribute_of_type(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     type_def: SemanticId,
 ) -> Option<ConstructorAttribute> {
-    for resolved in resolve_owner_set(db, config, type_def.clone()) {
+    for resolved in resolve_owner_set(db, type_def.clone()) {
         if matches!(resolved, SemanticId::Decl(_)) {
-            if let Some(attribute) = constructor_attribute_of_decl(db, config, resolved.clone()) {
+            if let Some(attribute) = constructor_attribute_of_decl(db, resolved.clone()) {
                 return Some(attribute);
             }
         }
@@ -770,7 +757,6 @@ pub(crate) fn constructor_attribute_of_type(
 
 fn constructor_attribute_of_decl(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     decl: SemanticId,
 ) -> Option<ConstructorAttribute> {
     let key = match &decl {
@@ -788,7 +774,7 @@ fn constructor_attribute_of_decl(
     let LuaExpr::NameExpr(name_expr) = &prefix else {
         return None;
     };
-    let callee_decl = resolve_name(db, file, config, name_expr.get_position())?;
+    let callee_decl = resolve_name(db, file, name_expr.get_position())?;
     let callee_file = match &callee_decl {
         SemanticId::Decl(key) => key.file_id,
         _ => return None,
@@ -820,11 +806,7 @@ pub struct WorkspaceMemberIndex {
 }
 
 /// Member index scoped to a single workspace.
-fn build_workspace_member_index(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    ws_id: WorkspaceId,
-) -> WorkspaceMemberIndex {
+fn build_workspace_member_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
     for shard in 0..EXPORT_SHARDS {
         let shard = export_shard(db, shard);
@@ -894,7 +876,7 @@ pub(crate) fn file_references(db: &SemanticDatabase, file: FileId) -> &FileRefer
     db.file_references_of(file)
 }
 
-fn build_file_references(db: &SemanticDatabase, file: FileId, config: &Emmyrc) -> FileReferences {
+fn build_file_references(db: &SemanticDatabase, file: FileId) -> FileReferences {
     let facts = file_facts(db, file);
     let tree = syntax_tree(db, file);
     let mut out = FileReferences::default();
@@ -902,7 +884,7 @@ fn build_file_references(db: &SemanticDatabase, file: FileId, config: &Emmyrc) -
     // Name use sites -> declarations.
     for name_use in &facts.name_uses {
         out.name_deps.insert(name_use.name.clone());
-        if let Some(decl) = resolve_name(db, file, config, name_use.syntax.get_range().start()) {
+        if let Some(decl) = resolve_name(db, file, name_use.syntax.get_range().start()) {
             out.decl_refs
                 .entry(decl)
                 .or_default()
@@ -932,7 +914,7 @@ fn build_file_references(db: &SemanticDatabase, file: FileId, config: &Emmyrc) -
             let _ = owner;
             out.member_name_deps.insert(name.clone());
         }
-        if let Some(member_id) = resolve_member_id(db, config, &facts, &index_expr) {
+        if let Some(member_id) = resolve_member_id(db, &facts, &index_expr) {
             let Some(key) = index_expr.get_index_key() else {
                 continue;
             };
@@ -969,7 +951,7 @@ pub(crate) fn reference_shard(db: &SemanticDatabase, shard: u8) -> &ReferenceSha
     db.reference_shard_of(shard)
 }
 
-fn build_reference_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> ReferenceShard {
+fn build_reference_shard(db: &SemanticDatabase, shard: u8) -> ReferenceShard {
     let mut out = ReferenceShard::default();
     for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
@@ -1008,7 +990,6 @@ fn build_reference_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> 
 /// the shard results for the requested workspace.
 fn build_workspace_reference_index(
     db: &SemanticDatabase,
-    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
     let mut out = WorkspaceReferenceIndex::default();
@@ -1060,13 +1041,12 @@ pub(crate) fn workspace_reference_index_for(
 /// Query-level member resolution: owner/name -> concrete member id.
 fn resolve_member_id(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     facts: &FileFacts,
     index_expr: &LuaIndexExpr,
 ) -> Option<SemanticId> {
     let (owner, name) = member_ref_from_index_expr(facts, index_expr)?;
-    for resolved in resolve_owner_set(db, config, owner) {
-        for member in members_of_owner(db, config, resolved).iter().cloned() {
+    for resolved in resolve_owner_set(db, owner) {
+        for member in members_of_owner(db, resolved).iter().cloned() {
             if member.name == name {
                 return Some(member.id);
             }
@@ -1076,11 +1056,7 @@ fn resolve_member_id(
 }
 
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
-pub(crate) fn members_of_owner(
-    db: &SemanticDatabase,
-    config: &Emmyrc,
-    owner: SemanticId,
-) -> Arc<[MemberRef]> {
+pub(crate) fn members_of_owner(db: &SemanticDatabase, owner: SemanticId) -> Arc<[MemberRef]> {
     // An owner with a file-local identity (Decl/Member) only has members in its declaring file:
     // read that file's facts directly, avoiding a 64-shard scan and narrowing invalidation to a single file.
     let owner_file = match &owner {
@@ -1089,7 +1065,7 @@ pub(crate) fn members_of_owner(
         _ => None,
     };
     let Some(owner_file) = owner_file else {
-        return return_members_of_owner_scan(db, config, owner);
+        return return_members_of_owner_scan(db, owner);
     };
     if let Some(file) = db.file_data_id(owner_file) {
         let facts = file_facts(db, file);
@@ -1104,14 +1080,10 @@ pub(crate) fn members_of_owner(
         return Arc::from(members);
     }
 
-    return_members_of_owner_scan(db, config, owner)
+    return_members_of_owner_scan(db, owner)
 }
 
-fn return_members_of_owner_scan(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    owner: SemanticId,
-) -> Arc<[MemberRef]> {
+fn return_members_of_owner_scan(db: &SemanticDatabase, owner: SemanticId) -> Arc<[MemberRef]> {
     let mut out: Vec<MemberRef> = Vec::new();
     for ws_id in all_workspace_ids(db) {
         let index = workspace_member_index_for(db, ws_id);
@@ -1129,7 +1101,6 @@ fn return_members_of_owner_scan(
 /// (which already has `members_by_owner_name`).
 pub(crate) fn members_of_owner_named(
     db: &SemanticDatabase,
-    _config: &Emmyrc,
     owner: SemanticId,
     name: SmolStr,
 ) -> Arc<[MemberRef]> {
@@ -1167,16 +1138,12 @@ pub(crate) fn members_of_owner_named(
 
 /// Member keys of an owner `SemanticId` (cross-file, completion candidates).
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
-pub(crate) fn member_keys_of_owner(
-    db: &SemanticDatabase,
-    config: &Emmyrc,
-    owner: SemanticId,
-) -> Vec<SmolStr> {
+pub(crate) fn member_keys_of_owner(db: &SemanticDatabase, owner: SemanticId) -> Vec<SmolStr> {
     let mut keys: Vec<SmolStr> = Vec::new();
     // Union of dual identities: same-name type (@field) + runtime value (member declaration).
-    for resolved in resolve_owner_set(db, config, owner.clone()) {
+    for resolved in resolve_owner_set(db, owner.clone()) {
         keys.extend(
-            members_of_owner(db, config, resolved)
+            members_of_owner(db, resolved)
                 .iter()
                 .cloned()
                 .map(|member| member.name),
@@ -1190,24 +1157,19 @@ pub(crate) fn member_keys_of_owner(
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
 pub(crate) fn type_defs_in_scope(
     db: &SemanticDatabase,
-    config: &Emmyrc,
     scope: TypeScope,
     full_name: SmolStr,
 ) -> Arc<[TypeDef]> {
     match scope {
-        TypeScope::Global => find_global_types(db, config, &full_name),
-        TypeScope::Internal(ws) => find_internal_types(db, config, ws, &full_name),
-        TypeScope::File(file_id) => find_file_types(db, config, file_id, &full_name),
+        TypeScope::Global => find_global_types(db, &full_name),
+        TypeScope::Internal(ws) => find_internal_types(db, ws, &full_name),
+        TypeScope::File(file_id) => find_file_types(db, file_id, &full_name),
     }
 }
 
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
-pub(crate) fn global_type_by_name(
-    db: &SemanticDatabase,
-    config: &Emmyrc,
-    full_name: SmolStr,
-) -> Option<SemanticId> {
-    find_global_types(db, config, &full_name)
+pub(crate) fn global_type_by_name(db: &SemanticDatabase, full_name: SmolStr) -> Option<SemanticId> {
+    find_global_types(db, &full_name)
         .first()
         .map(|def| def.id.clone())
 }
@@ -1219,11 +1181,7 @@ pub(crate) fn global_type_by_name(
 /// This is the key isolation layer: `std` / library / main workspaces are indexed
 /// separately, so editing main workspace files does not rebuild the std/library
 /// indexes.
-fn build_workspace_decl_index(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    ws_id: WorkspaceId,
-) -> WorkspaceDeclIndex {
+fn build_workspace_decl_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> WorkspaceDeclIndex {
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
     let mut runtime_by_name: HashMap<SmolStr, Vec<SemanticId>> = HashMap::new();
     let mut runtime_by_file_name: HashMap<(FileId, SmolStr), SemanticId> = HashMap::new();
@@ -1332,11 +1290,7 @@ impl WorkspaceDeclIndex {
 }
 
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
-pub(crate) fn global_decl_by_name(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    name: SmolStr,
-) -> Option<SemanticId> {
+pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Option<SemanticId> {
     let roots = db.workspace_roots().to_vec();
     if roots.is_empty() {
         return workspace_decl_index_for(db, WorkspaceId::MAIN).global_decl_named(&name);
@@ -1378,7 +1332,7 @@ pub(crate) fn module_shard(db: &SemanticDatabase, shard: u8) -> &ModuleShard {
     db.module_shard_of(shard)
 }
 
-fn build_module_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> ModuleShard {
+fn build_module_shard(db: &SemanticDatabase, shard: u8) -> ModuleShard {
     let roots = db.workspace_roots().to_vec();
     let paths: Vec<PathBuf> = if roots.is_empty() {
         db.file_ids()
@@ -1445,11 +1399,7 @@ fn build_module_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> Mod
 
 /// Workspace module index: module name (relative to workspace root) -> file.
 /// Module index scoped to a single workspace.
-fn build_workspace_module_index(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    ws_id: WorkspaceId,
-) -> ModuleIndex {
+fn build_workspace_module_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> ModuleIndex {
     let roots = db.workspace_roots().to_vec();
     let ws_roots: Vec<PathBuf> = roots
         .iter()
@@ -1853,11 +1803,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 /// Phase 2 association: resolve `Name("a.b")` to a real definition (type/variable/member chain).
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
-pub(crate) fn resolve_owner(
-    db: &SemanticDatabase,
-    config: &Emmyrc,
-    owner: SemanticId,
-) -> Option<SemanticId> {
+pub(crate) fn resolve_owner(db: &SemanticDatabase, owner: SemanticId) -> Option<SemanticId> {
     let SemanticId::Name(name) = &owner else {
         return Some(owner.clone());
     };
@@ -1865,39 +1811,35 @@ pub(crate) fn resolve_owner(
         // "a.b" -> resolve "a" first, then take its member "b".
         let head = SmolStr::new(&name[..dot]);
         let tail = &name[dot + 1..];
-        let resolved = resolve_owner(db, config, SemanticId::name(head.clone()))?;
+        let resolved = resolve_owner(db, SemanticId::name(head.clone()))?;
         // Members are looked up by union: declared under the head's name key (same-file `M.N = {}`) or under a concrete id key (`@field` etc.).
-        let mut members = members_of_owner(db, config, SemanticId::name(head.clone())).to_vec();
-        members.extend(members_of_owner(db, config, resolved).iter().cloned());
+        let mut members = members_of_owner(db, SemanticId::name(head.clone())).to_vec();
+        members.extend(members_of_owner(db, resolved).iter().cloned());
         members
             .into_iter()
             .find(|member| member.name.as_str() == tail)
             .map(|member| member.id)
     } else {
-        global_type_by_name(db, config, SmolStr::new(name.as_str()))
-            .or_else(|| global_decl_by_name(db, config, SmolStr::new(name.as_str())))
+        global_type_by_name(db, SmolStr::new(name.as_str()))
+            .or_else(|| global_decl_by_name(db, SmolStr::new(name.as_str())))
     }
 }
 
 /// Phase 2 association: resolve an owner to an **identity set** (dual identity: same-name type + runtime value).
 /// `Name("M")` -> `{TypeDef(M), Decl(M)}`; member lookup uses the union across sets.
 /// For name chains (`a.b`), recursively take members along each head identity.
-pub(crate) fn resolve_owner_set(
-    db: &SemanticDatabase,
-    config: &Emmyrc,
-    owner: SemanticId,
-) -> Vec<SemanticId> {
+pub(crate) fn resolve_owner_set(db: &SemanticDatabase, owner: SemanticId) -> Vec<SemanticId> {
     match &owner {
         SemanticId::Name(name) => {
             // Keep the original Name: global runtime members are declared under Name keys.
             let mut out: Vec<SemanticId> = vec![owner.clone()];
             let name_str = SmolStr::new(name.as_str());
             // Type (global, cross-file).
-            if let Some(type_def) = global_type_by_name(db, config, name_str.clone()) {
+            if let Some(type_def) = global_type_by_name(db, name_str.clone()) {
                 push_unique(&mut out, type_def);
             }
             // Global variable.
-            if let Some(decl) = global_decl_by_name(db, config, name_str.clone()) {
+            if let Some(decl) = global_decl_by_name(db, name_str.clone()) {
                 push_unique(&mut out, decl);
             }
             // Type runtime value: same-name decl in the file declaring the same-name type (`local M = {}` pattern).
@@ -1912,7 +1854,7 @@ pub(crate) fn resolve_owner_set(
                 let index = workspace_decl_index_for(db, ws_id);
                 runtime_decls.extend(index.runtime_decls_named(&name_str).iter().cloned());
             }
-            if let Some(decl) = global_decl_by_name(db, config, name_str.clone()) {
+            if let Some(decl) = global_decl_by_name(db, name_str.clone()) {
                 runtime_decls.push(decl);
             }
             // `---@class MyClass` + `x = {}`: differently-named runtime tables are also associated with the class definition by owner_syntax.
@@ -1942,8 +1884,8 @@ pub(crate) fn resolve_owner_set(
             if let Some(dot) = name.rfind('.') {
                 let head = SmolStr::new(&name[..dot]);
                 let tail = &name[dot + 1..];
-                for head_owner in resolve_owner_set(db, config, SemanticId::name(head)) {
-                    for member in members_of_owner(db, config, head_owner).iter().cloned() {
+                for head_owner in resolve_owner_set(db, SemanticId::name(head)) {
+                    for member in members_of_owner(db, head_owner).iter().cloned() {
                         if member.name.as_str() == tail {
                             push_unique(&mut out, member.id);
                         }
@@ -2038,7 +1980,7 @@ pub(crate) fn decl_type(
     };
 
     if let Some(type_syntax) = decl.doc_type_syntax {
-        let shell = lower_doc_type(db, file, config, type_syntax, &[]);
+        let shell = lower_doc_type(db, file, type_syntax, &[]);
         if !shell.is_unknown() {
             return shell;
         }
@@ -2061,7 +2003,7 @@ pub(crate) fn decl_type(
         && let Some((_, type_syntax)) = docs.param_types.iter().find(|(name, _)| name == &decl.name)
     {
         let generics = docs.generic_params.as_slice();
-        let mut shell = lower_doc_type(db, file, config, *type_syntax, generics);
+        let mut shell = lower_doc_type(db, file, *type_syntax, generics);
         if !shell.is_unknown() {
             // `---@param name? T`: the parameter type must include nil.
             if docs.nullable_params.iter().any(|n| n == &decl.name) {
@@ -2149,18 +2091,18 @@ fn iter_slot_type(
     for candidate in &arg_shell.candidates {
         let (def, generic_args) = match candidate {
             TypeCandidate::Named(name) => {
-                let def = resolve_type_def(db, config, file, SmolStr::new(name.as_str()))?;
+                let def = resolve_type_def(db, file, SmolStr::new(name.as_str()))?;
                 (def, Vec::new())
             }
             TypeCandidate::GenericInstance(ins) => {
-                let def = resolve_type_def(db, config, file, SmolStr::new(ins.name.as_str()))?;
+                let def = resolve_type_def(db, file, SmolStr::new(ins.name.as_str()))?;
                 (def, ins.args.clone())
             }
             _ => continue,
         };
-        let mut member_refs = members_of_owner(db, config, def.id.clone()).to_vec();
-        for resolved in resolve_owner_set(db, config, def.id.clone()) {
-            member_refs.extend(members_of_owner(db, config, resolved).iter().cloned());
+        let mut member_refs = members_of_owner(db, def.id.clone()).to_vec();
+        for resolved in resolve_owner_set(db, def.id.clone()) {
+            member_refs.extend(members_of_owner(db, resolved).iter().cloned());
         }
         for member_ref in member_refs
             .iter()
@@ -2203,7 +2145,6 @@ fn iter_slot_type(
                     slots.push(lower_doc_type_node(
                         db,
                         member_file,
-                        config,
                         &def.generic_params,
                         &ret_type,
                     ));
@@ -2225,7 +2166,6 @@ fn iter_slot_type(
 pub(crate) fn lower_doc_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &Emmyrc,
     type_syntax: LuaSyntaxId,
     generics: &[DocGenericParam],
 ) -> TypeShell {
@@ -2237,13 +2177,12 @@ pub(crate) fn lower_doc_type(
     let Some(doc_type) = LuaDocType::cast(node) else {
         return TypeShell::unknown();
     };
-    lower_doc_type_node(db, file, config, generics, &doc_type)
+    lower_doc_type_node(db, file, generics, &doc_type)
 }
 
 fn lower_doc_type_node(
     db: &SemanticDatabase,
     file: FileId,
-    config: &Emmyrc,
     generics: &[DocGenericParam],
     doc_type: &LuaDocType,
 ) -> TypeShell {
@@ -2255,7 +2194,7 @@ fn lower_doc_type_node(
                     TypeShell::from_generic(&name)
                 } else if let Some(primitive) = primitive_from_name(&name) {
                     primitive
-                } else if let Some(def) = resolve_type_def(db, config, file, SmolStr::new(&name)) {
+                } else if let Some(def) = resolve_type_def(db, file, SmolStr::new(&name)) {
                     TypeShell::from_name(def.full_name.as_str())
                 } else {
                     TypeShell::from_name(&name)
@@ -2290,20 +2229,16 @@ fn lower_doc_type_node(
         },
         LuaDocType::Array(array) => array
             .get_type()
-            .map(|base| {
-                TypeShell::from_array(lower_doc_type_node(db, file, config, generics, &base))
-            })
+            .map(|base| TypeShell::from_array(lower_doc_type_node(db, file, generics, &base)))
             .unwrap_or_else(|| TypeShell::from_primitive(PrimitiveType::Table)),
         LuaDocType::Variadic(variadic) => variadic
             .get_type()
-            .map(|inner| {
-                TypeShell::from_variadic(lower_doc_type_node(db, file, config, generics, &inner))
-            })
+            .map(|inner| TypeShell::from_variadic(lower_doc_type_node(db, file, generics, &inner)))
             .unwrap_or_else(TypeShell::unknown),
         LuaDocType::Tuple(tuple) => {
             let types = tuple
                 .get_types()
-                .map(|item| lower_doc_type_node(db, file, config, generics, &item))
+                .map(|item| lower_doc_type_node(db, file, generics, &item))
                 .collect();
             TypeShell::from_tuple(types)
         }
@@ -2322,7 +2257,7 @@ fn lower_doc_type_node(
                 let mut args = Vec::new();
                 if let Some(list) = generic_type.get_generic_types() {
                     for arg in list.get_types() {
-                        args.push(lower_doc_type_node(db, file, config, generics, &arg));
+                        args.push(lower_doc_type_node(db, file, generics, &arg));
                     }
                 }
                 TypeShell::from_generic_instance(&name, args)
@@ -2378,8 +2313,7 @@ fn lower_doc_type_node(
                         .unwrap_or_default(),
                 );
                 if let Some(param_type) = param.get_type() {
-                    let mut shell =
-                        lower_doc_type_node(db, file, config, &local_generics, &param_type);
+                    let mut shell = lower_doc_type_node(db, file, &local_generics, &param_type);
                     // `fun(i?: integer)` params are nullable: the nullable marker is not on the type node.
                     if param.is_nullable() {
                         shell.merge(&TypeShell::from_primitive(PrimitiveType::Nil));
@@ -2394,8 +2328,7 @@ fn lower_doc_type_node(
             if let Some(list) = func_type.get_return_type_list() {
                 for ret in list.get_return_type_list() {
                     if let (_, Some(ret_type)) = ret.get_name_and_type() {
-                        let shell =
-                            lower_doc_type_node(db, file, config, &local_generics, &ret_type);
+                        let shell = lower_doc_type_node(db, file, &local_generics, &ret_type);
                         returns.merge(&shell);
                         returns_multi.push(shell);
                     }
@@ -2424,8 +2357,8 @@ fn lower_doc_type_node(
             let op = binary.get_op_token().map(|token| token.get_op());
             if op == Some(LuaTypeBinaryOperator::Union) {
                 if let Some((left, right)) = binary.get_types() {
-                    let mut shell = lower_doc_type_node(db, file, config, generics, &left);
-                    shell.merge(&lower_doc_type_node(db, file, config, generics, &right));
+                    let mut shell = lower_doc_type_node(db, file, generics, &left);
+                    shell.merge(&lower_doc_type_node(db, file, generics, &right));
                     return shell;
                 }
             }
@@ -2435,7 +2368,7 @@ fn lower_doc_type_node(
             .get_type()
             .map(|inner| {
                 // `T?` = T | nil.
-                let mut shell = lower_doc_type_node(db, file, config, generics, &inner);
+                let mut shell = lower_doc_type_node(db, file, generics, &inner);
                 shell.merge(&TypeShell::from_primitive(PrimitiveType::Nil));
                 shell
             })
@@ -2444,7 +2377,7 @@ fn lower_doc_type_node(
             let mut shell = TypeShell::unknown();
             for field in multi.get_fields() {
                 if let Some(item) = field.get_type() {
-                    shell.merge(&lower_doc_type_node(db, file, config, generics, &item));
+                    shell.merge(&lower_doc_type_node(db, file, generics, &item));
                 }
             }
             shell
@@ -2499,7 +2432,7 @@ pub(crate) fn member_type(
                     .type_def_by_id(&member.owner)
                     .map(|def| def.generic_params.as_slice())
                     .unwrap_or(&[]);
-                let shell = lower_doc_type(db, file, config, value_syntax, generics);
+                let shell = lower_doc_type(db, file, value_syntax, generics);
                 if !shell.is_unknown() {
                     return shell;
                 }
@@ -2524,7 +2457,6 @@ pub(crate) fn member_type(
 pub(crate) fn member_keys_of_decl(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &Emmyrc,
     decl: SemanticId,
 ) -> Vec<SmolStr> {
     let facts = file_facts(db, file);
@@ -2543,7 +2475,6 @@ pub(crate) fn member_keys_of_decl(
 pub(crate) fn member_keys_of_type(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &Emmyrc,
     type_def: SemanticId,
 ) -> Vec<SmolStr> {
     let facts = file_facts(db, file);
@@ -2563,7 +2494,6 @@ pub(crate) fn type_member(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &Emmyrc,
     type_def: SemanticId,
     name: &str,
     visited: &mut Vec<SemanticId>,
@@ -2579,7 +2509,7 @@ pub(crate) fn type_member(
                 .type_def_by_id(&type_def)
                 .map(|def| def.generic_params.as_slice())
                 .unwrap_or(&[]);
-            let shell = lower_doc_type(db, file, config, value_syntax, generics);
+            let shell = lower_doc_type(db, file, value_syntax, generics);
             if !shell.is_unknown() {
                 return Some(shell);
             }
@@ -2589,9 +2519,7 @@ pub(crate) fn type_member(
     let def = facts.type_def_by_id(&type_def)?;
     for super_name in &def.super_names {
         if let Some(super_def) = facts.type_def_by_full_name(super_name) {
-            if let Some(shell) =
-                type_member(db, facts, file, config, super_def.id.clone(), name, visited)
-            {
+            if let Some(shell) = type_member(db, facts, file, super_def.id.clone(), name, visited) {
                 return Some(shell);
             }
         }
@@ -2633,7 +2561,6 @@ fn collect_type_keys(
 pub(crate) fn resolve_name(
     db: &SemanticDatabase,
     file: FileId,
-    config: &Emmyrc,
     offset: TextSize,
 ) -> Option<SemanticId> {
     let facts = file_facts(db, file);
@@ -2641,14 +2568,13 @@ pub(crate) fn resolve_name(
     facts
         .find_visible_decl_before_offset(&name_use.name, offset)
         .map(|decl| decl.id.clone())
-        .or_else(|| global_decl_by_name(db, config, name_use.name.clone()))
+        .or_else(|| global_decl_by_name(db, name_use.name.clone()))
 }
 
 /// All references to a declaration (name use sites).
 pub(crate) fn decl_references(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &Emmyrc,
     decl: SemanticId,
 ) -> Vec<LuaSyntaxId> {
     let facts = file_facts(db, file);
@@ -2692,7 +2618,7 @@ pub(crate) fn signature_returns(
         let generics = docs.generic_params.as_slice();
         let mut slots = Vec::with_capacity(docs.returns.len());
         for &type_syntax in &docs.returns {
-            slots.push(lower_doc_type(db, file, config, type_syntax, generics));
+            slots.push(lower_doc_type(db, file, type_syntax, generics));
         }
         if slots.iter().any(|slot| !slot.is_unknown()) {
             return slots;
@@ -2722,7 +2648,7 @@ pub(crate) fn signature_returns(
             let mut shell = TypeShell::unknown();
             for row in &rows {
                 if let Some(&type_syntax) = row.get(slot) {
-                    shell.merge(&lower_doc_type(db, file, config, type_syntax, generics));
+                    shell.merge(&lower_doc_type(db, file, type_syntax, generics));
                 } else {
                     shell.merge(&TypeShell::from_primitive(PrimitiveType::Nil));
                 }
@@ -2869,7 +2795,6 @@ pub(crate) fn signature_return(
 pub(crate) fn param_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
     param_index: usize,
 ) -> TypeShell {
@@ -2887,7 +2812,7 @@ pub(crate) fn param_type(
     else {
         return TypeShell::unknown();
     };
-    lower_doc_type(db, file, config, *type_syntax, &docs.generic_params)
+    lower_doc_type(db, file, *type_syntax, &docs.generic_params)
 }
 
 /// Call target -> its function body (closure) `LuaSyntaxId`.
@@ -2931,7 +2856,7 @@ pub(crate) fn module_export_type(
         }
         ModuleExport::Global { name } => {
             // For global exports, resolve by workspace declaration identity first, then fall back to the name.
-            let decl = global_decl_by_name(db, config, SmolStr::new(name.as_str()));
+            let decl = global_decl_by_name(db, SmolStr::new(name.as_str()));
             if let Some(decl) = decl {
                 let SemanticId::Decl(decl_key) = &decl else {
                     return TypeShell::from_name(name.as_str());
@@ -3141,7 +3066,7 @@ fn expr_type_node(
             }
             // Cross-file global fallback: global variable -> global type name.
             let global_name = SmolStr::new(name.as_str());
-            if let Some(decl) = global_decl_by_name(db, config, global_name.clone()) {
+            if let Some(decl) = global_decl_by_name(db, global_name.clone()) {
                 if let SemanticId::Decl(key) = &decl
                     && let Some(decl_file) = db.file_data_id(key.file_id)
                 {
@@ -3151,7 +3076,7 @@ fn expr_type_node(
                     }
                 }
             }
-            if let Some(type_def) = global_type_by_name(db, config, global_name) {
+            if let Some(type_def) = global_type_by_name(db, global_name) {
                 if let SemanticId::TypeDef(key) = &type_def {
                     return TypeShell::from_name(key.full_name.as_str());
                 }
@@ -3250,7 +3175,7 @@ fn expr_type_index(
     for candidate in &prefix_shell.candidates {
         // Generic instantiation `Box<number>`: member types contain `Generic(T)`, substitute with actual args.
         if let TypeCandidate::GenericInstance(ins) = candidate {
-            if let Some(def) = resolve_type_def(db, config, file, SmolStr::new(ins.name.as_str())) {
+            if let Some(def) = resolve_type_def(db, file, SmolStr::new(ins.name.as_str())) {
                 if let Some(shell) = member_type_via_owner(db, config, &def.id, &name) {
                     let substituted = substitute_generics(&shell, &def.generic_params, &ins.args);
                     if !substituted.is_unknown() {
@@ -3282,7 +3207,7 @@ fn expr_type_index(
                 )
             });
             let named_owner = SemanticId::name(type_name.clone());
-            let is_class_instance = resolve_type_def(db, config, file, type_name.clone())
+            let is_class_instance = resolve_type_def(db, file, type_name.clone())
                 .is_some_and(|def| def.kind == TypeDefKind::Class);
             if prefix_is_class_table || !is_class_instance {
                 if let Some(shell) = member_type_via_owner(db, config, &named_owner, &name) {
@@ -3300,7 +3225,7 @@ fn expr_type_index(
             if let Some(def) = def {
                 let mut visited = Vec::new();
                 if let Some(shell) =
-                    type_member(db, facts, file, config, def.id.clone(), &name, &mut visited)
+                    type_member(db, facts, file, def.id.clone(), &name, &mut visited)
                 {
                     return shell;
                 }
@@ -3353,8 +3278,8 @@ fn member_type_via_owner(
     name: &str,
 ) -> Option<TypeShell> {
     // Union of dual identities: same-name type (@field) + runtime value (member declaration).
-    for owner in resolve_owner_set(db, config, owner.clone()) {
-        for member in members_of_owner(db, config, owner).iter().cloned() {
+    for owner in resolve_owner_set(db, owner.clone()) {
+        for member in members_of_owner(db, owner).iter().cloned() {
             if member.name != name {
                 continue;
             }
@@ -3378,8 +3303,8 @@ fn member_type_via_owner_method(
     owner: &SemanticId,
     name: &str,
 ) -> Option<TypeShell> {
-    for resolved in resolve_owner_set(db, config, owner.clone()) {
-        for member in members_of_owner(db, config, resolved).iter().cloned() {
+    for resolved in resolve_owner_set(db, owner.clone()) {
+        for member in members_of_owner(db, resolved).iter().cloned() {
             if member.name != name {
                 continue;
             }

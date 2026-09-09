@@ -19,7 +19,6 @@ use crate::FileId;
 
 use super::SemanticDatabase;
 use super::query::file_facts;
-use crate::Emmyrc;
 
 pub use binder::FlowBinder;
 pub use flow_node::*;
@@ -46,7 +45,7 @@ pub(crate) fn flow_tree_of(db: &SemanticDatabase, file: FileId) -> &FlowTree {
     db.flow_tree_of(file)
 }
 
-pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId, _config: &Emmyrc) -> FlowTree {
+pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId) -> FlowTree {
     let file_id = file;
     let facts = file_facts(db, file);
     let tree = db

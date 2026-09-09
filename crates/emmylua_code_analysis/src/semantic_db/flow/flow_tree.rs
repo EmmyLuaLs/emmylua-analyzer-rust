@@ -8,7 +8,7 @@ use rowan::{TextRange, TextSize};
 use super::super::def::SemanticId;
 use super::{FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct FlowTree {
     decl_bind_expr_ref: HashMap<SemanticId, LuaAstPtr<LuaExpr>>,
     decl_multi_return_ref: HashMap<SemanticId, Vec<DeclMultiReturnRefAt>>,

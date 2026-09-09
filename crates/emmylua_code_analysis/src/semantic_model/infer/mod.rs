@@ -51,7 +51,7 @@ pub fn closure_param_lua(
     // Prevent recompiling the wrapping call during closure-return inference
     // (`closure_return_type_with_env` evaluating `f(x)` may resolve a same-named param
     // declaration back to the same call site, causing infinite recursion).
-    if model.is_in_closure_return_infer(closure_syntax) {
+    if model.is_closure_return_in_progress(closure_syntax) {
         return LuaType::Unknown;
     }
     vm::closure_param_vm(model, closure_syntax, param_index)
@@ -62,9 +62,6 @@ pub fn closure_param_lua(
 /// full semantic model, preserving structures TypeShell cannot express such as `never`
 /// and intersection members.
 pub(crate) fn closure_return_lua(model: &SemanticModel, closure_syntax: LuaSyntaxId) -> LuaType {
-    if model.is_in_closure_return_infer(closure_syntax) {
-        return LuaType::Unknown;
-    }
     let vm = vm::InferVm::new(model, &[]);
     vm.closure_return_type_with_env(closure_syntax)
 }

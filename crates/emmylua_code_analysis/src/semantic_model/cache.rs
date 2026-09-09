@@ -1,8 +1,7 @@
 //! Per-`SemanticModel` local cache.
 //!
-//! This is intentionally *not* shared across models or semantic snapshots. A
-//! `SemanticModel` is a short-lived view: it is created for one file analysis,
-//! accumulates local query results, and is discarded when the analysis is done.
+//! A model owns one cache for its lifetime. Recursion state is represented by
+//! `CacheEntry::InProgress` so re-entry checks stay O(1).
 
 use std::collections::HashMap;
 
@@ -18,11 +17,17 @@ use crate::{FileId, LuaFunctionType, LuaType};
 use super::member::MemberInfo;
 use super::{CallSiteAnalysis, ResolvedMember};
 
+#[derive(Debug, Clone)]
+pub(crate) enum CacheEntry<T> {
+    InProgress,
+    Ready(T),
+}
+
 #[derive(Default)]
 pub(crate) struct SemanticLocalCache {
-    pub(crate) expr_type: HashMap<(FileId, LuaSyntaxId), LuaType>,
-    pub(crate) decl_type: HashMap<(FileId, SemanticId), Option<LuaType>>,
-    pub(crate) member_type: HashMap<(FileId, SemanticId), Option<LuaType>>,
+    pub(crate) expr_type: HashMap<(FileId, LuaSyntaxId), CacheEntry<LuaType>>,
+    pub(crate) decl_type: HashMap<(FileId, SemanticId), CacheEntry<Option<LuaType>>>,
+    pub(crate) member_type: HashMap<(FileId, SemanticId), CacheEntry<Option<LuaType>>>,
     pub(crate) resolve_member: HashMap<(FileId, LuaSyntaxId), Option<ResolvedMember>>,
     pub(crate) expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), LuaType>,
     pub(crate) resolve_name: HashMap<(FileId, TextSize), Option<SemanticId>>,

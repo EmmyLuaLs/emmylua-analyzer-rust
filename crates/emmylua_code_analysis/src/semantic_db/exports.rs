@@ -15,7 +15,6 @@ use crate::{DeclKind, FileId};
 
 use super::SemanticDatabase;
 use super::query::file_facts;
-use crate::Emmyrc;
 
 /// Export identities visible from a single file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +30,19 @@ pub struct FileExports {
     pub members: Vec<MemberExport>,
     /// Module export (top-level `return M`).
     pub module: Option<ModuleExport>,
+}
+
+impl Default for FileExports {
+    fn default() -> Self {
+        Self {
+            file_id: FileId::VIRTUAL,
+            types: Vec::new(),
+            globals: Vec::new(),
+            runtime_values: Vec::new(),
+            members: Vec::new(),
+            module: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +69,6 @@ pub(crate) fn file_exports(db: &SemanticDatabase, file: FileId) -> &FileExports 
 pub(super) fn build_file_exports(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &Emmyrc,
     file_id: FileId,
 ) -> FileExports {
     let facts = file_facts(db, file);
@@ -127,11 +138,7 @@ pub(crate) fn export_shard(db: &SemanticDatabase, shard: u8) -> &ExportShard {
     db.export_shard_of(shard)
 }
 
-pub(super) fn build_export_shard(
-    db: &SemanticDatabase,
-    _config: &Emmyrc,
-    shard: u8,
-) -> ExportShard {
+pub(super) fn build_export_shard(db: &SemanticDatabase, shard: u8) -> ExportShard {
     let mut types = Vec::new();
     let mut globals = Vec::new();
     let mut runtime_values = Vec::new();
@@ -167,7 +174,7 @@ pub(super) fn build_export_shard(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExportShard {
     pub types: Vec<TypeDef>,
     pub globals: Vec<GlobalExport>,

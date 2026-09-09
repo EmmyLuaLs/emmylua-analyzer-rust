@@ -10,7 +10,7 @@ pub mod type_eval;
 mod legacy_visibility_tests;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use emmylua_parser::{
@@ -50,15 +50,12 @@ use crate::{
 pub struct SemanticModel<'db> {
     db: &'db SemanticDatabase,
     file_id: FileId,
-    /// Closure return-inference in-progress stack (replaces thread_local; scoped to each SemanticModel instance).
-    closure_return_infer_stack: RefCell<Vec<LuaSyntaxId>>,
-    /// Expression inference reentry guard.
-    expr_infer_guard: RefCell<Vec<LuaSyntaxId>>,
-    /// Declaration / member inference reentry guard.
-    decl_member_guard: RefCell<Vec<SemanticId>>,
-    /// Short-lived local query cache. This is the intended cache layer for
-    /// high-frequency semantic queries; it is discarded with the model.
+    /// Per-model local query cache. Recursion-in-progress state is stored in
+    /// cache entries, so no separate O(n) guard stacks are needed.
     cache: RefCell<cache::SemanticLocalCache>,
+    /// Closure-return inference depends on the VM closure environment, so its
+    /// result cannot be globally memoized; only O(1) in-progress tracking is kept.
+    closure_return_in_progress: RefCell<HashSet<LuaSyntaxId>>,
 }
 
 /// Member-reference resolution result: index expression -> actual member declaration.
@@ -117,48 +114,27 @@ impl<'db> SemanticModel<'db> {
         Self {
             db,
             file_id,
-            closure_return_infer_stack: RefCell::new(Vec::new()),
-            expr_infer_guard: RefCell::new(Vec::new()),
-            decl_member_guard: RefCell::new(Vec::new()),
             cache: RefCell::new(cache::SemanticLocalCache::default()),
+            closure_return_in_progress: RefCell::new(HashSet::new()),
         }
     }
 
-    pub(crate) fn begin_expr_infer(&self, expr_syntax: LuaSyntaxId) {
-        let mut guard = self.expr_infer_guard.borrow_mut();
-        if !guard.contains(&expr_syntax) {
-            guard.push(expr_syntax);
-        }
+    pub(crate) fn is_closure_return_in_progress(&self, closure_syntax: LuaSyntaxId) -> bool {
+        self.closure_return_in_progress
+            .borrow()
+            .contains(&closure_syntax)
     }
 
-    pub(crate) fn end_expr_infer(&self, expr_syntax: LuaSyntaxId) {
-        let mut guard = self.expr_infer_guard.borrow_mut();
-        if let Some(pos) = guard.iter().rposition(|id| *id == expr_syntax) {
-            guard.remove(pos);
-        }
-    }
-
-    pub(crate) fn is_expr_infer_active(&self, expr_syntax: LuaSyntaxId) -> bool {
-        self.expr_infer_guard.borrow().contains(&expr_syntax)
-    }
     pub(crate) fn begin_closure_return_infer(&self, closure_syntax: LuaSyntaxId) {
-        let mut stack = self.closure_return_infer_stack.borrow_mut();
-        if !stack.contains(&closure_syntax) {
-            stack.push(closure_syntax);
-        }
+        self.closure_return_in_progress
+            .borrow_mut()
+            .insert(closure_syntax);
     }
 
     pub(crate) fn end_closure_return_infer(&self, closure_syntax: LuaSyntaxId) {
-        let mut stack = self.closure_return_infer_stack.borrow_mut();
-        if let Some(pos) = stack.iter().rposition(|id| *id == closure_syntax) {
-            stack.remove(pos);
-        }
-    }
-
-    pub(crate) fn is_in_closure_return_infer(&self, closure_syntax: LuaSyntaxId) -> bool {
-        self.closure_return_infer_stack
-            .borrow()
-            .contains(&closure_syntax)
+        self.closure_return_in_progress
+            .borrow_mut()
+            .remove(&closure_syntax);
     }
 
     /// Currently configured runtime version (used for `---@version` visibility checks).
@@ -1255,27 +1231,21 @@ impl<'db> SemanticModel<'db> {
             SemanticId::Member(key) => key.file_id,
             _ => self.file_id,
         };
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .decl_type
-            .get(&(cache_file, decl.clone()))
-        {
-            return cached.clone();
+        let key = (cache_file, decl.clone());
+        match self.cache.borrow().decl_type.get(&key) {
+            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
+            Some(cache::CacheEntry::InProgress) => return None,
+            None => {}
         }
-        {
-            let mut guard = self.decl_member_guard.borrow_mut();
-            if guard.contains(decl) {
-                return None;
-            }
-            guard.push(decl.clone());
-        }
-        let result = self.type_of_decl_impl(decl);
-        self.decl_member_guard.borrow_mut().pop();
         self.cache
             .borrow_mut()
             .decl_type
-            .insert((cache_file, decl.clone()), result.clone());
+            .insert(key.clone(), cache::CacheEntry::InProgress);
+        let result = self.type_of_decl_impl(decl);
+        self.cache
+            .borrow_mut()
+            .decl_type
+            .insert(key, cache::CacheEntry::Ready(result.clone()));
         result
     }
 
@@ -1960,27 +1930,21 @@ impl<'db> SemanticModel<'db> {
             SemanticId::Member(key) => key.file_id,
             _ => self.file_id,
         };
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .member_type
-            .get(&(cache_file, member.clone()))
-        {
-            return cached.clone();
+        let key = (cache_file, member.clone());
+        match self.cache.borrow().member_type.get(&key) {
+            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
+            Some(cache::CacheEntry::InProgress) => return None,
+            None => {}
         }
-        {
-            let mut guard = self.decl_member_guard.borrow_mut();
-            if guard.contains(member) {
-                return None;
-            }
-            guard.push(member.clone());
-        }
-        let result = self.type_of_member_impl(member);
-        self.decl_member_guard.borrow_mut().pop();
         self.cache
             .borrow_mut()
             .member_type
-            .insert((cache_file, member.clone()), result.clone());
+            .insert(key.clone(), cache::CacheEntry::InProgress);
+        let result = self.type_of_member_impl(member);
+        self.cache
+            .borrow_mut()
+            .member_type
+            .insert(key, cache::CacheEntry::Ready(result.clone()));
         result
     }
 
@@ -2440,7 +2404,7 @@ impl<'db> SemanticModel<'db> {
         if !matches!(decl.kind, DeclKind::Global) {
             return ty;
         }
-        let generic_names: std::collections::HashSet<SmolStr> = self
+        let generic_names: HashSet<SmolStr> = self
             .q()
             .signatures(key.file_id)
             .map(|sigs| {
@@ -3480,20 +3444,21 @@ impl<'db> SemanticModel<'db> {
     }
 
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
-        let file_id = self.file_id;
-        if let Some(cached) = self.cache.borrow().expr_type.get(&(file_id, expr_syntax)) {
-            return cached.clone();
+        let key = (self.file_id, expr_syntax);
+        match self.cache.borrow().expr_type.get(&key) {
+            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
+            Some(cache::CacheEntry::InProgress) => return LuaType::Unknown,
+            None => {}
         }
-        if self.is_expr_infer_active(expr_syntax) {
-            return LuaType::Unknown;
-        }
-        self.begin_expr_infer(expr_syntax);
-        let ty = infer::infer_expr(self, expr_syntax);
-        self.end_expr_infer(expr_syntax);
         self.cache
             .borrow_mut()
             .expr_type
-            .insert((file_id, expr_syntax), ty.clone());
+            .insert(key, cache::CacheEntry::InProgress);
+        let ty = infer::infer_expr(self, expr_syntax);
+        self.cache
+            .borrow_mut()
+            .expr_type
+            .insert(key, cache::CacheEntry::Ready(ty.clone()));
         ty
     }
 

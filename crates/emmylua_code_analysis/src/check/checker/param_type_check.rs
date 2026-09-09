@@ -10,13 +10,16 @@ use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxId, LuaTokenKind,
 };
 
-use crate::semantic_model::SemanticModel;
 use crate::semantic_model::infer::function_solver::functions_compatible;
 use crate::semantic_model::infer::unify;
 use crate::semantic_model::infer::vm::unify_call_bindings;
 use crate::semantic_model::render::humanize_type;
 use crate::semantic_model::type_check::is_compatible;
-use crate::{DiagnosticCode, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode};
+use crate::semantic_model::{SemanticModel, member, type_check, type_eval};
+use crate::{
+    DiagnosticCode, LuaFunctionType, LuaMemberKey, LuaTupleStatus, LuaTupleType, LuaType,
+    LuaTypeDeclId, LuaTypeNode, TypeDef, TypeDefKind, VariadicType,
+};
 
 use super::param_count::first_param_is_self;
 use super::{CheckContext, Checker};
@@ -97,14 +100,14 @@ fn check_pcall_forward(
 pub(crate) fn callable_candidates(
     semantic_model: &SemanticModel<'_>,
     callee: &LuaExpr,
-) -> Vec<crate::LuaFunctionType> {
+) -> Vec<LuaFunctionType> {
     semantic_model.callable_candidates_cached(callee)
 }
 
 pub(crate) fn callable_candidates_uncached(
     semantic_model: &SemanticModel<'_>,
     callee: &LuaExpr,
-) -> Vec<crate::LuaFunctionType> {
+) -> Vec<LuaFunctionType> {
     // For static member calls, the member table is the authoritative source of
     // callable signatures.  Avoid paying for full VM expression inference on the
     // callee when the member lookup already tells us there is no callable here.
@@ -148,7 +151,7 @@ pub(crate) fn callable_candidates_uncached(
 fn member_callable_candidates(
     semantic_model: &SemanticModel<'_>,
     index_expr: &LuaIndexExpr,
-) -> Vec<crate::LuaFunctionType> {
+) -> Vec<LuaFunctionType> {
     let mut candidates = Vec::new();
     let Some(resolved) = semantic_model.resolve_member(index_expr) else {
         return candidates;
@@ -158,7 +161,7 @@ fn member_callable_candidates(
         && let Some(prefix) = index_expr.get_prefix_expr()
     {
         let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
-        let key = crate::LuaMemberKey::Name(resolved.name.to_string().into());
+        let key = LuaMemberKey::Name(resolved.name.to_string().into());
         let member_ty = semantic_model.member_type(&prefix_ty, &key);
         if let Some(ty) = member_ty {
             candidates.extend(semantic_model.callable_functions_cached(&ty));
@@ -284,7 +287,7 @@ fn check_call(
     // Cheap candidate ordering: check likely overloads first so the common
     // “one candidate matches” case returns before running the expensive
     // parameter-by-parameter check on every other overload.
-    let mut ordered: Vec<&crate::LuaFunctionType> = candidates.iter().collect();
+    let mut ordered: Vec<&LuaFunctionType> = candidates.iter().collect();
     ordered.sort_by_key(|func| {
         quick_candidate_score(func, &analysis.arg_types, colon_call, &receiver_ty)
     });
@@ -380,8 +383,7 @@ fn table_literal_mismatch(
             let fields = object.get_fields();
             for (field, key) in table.get_fields_with_keys() {
                 let path = key.get_path_part();
-                let Some(expected) = fields.get(&crate::LuaMemberKey::Name(path.clone().into()))
-                else {
+                let Some(expected) = fields.get(&LuaMemberKey::Name(path.clone().into())) else {
                     continue;
                 };
                 let Some(value_expr) = field.get_value_expr() else {
@@ -421,7 +423,7 @@ fn table_literal_mismatch(
 /// It does not replace the real compatibility check; it only avoids running
 /// the expensive type-check path on obviously wrong overloads first.
 fn quick_candidate_score(
-    func: &crate::LuaFunctionType,
+    func: &LuaFunctionType,
     arg_types: &[LuaType],
     colon_call: bool,
     receiver_ty: &LuaType,
@@ -510,7 +512,7 @@ fn obvious_scalar_mismatch(arg_ty: &LuaType, param_ty: &LuaType) -> bool {
 
 fn check_candidate(
     semantic_model: &SemanticModel<'_>,
-    func: &crate::LuaFunctionType,
+    func: &LuaFunctionType,
     args: &[LuaExpr],
     colon_call: bool,
     receiver_ty: &LuaType,
@@ -636,15 +638,11 @@ fn check_arg_pairs(
         if is_vararg_slot {
             if let Some(param_ty) = param_ty {
                 let param_ty = unify::substitute(param_ty, bindings);
-                let param_ty = crate::semantic_model::type_eval::expand_alias_generic(
-                    semantic_model,
-                    &param_ty,
-                );
-                let param_ty =
-                    crate::semantic_model::type_eval::eval_conditionals(semantic_model, &param_ty);
+                let param_ty = type_eval::expand_alias_generic(semantic_model, &param_ty);
+                let param_ty = type_eval::eval_conditionals(semantic_model, &param_ty);
                 if let LuaType::Variadic(variadic) = &param_ty {
                     // `@param ... T...`: T is bound to a tuple of the whole argument sequence, not requiring the same type for each argument.
-                    if let crate::VariadicType::Base(base) = variadic.as_ref()
+                    if let VariadicType::Base(base) = variadic.as_ref()
                         && let LuaType::TplRef(tpl) = base
                         && !bindings.contains_key(&tpl.get_tpl_id())
                     {
@@ -698,17 +696,10 @@ fn check_arg_pairs(
                             continue;
                         }
                         slot_ty = unify::substitute(&slot_ty, bindings);
-                        slot_ty = crate::semantic_model::type_eval::expand_alias_generic(
-                            semantic_model,
-                            &slot_ty,
-                        );
+                        slot_ty = type_eval::expand_alias_generic(semantic_model, &slot_ty);
                         if arg_ty == slot_ty
                             || is_compatible(semantic_model, &arg_ty, &slot_ty)
-                            || crate::semantic_model::type_check::is_assign_compatible(
-                                semantic_model,
-                                &arg_ty,
-                                &slot_ty,
-                            )
+                            || type_check::is_assign_compatible(semantic_model, &arg_ty, &slot_ty)
                         {
                             continue;
                         }
@@ -740,11 +731,7 @@ fn check_arg_pairs(
                         let param_ty = unify::substitute(&param_ty_orig, bindings);
                         if arg_ty == param_ty
                             || param_generic_base_match(semantic_model, &arg_ty, &param_ty)
-                            || crate::semantic_model::type_check::is_assign_compatible(
-                                semantic_model,
-                                &arg_ty,
-                                &param_ty,
-                            )
+                            || type_check::is_assign_compatible(semantic_model, &arg_ty, &param_ty)
                         {
                             continue;
                         }
@@ -768,10 +755,8 @@ fn check_arg_pairs(
         let call_arg_ty = call_argument_type(semantic_model, arg, &arg_ty);
         let call_arg_ty = normalize_arg_for_check(semantic_model, &call_arg_ty);
         let param_ty = unify::substitute(param_ty, bindings);
-        let param_ty =
-            crate::semantic_model::type_eval::expand_alias_generic(semantic_model, &param_ty);
-        let param_ty =
-            crate::semantic_model::type_eval::eval_conditionals(semantic_model, &param_ty);
+        let param_ty = type_eval::expand_alias_generic(semantic_model, &param_ty);
+        let param_ty = type_eval::eval_conditionals(semantic_model, &param_ty);
         // Missing union member: when only A in `A|C` has `handle`, accessing `target.handle`
         // should report ParamTypeMismatch even if the type face happens to be string (missing members count as nil).
         if let LuaExpr::IndexExpr(index_expr) = arg
@@ -901,8 +886,8 @@ fn generic_table_required_mismatch(
         }
         _ => return None,
     };
-    let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
-    if def.kind != crate::TypeDefKind::Class {
+    let def = member::type_def_of(semantic_model, &id)?;
+    if def.kind != TypeDefKind::Class {
         return None;
     }
     let provided: Vec<String> = table
@@ -1022,7 +1007,7 @@ fn generic_constraint_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> 
     let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
         return None;
     };
-    if crate::semantic_model::member::type_def_of(semantic_model, id).is_some() {
+    if member::type_def_of(semantic_model, id).is_some() {
         return None;
     }
     let name = id.get_name();
@@ -1062,7 +1047,7 @@ fn value_kind(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> ValueKind {
 fn value_kind_inner(
     semantic_model: &SemanticModel<'_>,
     ty: &LuaType,
-    visited: &mut Vec<crate::LuaTypeDeclId>,
+    visited: &mut Vec<LuaTypeDeclId>,
 ) -> ValueKind {
     match ty {
         LuaType::Nil => ValueKind::Nil,
@@ -1090,15 +1075,15 @@ fn value_kind_inner(
                 return ValueKind::Other;
             }
             visited.push(id.clone());
-            let Some(def) = crate::semantic_model::member::type_def_of(semantic_model, id) else {
+            let Some(def) = member::type_def_of(semantic_model, id) else {
                 return ValueKind::Other;
             };
             match def.kind {
-                crate::TypeDefKind::Alias => semantic_model
+                TypeDefKind::Alias => semantic_model
                     .alias_target(&def)
                     .map(|target| value_kind_inner(semantic_model, &target, visited))
                     .unwrap_or(ValueKind::Other),
-                crate::TypeDefKind::Class => {
+                TypeDefKind::Class => {
                     if def
                         .super_names
                         .iter()
@@ -1117,14 +1102,14 @@ fn value_kind_inner(
                         ValueKind::Other
                     }
                 }
-                crate::TypeDefKind::Enum => enum_value_kind(semantic_model, &def),
+                TypeDefKind::Enum => enum_value_kind(semantic_model, &def),
             }
         }
         _ => ValueKind::Other,
     }
 }
 
-fn enum_value_kind(semantic_model: &SemanticModel<'_>, def: &crate::TypeDef) -> ValueKind {
+fn enum_value_kind(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> ValueKind {
     let mut kind: Option<ValueKind> = None;
     let Some(facts) = semantic_model.file_facts_of(def.file_id) else {
         return ValueKind::Other;
@@ -1238,16 +1223,13 @@ fn function_arg_compatible(
 }
 
 /// Signature / alias fun -> DocFunction (alias expands one layer; solver queue guards cycles).
-fn doc_function_of(
-    semantic_model: &SemanticModel<'_>,
-    ty: &LuaType,
-) -> Option<crate::LuaFunctionType> {
+fn doc_function_of(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaFunctionType> {
     match ty {
         LuaType::DocFunction(func) => Some(func.as_ref().clone()),
         LuaType::Signature(signature_id) => semantic_model.signature_lua_by_legacy_id(signature_id),
         LuaType::Ref(id) | LuaType::Def(id) => {
-            let def = crate::semantic_model::member::type_def_of(semantic_model, id)?;
-            if def.kind != crate::TypeDefKind::Alias {
+            let def = member::type_def_of(semantic_model, id)?;
+            if def.kind != TypeDefKind::Alias {
                 return None;
             }
             match semantic_model.alias_target(&def)? {
@@ -1282,7 +1264,7 @@ fn literal_compatible(
 fn literal_values(
     semantic_model: &SemanticModel<'_>,
     ty: &LuaType,
-    visited: &mut Vec<crate::LuaTypeDeclId>,
+    visited: &mut Vec<LuaTypeDeclId>,
 ) -> Option<Vec<String>> {
     match ty {
         LuaType::StringConst(s) | LuaType::DocStringConst(s) => Some(vec![s.as_ref().to_string()]),
@@ -1304,14 +1286,14 @@ fn literal_values(
                 return None;
             }
             visited.push(id.clone());
-            let def = crate::semantic_model::member::type_def_of(semantic_model, id)?;
-            if def.kind == crate::TypeDefKind::Alias {
+            let def = member::type_def_of(semantic_model, id)?;
+            if def.kind == TypeDefKind::Alias {
                 return semantic_model
                     .alias_target(&def)
                     .and_then(|target| literal_values(semantic_model, &target, visited));
             }
             // enum: runtime table member names and values.
-            if def.kind == crate::TypeDefKind::Enum {
+            if def.kind == TypeDefKind::Enum {
                 let facts = semantic_model.file_facts_of(def.file_id)?;
                 let decl = facts.decl_named(def.name.as_str())?;
                 let mut values = Vec::new();
@@ -1424,11 +1406,11 @@ fn receiver_range(args: &[LuaExpr]) -> rowan::TextRange {
 /// Mapped aliases like `Pick<T,K>` are handled nominally by `type_check::generic_type`;
 /// expanding them to raw Mapped early would break table-structure checks.
 fn normalize_arg_for_check(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> LuaType {
-    let expanded = crate::semantic_model::type_eval::expand_alias_generic(semantic_model, ty);
+    let expanded = type_eval::expand_alias_generic(semantic_model, ty);
     if contains_mapped(&expanded) {
         return ty.clone();
     }
-    crate::semantic_model::type_eval::eval_conditionals(semantic_model, &expanded)
+    type_eval::eval_conditionals(semantic_model, &expanded)
 }
 
 fn contains_mapped(ty: &LuaType) -> bool {
@@ -1447,8 +1429,8 @@ fn contains_mapped(ty: &LuaType) -> bool {
                     .any(|(k, v)| contains_mapped(k) || contains_mapped(v))
         }
         Variadic(variadic) => match variadic.as_ref() {
-            crate::VariadicType::Base(base) => contains_mapped(base),
-            crate::VariadicType::Multi(types) => types.iter().any(contains_mapped),
+            VariadicType::Base(base) => contains_mapped(base),
+            VariadicType::Multi(types) => types.iter().any(contains_mapped),
         },
         Call(call) => call.get_operands().iter().any(contains_mapped),
         Generic(generic) => generic.get_params().iter().any(contains_mapped),

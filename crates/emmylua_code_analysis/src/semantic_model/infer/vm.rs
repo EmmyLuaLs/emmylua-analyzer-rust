@@ -77,27 +77,6 @@ pub enum Instr {
     Result,
 }
 
-struct ClosureReturnInferGuard<'a> {
-    model: &'a SemanticModel<'a>,
-    closure_syntax: LuaSyntaxId,
-}
-
-impl<'a> ClosureReturnInferGuard<'a> {
-    fn new(model: &'a SemanticModel<'a>, closure_syntax: LuaSyntaxId) -> Self {
-        model.begin_closure_return_infer(closure_syntax);
-        Self {
-            model,
-            closure_syntax,
-        }
-    }
-}
-
-impl Drop for ClosureReturnInferGuard<'_> {
-    fn drop(&mut self) {
-        self.model.end_closure_return_infer(self.closure_syntax);
-    }
-}
-
 // ──────────────────────────────────────────────
 // Values
 // ──────────────────────────────────────────────
@@ -2179,7 +2158,16 @@ impl<'a> InferVm<'a> {
     /// environment. Used for higher-order generic closure-return back-inference
     /// (`fun(item: T): U` + `return item`).
     pub(crate) fn closure_return_type_with_env(&self, closure_syntax: LuaSyntaxId) -> LuaType {
-        let _guard = ClosureReturnInferGuard::new(self.model, closure_syntax);
+        if self.model.is_closure_return_in_progress(closure_syntax) {
+            return LuaType::Unknown;
+        }
+        self.model.begin_closure_return_infer(closure_syntax);
+        let ty = self.compute_closure_return_type_with_env(closure_syntax);
+        self.model.end_closure_return_infer(closure_syntax);
+        ty
+    }
+
+    fn compute_closure_return_type_with_env(&self, closure_syntax: LuaSyntaxId) -> LuaType {
         let Some(tree) = self.model.syntax_tree() else {
             return LuaType::Unknown;
         };
@@ -4330,7 +4318,7 @@ pub fn closure_param_vm(
     let Some(closure) = LuaClosureExpr::cast(node) else {
         return LuaType::Unknown;
     };
-    if model.is_in_closure_return_infer(closure_syntax) {
+    if model.is_closure_return_in_progress(closure_syntax) {
         return LuaType::Unknown;
     }
     // Find the wrapping call.

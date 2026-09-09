@@ -28,6 +28,22 @@ use inputs::{WorkspaceRoot, language_level_to_version};
 
 pub(crate) use facade::SemanticQueries;
 pub use facade::{MemberList, TypeDefList};
+
+pub(crate) struct FileCache {
+    facts: facts::FileFacts,
+    flow: flow::FlowTree,
+    exports: exports::FileExports,
+    references: query::FileReferences,
+}
+
+#[derive(Default)]
+pub(crate) struct ShardCache {
+    exports: exports::ExportShard,
+    deprecated: query::DeprecatedShard,
+    module: query::ModuleShard,
+    references: query::ReferenceShard,
+}
+
 pub struct SemanticDatabase {
     // ── Plain config/data ──
     config: Option<Arc<Emmyrc>>,
@@ -39,21 +55,11 @@ pub struct SemanticDatabase {
     /// Plain VFS state independent of workspace/config inputs.
     vfs: Vfs,
 
-    /// Plain per-file facts cache, built eagerly on every write.
-    file_facts: HashMap<FileId, facts::FileFacts>,
+    /// Per-file caches, kept together so file invalidation is one entry update.
+    files: HashMap<FileId, FileCache>,
 
-    /// Plain per-file control-flow graph cache (same invalidation as `file_facts`).
-    flow_trees: HashMap<FileId, flow::FlowTree>,
-
-    /// Plain per-file exports / shard caches.
-    file_exports: HashMap<FileId, exports::FileExports>,
-    export_shards: HashMap<u8, exports::ExportShard>,
-
-    /// Plain per-file references and remaining shard caches.
-    file_references: HashMap<FileId, query::FileReferences>,
-    deprecated_shards: HashMap<u8, query::DeprecatedShard>,
-    module_shards: HashMap<u8, query::ModuleShard>,
-    reference_shards: HashMap<u8, query::ReferenceShard>,
+    /// Per-shard caches, kept together so shard invalidation is one entry update.
+    shards: HashMap<u8, ShardCache>,
 
     /// Plain merged workspace indexes (type/member/decl/module/reference).
     workspace_index: query::WorkspaceIndexCache,
@@ -66,14 +72,8 @@ impl Default for SemanticDatabase {
             main_root: None,
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
             vfs: Vfs::new(),
-            file_facts: HashMap::new(),
-            flow_trees: HashMap::new(),
-            file_exports: HashMap::new(),
-            export_shards: HashMap::new(),
-            file_references: HashMap::new(),
-            deprecated_shards: HashMap::new(),
-            module_shards: HashMap::new(),
-            reference_shards: HashMap::new(),
+            files: HashMap::new(),
+            shards: HashMap::new(),
             workspace_index: query::WorkspaceIndexCache::new(),
         }
     }
@@ -92,50 +92,65 @@ impl SemanticDatabase {
         &self.workspace_roots
     }
 
-    pub(crate) fn file_facts_map(&self) -> &HashMap<FileId, facts::FileFacts> {
-        &self.file_facts
+    pub(crate) fn file_cache(&self, file_id: FileId) -> Option<&FileCache> {
+        self.files.get(&file_id)
+    }
+
+    pub(crate) fn file_facts_of(&self, file_id: FileId) -> Option<&facts::FileFacts> {
+        self.file_cache(file_id).map(|cache| &cache.facts)
     }
 
     pub(crate) fn flow_tree_of(&self, file_id: FileId) -> &flow::FlowTree {
-        self.flow_trees
-            .get(&file_id)
+        &self
+            .file_cache(file_id)
             .expect("flow tree must be built before read")
+            .flow
     }
 
     pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExports {
-        self.file_exports
-            .get(&file_id)
+        &self
+            .file_cache(file_id)
             .expect("file exports must be built before read")
+            .exports
+    }
+
+    pub(crate) fn shard_cache(&self, shard: u8) -> Option<&ShardCache> {
+        self.shards.get(&shard)
     }
 
     pub(crate) fn export_shard_of(&self, shard: u8) -> &exports::ExportShard {
-        self.export_shards
-            .get(&shard)
+        &self
+            .shard_cache(shard)
             .expect("export shard must be built before read")
+            .exports
     }
 
     pub(crate) fn file_references_of(&self, file_id: FileId) -> &query::FileReferences {
-        self.file_references
-            .get(&file_id)
+        &self
+            .file_cache(file_id)
             .expect("file references must be built before read")
+            .references
     }
 
     pub(crate) fn deprecated_shard_of(&self, shard: u8) -> &query::DeprecatedShard {
-        self.deprecated_shards
-            .get(&shard)
+        &self
+            .shard_cache(shard)
             .expect("deprecated shard must be built before read")
+            .deprecated
     }
 
     pub(crate) fn module_shard_of(&self, shard: u8) -> &query::ModuleShard {
-        self.module_shards
-            .get(&shard)
+        &self
+            .shard_cache(shard)
             .expect("module shard must be built before read")
+            .module
     }
 
     pub(crate) fn reference_shard_of(&self, shard: u8) -> &query::ReferenceShard {
-        self.reference_shards
-            .get(&shard)
+        &self
+            .shard_cache(shard)
             .expect("reference shard must be built before read")
+            .references
     }
 
     pub(crate) fn workspace_index_cache(&self) -> &query::WorkspaceIndexCache {
@@ -183,10 +198,7 @@ impl SemanticDatabase {
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
         self.vfs.remove(file_id);
-        self.file_facts.remove(&file_id);
-        self.flow_trees.remove(&file_id);
-        self.file_exports.remove(&file_id);
-        self.file_references.remove(&file_id);
+        self.files.remove(&file_id);
         self.rebuild_file_after_remove(file_id);
     }
 
@@ -501,14 +513,8 @@ impl SemanticDatabase {
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
         self.main_root = None;
         self.vfs = Vfs::new();
-        self.file_facts = HashMap::new();
-        self.flow_trees = HashMap::new();
-        self.file_exports = HashMap::new();
-        self.export_shards = HashMap::new();
-        self.file_references = HashMap::new();
-        self.deprecated_shards = HashMap::new();
-        self.module_shards = HashMap::new();
-        self.reference_shards = HashMap::new();
+        self.files = HashMap::new();
+        self.shards = HashMap::new();
         self.workspace_index = query::WorkspaceIndexCache::new();
         self.rebuild_all_caches();
     }
