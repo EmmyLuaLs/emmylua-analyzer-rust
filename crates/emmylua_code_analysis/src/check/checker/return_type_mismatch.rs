@@ -265,19 +265,13 @@ fn generic_constraint_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> 
         return None;
     }
     let name = id.get_name();
-    let signatures = semantic_model.signatures()?;
-    for signature in signatures {
-        let docs = signature.docs.as_ref()?;
-        if let Some(param) = docs
-            .generic_params
-            .iter()
-            .find(|param| param.name.as_str() == name)
-            && let Some(constraint) = param.constraint
-        {
-            let constraint_ty = semantic_model.doc_type_lua(constraint);
-            if !matches!(constraint_ty, LuaType::Unknown) {
-                return Some(constraint_ty);
-            }
+    for (_signature, param) in semantic_model.file_facts()?.generic_param_constraints(name) {
+        let Some(constraint) = param.constraint else {
+            continue;
+        };
+        let constraint_ty = semantic_model.doc_type_lua(constraint);
+        if !matches!(constraint_ty, LuaType::Unknown) {
+            return Some(constraint_ty);
         }
     }
     None

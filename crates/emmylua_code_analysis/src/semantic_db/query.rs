@@ -26,10 +26,9 @@ use rowan::{TextRange, TextSize};
 
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
-/// This is no longer a Semantic tracked query: results are cached in the plain
-/// `SemanticDatabase::file_facts` map and invalidated by file/config/workspace writes.
-/// It still touches the same Semantic input fields here so callers inside tracked
-/// queries are correctly invalidated when the underlying text/config/roots change.
+/// Results are cached in the plain `SemanticDatabase` file cache and invalidated
+/// by file/config/workspace writes. It reads the same input fields so callers
+/// are correctly invalidated when the underlying text/config/roots change.
 pub(crate) fn build_file_facts(
     db: &SemanticDatabase,
     _file: FileId,
@@ -1437,11 +1436,17 @@ fn build_workspace_module_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> Mo
         file_ids.sort_unstable();
         file_ids.dedup();
     }
+    let entry_by_file_id = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.file_id, index))
+        .collect();
 
     let (nodes, root) = build_module_tree(&entries, ws_id);
 
     ModuleIndex {
         entries,
+        entry_by_file_id,
         by_path,
         module_name_to_file_ids,
         roots: ws_roots,
@@ -1605,6 +1610,8 @@ pub(crate) fn module_file_of(
 pub struct ModuleIndex {
     /// Module entries sorted by `(full_module_name, workspace_id, file_id)`.
     entries: Vec<ModuleEntry>,
+    /// File -> entry index (module queries by file are O(1)).
+    entry_by_file_id: HashMap<FileId, usize>,
     /// Normalized path -> file (for pattern / literal path resolution).
     by_path: HashMap<PathBuf, FileId>,
     /// Module last segment -> files (for fuzzy search).
@@ -1619,10 +1626,14 @@ pub struct ModuleIndex {
 
 impl ModuleIndex {
     fn exact(&self, name: &str) -> Option<FileId> {
+        // `entries` is sorted by `full_module_name`; avoid scanning unrelated modules.
+        let start = self
+            .entries
+            .partition_point(|entry| entry.full_module_name.as_str() < name);
         let mut first = None;
-        for entry in &self.entries {
+        for entry in &self.entries[start..] {
             if entry.full_module_name.as_str() != name {
-                continue;
+                break;
             }
             if first.is_none() {
                 first = Some(entry.file_id);
@@ -1655,7 +1666,10 @@ impl ModuleIndex {
         file_ids
             .iter()
             .filter_map(|&file_id| {
-                let entry = self.entries.iter().find(|e| e.file_id == file_id)?;
+                let entry = self
+                    .entry_by_file_id
+                    .get(&file_id)
+                    .and_then(|&index| self.entries.get(index))?;
                 let full_module_name = entry.full_module_name.as_str();
                 let leading_segment_count = if full_module_name == name {
                     Some(0)
@@ -1715,7 +1729,10 @@ impl ModuleIndex {
     }
 
     pub(crate) fn module_info(&self, file_id: FileId) -> Option<ModuleInfo> {
-        let entry = self.entries.iter().find(|entry| entry.file_id == file_id)?;
+        let entry = self
+            .entry_by_file_id
+            .get(&file_id)
+            .and_then(|&index| self.entries.get(index))?;
         Some(ModuleInfo {
             file_id: entry.file_id,
             full_module_name: entry.full_module_name.clone(),
@@ -1873,22 +1890,20 @@ pub(crate) fn resolve_owner_set(db: &SemanticDatabase, owner: SemanticId) -> Vec
                 let Some(owner_syntax) = decl.owner_syntax else {
                     continue;
                 };
-                for def in facts.type_defs.iter().filter(|def| {
-                    def.owner_syntax == Some(owner_syntax)
-                        && matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum)
-                }) {
+                for def in facts
+                    .type_defs_by_owner_syntax(owner_syntax)
+                    .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
+                {
                     push_unique(&mut out, def.id.clone());
                 }
             }
             // Name chain: recursively take members along each head identity.
             if let Some(dot) = name.rfind('.') {
                 let head = SmolStr::new(&name[..dot]);
-                let tail = &name[dot + 1..];
+                let tail = SmolStr::new(&name[dot + 1..]);
                 for head_owner in resolve_owner_set(db, SemanticId::name(head)) {
-                    for member in members_of_owner(db, head_owner).iter().cloned() {
-                        if member.name.as_str() == tail {
-                            push_unique(&mut out, member.id);
-                        }
+                    for member in members_of_owner_named(db, head_owner, tail.clone()).iter() {
+                        push_unique(&mut out, member.id.clone());
                     }
                 }
             }
@@ -1938,14 +1953,12 @@ pub(crate) fn resolve_owner_set(db: &SemanticDatabase, owner: SemanticId) -> Vec
                 && let Some(member_file) = db.file_data_id(file_id)
             {
                 let facts = file_facts(db, member_file);
-                let def = facts.type_defs.iter().find(|def| def.name == bare_name);
+                let def = facts.type_def_by_name(bare_name.as_str());
                 if let Some(def) = def
                     && let Some(owner_syntax) = def.owner_syntax
                 {
-                    for decl in &facts.decls {
-                        if decl.owner_syntax == Some(owner_syntax) {
-                            push_unique(&mut out, decl.id.clone());
-                        }
+                    for decl in facts.decls_by_owner_syntax(owner_syntax) {
+                        push_unique(&mut out, decl.id.clone());
                     }
                 }
             }
@@ -1995,10 +2008,7 @@ pub(crate) fn decl_type(
 
     // Parameter declaration: `---@param` annotation (belongs to the closure signature, matched by name).
     if matches!(decl.kind, DeclKind::Param)
-        && let Some(sig) = facts
-            .signatures
-            .iter()
-            .find(|sig| sig.param_names.contains(&decl.name))
+        && let Some((sig, _)) = facts.signature_and_param_index_of_decl(decl)
         && let Some(docs) = &sig.docs
         && let Some((_, type_syntax)) = docs.param_types.iter().find(|(name, _)| name == &decl.name)
     {
@@ -2461,9 +2471,7 @@ pub(crate) fn member_keys_of_decl(
 ) -> Vec<SmolStr> {
     let facts = file_facts(db, file);
     let mut keys = facts
-        .members
-        .iter()
-        .filter(|member| member.owner == decl)
+        .members_of_owner(&decl)
         .map(|member| member.key.to_path().into())
         .collect::<Vec<_>>();
     keys.sort();
@@ -2745,18 +2753,15 @@ fn member_expected_returns(
 /// first find the type definition associated with the method (`---@class T` comment's owner statement); fall back to the owner table identity if no type is found.
 fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> Option<TypeShell> {
     let member = facts
-        .members
-        .iter()
-        .find(|member| member.is_method && member.value_syntax == Some(closure_syntax))?;
+        .member_by_value_syntax(closure_syntax)
+        .filter(|member| member.is_method)?;
     let type_def = match &member.owner {
         SemanticId::TypeDef(type_def) => {
             facts.type_def_by_id(&SemanticId::TypeDef(type_def.clone()))
         }
         SemanticId::Decl(owner_decl) => {
             let owner_decl = facts.decl_by_id(&SemanticId::Decl(owner_decl.clone()))?;
-            facts.type_defs.iter().find(|def| {
-                def.owner_syntax.is_some() && def.owner_syntax == owner_decl.owner_syntax
-            })
+            facts.type_def_by_owner_syntax(owner_decl.owner_syntax?)
         }
         _ => None,
     };

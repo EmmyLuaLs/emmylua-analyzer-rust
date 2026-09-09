@@ -182,13 +182,9 @@ fn check_dots_literal_error(
     };
     let closure_syntax = closure_expr.get_syntax_id();
     let is_vararg = semantic_model
-        .signatures()
-        .map(|sigs| {
-            sigs.iter().any(|sig| {
-                sig.closure_syntax == closure_syntax && sig.param_names.iter().any(|p| p == "...")
-            })
-        })
-        .unwrap_or(false);
+        .file_facts()
+        .and_then(|facts| facts.signature_by_closure(closure_syntax))
+        .is_some_and(|signature| signature.param_names.iter().any(|param| param == "..."));
     if !is_vararg {
         context.add_diagnostic(
             DiagnosticCode::SyntaxError,

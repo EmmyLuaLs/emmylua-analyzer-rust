@@ -500,9 +500,9 @@ fn table_expected_type(
     table_expr: &LuaTableExpr,
 ) -> Option<LuaType> {
     let facts = semantic_model.file_facts()?;
-    let decl = facts.decls.iter().find(|decl| {
-        decl.value_expr_syntax == Some(table_expr.get_syntax_id()) && decl.doc_type_syntax.is_some()
-    })?;
+    let decl = facts
+        .decl_by_value_syntax(table_expr.get_syntax_id())
+        .filter(|decl| decl.doc_type_syntax.is_some())?;
     let syntax = decl.doc_type_syntax?;
     let ty = semantic_model.doc_type_lua(syntax);
     (!matches!(ty, LuaType::Unknown)).then_some(ty)
@@ -795,7 +795,7 @@ pub(crate) fn callable_functions(
     match ty {
         LuaType::DocFunction(func) => vec![func.as_ref().clone()],
         LuaType::Signature(signature_id) => semantic_model
-            .signature_lua_by_legacy_id(signature_id)
+            .function_type_by_signature_id(signature_id)
             .into_iter()
             .collect(),
         LuaType::Ref(id) | LuaType::Def(id) => {

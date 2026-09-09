@@ -1226,7 +1226,9 @@ fn function_arg_compatible(
 fn doc_function_of(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaFunctionType> {
     match ty {
         LuaType::DocFunction(func) => Some(func.as_ref().clone()),
-        LuaType::Signature(signature_id) => semantic_model.signature_lua_by_legacy_id(signature_id),
+        LuaType::Signature(signature_id) => {
+            semantic_model.function_type_by_signature_id(signature_id)
+        }
         LuaType::Ref(id) | LuaType::Def(id) => {
             let def = member::type_def_of(semantic_model, id)?;
             if def.kind != TypeDefKind::Alias {

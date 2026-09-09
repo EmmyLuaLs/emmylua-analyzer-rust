@@ -408,9 +408,10 @@ fn owner_generic_constraints(
             let Some(owner_decl) = facts.decl_by_id(&member.owner) else {
                 return out;
             };
-            let Some(def) = facts.type_defs.iter().find(|def| {
-                def.owner_syntax.is_some() && def.owner_syntax == owner_decl.owner_syntax
-            }) else {
+            let Some(owner_syntax) = owner_decl.owner_syntax else {
+                return out;
+            };
+            let Some(def) = facts.type_def_by_owner_syntax(owner_syntax) else {
                 return out;
             };
             match &def.id {

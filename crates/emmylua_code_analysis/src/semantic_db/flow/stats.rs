@@ -71,12 +71,7 @@ pub(super) fn get_var_member_ids(
                 .get_range()
                 .unwrap_or_else(|| index_expr.get_range())
                 .start();
-            let member = binder.facts.members.iter().find(|member| {
-                member
-                    .id
-                    .member_key_range()
-                    .is_some_and(|range| range.contains(key_offset))
-            })?;
+            let member = binder.facts.member_at_offset(key_offset)?;
             Some((member.owner.clone(), member.key.clone(), member.id.clone()))
         })
         .collect()

@@ -7,12 +7,12 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaChunk, LuaClosureExpr, LuaComment,
-    LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag, LuaDocTagAttributeUse, LuaDocTagDiagnostic,
-    LuaDocTagField, LuaDocType, LuaDocTypeFlag, LuaExpr, LuaFuncStat, LuaIfClauseStat,
-    LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameToken,
-    LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaTableExpr, LuaTableField, LuaVarExpr,
-    LuaVersionCondition, NumberResult, UnaryOperator,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExpr, LuaChunk,
+    LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
+    LuaDocTagAttributeUse, LuaDocTagDiagnostic, LuaDocTagField, LuaDocType, LuaDocTypeFlag,
+    LuaExpr, LuaFuncStat, LuaIfClauseStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr,
+    LuaLiteralToken, LuaLocalStat, LuaNameToken, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaTableExpr,
+    LuaTableField, LuaVarExpr, LuaVersionCondition, NumberResult, UnaryOperator,
 };
 use rowan::{TextRange, TextSize, WalkEvent};
 use smol_str::SmolStr;
@@ -95,6 +95,11 @@ pub struct FileFacts {
     pub file_diagnostic_enabled: HashSet<DiagnosticCode>,
     /// Doc annotation usage errors (`@field` must be under a `@class`, etc.).
     pub annotation_errors: Vec<AnnotationError>,
+    /// Generic parameter names declared without a constraint anywhere in this file.
+    unconstrained_generic_names: HashSet<SmolStr>,
+    /// Declared constraints for generic parameter names in this file
+    /// (`(signature index, generic-param index)`).
+    generic_param_constraints_by_name: HashMap<SmolStr, Vec<(usize, usize)>>,
 
     // Buckets / indexes
     name_use_by_start: Vec<(TextSize, usize)>,
@@ -111,9 +116,17 @@ pub struct FileFacts {
     members_by_name: HashMap<SmolStr, Vec<usize>>,
     type_def_by_full_name: HashMap<SmolStr, usize>,
     type_def_by_name: HashMap<SmolStr, usize>,
-    type_def_by_owner_syntax: HashMap<LuaSyntaxId, usize>,
+    type_defs_by_lower_name: HashMap<SmolStr, Vec<usize>>,
+    type_defs_by_name_end: Vec<(TextSize, usize)>,
+    type_defs_by_owner_syntax: HashMap<LuaSyntaxId, Vec<usize>>,
     decl_by_value_syntax: HashMap<LuaSyntaxId, usize>,
+    decl_by_value_range: HashMap<TextRange, usize>,
+    decls_by_owner_syntax: HashMap<LuaSyntaxId, Vec<usize>>,
     signature_by_closure: HashMap<LuaSyntaxId, usize>,
+    signature_by_position: HashMap<TextSize, usize>,
+    /// `setmetatable(table, meta)` calls whose result is a declaration initializer:
+    /// `(first-arg range, first-arg syntax, metatable-value syntax)`.
+    setmetatable_calls: Vec<(TextRange, LuaSyntaxId, LuaSyntaxId)>,
     operator_by_owner_name: HashMap<(SemanticId, SmolStr), usize>,
     field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize>,
 }
@@ -259,14 +272,74 @@ impl FileFacts {
         self.type_defs.get(*index)
     }
 
+    /// Type definitions whose own name or full-name tail matches `name` case-insensitively.
+    pub fn type_defs_named_case_insensitive(&self, name: &str) -> impl Iterator<Item = &TypeDef> {
+        let key = SmolStr::new(name.to_ascii_lowercase());
+        self.type_defs_by_lower_name
+            .get(&key)
+            .into_iter()
+            .flat_map(move |indices| {
+                indices
+                    .iter()
+                    .filter_map(|&index| self.type_defs.get(index))
+            })
+    }
+
+    /// Nearest type definition whose name ends before `start` (used to associate
+    /// differently-named runtime tables with their preceding `---@enum`/`---@class`).
+    pub fn nearest_type_def_before(&self, start: TextSize) -> Option<&TypeDef> {
+        let index = self
+            .type_defs_by_name_end
+            .partition_point(|(end, _)| *end <= start)
+            .checked_sub(1)?;
+        let (_, type_def_index) = self.type_defs_by_name_end[index];
+        self.type_defs.get(type_def_index)
+    }
+
     pub fn type_def_by_owner_syntax(&self, owner_syntax: LuaSyntaxId) -> Option<&TypeDef> {
-        let index = self.type_def_by_owner_syntax.get(&owner_syntax)?;
-        self.type_defs.get(*index)
+        let index = *self.type_defs_by_owner_syntax.get(&owner_syntax)?.first()?;
+        self.type_defs.get(index)
+    }
+
+    /// All type definitions annotated by `owner_syntax` (normally one, but preserving
+    /// every match keeps callers that previously scanned `type_defs` exact).
+    pub fn type_defs_by_owner_syntax(
+        &self,
+        owner_syntax: LuaSyntaxId,
+    ) -> impl Iterator<Item = &TypeDef> {
+        self.type_defs_by_owner_syntax
+            .get(&owner_syntax)
+            .into_iter()
+            .flat_map(move |indices| {
+                indices
+                    .iter()
+                    .filter_map(|&index| self.type_defs.get(index))
+            })
     }
 
     pub fn decl_by_value_syntax(&self, value_syntax: LuaSyntaxId) -> Option<&Decl> {
         let index = self.decl_by_value_syntax.get(&value_syntax)?;
         self.decls.get(*index)
+    }
+
+    /// Declaration whose initializer value has `range` (table-literal identity lookup).
+    pub fn decl_by_value_range(&self, range: TextRange) -> Option<&Decl> {
+        let index = self.decl_by_value_range.get(&range)?;
+        self.decls.get(*index)
+    }
+
+    /// Declaration annotated by the same doc owner syntax (e.g. `---@class` -> runtime table decl).
+    pub fn decl_by_owner_syntax(&self, owner_syntax: LuaSyntaxId) -> Option<&Decl> {
+        let index = *self.decls_by_owner_syntax.get(&owner_syntax)?.first()?;
+        self.decls.get(index)
+    }
+
+    /// All declarations annotated by `owner_syntax`.
+    pub fn decls_by_owner_syntax(&self, owner_syntax: LuaSyntaxId) -> impl Iterator<Item = &Decl> {
+        self.decls_by_owner_syntax
+            .get(&owner_syntax)
+            .into_iter()
+            .flat_map(move |indices| indices.iter().filter_map(|&index| self.decls.get(index)))
     }
 
     /// Finds the first declaration by name (any kind, in this file).
@@ -278,6 +351,67 @@ impl FileFacts {
 
     pub fn signature_by_closure(&self, closure_syntax: LuaSyntaxId) -> Option<&Signature> {
         let index = self.signature_by_closure.get(&closure_syntax)?;
+        self.signatures.get(*index)
+    }
+
+    /// Signature and parameter index for a parameter declaration.
+    ///
+    /// Parameters carry their owning closure syntax, so this is O(1) in the normal
+    /// case; the fallback preserves the legacy first-same-name lookup for malformed
+    /// or synthetic declarations without an owner.
+    pub fn signature_and_param_index_of_decl(&self, decl: &Decl) -> Option<(&Signature, usize)> {
+        if let Some(owner_syntax) = decl.owner_syntax
+            && let Some(signature) = self.signature_by_closure(owner_syntax)
+            && let Some(index) = signature
+                .param_names
+                .iter()
+                .position(|name| name == &decl.name)
+        {
+            return Some((signature, index));
+        }
+        self.signatures.iter().find_map(|signature| {
+            signature
+                .param_names
+                .iter()
+                .position(|name| name == &decl.name)
+                .map(|index| (signature, index))
+        })
+    }
+
+    /// Whether `name` is a generic parameter declared without a constraint in this file.
+    pub fn is_unconstrained_generic_name(&self, name: &str) -> bool {
+        self.unconstrained_generic_names.contains(name)
+    }
+
+    /// Declared constraints for generic parameter `name`, with the owning signature
+    /// (so callers can project the constraint in its full generic-parameter context).
+    pub fn generic_param_constraints(
+        &self,
+        name: &str,
+    ) -> impl Iterator<Item = (&Signature, &DocGenericParam)> {
+        self.generic_param_constraints_by_name
+            .get(name)
+            .into_iter()
+            .flat_map(move |entries| {
+                entries
+                    .iter()
+                    .filter_map(move |&(signature_index, param_index)| {
+                        let signature = self.signatures.get(signature_index)?;
+                        let docs = signature.docs.as_ref()?;
+                        let param = docs.generic_params.get(param_index)?;
+                        Some((signature, param))
+                    })
+            })
+    }
+
+    /// `setmetatable(table, meta)` calls bound to a declaration initializer.
+    pub fn setmetatable_calls(&self) -> &[(TextRange, LuaSyntaxId, LuaSyntaxId)] {
+        &self.setmetatable_calls
+    }
+
+    /// Legacy `LuaSignatureId` stores a file position; look the signature up in O(1).
+    pub(crate) fn signature_by_position(&self, position: TextSize) -> Option<&Signature> {
+        let index = self.signature_by_position.get(&position)?;
         self.signatures.get(*index)
     }
 
@@ -422,6 +556,8 @@ pub struct FactsBuilder {
     module_version_conds: Vec<LuaVersionCondition>,
     /// Doc annotation usage errors (`@field` must be under a `@class`, etc.).
     annotation_errors: Vec<AnnotationError>,
+    /// `setmetatable(table, meta)` calls bound to a declaration initializer.
+    setmetatable_calls: Vec<(TextRange, LuaSyntaxId, LuaSyntaxId)>,
 }
 
 /// Module return flow (collects only the first reachable `return expr`, for module export).
@@ -676,6 +812,7 @@ impl FactsBuilder {
             module_visibility: ModuleVisibility::Public,
             module_version_conds: Vec::new(),
             annotation_errors: Vec::new(),
+            setmetatable_calls: Vec::new(),
         }
     }
 
@@ -710,6 +847,9 @@ impl FactsBuilder {
 
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
+
+        // Post-processing 4: index `setmetatable(table, meta)` initializer calls once.
+        self.collect_setmetatable_calls(chunk);
 
         let mut name_use_by_start = self
             .name_uses
@@ -822,24 +962,89 @@ impl FactsBuilder {
             .enumerate()
             .map(|(i, def)| (def.name.clone(), i))
             .collect::<HashMap<_, _>>();
+        let mut type_defs_by_lower_name: HashMap<SmolStr, Vec<usize>> = HashMap::new();
+        for (index, def) in self.type_defs.iter().enumerate() {
+            type_defs_by_lower_name
+                .entry(SmolStr::new(def.name.to_ascii_lowercase()))
+                .or_default()
+                .push(index);
+            if let Some(bare_name) = def.full_name.rsplit('.').next()
+                && bare_name != def.name.as_str()
+            {
+                type_defs_by_lower_name
+                    .entry(SmolStr::new(bare_name.to_ascii_lowercase()))
+                    .or_default()
+                    .push(index);
+            }
+        }
+        let mut type_defs_by_name_end = self
+            .type_defs
+            .iter()
+            .enumerate()
+            .map(|(index, def)| (def.name_range.end(), index))
+            .collect::<Vec<_>>();
+        type_defs_by_name_end.sort_unstable_by_key(|(end, _)| *end);
         let signature_by_closure = self
             .signatures
             .iter()
             .enumerate()
             .map(|(i, sig)| (sig.closure_syntax, i))
             .collect::<HashMap<_, _>>();
-        let type_def_by_owner_syntax = self
-            .type_defs
+        let signature_by_position = self
+            .signatures
             .iter()
             .enumerate()
-            .filter_map(|(i, def)| def.owner_syntax.map(|syntax| (syntax, i)))
+            .map(|(i, sig)| (sig.closure_syntax.get_range().start(), i))
             .collect::<HashMap<_, _>>();
+        let unconstrained_generic_names = self
+            .signatures
+            .iter()
+            .filter_map(|signature| signature.docs.as_ref())
+            .flat_map(|docs| docs.generic_params.iter())
+            .filter(|param| param.constraint.is_none())
+            .map(|param| param.name.clone())
+            .collect::<HashSet<_>>();
+        let mut generic_param_constraints_by_name: HashMap<SmolStr, Vec<(usize, usize)>> =
+            HashMap::new();
+        for (signature_index, signature) in self.signatures.iter().enumerate() {
+            if let Some(docs) = &signature.docs {
+                for (param_index, param) in docs.generic_params.iter().enumerate() {
+                    if param.constraint.is_some() {
+                        generic_param_constraints_by_name
+                            .entry(param.name.clone())
+                            .or_default()
+                            .push((signature_index, param_index));
+                    }
+                }
+            }
+        }
+        let mut type_defs_by_owner_syntax: HashMap<LuaSyntaxId, Vec<usize>> = HashMap::new();
+        for (index, def) in self.type_defs.iter().enumerate() {
+            if let Some(syntax) = def.owner_syntax {
+                type_defs_by_owner_syntax
+                    .entry(syntax)
+                    .or_default()
+                    .push(index);
+            }
+        }
         let decl_by_value_syntax = self
             .decls
             .iter()
             .enumerate()
             .filter_map(|(i, decl)| decl.value_expr_syntax.map(|syntax| (syntax, i)))
             .collect::<HashMap<_, _>>();
+        let decl_by_value_range = self
+            .decls
+            .iter()
+            .enumerate()
+            .filter_map(|(i, decl)| decl.value_expr_syntax.map(|syntax| (syntax.get_range(), i)))
+            .collect::<HashMap<_, _>>();
+        let mut decls_by_owner_syntax: HashMap<LuaSyntaxId, Vec<usize>> = HashMap::new();
+        for (index, decl) in self.decls.iter().enumerate() {
+            if let Some(syntax) = decl.owner_syntax {
+                decls_by_owner_syntax.entry(syntax).or_default().push(index);
+            }
+        }
         let operator_by_owner_name = self
             .operators
             .iter()
@@ -867,6 +1072,9 @@ impl FactsBuilder {
             file_diagnostic_disabled: self.file_diagnostic_disabled,
             file_diagnostic_enabled: self.file_diagnostic_enabled,
             annotation_errors: self.annotation_errors,
+            setmetatable_calls: self.setmetatable_calls,
+            unconstrained_generic_names,
+            generic_param_constraints_by_name,
             name_use_by_start,
             decl_by_range_start,
             member_by_range_start,
@@ -881,9 +1089,14 @@ impl FactsBuilder {
             members_by_name,
             type_def_by_full_name,
             type_def_by_name,
-            type_def_by_owner_syntax,
+            type_defs_by_lower_name,
+            type_defs_by_name_end,
+            type_defs_by_owner_syntax,
             decl_by_value_syntax,
+            decl_by_value_range,
+            decls_by_owner_syntax,
             signature_by_closure,
+            signature_by_position,
             operator_by_owner_name,
             field_member_by_type_name,
         }
@@ -1885,6 +2098,7 @@ impl FactsBuilder {
         let Some(ns) = &self.namespace else {
             return;
         };
+        let mut owner_remap: HashMap<SemanticId, SemanticId> = HashMap::new();
         for def in &mut self.type_defs {
             let old_id = def.id.clone();
             def.full_name = SmolStr::new(format!("{}.{}", ns, def.name));
@@ -1894,43 +2108,109 @@ impl FactsBuilder {
                 TypeVisibility::Private => TypeScope::File(def.file_id),
             };
             def.id = SemanticId::type_def(scope, def.full_name.clone());
-            // Namespace qualification rebuilds TypeDef identity; member/operator owners are updated accordingly.
-            for member in &mut self.members {
-                if member.owner == old_id {
-                    member.owner = def.id.clone();
-                }
+            owner_remap.insert(old_id, def.id.clone());
+        }
+        // Namespace qualification rebuilds TypeDef identity; member/operator owners are updated accordingly.
+        for member in &mut self.members {
+            if let Some(new_owner) = owner_remap.get(&member.owner) {
+                member.owner = new_owner.clone();
             }
-            for operator in &mut self.operators {
-                if operator.owner == old_id {
-                    operator.owner = def.id.clone();
-                }
+        }
+        for operator in &mut self.operators {
+            if let Some(new_owner) = owner_remap.get(&operator.owner) {
+                operator.owner = new_owner.clone();
             }
         }
     }
 
     /// Inline `---@type` / `---@module` on table fields: attach to members by field syntax range.
     fn assign_member_doc_types(&mut self) {
-        for member in &mut self.members {
-            if member.doc_type_syntax.is_some() {
+        if self.doc_type_map.is_empty() && self.doc_module_map.is_empty() {
+            return;
+        }
+        let mut member_key_starts: Vec<(TextSize, usize)> = self
+            .members
+            .iter()
+            .enumerate()
+            .filter_map(|(index, member)| {
+                member
+                    .id
+                    .member_key_range()
+                    .map(|range| (range.start(), index))
+            })
+            .collect();
+        member_key_starts.sort_by_key(|(start, _)| *start);
+        let member_indices_in_range = |range: TextRange| {
+            let start = member_key_starts.partition_point(|(start, _)| *start < range.start());
+            member_key_starts[start..]
+                .iter()
+                .take_while(move |(start, _)| *start < range.end())
+                .map(|(_, index)| *index)
+                .collect::<Vec<_>>()
+        };
+
+        let mut doc_type_assignments: Vec<(usize, LuaSyntaxId)> = Vec::new();
+        let mut module_assignments: Vec<(usize, SmolStr)> = Vec::new();
+        let mut doc_assigned = vec![false; self.members.len()];
+        let mut module_assigned = vec![false; self.members.len()];
+
+        for (owner, type_syntaxes) in &self.doc_type_map {
+            if owner.get_kind() != LuaSyntaxKind::TableFieldAssign {
                 continue;
             }
-            let Some(key_range) = member.id.member_key_range() else {
+            let owner_range = owner.get_range();
+            for index in member_indices_in_range(owner_range) {
+                if doc_assigned[index] {
+                    continue;
+                }
+                let member = &self.members[index];
+                if member.doc_type_syntax.is_some() {
+                    doc_assigned[index] = true;
+                    continue;
+                }
+                let Some(key_range) = member.id.member_key_range() else {
+                    continue;
+                };
+                if !owner_range.contains_range(key_range) {
+                    continue;
+                }
+                if let Some(type_syntax) = type_syntaxes.first().copied() {
+                    doc_type_assignments.push((index, type_syntax));
+                }
+                doc_assigned[index] = true;
+            }
+        }
+
+        for (owner, module_path) in &self.doc_module_map {
+            if owner.get_kind() != LuaSyntaxKind::TableFieldAssign {
                 continue;
-            };
-            if let Some((_, type_syntaxes)) = self.doc_type_map.iter().find(|(owner, _)| {
-                owner.get_kind() == LuaSyntaxKind::TableFieldAssign
-                    && owner.get_range().contains_range(key_range)
-            }) {
-                member.doc_type_syntax = type_syntaxes.first().copied();
             }
-            if member.module_path.is_none()
-                && let Some((_, module_path)) = self.doc_module_map.iter().find(|(owner, _)| {
-                    owner.get_kind() == LuaSyntaxKind::TableFieldAssign
-                        && owner.get_range().contains_range(key_range)
-                })
-            {
-                member.module_path = Some(module_path.clone());
+            let owner_range = owner.get_range();
+            for index in member_indices_in_range(owner_range) {
+                if module_assigned[index] {
+                    continue;
+                }
+                let member = &self.members[index];
+                if member.module_path.is_some() {
+                    module_assigned[index] = true;
+                    continue;
+                }
+                let Some(key_range) = member.id.member_key_range() else {
+                    continue;
+                };
+                if !owner_range.contains_range(key_range) {
+                    continue;
+                }
+                module_assignments.push((index, module_path.clone()));
+                module_assigned[index] = true;
             }
+        }
+
+        for (index, type_syntax) in doc_type_assignments {
+            self.members[index].doc_type_syntax = Some(type_syntax);
+        }
+        for (index, module_path) in module_assignments {
+            self.members[index].module_path = Some(module_path);
         }
     }
 
@@ -1954,6 +2234,51 @@ impl FactsBuilder {
     }
 
     /// Top-level `return X` → module export target (the last top-level return wins).
+    /// Indexes `setmetatable(table, meta)` calls that initialize a declaration.
+    ///
+    /// Table member lookup otherwise has to scan every declaration to find the
+    /// matching `setmetatable` call for a table literal.
+    fn collect_setmetatable_calls(&mut self, chunk: &LuaChunk) {
+        let root = chunk.get_root();
+        for decl in &self.decls {
+            let Some(value_syntax) = decl.value_expr_syntax else {
+                continue;
+            };
+            let Some(node) = value_syntax.to_node_from_root(&root) else {
+                continue;
+            };
+            let Some(call) = LuaCallExpr::cast(node) else {
+                continue;
+            };
+            let is_setmetatable = match call.get_prefix_expr() {
+                Some(LuaExpr::NameExpr(name_expr)) => {
+                    name_expr.get_name_text().as_deref() == Some("setmetatable")
+                }
+                Some(LuaExpr::IndexExpr(index_expr)) => index_expr
+                    .get_index_name_token()
+                    .is_some_and(|name| name.text() == "setmetatable"),
+                _ => false,
+            };
+            if !is_setmetatable {
+                continue;
+            }
+            let Some(mut args) = call.get_args_list().map(|list| list.get_args()) else {
+                continue;
+            };
+            let Some(first) = args.next() else {
+                continue;
+            };
+            let Some(metatable) = args.next() else {
+                continue;
+            };
+            self.setmetatable_calls.push((
+                first.get_range(),
+                first.get_syntax_id(),
+                metatable.get_syntax_id(),
+            ));
+        }
+    }
+
     fn collect_module_export(&mut self, chunk: &LuaChunk) {
         let Some(block) = chunk.get_block() else {
             return;

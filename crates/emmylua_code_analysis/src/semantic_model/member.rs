@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeScope};
 use crate::semantic_model::infer::unify::{self, TplBindings};
@@ -267,22 +267,17 @@ fn direct_member_info(
             if let Some(info) = find_member_in_owner(model, &owner, key, None, None) {
                 return Some(info);
             }
-            if let Some(facts) = model.file_facts_of(table.file_id) {
-                for decl in &facts.decls {
-                    if decl
-                        .value_expr_syntax
-                        .is_some_and(|syntax| syntax.get_range() == table.value)
-                    {
-                        let mut owners = vec![decl.id.clone()];
-                        if matches!(decl.kind, DeclKind::Global) {
-                            owners.push(SemanticId::name(decl.name.clone()));
-                        }
-                        for owner in owners {
-                            if let Some(info) = find_member_in_owner(model, &owner, key, None, None)
-                            {
-                                return Some(info);
-                            }
-                        }
+            if let Some(decl) = model
+                .file_facts_of(table.file_id)
+                .and_then(|facts| facts.decl_by_value_range(table.value))
+            {
+                let mut owners = vec![decl.id.clone()];
+                if matches!(decl.kind, DeclKind::Global) {
+                    owners.push(SemanticId::name(decl.name.clone()));
+                }
+                for owner in owners {
+                    if let Some(info) = find_member_in_owner(model, &owner, key, None, None) {
+                        return Some(info);
                     }
                 }
             }
@@ -417,48 +412,15 @@ pub(crate) fn table_metatable_type(
         return table_metatable_type(&foreign, table);
     }
     let facts = model.file_facts_of(table.file_id)?;
-    let tree = model.syntax_tree_of(table.file_id)?;
-    let root = tree.get_red_root();
-    for decl in &facts.decls {
-        let value_syntax = decl.value_expr_syntax?;
-        let Some(node) = value_syntax.to_node_from_root(&root) else {
-            continue;
-        };
-        let Some(call) = LuaCallExpr::cast(node) else {
-            continue;
-        };
-        let Some(prefix) = call.get_prefix_expr() else {
-            continue;
-        };
-        let is_setmetatable = match prefix {
-            LuaExpr::NameExpr(name_expr) => {
-                name_expr.get_name_text().as_deref() == Some("setmetatable")
-            }
-            LuaExpr::IndexExpr(index_expr) => index_expr
-                .get_index_name_token()
-                .is_some_and(|name| name.text() == "setmetatable"),
-            _ => false,
-        };
-        if !is_setmetatable {
-            continue;
-        }
-        let mut args = call.get_args_list()?.get_args();
-        let Some(first) = args.next() else {
-            continue;
-        };
-        let first_matches = match first {
-            LuaExpr::TableExpr(table_expr) => table_expr.get_range() == table.value,
-            LuaExpr::NameExpr(_) => matches!(
-                model.type_of_expr(first.get_syntax_id()),
+    for &(first_range, first_syntax, metatable_syntax) in facts.setmetatable_calls() {
+        let first_matches = first_range == table.value
+            || matches!(
+                model.type_of_expr(first_syntax),
                 LuaType::TableConst(ft) if ft.file_id == table.file_id && ft.value == table.value
-            ),
-            _ => false,
-        };
-        if !first_matches {
-            continue;
+            );
+        if first_matches {
+            return Some(model.type_of_expr(metatable_syntax));
         }
-        let metatable_expr = args.next()?;
-        return Some(model.type_of_expr(metatable_expr.get_syntax_id()));
     }
     None
 }
@@ -473,15 +435,8 @@ pub(crate) fn table_const_class_type(
         return table_const_class_type(&foreign, table);
     }
     let facts = model.file_facts_of(table.file_id)?;
-    let decl = facts.decls.iter().find(|decl| {
-        decl.value_expr_syntax
-            .is_some_and(|syntax| syntax.get_range() == table.value)
-    })?;
-    let owner_syntax = decl.owner_syntax?;
-    let def = facts
-        .type_defs
-        .iter()
-        .find(|def| def.owner_syntax == Some(owner_syntax))?;
+    let decl = facts.decl_by_value_range(table.value)?;
+    let def = facts.type_def_by_owner_syntax(decl.owner_syntax?)?;
     Some(model.type_def_ref(def))
 }
 
@@ -496,55 +451,28 @@ pub(crate) fn table_metatable_index_info(
 }
 
 /// Finds a member with a `self` return_cast by method name.
-/// Cross-file supported: iterates files in the workspace and aggregates owners from type definitions/local declarations.
+/// Cross-file supported: scans same-named members in the workspace.
 pub fn find_self_return_cast_member(model: &SemanticModel, name: &str) -> Option<SemanticId> {
-    let mut seen = std::collections::HashSet::new();
     for file_id in model.file_ids() {
         let Some(facts) = model.file_facts_of(file_id) else {
             continue;
         };
-        let mut owners: Vec<SemanticId> = Vec::new();
-        for def in &facts.type_defs {
-            owners.push(def.id.clone());
-            for decl in &facts.decls {
-                if decl.owner_syntax == def.owner_syntax {
-                    owners.push(decl.id.clone());
-                }
-            }
-        }
-        for decl in &facts.decls {
-            owners.push(decl.id.clone());
-        }
-        for owner in owners {
-            if !seen.insert(owner.clone()) {
+        for member in facts.members_named(name) {
+            let Some(value_syntax) = member.value_syntax else {
                 continue;
-            }
-            for member in model.members_of_owner(&owner) {
-                if member.name.as_str() != name {
-                    continue;
-                }
-                let Some(member_facts) = model.file_facts_of(member.file_id) else {
-                    continue;
-                };
-                let Some(member_def) = member_facts.member_by_id(&member.id) else {
-                    continue;
-                };
-                let Some(value_syntax) = member_def.value_syntax else {
-                    continue;
-                };
-                let Some(signature) = member_facts.signature_by_closure(value_syntax) else {
-                    continue;
-                };
-                let Some(docs) = signature.docs.as_ref() else {
-                    continue;
-                };
-                if docs
-                    .return_cast
-                    .as_ref()
-                    .is_some_and(|cast| cast.name == "self")
-                {
-                    return Some(member.id.clone());
-                }
+            };
+            let Some(signature) = facts.signature_by_closure(value_syntax) else {
+                continue;
+            };
+            let Some(docs) = signature.docs.as_ref() else {
+                continue;
+            };
+            if docs
+                .return_cast
+                .as_ref()
+                .is_some_and(|cast| cast.name == "self")
+            {
+                return Some(member.id.clone());
             }
         }
     }
@@ -688,19 +616,14 @@ fn collect_members(
             }
             // `local t = {}; t.a = 1`: the table identity is also bound to the local that declares it,
             // so its runtime members (`t.a = 1`) belong to the table as well.
-            if let Some(facts) = model.file_facts_of(table.file_id) {
-                let mut owners: Vec<SemanticId> = Vec::new();
-                for decl in &facts.decls {
-                    if decl
-                        .value_expr_syntax
-                        .is_some_and(|syntax| syntax.get_range() == table.value)
-                    {
-                        owners.push(decl.id.clone());
-                        // Global table: runtime members are collected by Name key (`string.rep` for `string = {}`).
-                        if matches!(decl.kind, DeclKind::Global) {
-                            owners.push(SemanticId::name(decl.name.clone()));
-                        }
-                    }
+            if let Some(decl) = model
+                .file_facts_of(table.file_id)
+                .and_then(|facts| facts.decl_by_value_range(table.value))
+            {
+                let mut owners = vec![decl.id.clone()];
+                // Global table: runtime members are collected by Name key (`string.rep` for `string = {}`).
+                if matches!(decl.kind, DeclKind::Global) {
+                    owners.push(SemanticId::name(decl.name.clone()));
                 }
                 for decl_owner in owners {
                     for member_ref in model.members_of_owner(&decl_owner) {

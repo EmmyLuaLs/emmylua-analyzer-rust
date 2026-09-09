@@ -110,9 +110,10 @@ fn check_cross_file_member_assign(
             let Some(module_facts) = semantic_model.file_facts_of(module_file) else {
                 continue;
             };
-            if !module_facts.members.iter().any(|member| {
-                member.key.name() == Some(resolved.name.as_str()) && member.value_syntax.is_some()
-            }) {
+            if !module_facts
+                .members_named(resolved.name.as_str())
+                .any(|member| member.value_syntax.is_some())
+            {
                 continue;
             }
             // Only function/closure right-hand sides count as "reimplementing an existing method"; plain field writes are not reported.

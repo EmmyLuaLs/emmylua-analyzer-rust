@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaClosureExpr};
+use emmylua_parser::LuaAstNode;
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
@@ -17,30 +17,22 @@ impl Checker for RedefinedLocalChecker {
     const CODES: &[DiagnosticCode] = &[DiagnosticCode::RedefinedLocal];
 
     fn check(context: &mut CheckContext<'_>, semantic_model: &SemanticModel<'_>) {
-        let (Some(decls), Some(scopes)) = (semantic_model.decls(), semantic_model.scopes()) else {
+        let Some(facts) = semantic_model.file_facts() else {
             return;
         };
         let mut parent_locals: HashMap<String, SemanticId> = HashMap::new();
-        check_scope(
-            context,
-            semantic_model,
-            decls,
-            scopes,
-            0,
-            &mut parent_locals,
-        );
+        check_scope(context, semantic_model, facts, 0, &mut parent_locals);
     }
 }
 
 fn check_scope(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
-    decls: &[crate::semantic_db::def::Decl],
-    scopes: &[crate::semantic_db::def::Scope],
+    facts: &crate::FileFacts,
     scope_idx: u32,
     parent_locals: &mut HashMap<String, SemanticId>,
 ) {
-    let Some(scope) = scopes.get(scope_idx as usize) else {
+    let Some(scope) = facts.scopes.get(scope_idx as usize) else {
         return;
     };
     let should_merge = matches!(
@@ -51,7 +43,7 @@ fn check_scope(
     let mut current_locals = parent_locals.clone();
     for child in &scope.children {
         if let ScopeChild::Decl(decl_id) = child
-            && let Some(decl) = decls.iter().find(|d| &d.id == decl_id)
+            && let Some(decl) = facts.decl_by_id(decl_id)
             && decl.kind.is_local()
             && decl.name != "..."
             && !decl.name.starts_with('_')
@@ -62,10 +54,9 @@ fn check_scope(
                 // `local a; a = function(a)` - the local a has no initializing closure, so report the error.
                 let conflicts_with_param_of_own_closure = decl.kind == DeclKind::Param
                     && current_locals.get(&name).is_some_and(|old_id| {
-                        decls.iter().any(|old_decl| {
-                            &old_decl.id == old_id
-                                && old_decl.value_expr_syntax
-                                    == enclosing_closure_of_param(semantic_model, decl.name_range)
+                        facts.decl_by_id(old_id).is_some_and(|old_decl| {
+                            old_decl.value_expr_syntax
+                                == enclosing_closure_of_param(semantic_model, decl.name_range)
                         })
                     });
                 if !conflicts_with_param_of_own_closure {
@@ -85,8 +76,7 @@ fn check_scope(
             check_scope(
                 context,
                 semantic_model,
-                decls,
-                scopes,
+                facts,
                 *child_idx,
                 &mut current_locals,
             );
@@ -105,18 +95,7 @@ fn enclosing_closure_of_param(
     semantic_model: &SemanticModel<'_>,
     param_range: TextRange,
 ) -> Option<emmylua_parser::LuaSyntaxId> {
-    let tree = semantic_model.syntax_tree()?;
-    let chunk = tree.get_chunk_node();
-    chunk
-        .descendants::<LuaClosureExpr>()
-        .find(|closure| {
-            closure.get_params_list().is_some_and(|list| {
-                list.get_params().any(|param| {
-                    param
-                        .get_name_token()
-                        .is_some_and(|token| token.syntax().text_range() == param_range)
-                })
-            })
-        })
+    semantic_model
+        .enclosing_closure_at(param_range.start())
         .map(|closure| closure.get_syntax_id())
 }

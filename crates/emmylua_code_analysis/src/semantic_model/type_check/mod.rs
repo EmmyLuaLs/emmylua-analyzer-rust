@@ -392,16 +392,8 @@ fn table_associated_type_def(
     table: &crate::InFiled<rowan::TextRange>,
 ) -> Option<crate::TypeDef> {
     let facts = model.file_facts_of(table.file_id)?;
-    let decl = facts.decls.iter().find(|decl| {
-        decl.value_expr_syntax
-            .map(|syntax| syntax.get_range())
-            .is_some_and(|range| range == table.value)
-    })?;
-    facts
-        .type_defs
-        .iter()
-        .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl.owner_syntax)
-        .cloned()
+    let decl = facts.decl_by_value_range(table.value)?;
+    facts.type_def_by_owner_syntax(decl.owner_syntax?).cloned()
 }
 
 fn defs_related_ctx(

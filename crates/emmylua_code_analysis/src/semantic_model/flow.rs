@@ -4535,20 +4535,16 @@ fn component_matches_primitive(
 
 /// Find the `---@generic T: ...` constraint type in the current file's function signatures.
 fn generic_param_constraint_type(model: &SemanticModel, name: &str) -> Option<LuaType> {
-    let signatures = model.signatures()?;
+    let facts = model.file_facts()?;
     let file_id = model.file_id();
-    for signature in signatures {
-        let Some(docs) = &signature.docs else {
+    for (signature, param) in facts.generic_param_constraints(name) {
+        let Some(constraint_syntax) = param.constraint else {
             continue;
         };
-        if let Some(param) = docs
-            .generic_params
-            .iter()
-            .find(|param| param.name.as_str() == name)
-            && let Some(constraint_syntax) = param.constraint
-        {
-            return Some(model.doc_type_lua_in(file_id, constraint_syntax, &docs.generic_params));
-        }
+        let Some(docs) = signature.docs.as_ref() else {
+            continue;
+        };
+        return Some(model.doc_type_lua_in(file_id, constraint_syntax, &docs.generic_params));
     }
     None
 }

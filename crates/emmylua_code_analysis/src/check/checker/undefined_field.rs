@@ -328,28 +328,13 @@ fn table_binding(
     crate::semantic_db::def::TypeDef,
 )> {
     let facts = semantic_model.file_facts_of(file_id)?;
-    let decl = facts.decls.iter().find(|decl| {
-        decl.value_expr_syntax
-            .is_some_and(|syntax| syntax.get_range() == range)
-    })?;
+    let decl = facts.decl_by_value_range(range)?;
     let def = facts
-        .type_defs
-        .iter()
-        .find(|def| {
-            def.name.eq_ignore_ascii_case(decl.name.as_str())
-                || def
-                    .full_name
-                    .rsplit('.')
-                    .next()
-                    .is_some_and(|bare| bare.eq_ignore_ascii_case(decl.name.as_str()))
-        })
+        .type_defs_named_case_insensitive(decl.name.as_str())
+        .next()
         .or_else(|| {
             // `---@enum K3` + `local apiAlias = {...}`: when names differ, associate with the nearest preceding type definition by position.
-            facts
-                .type_defs
-                .iter()
-                .filter(|def| def.name_range.end() <= decl.name_range.start())
-                .min_by_key(|def| decl.name_range.start() - def.name_range.end())
+            facts.nearest_type_def_before(decl.name_range.start())
         })?
         .clone();
     Some((decl.clone(), def))
@@ -514,15 +499,9 @@ fn is_unconstrained_generic_name(semantic_model: &SemanticModel<'_>, ty: &LuaTyp
         return false;
     }
     let name = id.get_name();
-    semantic_model.signatures().is_some_and(|signatures| {
-        signatures.iter().any(|signature| {
-            signature.docs.as_ref().is_some_and(|docs| {
-                docs.generic_params
-                    .iter()
-                    .any(|param| param.name.as_str() == name && param.constraint.is_none())
-            })
-        })
-    })
+    semantic_model
+        .file_facts()
+        .is_some_and(|facts| facts.is_unconstrained_generic_name(name))
 }
 
 fn named_type_def(
@@ -600,21 +579,13 @@ fn resolve_generic_param<'a>(semantic_model: &'a SemanticModel<'_>, ty: &'a LuaT
         return ty.clone();
     }
     let name = id.get_name();
-    let Some(signatures) = semantic_model.signatures() else {
+    let Some(facts) = semantic_model.file_facts() else {
         return ty.clone();
     };
-    for signature in signatures {
-        let Some(docs) = &signature.docs else {
-            continue;
-        };
-        if let Some(param) = docs
-            .generic_params
-            .iter()
-            .find(|param| param.name.as_str() == name)
-            && let Some(constraint) = param.constraint
-        {
-            return semantic_model.doc_type_lua(constraint);
-        }
+    if let Some((_, param)) = facts.generic_param_constraints(name).next()
+        && let Some(constraint) = param.constraint
+    {
+        return semantic_model.doc_type_lua(constraint);
     }
     ty.clone()
 }

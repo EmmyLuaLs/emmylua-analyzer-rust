@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType,
     LuaExpr, LuaIndexExpr, LuaIndexKey, LuaLiteralToken, LuaLocalStat, LuaTableExpr, LuaVarExpr,
@@ -847,9 +849,13 @@ fn check_table_fields(
         &mut index_signatures,
     );
     let fields = table.get_fields_with_keys();
+    let member_by_name: HashMap<&str, &LuaType> = members
+        .iter()
+        .map(|(name, ty)| (name.as_str(), ty))
+        .collect();
     for (field, key) in fields.iter() {
         let field_name = key.get_path_part();
-        if let Some((_, expected)) = members.iter().find(|(name, _)| name == &field_name) {
+        if let Some(expected) = member_by_name.get(field_name.as_str()) {
             let Some(value_expr) = field.get_value_expr() else {
                 continue;
             };
@@ -874,8 +880,10 @@ fn check_table_fields(
         .iter()
         .any(|(_, key)| matches!(key, LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_)))
     {
+        let field_names: HashSet<String> =
+            fields.iter().map(|(_, key)| key.get_path_part()).collect();
         for (name, required_ty) in &required_members {
-            if !fields.iter().any(|(_, key)| key.get_path_part() == *name) {
+            if !field_names.contains(name.as_str()) {
                 if let Some((first_field, _)) = fields.first()
                     && let Some(value_expr) = first_field.get_value_expr()
                 {

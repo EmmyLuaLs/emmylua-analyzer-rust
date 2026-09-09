@@ -54,13 +54,7 @@ fn check_call(
     let Some(value_syntax) = decl.value_expr_syntax else {
         return;
     };
-    let Some(signatures) = semantic_model.signatures() else {
-        return;
-    };
-    let Some(signature) = signatures
-        .iter()
-        .find(|sig| sig.closure_syntax == value_syntax)
-    else {
+    let Some(signature) = facts.signature_by_closure(value_syntax) else {
         return;
     };
     let Some(docs) = &signature.docs else {

@@ -153,7 +153,7 @@ fn check_doc_func_type_compact_for_signature(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     // M0: convert a semantic Signature (params/doc) into a DocFunction structure for comparison.
-    let Some(signature) = context.model.signature_lua_by_legacy_id(signature_id) else {
+    let Some(signature) = context.model.function_type_by_signature_id(signature_id) else {
         return Err(context.mismatch(
             &LuaType::DocFunction(std::sync::Arc::new(source_func.clone())),
             &LuaType::Signature(*signature_id),
@@ -173,7 +173,7 @@ pub fn check_sig_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let Some(signature) = context.model.signature_lua_by_legacy_id(sig_id) else {
+    let Some(signature) = context.model.function_type_by_signature_id(sig_id) else {
         return Err(context.mismatch(&LuaType::Signature(*sig_id), compact_type));
     };
     check_doc_func_type_compact(context, &signature, compact_type, check_guard.next_level()?)

@@ -1548,15 +1548,8 @@ fn try_constructor_function(model: &SemanticModel, ty: &LuaType) -> Option<LuaFu
         }
         LuaType::TableConst(table) => {
             let facts = model.file_facts_of(table.file_id)?;
-            let decl = facts.decls.iter().find(|d| {
-                d.value_expr_syntax
-                    .map(|s| s.get_range())
-                    .is_some_and(|range| range == table.value)
-            })?;
-            let def = facts
-                .type_defs
-                .iter()
-                .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl.owner_syntax)?;
+            let decl = facts.decl_by_value_range(table.value)?;
+            let def = facts.type_def_by_owner_syntax(decl.owner_syntax?)?;
             constructor_function_from_def(model, def)
         }
         LuaType::StringConst(s) | LuaType::DocStringConst(s) => {

@@ -597,22 +597,20 @@ impl<'a> InferVm<'a> {
         }
     }
 
+    /// Innermost closure containing `offset`, found by walking token ancestors
+    /// instead of scanning every closure in the file.
+    fn enclosing_closure_at(&self, offset: rowan::TextSize) -> Option<LuaClosureExpr> {
+        self.model.enclosing_closure_at(offset)
+    }
+
     /// Implicit `self` type in method definitions: find the innermost closure containing
     /// `offset`, then use `member.value_syntax` to look up which owner this method belongs
     /// to and take that owner's type.
     fn method_self_value(&self, offset: rowan::TextSize) -> Option<Value> {
-        let tree = self.model.syntax_tree()?;
-        let chunk = tree.get_chunk_node();
-        let closure = chunk
-            .descendants::<LuaClosureExpr>()
-            .filter(|closure| closure.get_range().contains(offset))
-            .min_by_key(|closure| closure.get_range().len())?;
+        let closure = self.enclosing_closure_at(offset)?;
         let closure_syntax = closure.get_syntax_id();
         let facts = self.model.file_facts()?;
-        let member = facts
-            .members
-            .iter()
-            .find(|member| member.value_syntax == Some(closure_syntax))?;
+        let member = facts.member_by_value_syntax(closure_syntax)?;
         let owner = member.owner.clone();
 
         let (owner_ty, owner_value) = match &owner {
@@ -686,22 +684,16 @@ impl<'a> InferVm<'a> {
 
     /// Find the enclosing closure's variadic arg type for `offset` (`...`).
     fn enclosing_variadic_type(&self, offset: rowan::TextSize) -> Option<LuaType> {
-        let tree = self.model.syntax_tree()?;
-        let chunk = tree.get_chunk_node();
-        for closure in chunk.descendants::<LuaClosureExpr>() {
-            if !closure.get_range().contains(offset) {
-                continue;
-            }
-            let closure_syntax = closure.get_syntax_id();
-            let fun = self.model.type_of_signature(closure_syntax)?;
-            for (name, ty) in fun.get_params() {
-                if name == "..." {
-                    let base = ty.clone().unwrap_or(LuaType::Unknown);
-                    return Some(match base {
-                        LuaType::Variadic(_) => base,
-                        _ => LuaType::Variadic(Arc::new(VariadicType::Base(base))),
-                    });
-                }
+        let closure = self.enclosing_closure_at(offset)?;
+        let closure_syntax = closure.get_syntax_id();
+        let fun = self.model.type_of_signature(closure_syntax)?;
+        for (name, ty) in fun.get_params() {
+            if name == "..." {
+                let base = ty.clone().unwrap_or(LuaType::Unknown);
+                return Some(match base {
+                    LuaType::Variadic(_) => base,
+                    _ => LuaType::Variadic(Arc::new(VariadicType::Base(base))),
+                });
             }
         }
         None
@@ -712,36 +704,22 @@ impl<'a> InferVm<'a> {
     /// back-infer (without recursing into the closure body, which is safe).
     fn enclosing_closure_params_for_decl(&mut self, decl: &SemanticId) -> Option<LuaType> {
         // Find decl's declaration -> if it is a Param, locate its closure and param index.
-        let decls = self.model.decls()?;
-        let decl = decls.iter().find(|d| &d.id == decl)?;
+        let facts = self.model.file_facts()?;
+        let decl = facts.decl_by_id(decl)?;
         if !matches!(decl.kind, DeclKind::Param) {
             return None;
         }
-        let name = decl.name.clone();
-        // Find the closure containing this param name (scan closures in the same file).
-        let tree = self.model.syntax_tree()?;
-        let chunk = tree.get_chunk_node();
-        for closure in chunk.descendants::<LuaClosureExpr>() {
-            let params = closure.get_params_list()?;
-
-            for (index, param) in params.get_params().enumerate() {
-                if let Some(token) = param.get_name_token()
-                    && token.get_name_text() == name
-                {
-                    let closure_syntax = closure.get_syntax_id();
-                    if let Some(bound) = self.closure_params.get(&(closure_syntax, index)) {
-                        return Some(bound.clone());
-                    }
-                    // Environment not filled -> compile the wrapping call and back-infer arg types.
-                    let bound = closure_param_vm(self.model, closure_syntax, index);
-                    if !matches!(bound, LuaType::Unknown) {
-                        self.closure_params
-                            .insert((closure_syntax, index), bound.clone());
-                        return Some(bound);
-                    }
-                    return None;
-                }
-            }
+        let (signature, index) = facts.signature_and_param_index_of_decl(decl)?;
+        let closure_syntax = signature.closure_syntax;
+        if let Some(bound) = self.closure_params.get(&(closure_syntax, index)) {
+            return Some(bound.clone());
+        }
+        // Environment not filled -> compile the wrapping call and back-infer arg types.
+        let bound = closure_param_vm(self.model, closure_syntax, index);
+        if !matches!(bound, LuaType::Unknown) {
+            self.closure_params
+                .insert((closure_syntax, index), bound.clone());
+            return Some(bound);
         }
         None
     }
@@ -969,16 +947,12 @@ impl<'a> InferVm<'a> {
         if !model.members_of_owner(&table_owner).is_empty() {
             return true;
         }
-        if let Some(facts) = model.file_facts_of(table.file_id) {
-            for decl in &facts.decls {
-                if decl
-                    .value_expr_syntax
-                    .is_some_and(|syntax| syntax.get_range() == table.value)
-                    && !model.members_of_owner(&decl.id).is_empty()
-                {
-                    return true;
-                }
-            }
+        if let Some(decl) = model
+            .file_facts_of(table.file_id)
+            .and_then(|facts| facts.decl_by_value_range(table.value))
+            && !model.members_of_owner(&decl.id).is_empty()
+        {
+            return true;
         }
         false
     }
@@ -986,18 +960,15 @@ impl<'a> InferVm<'a> {
     /// Find a generic param's constraint type by name in the current file's signatures
     /// (`---@generic T: Base` -> `Base`).
     fn generic_constraint_by_name(&self, name: &str) -> Option<LuaType> {
-        let signatures = self.model.signatures()?;
-        for sig in signatures {
-            let docs = sig.docs.as_ref()?;
-            for param in &docs.generic_params {
-                if param.name == name {
-                    let constraint = param.constraint?;
-                    return Some(
-                        self.model
-                            .doc_type_lua_rich_in(self.model.file_id(), constraint),
-                    );
-                }
-            }
+        let facts = self.model.file_facts()?;
+        for (_signature, param) in facts.generic_param_constraints(name) {
+            let Some(constraint) = param.constraint else {
+                continue;
+            };
+            return Some(
+                self.model
+                    .doc_type_lua_rich_in(self.model.file_id(), constraint),
+            );
         }
         None
     }
@@ -1051,11 +1022,10 @@ impl<'a> InferVm<'a> {
         if let Some(SemanticId::Decl(decl_key)) = &owner.owner
             && let Some(facts) = self.model.file_facts_of(decl_key.file_id)
             && let Some(decl) = facts.decl_by_id(&SemanticId::Decl(decl_key.clone()))
-            && let Some(def) = facts.type_defs.iter().find(|def| {
-                def.owner_syntax.is_some()
-                    && def.owner_syntax == decl.owner_syntax
-                    && matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum)
-            })
+            && let Some(owner_syntax) = decl.owner_syntax
+            && let Some(def) = facts
+                .type_def_by_owner_syntax(owner_syntax)
+                .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
         {
             let type_def_id = def.id.clone();
             if !owners.contains(&type_def_id) {
@@ -4960,15 +4930,10 @@ fn is_enum_like_dynamic_key(model: &SemanticModel, ty: &LuaType) -> bool {
 /// `def.owner_syntax` to find the corresponding declaration, on which enum members hang.
 fn enum_runtime_owner(model: &SemanticModel, def: &TypeDef) -> Option<SemanticId> {
     let facts = model.file_facts_of(def.file_id)?;
-    facts.decls.iter().find_map(|decl| {
-        if decl.owner_syntax == def.owner_syntax {
-            // A global enum table `Op = { ... }`'s fields hang on the synthetic table identity.
-            let value_syntax = decl.value_expr_syntax?;
-            Some(SemanticId::member(def.file_id, value_syntax.get_range()))
-        } else {
-            None
-        }
-    })
+    let decl = facts.decl_by_owner_syntax(def.owner_syntax?)?;
+    // A global enum table `Op = { ... }`'s fields hang on the synthetic table identity.
+    let value_syntax = decl.value_expr_syntax?;
+    Some(SemanticId::member(def.file_id, value_syntax.get_range()))
 }
 
 /// Unary operation (including operator overloads unm/len).
