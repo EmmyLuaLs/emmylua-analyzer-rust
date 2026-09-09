@@ -22,7 +22,7 @@ impl CommandSpec for AutoRequireCommand {
         let member_name: String = serde_json::from_value(args.get(4)?.clone()).ok()?;
 
         let (text_edit, uri) = context.analysis().try_with_snapshot(|analysis| {
-            let model = analysis.semantic_model(add_to)?;
+            let model = analysis.semantic_model(add_to);
             let document = analysis.db.document(add_to)?;
             let module_name = analysis.db.module_name_of(need_require_file_id)?;
             let emmyrc = analysis.get_emmyrc();

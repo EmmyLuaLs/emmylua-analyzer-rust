@@ -26,7 +26,7 @@ fn check_with_other_file(other_source: &str, main_source: &str) -> Vec<Diagnosti
     let main_file = db.set_file_content(&main_uri, Some(main_source.to_string()));
     db.update_main_root(PathBuf::from("C:/ws"));
 
-    let model = SemanticModel::new(&db, main_file).expect("semantic model");
+    let model = SemanticModel::new(&db, main_file);
     let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
     crate::check::check_file(&model, config)
 }

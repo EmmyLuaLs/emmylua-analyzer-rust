@@ -1,16 +1,9 @@
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
-    use lsp_types::Uri;
-
     use crate::{FileId, VirtualWorkspace, WorkspaceFolder};
 
     fn type_def_visible(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> bool {
-        let model = ws
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model must exist");
+        let model = ws.analysis.semantic_model(file_id);
         model.resolve_type_def_in(file_id, name).is_some()
     }
 
@@ -90,24 +83,5 @@ mod test {
         let consumer = ws.def_file("main.lua", "local value = 1");
 
         assert!(type_def_visible(&ws, consumer, "Shared.StdType"));
-    }
-
-    #[test]
-    fn remote_workspace_types_are_visible_without_explicit_public() {
-        let mut ws = VirtualWorkspace::new();
-        ws.analysis.update_remote_file_by_uri(
-            &Uri::from_str("https://example.com/remote-types.lua").unwrap(),
-            Some(
-                r#"
-                    ---@namespace Shared
-                    ---@class RemoteType
-                    local RemoteType = {}
-                "#
-                .to_string(),
-            ),
-        );
-        let consumer = ws.def_file("main.lua", "local value = 1");
-
-        assert!(type_def_visible(&ws, consumer, "Shared.RemoteType"));
     }
 }

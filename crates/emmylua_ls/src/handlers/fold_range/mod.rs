@@ -42,7 +42,7 @@ pub async fn on_folding_range_handler(
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
-            let semantic_model = analysis.semantic_model(file_id)?;
+            let semantic_model = analysis.semantic_model(file_id);
             let document = analysis.db.document(file_id)?;
             let root = semantic_model.chunk()?;
             let emmyrc = analysis.get_emmyrc();

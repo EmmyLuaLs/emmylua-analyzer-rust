@@ -24,7 +24,7 @@ pub async fn on_emmy_syntax_tree_handler(
     };
     snapshot_query(context.analysis(), cancel_token, move |analysis| {
         let file_id = analysis.get_file_id(&uri)?;
-        let semantic_model = analysis.semantic_model(file_id)?;
+        let semantic_model = analysis.semantic_model(file_id);
         let root = semantic_model.chunk()?;
         let content = format!("{:#?}", root.syntax());
         Some(SyntaxTreeResponse { content })

@@ -129,7 +129,7 @@ pub async fn on_range_formatting_handler(
 
     // Non-external-tool branch is pure synchronous computation, so a temporary snapshot can be reacquired.
     let result = match snapshot_query(context.analysis(), cancel_token, move |analysis| {
-        let model = analysis.semantic_model(file_id)?;
+        let model = analysis.semantic_model(file_id);
         let chunk = model.chunk()?;
         let document = analysis.db.document(file_id)?;
         let config = build_workspace_formatter_config(

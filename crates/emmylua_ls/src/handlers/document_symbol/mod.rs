@@ -30,7 +30,7 @@ pub async fn on_document_symbol(
         Some(cancel_token.clone()),
         move |analysis| {
             let file_id = analysis.get_file_id(&uri)?;
-            let model = analysis.semantic_model(file_id)?;
+            let model = analysis.semantic_model(file_id);
             let document = analysis.db.document(file_id)?;
             Some(DocumentSymbolResponse::Nested(build_document_symbol(
                 &model, &document,

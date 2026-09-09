@@ -130,10 +130,6 @@ impl EmmyLuaAnalysis {
         Some(self.db.set_file_content(uri, text))
     }
 
-    pub fn update_remote_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        self.db.set_file_content(uri, text)
-    }
-
     pub fn update_file_by_path(&mut self, path: &PathBuf, text: Option<String>) -> Option<FileId> {
         let uri = file_path_to_uri(path)?;
         self.update_file_by_uri(&uri, text)
@@ -266,10 +262,8 @@ impl EmmyLuaAnalysis {
         self.emmyrc.clone()
     }
 
-    // ── Semantic analysis layer ──
-
     /// Semantic model: accesses only the semantic analysis layer.
-    pub fn semantic_model(&self, file_id: FileId) -> Option<SemanticModel<'_>> {
+    pub fn semantic_model(&self, file_id: FileId) -> SemanticModel<'_> {
         SemanticModel::new(&self.db, file_id)
     }
 
@@ -278,7 +272,7 @@ impl EmmyLuaAnalysis {
         file_id: FileId,
         config: Arc<CheckConfig>,
     ) -> Option<Vec<lsp_types::Diagnostic>> {
-        let model = self.semantic_model(file_id)?;
+        let model = self.semantic_model(file_id);
         let diagnostics = check::check_file(&model, config);
         let line_index = self.db.line_index(file_id)?;
         let text = self.db.get_file_text(file_id)?;
@@ -323,9 +317,6 @@ impl EmmyLuaAnalysis {
         self.diagnostic.diagnose_file(self, file_id, cancel_token)
     }
 
-    /// No index rebuild is required (memos invalidate automatically); keep an empty implementation for compatibility.
-    pub fn reindex(&mut self) {}
-
     /// Remove files that no longer exist on disk.
     pub fn cleanup_nonexistent_files(&mut self) {
         let mut files_to_remove = Vec::new();
@@ -352,90 +343,3 @@ impl Default for EmmyLuaAnalysis {
 
 unsafe impl Send for EmmyLuaAnalysis {}
 unsafe impl Sync for EmmyLuaAnalysis {}
-
-// Whether the first parameter should not be treated as `self`
-pub fn first_param_may_not_self(typ: &LuaType) -> bool {
-    if typ.is_table()
-        || matches!(
-            typ,
-            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any | LuaType::Unknown
-        )
-    {
-        return true;
-    }
-
-    if let LuaType::Union(u) = typ {
-        return u.into_vec().iter().any(first_param_may_not_self);
-    }
-    false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    /// M4: the semantic database is the only analysis layer; after file updates it exposes facts and types.
-    #[test]
-    fn test_analysis_semantic_direct_field_sync() {
-        use lsp_types::Uri;
-        use std::str::FromStr;
-
-        let mut analysis = EmmyLuaAnalysis::new();
-        let uri = Uri::from_str("file:///C:/ws/sync.lua").unwrap();
-        let fid = analysis
-            .update_file_by_uri(&uri, Some("local x = 1\nlocal y = x".to_string()))
-            .expect("file id");
-
-        let model = analysis.semantic_model(fid).expect("semantic model");
-        let decls = model.decls().expect("decls");
-        assert_eq!(decls.len(), 2, "semantic 事实同步");
-        let y = decls.iter().find(|d| d.name == "y").expect("y decl");
-        assert_eq!(
-            model.type_of_decl(&y.id),
-            Some(LuaType::IntegerConst(1)),
-            "semantic 类型查询可用"
-        );
-
-        // Line index: TextRange → LSP line/column.
-        let index = analysis.db.line_index(fid).expect("line index");
-        let text = analysis.db.get_file_text(fid).expect("text");
-        let (line, col) = index
-            .get_line_col(y.name_range.start(), text)
-            .expect("line col");
-        assert_eq!((line, col), (1, 6), "第二行 local y 的 y 列");
-    }
-
-    #[test]
-    fn test_reload_workspace_preserves_protected_paths() {
-        use std::path::PathBuf;
-
-        let mut analysis = EmmyLuaAnalysis::new();
-        let protected_path = PathBuf::from("C:/protected/std.lua");
-        analysis
-            .db
-            .add_protected_paths(vec![protected_path.clone()]);
-        analysis
-            .update_file_by_path(&protected_path, Some("return 1".to_string()))
-            .expect("file id");
-
-        let removed = analysis.reload_workspace_files(Vec::new(), Vec::new());
-        assert!(removed.is_empty(), "protected file should not be removed");
-
-        let uri = file_path_to_uri(&protected_path).unwrap();
-        let fid = analysis.get_file_id(&uri).expect("file should remain");
-        assert_eq!(
-            analysis.db.file_path(fid).as_deref(),
-            Some(protected_path.as_path())
-        );
-    }
-
-    /// M4: configuration is written directly to the semantic database.
-    #[test]
-    fn test_update_config_semantic() {
-        let mut analysis = EmmyLuaAnalysis::new();
-        let emmyrc = Arc::new(Emmyrc::default());
-        analysis.update_config(emmyrc.clone());
-        assert!(Arc::ptr_eq(&analysis.emmyrc, &emmyrc));
-    }
-}

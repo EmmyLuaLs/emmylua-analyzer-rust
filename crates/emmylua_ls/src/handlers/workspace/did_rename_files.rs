@@ -227,9 +227,7 @@ fn try_modify_require_path(
     let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
     let db = &analysis.db;
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };

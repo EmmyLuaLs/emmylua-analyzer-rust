@@ -12,7 +12,7 @@ use super::exports::{export_shard, shard_of};
 use super::facts::FileFacts;
 use super::query::{deprecated_shard, module_shard};
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
-use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId};
+use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId, SemanticModel};
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
@@ -997,7 +997,7 @@ fn test_semantic_model_file_exports_and_signature_api() {
     );
     let fid_use = set_test_file(&mut db, 2, "C:/ws/use.lua", "local n = 1");
 
-    let model = crate::SemanticModel::new(&db, fid_use).expect("model");
+    let model = SemanticModel::new(&db, fid_use);
     let exports = model.file_exports(fid_impl).expect("exports");
     assert!(exports.globals.iter().any(|g| g.name == "f"));
     assert!(exports.members.iter().any(|m| m.key.to_path() == "v"));
@@ -1302,7 +1302,7 @@ fn test_lua_compilation_semantic_sync_and_check() {
     db.update_main_root(PathBuf::from("C:/ws"));
 
     // The semantic side can retrieve facts and types.
-    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
+    let model = SemanticModel::new(&db, fid);
     let x = model
         .decls()
         .expect("decls")
@@ -1366,7 +1366,7 @@ fn test_syntax_error_checks() {
         let uri = Uri::from_str("file:///C:/ws/syntax.lua").unwrap();
         let fid = db.set_file_content(&uri, Some(source.to_string()));
         db.update_main_root(PathBuf::from("C:/ws"));
-        let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
+        let model = SemanticModel::new(&db, fid);
         let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
         let diagnostics = crate::check::check_file(&model, config);
         let has_syntax_error = diagnostics
@@ -1402,8 +1402,7 @@ fn test_semantic_snapshot_query_from_other_thread() {
     let ty = std::thread::scope(|scope| {
         scope
             .spawn(|| {
-                let model =
-                    crate::semantic_model::SemanticModel::new(&db, fid).expect("semantic model");
+                let model = SemanticModel::new(&db, fid);
                 let x = model
                     .decls()
                     .expect("decls")

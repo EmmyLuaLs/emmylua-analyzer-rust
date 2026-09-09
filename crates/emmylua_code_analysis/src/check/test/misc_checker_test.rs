@@ -51,7 +51,7 @@ fn test_library_file_has_no_diagnostics() {
         Some("local undefined_global = 1\nlocal x = 1\nx = \"string\"".to_string()),
     );
 
-    let model = crate::SemanticModel::new(&db, fid).expect("model");
+    let model = crate::SemanticModel::new(&db, fid);
     let diagnostics =
         crate::check::check_file(&model, Arc::new(crate::check::CheckConfig::new(&emmyrc)));
     assert_eq!(
@@ -159,7 +159,7 @@ fn test_access_invisible_cross_file() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let model = SemanticModel::new(&db, fid).expect("model");
+    let model = SemanticModel::new(&db, fid);
     let diagnostics = crate::check::check_file(
         &model,
         Arc::new(crate::check::CheckConfig::new(&emmyrc.clone())),

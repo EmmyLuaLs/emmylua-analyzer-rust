@@ -24,7 +24,7 @@ fn check_require(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     let use_file = db.set_file_content(&use_uri, Some(use_source.to_string()));
     db.update_main_root(PathBuf::from("C:/ws"));
 
-    let model = SemanticModel::new(&db, use_file).expect("semantic model");
+    let model = SemanticModel::new(&db, use_file);
     let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
     crate::check::check_file(&model, config)
 }

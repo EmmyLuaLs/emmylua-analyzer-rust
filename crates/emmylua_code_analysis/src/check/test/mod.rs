@@ -71,7 +71,7 @@ pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diag
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let model = crate::SemanticModel::new(&db, fid).expect("semantic model");
+    let model = crate::SemanticModel::new(&db, fid);
     let config = Arc::new(super::CheckConfig::new(&emmyrc));
     super::check_file(&model, config)
 }

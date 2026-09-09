@@ -4,7 +4,10 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
 use lsp_types::NumberOrString;
 use tokio_util::sync::CancellationToken;
 
-use crate::{DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, VirtualUrlGenerator};
+use crate::{
+    DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, VirtualUrlGenerator,
+    semantic_model::render,
+};
 
 /// A virtual workspace for testing (M4: via the semantic analysis layer only).
 #[allow(unused)]
@@ -102,10 +105,7 @@ impl VirtualWorkspace {
     }
 
     pub fn get_node<Ast: LuaAstNode>(&self, file_id: FileId) -> Ast {
-        let model = self
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model");
+        let model = self.analysis.semantic_model(file_id);
         let chunk = model.chunk().expect("chunk");
         chunk.descendants::<Ast>().next().expect("Node must exist")
     }
@@ -114,10 +114,7 @@ impl VirtualWorkspace {
         let virtual_content = format!("---@type {}\nlocal t", type_repr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let model = self
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model");
+        let model = self.analysis.semantic_model(file_id);
         let token = local_name.get_name_token().expect("Name token must exist");
         let decl = model
             .decl_by_offset(token.get_position())
@@ -129,10 +126,7 @@ impl VirtualWorkspace {
         let virtual_content = format!("local t = {}", expr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
-        let model = self
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model");
+        let model = self.analysis.semantic_model(file_id);
         let token = local_name.get_name_token().expect("Name token must exist");
         let decl = model
             .decl_by_offset(token.get_position())
@@ -144,29 +138,23 @@ impl VirtualWorkspace {
         let Some(file_id) = self.last_file_id else {
             return format!("{ty:?}");
         };
-        let Some(model) = self.analysis.semantic_model(file_id) else {
-            return format!("{ty:?}");
-        };
-        crate::semantic_model::render::humanize_type(&model, &ty)
+        let model = self.analysis.semantic_model(file_id);
+        render::humanize_type(&model, &ty)
     }
 
     pub fn humanize_type_detailed(&self, ty: LuaType) -> String {
         let Some(file_id) = self.last_file_id else {
             return format!("{ty:?}");
         };
-        let Some(model) = self.analysis.semantic_model(file_id) else {
-            return format!("{ty:?}");
-        };
-        crate::semantic_model::render::humanize_type_detailed(&model, &ty)
+        let model = self.analysis.semantic_model(file_id);
+        render::humanize_type_detailed(&model, &ty)
     }
 
     pub fn check_type(&self, source: &LuaType, target: &LuaType) -> bool {
         let Some(file_id) = self.last_file_id else {
             return false;
         };
-        let Some(model) = self.analysis.semantic_model(file_id) else {
-            return false;
-        };
+        let model = self.analysis.semantic_model(file_id);
         model.type_check_subtype(source, target)
     }
 

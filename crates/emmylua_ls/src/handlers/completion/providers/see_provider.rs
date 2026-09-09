@@ -23,7 +23,7 @@ impl CompletionProvider for SeeCompletionProvider {
 
         // Global type definitions.
         for file_id in builder.semantic_model.file_ids() {
-            if let Some(model) = builder.semantic_model.model_for(file_id)
+            if let model = builder.semantic_model.model_for(file_id)
                 && let Some(exports) = model.file_exports_current()
             {
                 for def in &exports.types {

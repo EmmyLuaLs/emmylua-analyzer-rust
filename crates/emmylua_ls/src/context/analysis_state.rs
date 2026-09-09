@@ -82,7 +82,7 @@ mod tests {
         // Read path uses the live analysis under a read lock.
         let result = state.try_with_snapshot(|analysis| {
             let file_id = analysis.get_file_id(&uri)?;
-            let model = analysis.semantic_model(file_id)?;
+            let model = analysis.semantic_model(file_id);
             let decls = model.decls()?;
             Some((decls.len(), decls[0].name.as_str().to_string()))
         });

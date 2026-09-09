@@ -180,9 +180,7 @@ pub fn add_global_env(
     file_ids.sort();
     let mut globals = Vec::new();
     for file_id in file_ids {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
         let Some(exports) = model.file_exports_current() else {
             continue;
         };

@@ -19,7 +19,7 @@ pub async fn on_document_link_handler(
     let uri = params.text_document.uri;
     snapshot_query(context.analysis(), cancel_token, move |analysis| {
         let file_id = analysis.get_file_id(&uri)?;
-        let semantic_model = analysis.semantic_model(file_id)?;
+        let semantic_model = analysis.semantic_model(file_id);
         let root = semantic_model.chunk()?;
         let document = analysis.db.document(file_id)?;
         let emmyrc = analysis.get_emmyrc();

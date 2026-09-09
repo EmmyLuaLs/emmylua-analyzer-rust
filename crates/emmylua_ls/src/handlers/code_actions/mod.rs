@@ -41,7 +41,7 @@ pub fn code_action(
     file_id: FileId,
     diagnostics: Vec<Diagnostic>,
 ) -> Option<CodeActionResponse> {
-    let model = analysis.semantic_model(file_id)?;
+    let model = analysis.semantic_model(file_id);
     let document = analysis.db.document(file_id)?;
     let emmyrc = analysis.get_emmyrc();
 

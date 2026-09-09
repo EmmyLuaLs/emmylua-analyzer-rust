@@ -78,7 +78,7 @@ fn callee_signature(
             let decl_model = if key.file_id == model.file_id() {
                 None
             } else {
-                SemanticModel::new(db, key.file_id)
+                Some(SemanticModel::new(db, key.file_id))
             };
             let decl_model = decl_model.as_ref().unwrap_or(model);
             let decls = decl_model.decls()?;

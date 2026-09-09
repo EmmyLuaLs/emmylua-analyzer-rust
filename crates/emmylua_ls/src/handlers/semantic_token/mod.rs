@@ -51,7 +51,7 @@ pub fn semantic_token(
     if !analysis.get_emmyrc().semantic_tokens.enable {
         return None;
     }
-    let model = analysis.semantic_model(file_id)?;
+    let model = analysis.semantic_model(file_id);
     let document = analysis.db.document(file_id)?;
     let emmyrc = analysis.get_emmyrc();
 

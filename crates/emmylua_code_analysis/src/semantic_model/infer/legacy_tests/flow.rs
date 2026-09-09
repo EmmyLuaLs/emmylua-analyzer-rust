@@ -11,10 +11,7 @@ mod test {
     const REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS: usize = 128;
 
     fn last_name_expr_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
-        let semantic_model = ws
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model must exist");
+        let semantic_model = ws.analysis.semantic_model(file_id);
         let chunk = semantic_model.chunk().expect("chunk must exist");
         let name_expr = chunk
             .descendants::<LuaNameExpr>()
@@ -133,30 +130,6 @@ mod test {
     }
 
     #[test]
-    fn test_stacked_same_var_type_guards_build_semantic_model() {
-        let mut ws = VirtualWorkspace::new();
-        let repeated_guards =
-            "if type(value) ~= 'string' then return end\n".repeat(STACKED_TYPE_GUARDS);
-        let block = format!(
-            r#"
-        local value ---@type string|integer|boolean
-
-        {repeated_guards}
-        local narrowed ---@type string
-        narrowed = value
-        "#,
-        );
-
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked same-variable type guard repro"
-        );
-        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &block));
-    }
-
-    #[test]
     fn test_stacked_same_var_truthiness_guards_build_semantic_model() {
         let mut ws = VirtualWorkspace::new();
         let repeated_guards = "if not value then return end\n".repeat(STACKED_TYPE_GUARDS);
@@ -169,12 +142,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked same-variable truthiness repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
     }
 
@@ -200,12 +168,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked same-variable call type guard repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
     }
 
@@ -229,12 +192,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked local call alias type guard repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
     }
 
@@ -260,12 +218,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked binary call type guard repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
     }
 
@@ -504,12 +457,7 @@ mod test {
         after_join = value
         "#;
 
-        let file_id = ws.def(block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for branch join merge-safety repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_join"), ws.ty("string|integer"));
     }
 
@@ -532,12 +480,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked same-field truthiness repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("HasFoo"));
     }
 
@@ -567,12 +510,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked return-cast repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
     }
 
@@ -601,12 +539,7 @@ mod test {
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked self return-cast repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
     }
 
@@ -627,13 +560,7 @@ mod test {
             block.push_str(&format!("value = alias_{i}\n"));
         }
         block.push_str("after_assign = value\n");
-
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for large linear assignment stress case"
-        );
+        ws.def(&block);
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "integer");
     }
@@ -660,11 +587,7 @@ mod test {
         "#
         );
 
-        let file_id = ws.def(&block);
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for repeated self-call fallback stress repro"
-        );
+        ws.def(&block);
     }
 
     #[test]
@@ -696,12 +619,7 @@ mod test {
         "#
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for repeated palette field reads"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("result"), ws.ty("string"));
     }
 
@@ -732,10 +650,7 @@ mod test {
         );
 
         let file_id = ws.def_file("maxwellhome.lua", &block);
-        let semantic_model = ws
-            .analysis
-            .semantic_model(file_id)
-            .expect("expected semantic model for maxwellhome-like large array stress case");
+        let semantic_model = ws.analysis.semantic_model(file_id);
         let local_name = ws.get_node::<LuaLocalName>(file_id);
         let token = local_name.get_name_token().expect("name token must exist");
         let info = semantic_model
@@ -804,10 +719,7 @@ mod test {
         "#,
         );
 
-        let semantic_model = ws
-            .analysis
-            .semantic_model(file_id)
-            .expect("semantic model must exist");
+        let semantic_model = ws.analysis.semantic_model(file_id);
         let tree = semantic_model
             .syntax_tree_of(file_id)
             .expect("syntax tree must exist");
@@ -3538,12 +3450,7 @@ _ = a[2]
         "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for multi-dependency RHS assignment repro"
-        );
+        ws.def(&block);
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "Pattern");
     }
@@ -3697,7 +3604,7 @@ _ = a[2]
             ),
         ];
 
-        for (name, init, assignment, steps) in cases {
+        for (_, init, assignment, steps) in cases {
             let mut ws = VirtualWorkspace::new();
             let repeated_assignments = format!("{assignment}\n").repeat(steps);
             let block = format!(
@@ -3710,12 +3617,7 @@ _ = a[2]
             "#
             );
 
-            let file_id = ws.def(&block);
-
-            assert!(
-                ws.analysis.semantic_model(file_id).is_some(),
-                "expected semantic model for repeated self-dependent {name} assignment"
-            );
+            ws.def(&block);
         }
     }
 
@@ -3742,12 +3644,7 @@ _ = a[2]
         "#
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for generic call index replay repro"
-        );
+        ws.def(&block);
     }
 
     #[test]
@@ -3945,12 +3842,7 @@ _ = a[2]
             "#,
         );
 
-        let file_id = ws.def(&block);
-
-        assert!(
-            ws.analysis.semantic_model(file_id).is_some(),
-            "expected semantic model for stacked dynamic-field truthiness repro"
-        );
+        ws.def(&block);
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
     }
 

@@ -7,12 +7,14 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaMemberKey, TypeDefKind};
+use emmylua_code_analysis::{LuaMemberKey, TypeDefKind, WorkspaceId};
 use emmylua_parser::{LuaAstNode, LuaComment, LuaDocDescription, LuaNameExpr};
+use emmylua_parser_desc::{DescItemKind, LuaDescRefPathItem, parse_ref_target};
 use lsp_types::{CompletionItem, CompletionItemKind};
 use rowan::TextRange;
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
+use crate::util;
 
 use super::member_provider::add_member_completions;
 use super::{CompletionProvider, ProviderDecision};
@@ -60,17 +62,15 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     Some(())
 }
 
-fn detect_path(
-    builder: &CompletionBuilder,
-) -> Option<Vec<(emmylua_parser_desc::LuaDescRefPathItem, TextRange)>> {
+fn detect_path(builder: &CompletionBuilder) -> Option<Vec<(LuaDescRefPathItem, TextRange)>> {
     let description = LuaDocDescription::cast(builder.trigger_token.parent()?)?;
     let document = builder.get_document();
     let offset = builder.position_offset;
     let workspace_id = builder
         .semantic_model
         .workspace_id_of(builder.semantic_model.file_id())
-        .unwrap_or(emmylua_code_analysis::WorkspaceId::MAIN);
-    let items = crate::util::parse_desc(
+        .unwrap_or(WorkspaceId::MAIN);
+    let items = util::parse_desc(
         workspace_id,
         builder.get_emmyrc(),
         document.get_text(),
@@ -82,15 +82,12 @@ fn detect_path(
     // `:lua:obj:`...`` / `{lua:obj}`...``; an empty closed code block (``) is not a Lua reference.
     let ref_range = items
         .iter()
-        .find(|item| {
-            item.kind == emmylua_parser_desc::DescItemKind::Ref
-                && item.range.contains_inclusive(offset)
-        })?
+        .find(|item| item.kind == DescItemKind::Ref && item.range.contains_inclusive(offset))?
         .range;
     if ref_range.is_empty() {
         return Some(Vec::new());
     }
-    emmylua_parser_desc::parse_ref_target(document.get_text(), ref_range, offset)
+    parse_ref_target(document.get_text(), ref_range, offset)
 }
 
 fn add_global_completions(builder: &mut CompletionBuilder) {
@@ -111,7 +108,7 @@ fn add_global_completions(builder: &mut CompletionBuilder) {
 
 fn add_by_prefix(
     builder: &mut CompletionBuilder,
-    path: &[(emmylua_parser_desc::LuaDescRefPathItem, TextRange)],
+    path: &[(LuaDescRefPathItem, TextRange)],
 ) -> Option<()> {
     let mut seen_labels = HashSet::new();
     let name_parts = path
@@ -157,9 +154,7 @@ fn add_desc_types_by_prefix(
     let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
         let Some(exports) = model.file_exports_current() else {
             continue;
         };
@@ -207,9 +202,8 @@ fn add_desc_globals(builder: &mut CompletionBuilder, seen: &mut HashSet<String>)
     let mut file_ids = builder.semantic_model.file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
+
         let Some(exports) = model.file_exports_current() else {
             continue;
         };
@@ -426,10 +420,9 @@ fn is_literal_member(
     };
     let expr_ty = if file_id == builder.semantic_model.file_id() {
         builder.semantic_model.type_of_expr(value_syntax)
-    } else if let Some(model) = builder.semantic_model.model_for(file_id) {
-        model.type_of_expr(value_syntax)
     } else {
-        return false;
+        let model = builder.semantic_model.model_for(file_id);
+        model.type_of_expr(value_syntax)
     };
     expr_ty.is_const()
 }

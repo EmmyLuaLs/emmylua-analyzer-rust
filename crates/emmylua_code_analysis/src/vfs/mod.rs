@@ -54,8 +54,7 @@ impl Vfs {
 
     pub(crate) fn file(&self, file_id: FileId) -> Option<&FileData> {
         let index = file_id.id as usize;
-        let file = self.files.get(index)?;
-        (file.file_id != FileId::VIRTUAL).then_some(file)
+        self.files.get(index)
     }
 
     pub(crate) fn file_ids(&self) -> Vec<FileId> {
@@ -169,10 +168,6 @@ impl Vfs {
         self.get_file_id(uri).unwrap_or_else(|| self.allocate_id())
     }
 
-    fn virtual_file_id(&mut self, uri: &Uri) -> FileId {
-        self.file_id(uri)
-    }
-
     pub fn get_file_id(&self, uri: &Uri) -> Option<FileId> {
         self.lookup_by_uri(uri)
     }
@@ -200,29 +195,6 @@ impl Vfs {
             self.line_index_map.insert(fid, line_index);
             let path = uri_to_file_path(uri);
             self.insert_at(fid, Some(uri.clone()), path, data);
-        } else {
-            self.line_index_map.remove(&fid);
-            self.tree_map.remove(&fid);
-            self.remove(fid);
-        }
-        fid
-    }
-
-    pub fn set_remote_file_content(&mut self, uri: &Uri, data: Option<String>) -> FileId {
-        let fid = self.virtual_file_id(&uri);
-        log::debug!("virtual file_id: {:?}, uri: {}", fid, uri.as_str());
-
-        if let Some(data) = data {
-            let line_index = LineIndex::parse(&data);
-            let parse_config = self
-                .emmyrc
-                .as_ref()
-                .expect("emmyrc set")
-                .get_parse_config(&mut self.node_cache);
-            let tree = LuaParser::parse(&data, parse_config);
-            self.tree_map.insert(fid, tree);
-            self.line_index_map.insert(fid, line_index);
-            self.insert_at(fid, Some(uri.clone()), None, data);
         } else {
             self.line_index_map.remove(&fid);
             self.tree_map.remove(&fid);
@@ -284,12 +256,14 @@ impl Vfs {
 }
 
 /// Plain file data.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct FileData {
     pub file_id: FileId,
     pub uri: Option<Uri>,
     pub path: Option<PathBuf>,
     pub text: Arc<str>,
+    pub line_index: Option<Arc<LineIndex>>,
+    pub tree: Option<Arc<LuaSyntaxTree>>,
 }
 
 impl FileData {
@@ -304,6 +278,8 @@ impl FileData {
             uri,
             path,
             text: text.into(),
+            line_index: None,
+            tree: None,
         }
     }
 

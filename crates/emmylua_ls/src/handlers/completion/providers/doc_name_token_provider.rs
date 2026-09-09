@@ -346,9 +346,7 @@ fn add_tag_type_flag_completion(
 fn all_file_namespaces(builder: &CompletionBuilder) -> Vec<String> {
     let mut namespaces = HashSet::new();
     for file_id in builder.semantic_model.main_workspace_file_ids() {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
         let Some(facts) = model.file_facts() else {
             continue;
         };

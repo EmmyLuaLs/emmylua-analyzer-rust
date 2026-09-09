@@ -40,7 +40,7 @@ pub fn inlay_hint(
     if !analysis.get_emmyrc().hint.enable {
         return Some(vec![]);
     }
-    let model = analysis.semantic_model(file_id)?;
+    let model = analysis.semantic_model(file_id);
     let enum_param_hint = analysis.get_emmyrc().hint.enum_param_hint;
 
     build_inlay_hints(&model, &analysis.db, client_id, enum_param_hint)

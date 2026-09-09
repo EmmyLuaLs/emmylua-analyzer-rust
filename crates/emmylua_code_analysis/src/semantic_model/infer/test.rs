@@ -22,8 +22,7 @@ fn model_of(source: &str) -> (&'static SemanticModel<'static>, Arc<Emmyrc>) {
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     // Leak for tests.
     let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
-    let model: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
     (model, emmyrc)
 }
 
@@ -130,8 +129,7 @@ fn test_infer_expr_member_cross_file() {
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
     let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
-    let model: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let y = decl_of(&model, "y");
     assert_eq!(model.type_of_decl(&y), Some(LuaType::Number));
@@ -847,8 +845,7 @@ fn test_require_via_variable() {
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
     let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
-    let model: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let v = decl_of(&model, "v");
     let ty = model.type_of_decl(&v).expect("v type");
@@ -876,8 +873,7 @@ fn test_require_literal_vm() {
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
     let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
-    let model: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let v = decl_of(&model, "v");
     let ty = model.type_of_decl(&v).expect("v type");
@@ -941,10 +937,9 @@ fn test_is_visible_private_field() {
     let fid = db.set_file_content(&uri_a, Some("local c = {}\nlocal v = c.secret".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
-    let model: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
     let model_b: &'static SemanticModel<'static> =
-        Box::leak(Box::new(SemanticModel::new(db, fid_b).unwrap()));
+        Box::leak(Box::new(SemanticModel::new(db, fid_b)));
 
     let member = model_b
         .members()

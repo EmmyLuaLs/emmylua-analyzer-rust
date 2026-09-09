@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{SemanticDatabase, SemanticId, SemanticModel};
+use emmylua_code_analysis::{FileId, SemanticDatabase, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaStat, LuaTokenKind, PathTrait};
 use lsp_types::{CallHierarchyIncomingCall, CallHierarchyItem, Location, SymbolKind};
 use rowan::{TextRange, TokenAtOffset};
@@ -44,7 +44,7 @@ impl From<&SemanticId> for SemanticIdData {
 
 impl SemanticIdData {
     pub fn to_semantic_id(&self) -> Option<SemanticId> {
-        let file_id = emmylua_code_analysis::FileId::new(self.file_id);
+        let file_id = FileId::new(self.file_id);
         let range = TextRange::new(self.range.0.into(), self.range.1.into());
         match self.kind.as_str() {
             "Decl" => Some(SemanticId::decl(file_id, range)),
@@ -145,7 +145,7 @@ fn build_incoming_hierarchy_item(
     result: &mut Vec<CallHierarchyIncomingCall>,
 ) -> Option<()> {
     let file_id = db.lookup_file_id(&location.uri)?;
-    let model = SemanticModel::new(db, file_id)?;
+    let model = SemanticModel::new(db, file_id);
     let document = db.document(file_id)?;
     let chunk = model.chunk()?;
     let pos = document.get_offset(
@@ -255,9 +255,6 @@ fn push_incoming_item(
     });
 }
 
-fn model_of<'a>(
-    db: &'a SemanticDatabase,
-    file_id: emmylua_code_analysis::FileId,
-) -> SemanticModel<'a> {
-    SemanticModel::new(db, file_id).expect("semantic model must exist")
+fn model_of<'a>(db: &'a SemanticDatabase, file_id: FileId) -> SemanticModel<'a> {
+    SemanticModel::new(db, file_id)
 }

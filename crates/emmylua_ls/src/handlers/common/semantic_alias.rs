@@ -22,7 +22,7 @@ pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Opt
         }
         match &current {
             SemanticId::Decl(key) => {
-                let file_model = model.model_for(key.file_id)?;
+                let file_model = model.model_for(key.file_id);
                 let facts = file_model.file_facts()?;
                 let decl_info = facts.decl_by_id(&current)?;
                 let Some(value_syntax) = decl_info.value_expr_syntax else {
@@ -64,7 +64,7 @@ pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Opt
                 }
             }
             SemanticId::Member(key) => {
-                let file_model = model.model_for(key.file_id)?;
+                let file_model = model.model_for(key.file_id);
                 let facts = file_model.file_facts()?;
                 let member = facts.member_by_id(&current)?;
                 // Method definitions/function-valued fields are themselves the final definition.
@@ -122,7 +122,7 @@ fn resolve_require_index_member(
         _ => return None,
     };
     let key = index_expr.get_index_key()?.get_path_part().to_string();
-    let module_model = model.model_for(module_file)?;
+    let module_model = model.model_for(module_file);
     module_model
         .members_of_owner(&owner)
         .into_iter()

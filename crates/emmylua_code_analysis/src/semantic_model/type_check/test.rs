@@ -2,7 +2,9 @@
 
 use smol_str::SmolStr;
 
-use crate::{Arc, AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, LuaUnionType};
+use crate::{
+    Arc, AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel,
+};
 
 use super::check_type_detail;
 use super::context::TypeCheckContext;
@@ -11,13 +13,10 @@ use super::{check_general_type_compact, guard::TypeCheckGuard};
 /// Model-less context (structural tests don't need resolution).
 fn ctx() -> TypeCheckContext<'static> {
     // Borrow a dummy model: structural checks don't trigger resolution, so use a leaked fake model.
-    let model: &'static crate::semantic_model::SemanticModel<'static> = Box::leak(Box::new(
-        crate::semantic_model::SemanticModel::new(
-            Box::leak(Box::new(crate::semantic_db::SemanticDatabase::new())),
-            crate::FileId::new(0),
-        )
-        .unwrap(),
-    ));
+    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(
+        Box::leak(Box::new(crate::semantic_db::SemanticDatabase::new())),
+        crate::FileId::new(0),
+    )));
     TypeCheckContext::new(model, false)
 }
 
@@ -151,7 +150,7 @@ fn test_ref_inheritance() {
         &uri,
         Some("---@class Foo\nlocal Foo = {}\n---@class Bar : Foo\nlocal Bar = {}".to_string()),
     );
-    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("model");
+    let model = SemanticModel::new(&db, fid);
     let foo = LuaType::Ref(LuaTypeDeclId::global("Foo"));
     let bar = LuaType::Ref(LuaTypeDeclId::global("Bar"));
     assert!(
@@ -178,7 +177,7 @@ fn test_alias_nominal() {
         &uri,
         Some("---@alias MyStr string\nlocal s = 'x'".to_string()),
     );
-    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("model");
+    let model = SemanticModel::new(&db, fid);
     let my_str = LuaType::Ref(LuaTypeDeclId::global("MyStr"));
     // semantic has no alias origin: nominal (same id) passes, structural expansion is degraded.
     assert!(super::is_compatible(&model, &my_str, &my_str));
@@ -225,7 +224,7 @@ fn test_detail_reason() {
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/x.lua").unwrap();
     let fid = db.set_file_content(&uri, Some("local x = 1".to_string()));
-    let model = crate::semantic_model::SemanticModel::new(&db, fid).expect("model");
+    let model = SemanticModel::new(&db, fid);
     let result = check_type_detail(&model, &LT::String, &LT::Number);
     assert!(result.is_err(), "String !≤ Number 应失败");
     match result {

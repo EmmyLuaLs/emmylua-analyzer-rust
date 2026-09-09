@@ -113,15 +113,15 @@ pub(crate) struct CallSiteAnalysis {
 }
 
 impl<'db> SemanticModel<'db> {
-    pub fn new(db: &'db SemanticDatabase, file_id: FileId) -> Option<Self> {
-        Some(Self {
+    pub fn new(db: &'db SemanticDatabase, file_id: FileId) -> Self {
+        Self {
             db,
             file_id,
             closure_return_infer_stack: RefCell::new(Vec::new()),
             expr_infer_guard: RefCell::new(Vec::new()),
             decl_member_guard: RefCell::new(Vec::new()),
             cache: RefCell::new(cache::SemanticLocalCache::default()),
-        })
+        }
     }
 
     pub(crate) fn begin_expr_infer(&self, expr_syntax: LuaSyntaxId) {
@@ -167,7 +167,7 @@ impl<'db> SemanticModel<'db> {
     }
 
     /// A model for any file on the same analysis database.
-    pub fn model_for(&self, file_id: FileId) -> Option<Self> {
+    pub fn model_for(&self, file_id: FileId) -> Self {
         SemanticModel::new(self.db, file_id)
     }
 
@@ -1475,7 +1475,7 @@ impl<'db> SemanticModel<'db> {
             _ => self.file_id,
         };
         if decl_file != self.file_id
-            && let Some(foreign_model) = SemanticModel::new(self.db, decl_file)
+            && let foreign_model = SemanticModel::new(self.db, decl_file)
             && let Some(foreign_ty) = foreign_model.type_of_decl(decl)
         {
             return Some(foreign_ty);
@@ -1992,9 +1992,8 @@ impl<'db> SemanticModel<'db> {
         };
         // Cross-file members are uniformly delegated to the member file's own model, keeping VM replay and cycle guards on the same model.
         if member_file != self.file_id {
-            if let Some(foreign) = self.model_for(member_file) {
-                return foreign.type_of_member(member);
-            }
+            let foreign_model = self.model_for(member_file);
+            return foreign_model.type_of_member(member);
         }
         // Literal integers in `---@enum` table fields stay constant (`severity.ERROR` -> IntegerConst(1)).
         if let Some(enum_const) = self.enum_member_const(member_file, member) {
@@ -2431,9 +2430,7 @@ impl<'db> SemanticModel<'db> {
         let SemanticId::Decl(key) = decl else {
             return ty;
         };
-        let Some(foreign_model) = SemanticModel::new(self.db, key.file_id) else {
-            return ty;
-        };
+        let foreign_model = SemanticModel::new(self.db, key.file_id);
         let Some(decl) = foreign_model
             .file_facts_of(key.file_id)
             .and_then(|facts| facts.decl_by_id(decl))

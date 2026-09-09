@@ -67,9 +67,7 @@ pub fn complete_types_by_prefix(
     let mut file_ids = builder.semantic_model.main_workspace_file_ids();
     file_ids.sort();
     for file_id in file_ids {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
         let Some(exports) = model.file_exports_current() else {
             continue;
         };

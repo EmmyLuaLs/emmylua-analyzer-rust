@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
     MemberInfo, SemanticDatabase, SemanticId, SemanticModel, TypeDef, TypeDefKind, VariadicType,
-    first_param_may_not_self,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallExpr, LuaDocAttributeUse, LuaDocDescriptionOwner, LuaDocType,
@@ -28,6 +27,23 @@ use super::render::humanize;
 struct MemberContextInfo {
     info: MemberInfo,
     show_unknown: bool,
+}
+
+// Whether the first parameter should not be treated as `self`
+fn first_param_may_not_self(typ: &LuaType) -> bool {
+    if typ.is_table()
+        || matches!(
+            typ,
+            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any | LuaType::Unknown
+        )
+    {
+        return true;
+    }
+
+    if let LuaType::Union(u) = typ {
+        return u.into_vec().iter().any(first_param_may_not_self);
+    }
+    false
 }
 
 pub fn build_semantic_info_hover(
@@ -83,7 +99,8 @@ pub fn build_semantic_info_hover(
         // Alias tracing: `local f = t.func` / `local a = b` show the signature and comments of the real function definition.
         let origin = resolve_alias_origin(model, decl).unwrap_or_else(|| decl.clone());
         if let Some(origin_model) =
-            semantic_id_file(&origin).and_then(|file_id| model.model_for(file_id))
+            // workaround
+            semantic_id_file(&origin).map(|file_id| model.model_for(file_id))
         {
             let origin_is_param = if let SemanticId::Decl(origin_key) = &origin {
                 origin_model
@@ -157,8 +174,7 @@ pub fn build_semantic_info_hover(
         let extra_tags = description.tags.clone();
         if let Some(decl) = info.decl.as_ref() {
             let origin = resolve_alias_origin(model, decl).unwrap_or_else(|| decl.clone());
-            let origin_model =
-                semantic_id_file(&origin).and_then(|file_id| model.model_for(file_id));
+            let origin_model = semantic_id_file(&origin).map(|file_id| model.model_for(file_id));
             let tags = match &origin {
                 SemanticId::Decl(_) => origin_model
                     .as_ref()

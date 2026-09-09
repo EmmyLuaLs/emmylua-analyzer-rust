@@ -212,9 +212,7 @@ impl DocModel {
                 module_name_by_file.insert(file_id, name);
             }
 
-            let Some(model) = SemanticModel::new(db, file_id) else {
-                continue;
-            };
+            let model = SemanticModel::new(db, file_id);
             let Some(facts) = model.file_facts() else {
                 continue;
             };
@@ -279,9 +277,10 @@ impl DocModel {
         // Project signatures.
         let mut signatures: HashMap<LuaSyntaxId, DocSignature> = HashMap::new();
         for (syntax, (file_id, signature)) in &signature_sources {
-            if let Some(model) = SemanticModel::new(db, *file_id) {
-                signatures.insert(*syntax, project_signature(&model, signature));
-            }
+            signatures.insert(
+                *syntax,
+                project_signature(&SemanticModel::new(db, *file_id), signature),
+            );
         }
 
         // Project members (cross-file owner -> member).
@@ -292,9 +291,7 @@ impl DocModel {
                 if member_by_id.contains_key(&member.id) {
                     continue;
                 }
-                let Some(model) = SemanticModel::new(db, *file_id) else {
-                    continue;
-                };
+                let model = SemanticModel::new(db, *file_id);
                 let signature = member
                     .value_syntax
                     .as_ref()
@@ -311,9 +308,7 @@ impl DocModel {
         for (key, mut defs) in type_builders {
             defs.sort_by(|a, b| (a.file_id, a.name.as_str()).cmp(&(b.file_id, b.name.as_str())));
             let first = defs.first().expect("type defs non-empty").clone();
-            let Some(model) = SemanticModel::new(db, first.file_id) else {
-                continue;
-            };
+            let model = SemanticModel::new(db, first.file_id);
             let kind = match first.kind {
                 TypeDefKind::Class => DocTypeKind::Class,
                 TypeDefKind::Enum => DocTypeKind::Enum,
@@ -394,9 +389,8 @@ impl DocModel {
         // Finalize globals.
         let mut globals = Vec::new();
         for (file_id, decl) in &global_sources {
-            let Some(model) = SemanticModel::new(db, *file_id) else {
-                continue;
-            };
+            let model = SemanticModel::new(db, *file_id);
+
             let ty = model.type_of_decl(&decl.id).unwrap_or(LuaType::Unknown);
             globals.push(DocGlobal {
                 name: decl.name.to_string(),
@@ -416,9 +410,7 @@ impl DocModel {
         // Finalize modules.
         let mut modules = Vec::new();
         for source in module_sources {
-            let Some(model) = SemanticModel::new(db, source.file_id) else {
-                continue;
-            };
+            let model = SemanticModel::new(db, source.file_id);
             let export = match &source.module_export {
                 ModuleExport::Decl { decl, .. } => {
                     let ty = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);

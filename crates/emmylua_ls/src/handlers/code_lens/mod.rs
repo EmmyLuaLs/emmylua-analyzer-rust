@@ -29,7 +29,7 @@ pub async fn on_code_lens_handler(
             if !analysis.get_emmyrc().code_lens.enable {
                 return None;
             }
-            let model = analysis.semantic_model(file_id)?;
+            let model = analysis.semantic_model(file_id);
             let document = analysis.db.document(file_id)?;
             build_code_lens(&model, &document)
         },

@@ -68,9 +68,7 @@ fn constructor_call_ranges(db: &SemanticDatabase, member: &SemanticId) -> Vec<(F
     };
     let mut out = Vec::new();
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };
@@ -98,7 +96,7 @@ fn member_constructor(
     let SemanticId::Member(key) = member else {
         return None;
     };
-    let model = SemanticModel::new(db, key.file_id)?;
+    let model = SemanticModel::new(db, key.file_id);
     let members = model.members()?;
     let member_def = members.iter().find(|m| &m.id == member)?;
     let member_name = member_def.key.to_path();
@@ -157,7 +155,7 @@ fn constructor_name_for_type_def(
     def: &TypeDef,
     runtime_owner: Option<&SemanticId>,
 ) -> Option<String> {
-    let model = SemanticModel::new(db, def.file_id)?;
+    let model = SemanticModel::new(db, def.file_id);
     let facts = model.file_facts()?;
     let decl_id = runtime_owner
         .cloned()
@@ -239,9 +237,7 @@ pub fn member_key_rename_ranges(
     };
     // Member rename is currently restricted to the declaring file (mirroring old origin-owner semantics), so only that file is scanned.
     let file_id = key.file_id;
-    let Some(model) = SemanticModel::new(db, file_id) else {
-        return out;
-    };
+    let model = SemanticModel::new(db, file_id);
     // Member definition sites (including `@field`, table fields, assignments, method names).
     if let Some(members) = model.members() {
         for m in members.iter() {
@@ -278,16 +274,14 @@ pub fn type_def_reference_ranges(
     let mut out = Vec::new();
     let scope = def_scope(def);
     // Definition sites: all definitions with the same scope and full name (including `@class` names).
-    if include_declaration && let Some(model) = SemanticModel::new(db, def.file_id) {
+    if include_declaration && let model = SemanticModel::new(db, def.file_id) {
         for d in model.type_defs_in_scope(scope, &def.full_name) {
             push_unique(&mut out, (d.file_id, d.name_range));
         }
     }
     // Use sites: doc name types in each file that resolve to this same type definition.
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };
@@ -312,16 +306,14 @@ pub fn type_def_rename_ranges(
     let mut out = Vec::new();
     let scope = def_scope(def);
     // Definition sites: name token of `@class Foo` → new name.
-    if let Some(model) = SemanticModel::new(db, def.file_id) {
-        for d in model.type_defs_in_scope(scope, &def.full_name) {
-            push_unique_text(&mut out, (d.file_id, d.name_range, new_name.to_string()));
-        }
+    let model = SemanticModel::new(db, def.file_id);
+    for d in model.type_defs_in_scope(scope, &def.full_name) {
+        push_unique_text(&mut out, (d.file_id, d.name_range, new_name.to_string()));
     }
+
     // Use sites: replace the display name (`Test.Abc` → `Abc`; full-name tail `Luakit.Test.Abc` → `Luakit.Abc`).
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };
@@ -487,7 +479,7 @@ fn member_key_text_of(db: &SemanticDatabase, member: &SemanticId) -> Option<Stri
     let SemanticId::Member(key) = member else {
         return None;
     };
-    let model = SemanticModel::new(db, key.file_id)?;
+    let model = SemanticModel::new(db, key.file_id);
     let members = model.members()?;
     members
         .iter()

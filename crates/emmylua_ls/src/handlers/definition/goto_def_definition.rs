@@ -182,7 +182,7 @@ fn member_key_of(model: &SemanticModel<'_>, decl: &SemanticId) -> Option<LuaMemb
     let SemanticId::Member(key) = decl else {
         return None;
     };
-    let member_model = model.model_for(key.file_id)?;
+    let member_model = model.model_for(key.file_id);
     let member = member_model.members()?.iter().find(|m| &m.id == decl)?;
     Some(member.key.clone())
 }
@@ -246,9 +246,7 @@ fn type_has_field_accessor(
         return false;
     };
     let owner_range = owner_syntax.get_range();
-    let Some(def_model) = model.model_for(def.file_id) else {
-        return false;
-    };
+    let def_model = model.model_for(def.file_id);
     let Some(chunk) = def_model.chunk() else {
         return false;
     };

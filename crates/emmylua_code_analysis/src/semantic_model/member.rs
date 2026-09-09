@@ -6,7 +6,8 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaTableExpr, LuaTableFie
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeScope};
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::{
-    FileId, GenericTplId, LuaMemberKey, LuaType, LuaTypeDeclId, LuaTypeIdentifier, WorkspaceId,
+    FileId, GenericTplId, InFiled, LuaMemberKey, LuaType, LuaTypeDeclId, LuaTypeIdentifier,
+    WorkspaceId,
 };
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
@@ -407,12 +408,12 @@ pub fn member_type(
 /// Supports a table literal as the first argument, and also a local name indirection (`local t = {...}; setmetatable(t, mt)`).
 pub(crate) fn table_metatable_type(
     model: &SemanticModel,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
 ) -> Option<LuaType> {
     // Cross-file: a diagnostic/consumer model's `type_of_expr` may return Unknown for expressions in the defining file,
     // so delegate to the model for the file containing the table.
     if model.file_id() != table.file_id {
-        let foreign = model.model_for(table.file_id)?;
+        let foreign = model.model_for(table.file_id);
         return table_metatable_type(&foreign, table);
     }
     let facts = model.file_facts_of(table.file_id)?;
@@ -465,10 +466,10 @@ pub(crate) fn table_metatable_type(
 /// If a table literal is the runtime class table for a `---@class Foo` annotation, returns that class's Ref/Def.
 pub(crate) fn table_const_class_type(
     model: &SemanticModel,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
 ) -> Option<LuaType> {
     if model.file_id() != table.file_id {
-        let foreign = model.model_for(table.file_id)?;
+        let foreign = model.model_for(table.file_id);
         return table_const_class_type(&foreign, table);
     }
     let facts = model.file_facts_of(table.file_id)?;
@@ -487,7 +488,7 @@ pub(crate) fn table_const_class_type(
 /// Returns the `__index` member info on the metatable corresponding to a table literal.
 pub(crate) fn table_metatable_index_info(
     model: &SemanticModel,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
 ) -> Option<MemberInfo> {
     let metatable_ty = table_metatable_type(model, table)?;
     let key = LuaMemberKey::Name(SmolStr::new("__index"));
@@ -780,7 +781,7 @@ fn collect_members(
 /// all returned values expand consecutively into integer-keyed fields (`{ coroutine.resume(...) }` → `[1]`, `[2]`, ...).
 fn expand_table_multi_return_member(
     model: &SemanticModel,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
     member_ref: &MemberRef,
     info: &MemberInfo,
 ) -> Option<Vec<MemberInfo>> {
@@ -1138,7 +1139,7 @@ mod tests {
         let fid = db.set_file_content(&uri, Some(source.to_string()));
         // Leak: for tests.
         let db: &'static SemanticDatabase = Box::leak(Box::new(db));
-        Box::leak(Box::new(SemanticModel::new(db, fid).unwrap()))
+        Box::leak(Box::new(SemanticModel::new(db, fid)))
     }
 
     /// Named type `@field` members.
@@ -1157,7 +1158,7 @@ mod tests {
         use emmylua_parser::{LuaAstNode, LuaIndexExpr};
         let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def("local x = math.randomseed(os.time())");
-        let model = ws.analysis.semantic_model(file_id).unwrap();
+        let model = ws.analysis.semantic_model(file_id);
         let chunk = model.chunk().unwrap();
 
         let mut found_randomseed = false;
@@ -1188,7 +1189,7 @@ mod tests {
     fn test_member_infos_string_library() {
         let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def("local s = 'abc'");
-        let model = ws.analysis.semantic_model(file_id).expect("model");
+        let model = ws.analysis.semantic_model(file_id);
         let infos = model.member_infos(&LuaType::String);
         let map = member_map(&infos);
         assert!(

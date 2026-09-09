@@ -3300,11 +3300,11 @@ fn resolve_return_cast_origin(model: &SemanticModel, start: SemanticId) -> Optio
         match expr {
             LuaExpr::ClosureExpr(_) => return Some(current),
             LuaExpr::NameExpr(name) => {
-                let alias_model = model.model_for(file_id)?;
+                let alias_model = model.model_for(file_id);
                 current = alias_model.resolve_name(name.get_position())?;
             }
             LuaExpr::IndexExpr(index) => {
-                let alias_model = model.model_for(file_id)?;
+                let alias_model = model.model_for(file_id);
                 current = alias_model
                     .resolve_member(&index)
                     .and_then(|r| r.member_id)?;

@@ -711,9 +711,7 @@ fn add_str_tpl_ref_completion(
     let constraint = str_tpl.get_constraint();
     let mut names = Vec::new();
     for file_id in builder.semantic_model.file_ids() {
-        let Some(model) = builder.semantic_model.model_for(file_id) else {
-            continue;
-        };
+        let model = builder.semantic_model.model_for(file_id);
         let Some(facts) = model.file_facts() else {
             continue;
         };

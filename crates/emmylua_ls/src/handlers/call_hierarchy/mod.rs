@@ -25,7 +25,7 @@ pub async fn on_prepare_call_hierarchy_handler(
     let position = params.text_document_position_params.position;
     snapshot_query(context.analysis(), cancel_token, move |analysis| {
         let file_id = analysis.get_file_id(&uri)?;
-        let model = analysis.semantic_model(file_id)?;
+        let model = analysis.semantic_model(file_id);
         let document = analysis.db.document(file_id)?;
         let root = model.chunk()?;
         let position_offset =

@@ -20,7 +20,9 @@ use lsp_types::Uri;
 
 use crate::vfs::file_path_to_uri;
 use crate::vfs::{LuaDocument, Vfs};
-use crate::{Emmyrc, FileData, FileId, WorkspaceFolder, WorkspaceImport, uri_to_file_path};
+use crate::{
+    Emmyrc, FileData, FileId, SemanticModel, WorkspaceFolder, WorkspaceImport, uri_to_file_path,
+};
 pub use def::*;
 use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
 
@@ -248,16 +250,15 @@ impl SemanticDatabase {
     /// invoked concurrently from multiple scoped threads.
     pub fn parallel_for_each_file<F>(&self, f: F)
     where
-        F: Fn(FileId, &crate::SemanticModel<'_>) + Sync,
+        F: Fn(FileId, &SemanticModel<'_>) + Sync,
     {
         let file_ids: Vec<FileId> = self.file_ids().to_vec();
         std::thread::scope(|scope| {
             for file_id in file_ids {
                 let f = &f;
                 scope.spawn(move || {
-                    if let Some(model) = crate::SemanticModel::new(self, file_id) {
-                        f(file_id, &model);
-                    }
+                    let model = SemanticModel::new(self, file_id);
+                    f(file_id, &model);
                 });
             }
         });

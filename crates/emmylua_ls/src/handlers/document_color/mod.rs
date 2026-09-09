@@ -20,7 +20,7 @@ pub async fn on_document_color(
     let uri = params.text_document.uri;
     match snapshot_query(context.analysis(), cancel_token, move |analysis| {
         let file_id = analysis.get_file_id(&uri)?;
-        let model = analysis.semantic_model(file_id)?;
+        let model = analysis.semantic_model(file_id);
         if !analysis.get_emmyrc().document_color.enable {
             return None;
         }

@@ -65,9 +65,7 @@ fn search_member_implementations(
     let mut signatures = Vec::new();
     let mut others = Vec::new();
     for (file_id, range) in ranges {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         if !is_implementation_position(&model, range) {
             continue;
         }
@@ -148,9 +146,7 @@ fn search_decl_implementations(
     // Implementation positions are declaration names plus assignment lvalues; plain reads are not implementations.
     let ranges = decl_reference_ranges(db, decl, true);
     for (file_id, range) in ranges {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         if is_decl_implementation_position(&model, decl, range) {
             push_location(db, file_id, range, result);
         }
@@ -158,7 +154,7 @@ fn search_decl_implementations(
     // Same-name globals: partial classes / global variables may each use `x = {}` in multiple files,
     // and these assignments are implementation positions for the same global name.
     if let SemanticId::Decl(decl_key) = decl {
-        let model = SemanticModel::new(db, decl_key.file_id)?;
+        let model = SemanticModel::new(db, decl_key.file_id);
         let decl_info = model.file_facts()?.decl_by_id(decl)?;
         if matches!(decl_info.kind, DeclKind::Global) {
             let name = decl_info.name.clone();
@@ -223,7 +219,7 @@ fn member_key_text(db: &SemanticDatabase, member: &SemanticId) -> Option<String>
     let SemanticId::Member(key) = member else {
         return None;
     };
-    let model = SemanticModel::new(db, key.file_id)?;
+    let model = SemanticModel::new(db, key.file_id);
     let members = model.members()?;
     members
         .iter()

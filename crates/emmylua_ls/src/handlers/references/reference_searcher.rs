@@ -111,9 +111,7 @@ fn require_module_literal_ranges(
 ) -> Vec<(FileId, rowan::TextRange)> {
     let mut out = Vec::new();
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };
@@ -145,9 +143,7 @@ fn member_reference_ranges_with_require(
 ) -> Vec<(FileId, rowan::TextRange)> {
     let mut out = member_reference_ranges(db, member, include_declaration);
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(chunk) = model.chunk() else {
             continue;
         };
@@ -222,9 +218,7 @@ fn module_alias_decls_of_decl(
     let mut out = Vec::new();
     let mut module_files = Vec::new();
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(exports) = model.file_exports(file_id) else {
             continue;
         };
@@ -244,9 +238,7 @@ fn module_alias_decls_of_decl(
             continue;
         };
         for file_id in db.file_ids() {
-            let Some(model) = SemanticModel::new(db, file_id) else {
-                continue;
-            };
+            let model = SemanticModel::new(db, file_id);
             let Some(decls) = model.decls() else {
                 continue;
             };
@@ -293,9 +285,7 @@ fn require_module_name_at(
 fn alias_members_of_decl(db: &SemanticDatabase, decl: &SemanticId) -> Vec<SemanticId> {
     let mut out = Vec::new();
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(members) = model.members() else {
             continue;
         };
@@ -316,9 +306,7 @@ fn alias_members_of_decl(db: &SemanticDatabase, decl: &SemanticId) -> Vec<Semant
 fn decls_aliased_to_member(db: &SemanticDatabase, member: &SemanticId) -> Vec<SemanticId> {
     let mut out = Vec::new();
     for file_id in db.file_ids() {
-        let Some(model) = SemanticModel::new(db, file_id) else {
-            continue;
-        };
+        let model = SemanticModel::new(db, file_id);
         let Some(decls) = model.decls() else {
             continue;
         };
