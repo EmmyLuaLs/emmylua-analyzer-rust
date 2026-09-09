@@ -18,8 +18,8 @@ use emmylua_parser::LuaChunk;
 use crate::FileId;
 
 use super::SemanticDatabase;
-use super::inputs::ConfigInputData;
 use super::query::file_facts;
+use crate::Emmyrc;
 
 pub use binder::FlowBinder;
 pub use flow_node::*;
@@ -43,15 +43,11 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
 
 /// Per-file control flow graph. Pure lookup in the write-time built `SemanticDatabase::flow_trees`.
 pub(crate) fn flow_tree_of(db: &SemanticDatabase, file: FileId) -> &FlowTree {
-    db.flow_tree_of(file.file_id(db))
+    db.flow_tree_of(file)
 }
 
-pub(super) fn build_flow_tree(
-    db: &SemanticDatabase,
-    file: FileId,
-    _config: &ConfigInputData,
-) -> FlowTree {
-    let file_id = file.file_id(db);
+pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId, _config: &Emmyrc) -> FlowTree {
+    let file_id = file;
     let facts = file_facts(db, file);
     let tree = db
         .vfs()

@@ -13,7 +13,7 @@ pub use file_uri_handler::{file_path_to_uri, uri_to_file_path};
 use hashbrown::{HashMap, HashSet};
 pub use loader::{LuaFileInfo, load_workspace_files, read_file_with_encoding};
 use lsp_types::Uri;
-use rowan::{NodeCache, TextSize};
+use rowan::NodeCache;
 use std::path::PathBuf;
 use std::sync::Arc;
 pub use virtual_url::VirtualUrlGenerator;
@@ -26,8 +26,7 @@ pub struct Vfs {
     protected_paths: HashSet<PathBuf>,
     next_file_id: u32,
     uri_map: HashMap<Uri, FileId>,
-    line_index_map: HashMap<FileId, LineIndex>,
-    tree_map: HashMap<FileId, LuaSyntaxTree>,
+    path_map: HashMap<PathBuf, FileId>,
     emmyrc: Option<Arc<Emmyrc>>,
     node_cache: NodeCache,
 }
@@ -45,8 +44,7 @@ impl Vfs {
             protected_paths: HashSet::new(),
             next_file_id: 0,
             uri_map: HashMap::new(),
-            line_index_map: HashMap::new(),
-            tree_map: HashMap::new(),
+            path_map: HashMap::new(),
             emmyrc: None,
             node_cache: NodeCache::default(),
         }
@@ -54,7 +52,9 @@ impl Vfs {
 
     pub(crate) fn file(&self, file_id: FileId) -> Option<&FileData> {
         let index = file_id.id as usize;
-        self.files.get(index)
+        self.files
+            .get(index)
+            .filter(|file| file.file_id != FileId::VIRTUAL)
     }
 
     pub(crate) fn file_ids(&self) -> Vec<FileId> {
@@ -72,14 +72,6 @@ impl Vfs {
             .count()
     }
 
-    pub(crate) fn files(&self) -> Vec<FileData> {
-        self.files
-            .iter()
-            .filter(|file| file.file_id != FileId::VIRTUAL)
-            .cloned()
-            .collect()
-    }
-
     pub(crate) fn protected_paths(&self) -> &HashSet<PathBuf> {
         &self.protected_paths
     }
@@ -89,10 +81,7 @@ impl Vfs {
     }
 
     pub(crate) fn lookup_by_path(&self, path: &PathBuf) -> Option<FileId> {
-        self.files
-            .iter()
-            .find(|file| file.path.as_ref() == Some(path))
-            .map(|file| file.file_id)
+        self.path_map.get(path).copied()
     }
 
     pub(crate) fn lookup_by_uri(&self, uri: &Uri) -> Option<FileId> {
@@ -111,43 +100,71 @@ impl Vfs {
             self.next_file_id = file_id.id + 1;
         }
 
-        if let Some(uri) = &uri {
-            self.uri_map.insert(uri.clone(), file_id);
+        if index < self.files.len() {
+            let old_uri = self.files[index].uri.clone();
+            let old_path = self.files[index].path.clone();
+            if let Some(uri) = old_uri {
+                self.uri_map.remove(&uri);
+            }
+            if let Some(path) = old_path {
+                self.path_map.remove(&path);
+            }
         }
 
-        if let Some(emmyrc) = &self.emmyrc {
-            let line_index = LineIndex::parse(&text);
+        let line_index = Arc::new(LineIndex::parse(&text));
+        let tree = self.emmyrc.as_ref().map(|emmyrc| {
             let parse_config = emmyrc.get_parse_config(&mut self.node_cache);
-            let tree = LuaParser::parse(&text, parse_config);
-            self.line_index_map.insert(file_id, line_index);
-            self.tree_map.insert(file_id, tree);
-        }
+            Arc::new(LuaParser::parse(&text, parse_config))
+        });
 
-        let file_data = FileData::new(file_id, uri, path, Arc::from(text));
+        let file_data = FileData::new(file_id, uri, path, text, line_index, tree);
         if index < self.files.len() {
             self.files[index] = file_data;
         } else if index == self.files.len() {
             self.files.push(file_data);
         } else {
-            self.files
-                .resize(index, FileData::new(FileId::VIRTUAL, None, None, ""));
+            self.files.resize_with(index, || {
+                FileData::new(
+                    FileId::VIRTUAL,
+                    None,
+                    None,
+                    "",
+                    Arc::new(LineIndex::parse("")),
+                    None,
+                )
+            });
             self.files.push(file_data);
+        }
+
+        let file = &self.files[index];
+        if let Some(uri) = &file.uri {
+            self.uri_map.insert(uri.clone(), file_id);
+        }
+        if let Some(path) = &file.path {
+            self.path_map.insert(path.clone(), file_id);
         }
     }
 
     pub(crate) fn remove(&mut self, file_id: FileId) {
         let index = file_id.id as usize;
-        if let Some(file_data) = self.files.get_mut(index) {
-            if let Some(uri) = &file_data.uri {
-                self.uri_map.remove(uri);
+        if let Some(file_data) = self.files.get(index) {
+            let old_uri = file_data.uri.clone();
+            let old_path = file_data.path.clone();
+            if let Some(uri) = old_uri {
+                self.uri_map.remove(&uri);
             }
+            if let Some(path) = old_path {
+                self.path_map.remove(&path);
+            }
+        }
+        if let Some(file_data) = self.files.get_mut(index) {
             file_data.file_id = FileId::VIRTUAL;
             file_data.uri = None;
             file_data.path = None;
             file_data.text = Arc::from("");
+            file_data.line_index = Arc::new(LineIndex::parse(""));
+            file_data.tree = None;
         }
-        self.line_index_map.remove(&file_id);
-        self.tree_map.remove(&file_id);
     }
 
     fn allocate_id(&mut self) -> FileId {
@@ -161,7 +178,7 @@ impl Vfs {
     }
 
     pub(crate) fn line_index(&self, file_id: FileId) -> Option<&LineIndex> {
-        self.line_index_map.get(&file_id)
+        self.file(file_id).map(|file| file.line_index.as_ref())
     }
 
     pub fn file_id(&mut self, uri: &Uri) -> FileId {
@@ -184,20 +201,9 @@ impl Vfs {
         let fid = self.file_id(uri);
 
         if let Some(data) = data {
-            let line_index = LineIndex::parse(&data);
-            let parse_config = self
-                .emmyrc
-                .as_ref()
-                .expect("emmyrc set")
-                .get_parse_config(&mut self.node_cache);
-            let tree = LuaParser::parse(&data, parse_config);
-            self.tree_map.insert(fid, tree);
-            self.line_index_map.insert(fid, line_index);
             let path = uri_to_file_path(uri);
             self.insert_at(fid, Some(uri.clone()), path, data);
         } else {
-            self.line_index_map.remove(&fid);
-            self.tree_map.remove(&fid);
             self.remove(fid);
         }
         fid
@@ -205,8 +211,6 @@ impl Vfs {
 
     pub fn remove_file(&mut self, uri: &Uri) -> Option<FileId> {
         let fid = self.get_file_id(uri)?;
-        self.line_index_map.remove(&fid);
-        self.tree_map.remove(&fid);
         self.remove(fid);
         Some(fid)
     }
@@ -215,27 +219,22 @@ impl Vfs {
         self.emmyrc = Some(emmyrc);
     }
 
-    pub(crate) fn emmyrc(&self) -> Option<Arc<Emmyrc>> {
-        self.emmyrc.clone()
-    }
-
     pub fn get_file_content(&self, id: &FileId) -> Option<&str> {
         self.file(*id).map(|file| file.text.as_ref())
     }
 
     pub fn get_document(&self, id: &FileId) -> Option<LuaDocument<'_>> {
-        let path = self.get_file_path(id)?;
-        let text = self.get_file_content(id)?;
-        let line_index = self.line_index_map.get(id)?;
-        Some(LuaDocument::new(*id, path, text, line_index))
+        let file = self.file(*id)?;
+        let path = file.path.as_ref()?;
+        Some(LuaDocument::new(*id, path, &file.text, &file.line_index))
     }
 
     pub fn get_syntax_tree(&self, id: &FileId) -> Option<&LuaSyntaxTree> {
-        self.tree_map.get(id)
+        self.file(*id).and_then(|file| file.tree.as_deref())
     }
 
     pub fn get_file_parse_error(&self, id: &FileId) -> Option<Vec<LuaParseError>> {
-        let tree = self.tree_map.get(id)?;
+        let tree = self.get_syntax_tree(id)?;
         let errors = tree.get_errors();
         if errors.is_empty() {
             return None;
@@ -248,42 +247,40 @@ impl Vfs {
         self.files.clear();
         self.protected_paths.clear();
         self.next_file_id = 0;
-        self.line_index_map.clear();
-        self.tree_map.clear();
+        self.uri_map.clear();
+        self.path_map.clear();
         self.emmyrc = None;
         self.node_cache = NodeCache::default();
     }
 }
 
-/// Plain file data.
+/// Plain file data with its parsed line index / syntax tree.
 #[derive(Debug, Clone)]
-pub struct FileData {
-    pub file_id: FileId,
-    pub uri: Option<Uri>,
-    pub path: Option<PathBuf>,
-    pub text: Arc<str>,
-    pub line_index: Option<Arc<LineIndex>>,
-    pub tree: Option<Arc<LuaSyntaxTree>>,
+pub(crate) struct FileData {
+    pub(crate) file_id: FileId,
+    pub(crate) uri: Option<Uri>,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) text: Arc<str>,
+    pub(crate) line_index: Arc<LineIndex>,
+    pub(crate) tree: Option<Arc<LuaSyntaxTree>>,
 }
 
 impl FileData {
-    pub fn new(
+    pub(crate) fn new(
         file_id: FileId,
         uri: Option<Uri>,
         path: Option<PathBuf>,
         text: impl Into<Arc<str>>,
+        line_index: Arc<LineIndex>,
+        tree: Option<Arc<LuaSyntaxTree>>,
     ) -> Self {
         Self {
             file_id,
             uri,
             path,
             text: text.into(),
-            line_index: None,
-            tree: None,
+            line_index,
+            tree,
         }
-    }
-
-    pub fn text_len(&self) -> TextSize {
-        TextSize::from(self.text.len() as u32)
     }
 }

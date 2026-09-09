@@ -19,6 +19,7 @@ use emmylua_parser::{LuaFeaturesSet, LuaLanguageLevel, ParserConfig, SpecialFunc
 use rowan::NodeCache;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 
 use crate::config::pre_process::PreProcessContext;
 
@@ -95,6 +96,52 @@ impl Emmyrc {
 
     pub fn get_language_level(&self) -> LuaLanguageLevel {
         self.runtime.version.get_language_level()
+    }
+
+    pub(crate) fn module_patterns(&self) -> Vec<SmolStr> {
+        let mut extensions: Vec<SmolStr> = self
+            .runtime
+            .extensions
+            .iter()
+            .map(|ext| {
+                SmolStr::new(
+                    ext.strip_prefix(".")
+                        .or_else(|| ext.strip_prefix("*."))
+                        .unwrap_or(ext),
+                )
+            })
+            .collect();
+        if !extensions.iter().any(|ext| ext == "lua") {
+            extensions.push(SmolStr::new("lua"));
+        }
+        let mut patterns: Vec<SmolStr> = extensions
+            .iter()
+            .map(|ext| SmolStr::new(format!("?.{}", ext)))
+            .collect();
+        if self.runtime.require_pattern.is_empty() {
+            for ext in &extensions {
+                patterns.push(SmolStr::new(format!("?/init.{}", ext)));
+            }
+        } else {
+            patterns.extend(self.runtime.require_pattern.iter().map(SmolStr::new));
+        }
+        patterns
+    }
+
+    pub(crate) fn module_replace(&self) -> Vec<(SmolStr, SmolStr)> {
+        self.workspace
+            .module_map
+            .iter()
+            .map(|module| (SmolStr::new(&module.pattern), SmolStr::new(&module.replace)))
+            .collect()
+    }
+
+    pub(crate) fn known_doc_tags(&self) -> Vec<SmolStr> {
+        self.doc
+            .known_tags
+            .iter()
+            .map(|tag| SmolStr::new(tag.as_str()))
+            .collect()
     }
 
     pub fn pre_process_emmyrc(&mut self, workspace_root: &Path) {

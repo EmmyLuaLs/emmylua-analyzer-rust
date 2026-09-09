@@ -24,13 +24,15 @@ use crate::{
     Emmyrc, FileData, FileId, SemanticModel, WorkspaceFolder, WorkspaceImport, uri_to_file_path,
 };
 pub use def::*;
-use inputs::{ConfigInputData, WorkspaceRoot, language_level_to_version};
+use inputs::{WorkspaceRoot, language_level_to_version};
 
 pub(crate) use facade::SemanticQueries;
 pub use facade::{MemberList, TypeDefList};
 pub struct SemanticDatabase {
     // ── Plain config/data ──
-    config: Option<ConfigInputData>,
+    config: Option<Arc<Emmyrc>>,
+    /// Main workspace root (used for require module name fallback).
+    main_root: Option<PathBuf>,
     /// Registered workspace roots.
     workspace_roots: Arc<[WorkspaceRoot]>,
 
@@ -61,6 +63,7 @@ impl Default for SemanticDatabase {
     fn default() -> Self {
         Self {
             config: None,
+            main_root: None,
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
             vfs: Vfs::new(),
             file_facts: HashMap::new(),
@@ -191,63 +194,30 @@ impl SemanticDatabase {
 
     pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
         self.vfs.update_config(emmyrc.clone());
-        let (
-            language_level,
-            special_like,
-            non_std_symbols,
-            module_patterns,
-            module_replace,
-            known_doc_tags,
-            strict_array_index,
-        ) = ConfigInputData::parts_from_emmyrc(&emmyrc);
-        self.config = Some(ConfigInputData::new(
-            language_level,
-            special_like,
-            non_std_symbols,
-            module_patterns,
-            module_replace,
-            known_doc_tags,
-            strict_array_index,
-            None,
-        ));
+        self.config = Some(emmyrc);
         self.reset_file_facts_cache();
     }
 
     /// Main workspace root (used for require module name derivation).
     pub fn update_main_root(&mut self, root: PathBuf) {
-        if let Some(config) = &self.config {
-            let main_root = Some(root);
-            self.config = Some(ConfigInputData::new(
-                config.language_level,
-                config.special_like.clone(),
-                config.non_std_symbols.clone(),
-                config.module_patterns.clone(),
-                config.module_replace.clone(),
-                config.known_doc_tags.clone(),
-                config.strict_array_index,
-                main_root,
-            ));
-        }
+        self.main_root = Some(root);
     }
 
     pub fn main_root(&self) -> Option<PathBuf> {
-        self.config
-            .as_ref()
-            .and_then(|config| config.main_root.clone())
+        self.main_root.clone()
     }
 
     pub(crate) fn strict_array_index(&self) -> bool {
         self.config
             .as_ref()
-            .map(|config| config.strict_array_index)
+            .map(|config| config.strict.array_index)
             .unwrap_or(true)
     }
 
     /// Run `f` for every workspace file on scoped worker threads.
     ///
-    /// Each worker owns its own `SemanticDatabase` clone, sharing the same semantic memo
-    /// and the shared high-level semantic cache. `f` must be `Sync` because it is
-    /// invoked concurrently from multiple scoped threads.
+    /// Each worker creates its own `SemanticModel` view over the shared read-only
+    /// `SemanticDatabase`; `f` must be `Sync` because it is invoked concurrently.
     pub fn parallel_for_each_file<F>(&self, f: F)
     where
         F: Fn(FileId, &SemanticModel<'_>) + Sync,
@@ -343,7 +313,7 @@ impl SemanticDatabase {
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.config
             .as_ref()
-            .map(|config| language_level_to_version(config.language_level))
+            .map(|config| language_level_to_version(config.get_language_level()))
     }
 
     // ---- URI / FileId mapping ----
@@ -421,42 +391,102 @@ impl SemanticDatabase {
         self.rebuild_file_after_write(file_id, metadata_changed);
     }
 
-    /// Replace the whole workspace file set in one write.
-    pub(crate) fn replace_files(&mut self, file_data_ids: HashMap<FileId, FileData>) {
-        let protected_paths = self
-            .vfs
-            .protected_paths()
+    /// Reload the workspace file set while preserving existing FileIds and protected files.
+    ///
+    /// This updates VFS in place and rebuilds derived caches once, instead of cloning
+    /// the whole `FileData` table and rebuilding VFS from scratch.
+    pub(crate) fn reload_workspace_files(
+        &mut self,
+        files: Vec<(PathBuf, Option<String>)>,
+        open_files: Vec<(Uri, String)>,
+    ) -> Vec<Uri> {
+        let open_paths: HashSet<PathBuf> = open_files
             .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        let mut vfs = Vfs::new();
-        if let Some(emmyrc) = self.vfs.emmyrc() {
-            vfs.update_config(emmyrc);
-        }
-        vfs.set_protected_paths(protected_paths);
-        for (file_id, input) in file_data_ids {
-            let text = input.text.to_string();
-            let path = input.path.clone();
-            let uri = input.uri.clone();
-            vfs.insert_at(file_id, uri, path, text);
-        }
+            .filter_map(|(uri, _)| uri_to_file_path(uri))
+            .collect();
+        let mut kept_paths = open_paths.clone();
+        kept_paths.extend(files.iter().map(|(path, _)| path.clone()));
+        kept_paths.extend(self.vfs.protected_paths().iter().cloned());
 
-        self.vfs = vfs;
-        self.rebuild_all_caches();
-    }
-
-    /// Current workspace file map (FileId -> source data).
-    pub(crate) fn file_data_map(&self) -> HashMap<FileId, FileData> {
-        self.vfs
-            .files()
+        let old_entries: Vec<(FileId, Option<PathBuf>, Option<Uri>)> = self
+            .vfs
+            .file_ids()
             .into_iter()
-            .map(|file| (file.file_id, file))
-            .collect()
-    }
+            .filter_map(|file_id| {
+                self.vfs
+                    .file(file_id)
+                    .map(|file| (file_id, file.path.clone(), file.uri.clone()))
+            })
+            .collect();
 
-    /// Allocate a fresh FileId.
-    pub(crate) fn allocate_file_id(&mut self) -> FileId {
-        self.vfs.allocate_file_id()
+        let stale_uris: Vec<Uri> = old_entries
+            .iter()
+            .filter_map(|(_, path, _)| {
+                let path = path.as_ref()?;
+                if kept_paths.contains(path) {
+                    None
+                } else {
+                    file_path_to_uri(path)
+                }
+            })
+            .collect();
+
+        let mut removals: Vec<FileId> = old_entries
+            .iter()
+            .filter_map(|(file_id, path, _)| {
+                let path = path.as_ref()?;
+                (!kept_paths.contains(path)).then_some(*file_id)
+            })
+            .collect();
+
+        let mut path_to_id: HashMap<PathBuf, FileId> = old_entries
+            .iter()
+            .filter_map(|(file_id, path, _)| path.clone().map(|path| (path, *file_id)))
+            .collect();
+
+        let mut inserts: Vec<(FileId, Option<PathBuf>, Option<Uri>, String)> = Vec::new();
+        for (path, text) in files
+            .into_iter()
+            .filter(|(path, _)| !open_paths.contains(path))
+        {
+            let uri = file_path_to_uri(&path);
+            let file_id = path_to_id
+                .get(&path)
+                .copied()
+                .unwrap_or_else(|| self.vfs.allocate_file_id());
+            if let Some(text) = text {
+                path_to_id.insert(path.clone(), file_id);
+                inserts.push((file_id, Some(path), uri, text));
+            } else {
+                removals.push(file_id);
+                path_to_id.remove(&path);
+            }
+        }
+
+        for (uri, text) in open_files {
+            let path = uri_to_file_path(&uri);
+            let file_id = self
+                .lookup_file_id(&uri)
+                .or_else(|| path.as_ref().and_then(|path| path_to_id.get(path).copied()))
+                .unwrap_or_else(|| self.vfs.allocate_file_id());
+            if let Some(path) = &path {
+                path_to_id.insert(path.clone(), file_id);
+            }
+            inserts.push((file_id, path, Some(uri), text));
+        }
+
+        let changed = !removals.is_empty() || !inserts.is_empty();
+        for file_id in removals {
+            self.vfs.remove(file_id);
+        }
+        for (file_id, path, uri, text) in inserts {
+            self.vfs.insert_at(file_id, uri, path, text);
+        }
+        if changed {
+            self.rebuild_all_caches();
+        }
+
+        stale_uris
     }
 
     pub fn remove_file(&mut self, file_id: FileId) {
@@ -469,6 +499,7 @@ impl SemanticDatabase {
 
     pub fn clear(&mut self) {
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
+        self.main_root = None;
         self.vfs = Vfs::new();
         self.file_facts = HashMap::new();
         self.flow_trees = HashMap::new();
@@ -483,7 +514,6 @@ impl SemanticDatabase {
     }
 
     /// Current VFS snapshot (immutable, shareable across threads).
-    #[allow(dead_code)]
     pub(crate) fn vfs(&self) -> &Vfs {
         &self.vfs
     }
@@ -544,8 +574,8 @@ impl SemanticDatabase {
 
     // ── Input accessors (for tracked layer / facade) ──
 
-    pub(crate) fn config_input(&self) -> Option<&ConfigInputData> {
-        self.config.as_ref()
+    pub(crate) fn config_input(&self) -> Option<&Emmyrc> {
+        self.config.as_deref()
     }
 
     // ── Facade ──
@@ -677,12 +707,11 @@ impl SemanticDatabase {
         {
             return Some(name.to_string());
         }
-        let root = self.config_input()?.main_root().clone();
-        query::module_name_from_path(path, root.as_deref()).map(|name| name.to_string())
+        let root = self.main_root.as_deref();
+        query::module_name_from_path(path, root).map(|name| name.to_string())
     }
 
     /// Query facade (crate-internal: used by semantic_model and tests).
-    #[allow(dead_code)]
     pub(crate) fn q(&self) -> SemanticQueries<'_> {
         SemanticQueries::new(self)
     }

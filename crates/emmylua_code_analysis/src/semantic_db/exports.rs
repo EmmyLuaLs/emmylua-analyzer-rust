@@ -10,12 +10,12 @@
 
 use smol_str::SmolStr;
 
-use crate::FileId;
 use crate::semantic_db::def::{LuaMemberKey, ModuleExport, SemanticId, TypeDef};
+use crate::{DeclKind, FileId};
 
 use super::SemanticDatabase;
-use super::inputs::ConfigInputData;
 use super::query::file_facts;
+use crate::Emmyrc;
 
 /// Export identities visible from a single file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,13 +51,13 @@ pub struct MemberExport {
 
 /// Per-file export facts (collects identities only, no type precomputation).
 pub(crate) fn file_exports(db: &SemanticDatabase, file: FileId) -> &FileExports {
-    db.file_exports_of(file.file_id(db))
+    db.file_exports_of(file)
 }
 
 pub(super) fn build_file_exports(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     file_id: FileId,
 ) -> FileExports {
     let facts = file_facts(db, file);
@@ -67,7 +67,7 @@ pub(super) fn build_file_exports(
     let globals = facts
         .decls
         .iter()
-        .filter(|decl| matches!(decl.kind, crate::semantic_db::def::DeclKind::Global))
+        .filter(|decl| matches!(decl.kind, DeclKind::Global))
         .map(|decl| GlobalExport {
             file_id,
             name: decl.name.clone(),
@@ -129,7 +129,7 @@ pub(crate) fn export_shard(db: &SemanticDatabase, shard: u8) -> &ExportShard {
 
 pub(super) fn build_export_shard(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     shard: u8,
 ) -> ExportShard {
     let mut types = Vec::new();

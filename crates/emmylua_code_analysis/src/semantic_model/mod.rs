@@ -2430,9 +2430,9 @@ impl<'db> SemanticModel<'db> {
         let SemanticId::Decl(key) = decl else {
             return ty;
         };
-        let foreign_model = SemanticModel::new(self.db, key.file_id);
-        let Some(decl) = foreign_model
-            .file_facts_of(key.file_id)
+        let Some(decl) = self
+            .q()
+            .file_facts(key.file_id)
             .and_then(|facts| facts.decl_by_id(decl))
         else {
             return ty;
@@ -2440,8 +2440,9 @@ impl<'db> SemanticModel<'db> {
         if !matches!(decl.kind, DeclKind::Global) {
             return ty;
         }
-        let generic_names: std::collections::HashSet<SmolStr> = foreign_model
-            .signatures()
+        let generic_names: std::collections::HashSet<SmolStr> = self
+            .q()
+            .signatures(key.file_id)
             .map(|sigs| {
                 sigs.iter()
                     .filter_map(|sig| sig.docs.as_ref())

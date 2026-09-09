@@ -48,7 +48,7 @@ pub use semantic_model::render::{
     humanize_type_with_level as humanize_semantic_type_with_level,
 };
 pub use semantic_model::{ResolvedMember, SemanticInfo};
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 pub use test_lib::VirtualWorkspace;
 
 pub use vfs::*;
@@ -177,79 +177,7 @@ impl EmmyLuaAnalysis {
         files: Vec<(PathBuf, Option<String>)>,
         open_files: Vec<(Uri, String)>,
     ) -> Vec<Uri> {
-        use std::collections::HashMap;
-
-        let open_paths: HashSet<_> = open_files
-            .iter()
-            .filter_map(|(uri, _)| uri_to_file_path(uri))
-            .collect();
-        let mut kept_paths = open_paths.clone();
-        kept_paths.extend(files.iter().map(|(path, _)| path.clone()));
-        // Built-in std and other protected files are not workspace files; they must not be deleted on reload.
-        kept_paths.extend(self.db.protected_paths().iter().cloned());
-
-        let old_files = self.db.file_data_map();
-
-        // Compute the local files that need to be removed.
-        let stale_uris: Vec<Uri> = old_files
-            .values()
-            .filter_map(|input| {
-                let path = input.path.as_ref()?;
-                if kept_paths.contains(path) {
-                    None
-                } else {
-                    file_path_to_uri(path)
-                }
-            })
-            .collect();
-
-        // Build the final file table in bulk to avoid O(n^2) semantic writes from per-file remove/update.
-        let mut new_files = old_files;
-        let mut path_to_id: HashMap<PathBuf, FileId> = new_files
-            .iter()
-            .filter_map(|(id, input)| {
-                let path = input.path.as_ref()?.clone();
-                Some((path, *id))
-            })
-            .collect();
-
-        // Files on disk (not open in the editor).
-        for (path, text) in files
-            .into_iter()
-            .filter(|(path, _)| !open_paths.contains(path))
-        {
-            let uri = file_path_to_uri(&path);
-            let id = path_to_id
-                .get(&path)
-                .copied()
-                .unwrap_or_else(|| self.db.allocate_file_id());
-            if let Some(text) = text {
-                let input = FileData::new(id, uri, Some(path.clone()), text);
-                path_to_id.insert(path.clone(), id);
-                new_files.insert(id, input);
-            } else {
-                new_files.remove(&id);
-                path_to_id.remove(&path);
-            }
-        }
-
-        // Open unsaved files.
-        for (uri, text) in open_files {
-            let path = uri_to_file_path(&uri);
-            let id = self
-                .db
-                .lookup_file_id(&uri)
-                .or_else(|| path.as_ref().and_then(|path| path_to_id.get(path).copied()))
-                .unwrap_or_else(|| self.db.allocate_file_id());
-            let input = FileData::new(id, Some(uri.clone()), path.clone(), text);
-            new_files.insert(id, input);
-            if let Some(path) = &path {
-                path_to_id.insert(path.clone(), id);
-            }
-        }
-
-        self.db.replace_files(new_files);
-        stale_uris
+        self.db.reload_workspace_files(files, open_files)
     }
 
     pub fn update_config(&mut self, config: Arc<Emmyrc>) {

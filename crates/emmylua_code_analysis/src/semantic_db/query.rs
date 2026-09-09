@@ -14,8 +14,8 @@ use super::def::{
 };
 use super::exports::{EXPORT_SHARDS, FileExports, export_shard, shard_of};
 use super::facts::{FactsBuilder, FileFacts};
-use super::inputs::ConfigInputData;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
+use crate::Emmyrc;
 use crate::FileId;
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr, LuaIndexExpr,
@@ -33,7 +33,7 @@ use rowan::{TextRange, TextSize};
 pub(crate) fn build_file_facts(
     db: &SemanticDatabase,
     _file: FileId,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     file_id: FileId,
     text: &str,
 ) -> FileFacts {
@@ -54,7 +54,7 @@ pub(crate) fn syntax_tree(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree
 
 pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
     db.file_facts_map()
-        .get(&file.file_id(db))
+        .get(&file)
         .expect("file facts must be built before read")
 }
 
@@ -72,6 +72,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         db.deprecated_shards.clear();
         db.module_shards.clear();
         db.reference_shards.clear();
+        db.workspace_index = WorkspaceIndexCache::new();
         return;
     };
     let config = &config;
@@ -277,14 +278,14 @@ pub(crate) fn rebuild_file_after_remove(db: &mut SemanticDatabase, file_id: File
     rebuild_reference_indexes(db, config);
 }
 
-fn rebuild_all_module_shards(db: &mut SemanticDatabase, config: &ConfigInputData) {
+fn rebuild_all_module_shards(db: &mut SemanticDatabase, config: &Emmyrc) {
     for shard in 0..EXPORT_SHARDS {
         db.module_shards
             .insert(shard, build_module_shard(db, config, shard));
     }
 }
 
-fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
     let ws_ids = all_workspace_ids(db);
     let workspace_types = ws_ids
         .iter()
@@ -311,7 +312,7 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase, config: &ConfigInputData
     };
 }
 
-fn rebuild_reference_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+fn rebuild_reference_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
     let file_ids = db.vfs.file_ids();
     let mut file_references = HashMap::with_capacity(file_ids.len());
     for file_id in file_ids.iter().copied() {
@@ -441,7 +442,7 @@ fn surface_delta(old_exports: &FileExports, new_exports: &FileExports) -> Surfac
 
 fn rebuild_reference_indexes_incremental(
     db: &mut SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     changed_file_id: FileId,
     old_exports: &FileExports,
     new_exports: &FileExports,
@@ -477,7 +478,7 @@ fn rebuild_reference_indexes_incremental(
     rebuild_workspace_reference_indexes(db, config);
 }
 
-fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase, config: &ConfigInputData) {
+fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase, config: &Emmyrc) {
     let ws_ids = all_workspace_ids(db);
     let workspace_references = ws_ids
         .iter()
@@ -517,7 +518,7 @@ impl WorkspaceTypeIndex {
 
 fn build_workspace_type_index(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
     let mut by_scope_name: HashMap<(TypeScope, SmolStr), Vec<TypeDef>> = HashMap::new();
@@ -567,11 +568,7 @@ pub(crate) fn deprecated_shard(db: &SemanticDatabase, shard: u8) -> &DeprecatedS
     db.deprecated_shard_of(shard)
 }
 
-fn build_deprecated_shard(
-    db: &SemanticDatabase,
-    _config: &ConfigInputData,
-    shard: u8,
-) -> DeprecatedShard {
+fn build_deprecated_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> DeprecatedShard {
     let mut names = Vec::new();
     let mut member_keys = Vec::new();
     for file_id in db.file_ids().into_iter() {
@@ -604,7 +601,7 @@ fn build_deprecated_shard(
 /// full global-declaration pipeline.
 pub(crate) fn deprecated_global_names_for(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
@@ -626,7 +623,7 @@ pub(crate) fn deprecated_global_names_for(
 /// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
 pub(crate) fn deprecated_member_names_for(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> Arc<HashSet<SmolStr>> {
     let mut out = HashSet::new();
@@ -663,11 +660,7 @@ fn file_matches_workspace_id(db: &SemanticDatabase, file_id: FileId, ws_id: Work
     }
 }
 
-fn find_global_types(
-    db: &SemanticDatabase,
-    _config: &ConfigInputData,
-    full_name: &str,
-) -> Arc<[TypeDef]> {
+fn find_global_types(db: &SemanticDatabase, _config: &Emmyrc, full_name: &str) -> Arc<[TypeDef]> {
     let mut out: Vec<TypeDef> = Vec::new();
     for ws_id in all_workspace_ids(db) {
         let index = workspace_type_index_for(db, ws_id);
@@ -678,7 +671,7 @@ fn find_global_types(
 
 fn find_internal_types(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws: WorkspaceId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
@@ -687,7 +680,7 @@ fn find_internal_types(
 
 fn find_file_types(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     file_id: FileId,
     full_name: &str,
 ) -> Arc<[TypeDef]> {
@@ -699,11 +692,11 @@ fn find_file_types(
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 pub(crate) fn resolve_type_def_locations(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     file: FileId,
     bare_name: SmolStr,
 ) -> Arc<[TypeDef]> {
-    let file_id = file.file_id(db);
+    let file_id = file;
     let facts = file_facts(db, file);
     let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
 
@@ -746,7 +739,7 @@ pub(crate) fn resolve_type_def_locations(
 /// 3. bare name (**same-file Private** -> Internal -> Global).
 pub(crate) fn resolve_type_def(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     file: FileId,
     bare_name: SmolStr,
 ) -> Option<TypeDef> {
@@ -762,7 +755,7 @@ pub(crate) fn resolve_type_def(
 /// bound to the type definition to that factory call, so class tables required across files keep constructor-call semantics.
 pub(crate) fn constructor_attribute_of_type(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     type_def: SemanticId,
 ) -> Option<ConstructorAttribute> {
     for resolved in resolve_owner_set(db, config, type_def.clone()) {
@@ -777,7 +770,7 @@ pub(crate) fn constructor_attribute_of_type(
 
 fn constructor_attribute_of_decl(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     decl: SemanticId,
 ) -> Option<ConstructorAttribute> {
     let key = match &decl {
@@ -829,7 +822,7 @@ pub struct WorkspaceMemberIndex {
 /// Member index scoped to a single workspace.
 fn build_workspace_member_index(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
     let mut by_owner: HashMap<SemanticId, Vec<MemberRef>> = HashMap::new();
@@ -898,14 +891,10 @@ pub struct FileReferences {
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
 pub(crate) fn file_references(db: &SemanticDatabase, file: FileId) -> &FileReferences {
-    db.file_references_of(file.file_id(db))
+    db.file_references_of(file)
 }
 
-fn build_file_references(
-    db: &SemanticDatabase,
-    file: FileId,
-    config: &ConfigInputData,
-) -> FileReferences {
+fn build_file_references(db: &SemanticDatabase, file: FileId, config: &Emmyrc) -> FileReferences {
     let facts = file_facts(db, file);
     let tree = syntax_tree(db, file);
     let mut out = FileReferences::default();
@@ -980,11 +969,7 @@ pub(crate) fn reference_shard(db: &SemanticDatabase, shard: u8) -> &ReferenceSha
     db.reference_shard_of(shard)
 }
 
-fn build_reference_shard(
-    db: &SemanticDatabase,
-    _config: &ConfigInputData,
-    shard: u8,
-) -> ReferenceShard {
+fn build_reference_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> ReferenceShard {
     let mut out = ReferenceShard::default();
     for file_id in db.file_ids().into_iter() {
         if shard_of(file_id) != shard {
@@ -1023,7 +1008,7 @@ fn build_reference_shard(
 /// the shard results for the requested workspace.
 fn build_workspace_reference_index(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
     let mut out = WorkspaceReferenceIndex::default();
@@ -1075,7 +1060,7 @@ pub(crate) fn workspace_reference_index_for(
 /// Query-level member resolution: owner/name -> concrete member id.
 fn resolve_member_id(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     facts: &FileFacts,
     index_expr: &LuaIndexExpr,
 ) -> Option<SemanticId> {
@@ -1093,7 +1078,7 @@ fn resolve_member_id(
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
 pub(crate) fn members_of_owner(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
     // An owner with a file-local identity (Decl/Member) only has members in its declaring file:
@@ -1124,7 +1109,7 @@ pub(crate) fn members_of_owner(
 
 fn return_members_of_owner_scan(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     owner: SemanticId,
 ) -> Arc<[MemberRef]> {
     let mut out: Vec<MemberRef> = Vec::new();
@@ -1144,7 +1129,7 @@ fn return_members_of_owner_scan(
 /// (which already has `members_by_owner_name`).
 pub(crate) fn members_of_owner_named(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     owner: SemanticId,
     name: SmolStr,
 ) -> Arc<[MemberRef]> {
@@ -1184,7 +1169,7 @@ pub(crate) fn members_of_owner_named(
 /// Union: owner key (runtime `M.x`) + resolved concrete id key (`@field` etc.).
 pub(crate) fn member_keys_of_owner(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: SemanticId,
 ) -> Vec<SmolStr> {
     let mut keys: Vec<SmolStr> = Vec::new();
@@ -1205,7 +1190,7 @@ pub(crate) fn member_keys_of_owner(
 /// All type definitions for a given scope + full name (cross-file, reuses the workspace type index).
 pub(crate) fn type_defs_in_scope(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     scope: TypeScope,
     full_name: SmolStr,
 ) -> Arc<[TypeDef]> {
@@ -1219,7 +1204,7 @@ pub(crate) fn type_defs_in_scope(
 /// Look up a global type (`@class` etc.) by full name (cross-file, reuses the workspace type index).
 pub(crate) fn global_type_by_name(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     full_name: SmolStr,
 ) -> Option<SemanticId> {
     find_global_types(db, config, &full_name)
@@ -1236,7 +1221,7 @@ pub(crate) fn global_type_by_name(
 /// indexes.
 fn build_workspace_decl_index(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
     let mut entries: Vec<(SmolStr, FileId, SemanticId)> = Vec::new();
@@ -1349,7 +1334,7 @@ impl WorkspaceDeclIndex {
 /// Look up a global variable/function declaration by name (cross-file, reuses the workspace declaration index).
 pub(crate) fn global_decl_by_name(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     name: SmolStr,
 ) -> Option<SemanticId> {
     let roots = db.workspace_roots().to_vec();
@@ -1393,22 +1378,19 @@ pub(crate) fn module_shard(db: &SemanticDatabase, shard: u8) -> &ModuleShard {
     db.module_shard_of(shard)
 }
 
-fn build_module_shard(db: &SemanticDatabase, config: &ConfigInputData, shard: u8) -> ModuleShard {
+fn build_module_shard(db: &SemanticDatabase, _config: &Emmyrc, shard: u8) -> ModuleShard {
     let roots = db.workspace_roots().to_vec();
     let paths: Vec<PathBuf> = if roots.is_empty() {
         db.file_ids()
             .iter()
             .filter_map(|&file_id| db.file_data_id(file_id))
-            .filter_map(|file| file.path(db).clone())
+            .filter_map(|file| db.file_path(file))
             .collect()
     } else {
         Vec::new()
     };
     let fallback_root = if roots.is_empty() {
-        config
-            .main_root()
-            .clone()
-            .or_else(|| common_path_root(&paths))
+        db.main_root().or_else(|| common_path_root(&paths))
     } else {
         None
     };
@@ -1421,7 +1403,7 @@ fn build_module_shard(db: &SemanticDatabase, config: &ConfigInputData, shard: u8
         let Some(file) = db.file_data_id(file_id) else {
             continue;
         };
-        let Some(path) = file.path(db) else {
+        let Some(path) = db.file_path(file) else {
             continue;
         };
         let file_ws = file_workspace_id(db, file_id);
@@ -1448,7 +1430,7 @@ fn build_module_shard(db: &SemanticDatabase, config: &ConfigInputData, shard: u8
         );
         entries.push(ModuleEntry {
             file_id,
-            path: path.to_path_buf(),
+            path,
             full_module_name,
             name,
             workspace_id: file_ws.unwrap_or(WorkspaceId::REMOTE),
@@ -1465,7 +1447,7 @@ fn build_module_shard(db: &SemanticDatabase, config: &ConfigInputData, shard: u8
 /// Module index scoped to a single workspace.
 fn build_workspace_module_index(
     db: &SemanticDatabase,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     ws_id: WorkspaceId,
 ) -> ModuleIndex {
     let roots = db.workspace_roots().to_vec();
@@ -1622,7 +1604,7 @@ pub(crate) fn find_workspace_root(
 /// File -> its workspace.
 pub(crate) fn file_workspace_id(db: &SemanticDatabase, file_id: FileId) -> Option<WorkspaceId> {
     let file = db.file_data_id(file_id)?;
-    let path = file.path(db).clone()?;
+    let path = db.file_path(file)?;
     let roots = db.workspace_roots().to_vec();
     if roots.is_empty() {
         return Some(WorkspaceId::MAIN);
@@ -1633,7 +1615,7 @@ pub(crate) fn file_workspace_id(db: &SemanticDatabase, file_id: FileId) -> Optio
 /// Module name -> file. Resolution order: module_map rewrite -> exact match -> require pattern (`?.lua`/`?/init.lua`).
 pub(crate) fn module_file_of(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     module_name: SmolStr,
 ) -> Option<FileId> {
     let mut name = module_name.replace('\\', ".");
@@ -1873,7 +1855,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// `Decl`/`TypeDef`/`Member` are already concrete and returned as-is.
 pub(crate) fn resolve_owner(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: SemanticId,
 ) -> Option<SemanticId> {
     let SemanticId::Name(name) = &owner else {
@@ -1902,7 +1884,7 @@ pub(crate) fn resolve_owner(
 /// For name chains (`a.b`), recursively take members along each head identity.
 pub(crate) fn resolve_owner_set(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: SemanticId,
 ) -> Vec<SemanticId> {
     match &owner {
@@ -2047,7 +2029,7 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 pub(crate) fn decl_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     decl: SemanticId,
 ) -> TypeShell {
     let facts = file_facts(db, file);
@@ -2133,10 +2115,10 @@ fn iter_slot_type(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     decl: &crate::semantic_db::def::Decl,
 ) -> Option<TypeShell> {
-    let key = (file.file_id(db), decl.id.clone());
+    let key = (file, decl.id.clone());
     if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
         return None;
     }
@@ -2243,7 +2225,7 @@ fn iter_slot_type(
 pub(crate) fn lower_doc_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     type_syntax: LuaSyntaxId,
     generics: &[DocGenericParam],
 ) -> TypeShell {
@@ -2261,7 +2243,7 @@ pub(crate) fn lower_doc_type(
 fn lower_doc_type_node(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     generics: &[DocGenericParam],
     doc_type: &LuaDocType,
 ) -> TypeShell {
@@ -2494,7 +2476,7 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
 pub(crate) fn member_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     member: SemanticId,
 ) -> TypeShell {
     let facts = file_facts(db, file);
@@ -2542,7 +2524,7 @@ pub(crate) fn member_type(
 pub(crate) fn member_keys_of_decl(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     decl: SemanticId,
 ) -> Vec<SmolStr> {
     let facts = file_facts(db, file);
@@ -2561,7 +2543,7 @@ pub(crate) fn member_keys_of_decl(
 pub(crate) fn member_keys_of_type(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     type_def: SemanticId,
 ) -> Vec<SmolStr> {
     let facts = file_facts(db, file);
@@ -2581,7 +2563,7 @@ pub(crate) fn type_member(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     type_def: SemanticId,
     name: &str,
     visited: &mut Vec<SemanticId>,
@@ -2651,7 +2633,7 @@ fn collect_type_keys(
 pub(crate) fn resolve_name(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     offset: TextSize,
 ) -> Option<SemanticId> {
     let facts = file_facts(db, file);
@@ -2666,7 +2648,7 @@ pub(crate) fn resolve_name(
 pub(crate) fn decl_references(
     db: &SemanticDatabase,
     file: FileId,
-    _config: &ConfigInputData,
+    _config: &Emmyrc,
     decl: SemanticId,
 ) -> Vec<LuaSyntaxId> {
     let facts = file_facts(db, file);
@@ -2696,7 +2678,7 @@ pub(crate) fn decl_references(
 pub(crate) fn signature_returns(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
 ) -> Vec<TypeShell> {
     let facts = file_facts(db, file);
@@ -2806,7 +2788,7 @@ fn member_expected_returns(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
 ) -> Option<Vec<TypeShell>> {
     let member = facts
@@ -2873,7 +2855,7 @@ fn method_self_return_shell(facts: &FileFacts, closure_syntax: LuaSyntaxId) -> O
 pub(crate) fn signature_return(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
 ) -> TypeShell {
     let mut shell = TypeShell::unknown();
@@ -2887,7 +2869,7 @@ pub(crate) fn signature_return(
 pub(crate) fn param_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
     param_index: usize,
 ) -> TypeShell {
@@ -2937,7 +2919,7 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 pub(crate) fn module_export_type(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
 ) -> TypeShell {
     let facts = file_facts(db, file);
     match &facts.module_export {
@@ -3050,10 +3032,10 @@ impl Drop for ExprTypeGuard {
 pub(crate) fn expr_type_of(
     db: &SemanticDatabase,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     expr_syntax: LuaSyntaxId,
 ) -> TypeShell {
-    let key = (file.file_id(db), expr_syntax);
+    let key = (file, expr_syntax);
     if EXPR_TYPE_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
         return TypeShell::unknown();
     }
@@ -3070,7 +3052,7 @@ fn expr_type(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     expr: LuaExpr,
 ) -> TypeShell {
     // Deep member/call chains (1500+ levels) use an explicit task stack: avoids exhausting the native stack by recursive prefix evaluation.
@@ -3091,7 +3073,7 @@ fn expr_type_chain(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     expr: LuaExpr,
 ) -> Option<TypeShell> {
     let mut current = expr;
@@ -3136,13 +3118,13 @@ fn expr_type_node(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     expr: LuaExpr,
 ) -> TypeShell {
     match expr {
         LuaExpr::LiteralExpr(literal) => literal_type(&literal),
         LuaExpr::TableExpr(table) => {
-            TypeShell::from_table(TableId::from_range(file.file_id(db), table.get_range()))
+            TypeShell::from_table(TableId::from_range(file, table.get_range()))
         }
         LuaExpr::ClosureExpr(_) => TypeShell::from_primitive(PrimitiveType::Function),
         LuaExpr::NameExpr(name_expr) => {
@@ -3245,7 +3227,7 @@ fn expr_type_index(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     index_expr: LuaIndexExpr,
     prefix_shell: TypeShell,
 ) -> TypeShell {
@@ -3332,7 +3314,7 @@ fn expr_type_call(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     call_expr: LuaCallExpr,
     prefix: LuaExpr,
     prefix_shell: TypeShell,
@@ -3366,7 +3348,7 @@ fn expr_type_call(
 /// Each member's type is resolved in its declaring file (`member_type` keyed by file input, so invalidation is file-precise).
 fn member_type_via_owner(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: &SemanticId,
     name: &str,
 ) -> Option<TypeShell> {
@@ -3392,7 +3374,7 @@ fn member_type_via_owner(
 /// Instance access inherits methods from the class table, not arbitrary dot-assignments on it.
 fn member_type_via_owner_method(
     db: &SemanticDatabase,
-    config: &ConfigInputData,
+    config: &Emmyrc,
     owner: &SemanticId,
     name: &str,
 ) -> Option<TypeShell> {
@@ -3525,10 +3507,7 @@ fn require_module_name(call_expr: &LuaCallExpr) -> Option<String> {
 }
 
 /// file_id → (file input, config input).
-pub(crate) fn file_and_config(
-    db: &SemanticDatabase,
-    file_id: FileId,
-) -> Option<(FileId, &ConfigInputData)> {
+pub(crate) fn file_and_config(db: &SemanticDatabase, file_id: FileId) -> Option<(FileId, &Emmyrc)> {
     Some((db.file_data_id(file_id)?, db.config_input()?))
 }
 
