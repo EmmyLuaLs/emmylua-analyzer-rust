@@ -6,7 +6,7 @@ use emmylua_parser::{LuaExpr, LuaSyntaxId, LuaVarExpr};
 use hashbrown::{HashMap, HashSet};
 use rustc_hash::FxBuildHasher;
 use std::{mem, rc::Rc, sync::Arc};
-pub(in crate::semantic) use type_cache::{MemberSymbol, TypeCacheEntry};
+pub(in crate::semantic) use type_cache::TypeCacheEntry;
 
 use crate::{
     FileId, FlowId, LuaFunctionType,

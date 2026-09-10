@@ -2,6 +2,8 @@ mod find_index;
 mod find_members;
 mod get_member_map;
 mod infer_raw_member;
+mod resolve_members;
+mod type_members;
 
 use std::collections::HashSet;
 
@@ -16,6 +18,7 @@ pub use find_members::{
 };
 pub use get_member_map::{get_member_map, get_member_map_in_scope};
 pub use infer_raw_member::infer_raw_member_type;
+pub(in crate::semantic) use type_members::{MemberSymbol, TypeMembers, collect_type_members};
 
 use super::{
     InferFailReason, LuaInferCache, SemanticDeclLevel, infer_node_semantic_decl,

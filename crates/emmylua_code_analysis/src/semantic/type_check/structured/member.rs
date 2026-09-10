@@ -4,7 +4,8 @@ use crate::{
     DbIndex, LuaIntersectionType, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner,
     LuaOwnerMembers, LuaType,
     semantic::{
-        cache::{MemberSymbol, TypeCacheEntry},
+        cache::TypeCacheEntry,
+        member::MemberSymbol,
         type_check::{
             error_chain::{missing_members_message, property_message},
             is_optional,
@@ -220,18 +221,15 @@ pub(in crate::semantic::type_check) fn relate_members(
         return Ok(());
     }
     let source_members = MemberView::new(relater, source);
-    if relater.is_explain() {
-        let (missing_keys, _) = collect_missing_from_views(
-            relater,
-            &source_members,
-            &target_members,
-            intersection_state,
-        )?;
-        if !missing_keys.is_empty() {
-            return unrelated_missing_members(relater, source, target, missing_keys);
-        }
+    let (missing_keys, _) = collect_missing_from_views(
+        relater,
+        &source_members,
+        &target_members,
+        intersection_state,
+    )?;
+    if !missing_keys.is_empty() {
+        return unrelated_missing_members(relater, source, target, missing_keys);
     }
-
     target_members.visit_types(relater, |relater, key, member_type| {
         if let LuaMemberKey::TypeKey(key_type) = key {
             if intersection_state.contains(IntersectionState::TARGET) {
