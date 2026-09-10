@@ -24,6 +24,24 @@ pub struct FlowTree {
     /// For the common case where `offset` is exactly the start of a bound node,
     /// maps start -> flow id of the smallest range starting there.
     binding_starts: HashMap<TextSize, FlowId>,
+    /// Sorted `(assignment statement start, flow id)` entries per assigned declaration.
+    decl_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>>,
+    /// Sorted `(assignment statement start, flow id)` entries per assigned member.
+    member_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>>,
+    /// Sorted `(position, flow id)` for `DeclPosition` nodes.
+    decl_positions: Vec<(TextSize, FlowId)>,
+    /// Sorted `(condition position, flow id)` for true/false condition nodes.
+    condition_nodes: Vec<(TextSize, FlowId)>,
+    /// Sorted `(cast position, flow id)` for `---@cast` / `--[[@as]]` nodes.
+    cast_nodes: Vec<(TextSize, FlowId)>,
+    /// Sorted `(position, flow id)` for nodes with a merge (`Multiple`) antecedent.
+    branch_nodes: Vec<(TextSize, FlowId)>,
+    /// True when a merge node has no AST range to index safely.
+    unpositioned_branch: bool,
+    /// True when the tree has loops / labels / break / continue. These can create
+    /// backward edges whose source positions are not monotonic, so the member
+    /// assignment-position fast path is conservatively disabled.
+    has_complex_control: bool,
 }
 
 impl FlowTree {
@@ -36,12 +54,80 @@ impl FlowTree {
         // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
         bindings: HashMap<LuaSyntaxId, FlowId>,
     ) -> Self {
-        let has_tag_cast = flow_nodes.iter().any(|node| {
+        let mut decl_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>> = HashMap::new();
+        let mut member_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>> = HashMap::new();
+        let mut decl_positions: Vec<(TextSize, FlowId)> = Vec::new();
+        let mut condition_nodes: Vec<(TextSize, FlowId)> = Vec::new();
+        let mut cast_nodes: Vec<(TextSize, FlowId)> = Vec::new();
+        let mut branch_nodes: Vec<(TextSize, FlowId)> = Vec::new();
+        let mut unpositioned_branch = false;
+        let has_complex_control = flow_nodes.iter().any(|node| {
             matches!(
                 node.kind,
-                FlowNodeKind::TagCast(_) | FlowNodeKind::AsCast(_)
+                FlowNodeKind::LoopLabel
+                    | FlowNodeKind::NamedLabel(_)
+                    | FlowNodeKind::ForIStat(_)
+                    | FlowNodeKind::Break
+                    | FlowNodeKind::Continue
             )
         });
+        for node in &flow_nodes {
+            let flow_id = node.id;
+            if matches!(node.antecedent, Some(FlowAntecedent::Multiple(_))) {
+                match flow_node_position(&node.kind) {
+                    Some(pos) => branch_nodes.push((pos, flow_id)),
+                    None => unpositioned_branch = true,
+                }
+            }
+            match &node.kind {
+                FlowNodeKind::Assignment(assign_ptr) => {
+                    let assign_pos = assign_ptr.get_syntax_id().get_range().start();
+                    for effect in node_effects
+                        .get(&flow_id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[])
+                    {
+                        match effect {
+                            FlowEffect::AssignDecl { decl, .. } => {
+                                decl_assignments
+                                    .entry(decl.clone())
+                                    .or_default()
+                                    .push((assign_pos, flow_id));
+                            }
+                            FlowEffect::AssignMember { member, .. } => {
+                                member_assignments
+                                    .entry(member.clone())
+                                    .or_default()
+                                    .push((assign_pos, flow_id));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                FlowNodeKind::DeclPosition(pos) => decl_positions.push((*pos, flow_id)),
+                FlowNodeKind::TrueCondition(cond) | FlowNodeKind::FalseCondition(cond) => {
+                    condition_nodes.push((cond.get_syntax_id().get_range().start(), flow_id));
+                }
+                FlowNodeKind::TagCast(cast) => {
+                    cast_nodes.push((cast.get_syntax_id().get_range().start(), flow_id));
+                }
+                FlowNodeKind::AsCast(as_cast) => {
+                    cast_nodes.push((as_cast.get_syntax_id().get_range().start(), flow_id));
+                }
+                _ => {}
+            }
+        }
+        for entries in decl_assignments.values_mut() {
+            entries.sort_by_key(|(pos, _)| *pos);
+        }
+        for entries in member_assignments.values_mut() {
+            entries.sort_by_key(|(pos, _)| *pos);
+        }
+        decl_positions.sort_by_key(|(pos, _)| *pos);
+        condition_nodes.sort_by_key(|(pos, _)| *pos);
+        cast_nodes.sort_by_key(|(pos, _)| *pos);
+        branch_nodes.sort_by_key(|(pos, _)| *pos);
+        let has_tag_cast = !cast_nodes.is_empty();
         let mut binding_ranges: Vec<(TextRange, FlowId)> = bindings
             .iter()
             .map(|(syntax_id, flow_id)| (syntax_id.get_range(), *flow_id))
@@ -61,6 +147,14 @@ impl FlowTree {
             bindings,
             binding_ranges,
             binding_starts,
+            decl_assignments,
+            member_assignments,
+            decl_positions,
+            condition_nodes,
+            cast_nodes,
+            branch_nodes,
+            unpositioned_branch,
+            has_complex_control,
         }
     }
 
@@ -102,6 +196,79 @@ impl FlowTree {
 
     pub fn has_tag_cast(&self) -> bool {
         self.has_tag_cast
+    }
+
+    /// Whether the flow tree contains any narrowing condition node.
+    pub fn has_condition(&self) -> bool {
+        !self.condition_nodes.is_empty()
+    }
+
+    /// Latest `(assignment position, flow id)` for `decl` at or before `offset`.
+    pub fn latest_decl_assignment(
+        &self,
+        decl: &SemanticId,
+        offset: TextSize,
+    ) -> Option<(TextSize, FlowId)> {
+        let entries = self.decl_assignments.get(decl)?;
+        let idx = entries.partition_point(|(pos, _)| *pos <= offset);
+        idx.checked_sub(1).map(|idx| entries[idx])
+    }
+
+    /// Latest `(assignment position, flow id)` for `member` at or before `offset`.
+    pub fn latest_member_assignment(
+        &self,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> Option<(TextSize, FlowId)> {
+        let entries = self.member_assignments.get(member)?;
+        let idx = entries.partition_point(|(pos, _)| *pos <= offset);
+        idx.checked_sub(1).map(|idx| entries[idx])
+    }
+
+    /// Exact flow id for a `DeclPosition` at `position`, if any.
+    pub fn decl_position_flow(&self, position: TextSize) -> Option<FlowId> {
+        let idx = self
+            .decl_positions
+            .partition_point(|(pos, _)| *pos < position);
+        self.decl_positions
+            .get(idx)
+            .filter(|(pos, _)| *pos == position)
+            .map(|(_, flow_id)| *flow_id)
+    }
+
+    /// Whether any flow event that can change the queried value lies in the
+    /// position range: conditions, casts, or a branch merge.
+    ///
+    /// `include_start` selects `start` inclusion; `end` is always inclusive.
+    /// When a merge node has no indexable position, every range conservatively
+    /// counts as blocked, so correctness is preserved.
+    pub fn has_flow_event_between(
+        &self,
+        start: TextSize,
+        end: TextSize,
+        include_start: bool,
+    ) -> bool {
+        if self.unpositioned_branch {
+            return true;
+        }
+        has_node_between(&self.condition_nodes, start, end, include_start)
+            || has_node_between(&self.cast_nodes, start, end, include_start)
+            || has_node_between(&self.branch_nodes, start, end, include_start)
+    }
+
+    /// Whether any assignment to `decl` occurs in the flow tree.
+    pub fn has_decl_assignment(&self, decl: &SemanticId) -> bool {
+        self.decl_assignments.contains_key(decl)
+    }
+
+    /// Whether any assignment to `member` occurs in the flow tree.
+    pub fn has_member_assignment(&self, member: &SemanticId) -> bool {
+        self.member_assignments.contains_key(member)
+    }
+
+    /// Whether loops / labels / break / continue may create non-monotonic flow edges.
+    pub fn has_complex_control(&self) -> bool {
+        self.has_complex_control
     }
 
     pub fn get_multi_antecedents(&self, id: u32) -> Option<&[FlowId]> {
@@ -373,6 +540,51 @@ impl FlowTree {
 
         antecedents
     }
+}
+
+/// Best-effort AST position for a flow node kind; `None` for label/terminal nodes.
+fn flow_node_position(kind: &FlowNodeKind) -> Option<TextSize> {
+    match kind {
+        FlowNodeKind::Start
+        | FlowNodeKind::Unreachable
+        | FlowNodeKind::BranchLabel
+        | FlowNodeKind::LoopLabel
+        | FlowNodeKind::NamedLabel(_)
+        | FlowNodeKind::Break
+        | FlowNodeKind::Continue
+        | FlowNodeKind::Return => None,
+        FlowNodeKind::DeclPosition(pos) => Some(*pos),
+        FlowNodeKind::Assignment(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+        FlowNodeKind::CallExprStat(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+        FlowNodeKind::TrueCondition(ptr) | FlowNodeKind::FalseCondition(ptr) => {
+            Some(ptr.get_syntax_id().get_range().start())
+        }
+        FlowNodeKind::ImplFunc(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+        FlowNodeKind::ForIStat(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+        FlowNodeKind::TagCast(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+        FlowNodeKind::AsCast(ptr) => Some(ptr.get_syntax_id().get_range().start()),
+    }
+}
+
+/// Whether a sorted `(position, flow id)` list contains any position in range.
+///
+/// `include_start` selects `start` inclusion; `end` is always inclusive.
+fn has_node_between(
+    nodes: &[(TextSize, FlowId)],
+    start: TextSize,
+    end: TextSize,
+    include_start: bool,
+) -> bool {
+    if start > end {
+        return false;
+    }
+    let right = nodes.partition_point(|(pos, _)| *pos <= end);
+    let left = if include_start {
+        nodes[..right].partition_point(|(pos, _)| *pos < start)
+    } else {
+        nodes[..right].partition_point(|(pos, _)| *pos <= start)
+    };
+    left < right
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

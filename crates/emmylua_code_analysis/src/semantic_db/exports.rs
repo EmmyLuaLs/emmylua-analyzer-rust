@@ -13,7 +13,9 @@
 
 use std::sync::Arc;
 
-use emmylua_parser::{LuaSyntaxId, VisibilityKind};
+use emmylua_parser::{
+    LuaAstNode, LuaCallExpr, LuaExpr, LuaLiteralToken, LuaSyntaxId, VisibilityKind,
+};
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 
@@ -24,7 +26,7 @@ use crate::semantic_db::def::{
 
 use super::SemanticDatabase;
 use super::facts::FileFacts;
-use super::query::file_facts;
+use super::query::{self, file_facts};
 
 /// Export contribution visible from a single file.
 ///
@@ -44,6 +46,28 @@ pub struct FileExportContribution {
     pub members: Vec<MemberExport>,
     /// Module export (top-level `return M`).
     pub module: Option<ModuleExport>,
+    /// Local `require` aliases (`local M = require("mod")`, `local N = M`).
+    ///
+    /// The alias target is what makes `function M.extra() end` in another file
+    /// attach its member contribution to `OwnerId::Module(mod_file)` instead of
+    /// a consumer-local owner.
+    pub aliases: Vec<RequireAliasContribution>,
+}
+
+/// One local declaration bound to a required module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequireAliasContribution {
+    pub file_id: FileId,
+    /// Alias declaration (`local M` / `local N = M`).
+    pub decl: SemanticId,
+    /// Required module file.
+    pub module_file: FileId,
+}
+
+impl RequireAliasContribution {
+    pub fn owner_id(&self) -> OwnerId {
+        OwnerId::Module(self.module_file)
+    }
 }
 
 /// Backwards-compatible public alias. New code should prefer `FileExportContribution`.
@@ -58,6 +82,7 @@ impl Default for FileExportContribution {
             runtime_values: Vec::new(),
             members: Vec::new(),
             module: None,
+            aliases: Vec::new(),
         }
     }
 }
@@ -80,6 +105,7 @@ impl FileExportContribution {
             && self.globals == other.globals
             && self.runtime_values == other.runtime_values
             && self.module == other.module
+            && self.aliases == other.aliases
             && self.members.len() == other.members.len()
             && self
                 .members
@@ -181,6 +207,7 @@ pub(super) fn build_file_exports(
     file_id: FileId,
 ) -> FileExportContribution {
     let facts = file_facts(db, file);
+    let aliases = build_require_alias_contributions(db, file_id);
 
     let types = facts.type_defs.clone();
 
@@ -202,7 +229,7 @@ pub(super) fn build_file_exports(
         .map(|(order, member)| MemberExport {
             file_id,
             owner: member.owner.clone(),
-            owner_id: owner_id_from_semantic_id(facts, &member.owner),
+            owner_id: canonical_member_owner_id(facts, file_id, &member.owner, &aliases),
             key: member.key.clone(),
             member: member.id.clone(),
             value_syntax: member.value_syntax,
@@ -233,7 +260,154 @@ pub(super) fn build_file_exports(
         runtime_values,
         members,
         module,
+        aliases,
     }
+}
+
+/// Canonical `OwnerId` for a member owner.
+///
+/// - members of the file's module export target become `OwnerId::Module(file_id)`;
+/// - members reached through a `require` alias become `OwnerId::Module(target_file)`;
+/// - everything else keeps the raw identity mapping.
+fn canonical_member_owner_id(
+    facts: &FileFacts,
+    file_id: FileId,
+    owner: &SemanticId,
+    aliases: &[RequireAliasContribution],
+) -> OwnerId {
+    if let Some(module_file) = module_export_owner_file(facts, file_id, owner) {
+        return OwnerId::Module(module_file);
+    }
+    if let Some(alias) = aliases.iter().find(|alias| &alias.decl == owner) {
+        return alias.owner_id();
+    }
+    owner_id_from_semantic_id(facts, owner)
+}
+
+/// If `owner` is the raw owner of this file's top-level module export, return the file id.
+pub(crate) fn module_export_owner_file(
+    facts: &FileFacts,
+    file_id: FileId,
+    owner: &SemanticId,
+) -> Option<FileId> {
+    match &facts.module_export {
+        ModuleExport::Decl { decl, .. } if decl == owner => Some(file_id),
+        ModuleExport::Expr { value_syntax } => match owner {
+            SemanticId::Member(key) if key.key_range == value_syntax.get_range() => Some(file_id),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Collect `local M = require("mod")` aliases (including simple local alias chains).
+///
+/// Uses a fixed-point pass so source order does not matter:
+/// `local N = M` resolves once `M` has a known target.
+pub(crate) fn build_require_alias_contributions(
+    db: &SemanticDatabase,
+    file_id: FileId,
+) -> Vec<RequireAliasContribution> {
+    let Some(config) = db.config_input() else {
+        return Vec::new();
+    };
+    let Some(file) = db.file_data_id(file_id) else {
+        return Vec::new();
+    };
+    let facts = file_facts(db, file);
+    if facts.decls.is_empty() {
+        return Vec::new();
+    }
+    let Some(tree) = db.vfs().get_syntax_tree(&file_id) else {
+        return Vec::new();
+    };
+    let root = tree.get_red_root();
+    let mut targets: HashMap<SemanticId, FileId> = HashMap::new();
+
+    // Fixed point: a chain `local A = require(...); local B = A` may be
+    // visited in any declaration order.
+    let mut changed = true;
+    let mut rounds = 0;
+    while changed && rounds <= facts.decls.len() {
+        changed = false;
+        rounds += 1;
+        for decl in &facts.decls {
+            if !decl.kind.is_local() || targets.contains_key(&decl.id) {
+                continue;
+            }
+            let Some(value_syntax) = decl.value_expr_syntax else {
+                continue;
+            };
+            let Some(node) = value_syntax.to_node_from_root(&root) else {
+                continue;
+            };
+            let Some(expr) = LuaExpr::cast(node) else {
+                continue;
+            };
+            if let Some(module_file) =
+                require_alias_target(db, config, facts, &root, &expr, &targets)
+            {
+                targets.insert(decl.id.clone(), module_file);
+                changed = true;
+            }
+        }
+    }
+
+    targets
+        .into_iter()
+        .map(|(decl, module_file)| RequireAliasContribution {
+            file_id,
+            decl,
+            module_file,
+        })
+        .collect()
+}
+
+fn require_alias_target(
+    db: &SemanticDatabase,
+    config: &crate::Emmyrc,
+    facts: &FileFacts,
+    root: &emmylua_parser::LuaSyntaxNode,
+    expr: &LuaExpr,
+    targets: &HashMap<SemanticId, FileId>,
+) -> Option<FileId> {
+    match expr {
+        LuaExpr::CallExpr(call) => require_module_file_from_call(db, config, call),
+        LuaExpr::ParenExpr(paren) => {
+            require_alias_target(db, config, facts, root, &paren.get_expr()?, targets)
+        }
+        LuaExpr::NameExpr(name) => {
+            let name_text = name.get_name_text()?;
+            let decl = facts.find_visible_decl_before_offset(&name_text, name.get_position())?;
+            targets.get(&decl.id).copied()
+        }
+        _ => {
+            let _ = (db, config, root);
+            None
+        }
+    }
+}
+
+fn require_module_file_from_call(
+    db: &SemanticDatabase,
+    config: &crate::Emmyrc,
+    call: &LuaCallExpr,
+) -> Option<FileId> {
+    let prefix = call.get_prefix_expr()?;
+    let LuaExpr::NameExpr(name) = prefix else {
+        return None;
+    };
+    if name.get_name_text().as_deref() != Some("require") {
+        return None;
+    }
+    let arg = call.get_args_list()?.get_args().next()?;
+    let LuaExpr::LiteralExpr(literal) = arg else {
+        return None;
+    };
+    let LuaLiteralToken::String(token) = literal.get_literal()? else {
+        return None;
+    };
+    query::module_file_of(db, config, SmolStr::new(token.get_value()))
 }
 
 // ──────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # Workspace Index 与跨文件语义重构计划
 
-> 状态：P0/P1/P2/P3/P4 已完成，P5 待开始
+> 状态：P0/P1/P2/P3/P4/P4.5 已完成；P5 已完成（P5a/P5b，legacy resolve_owner_set 调用点留待 P6 清理）。
 > 目标读者：后续接手 `semantic_db` / `semantic_model` 的开发者
 > 维护方式：本文件随每个阶段实时更新；已完成项必须附测试名和验证命令。
 
@@ -13,7 +13,8 @@
 | P2 | shard per-file 化，消灭 `build_*_shard` 全量扫描 | ✅ 已完成 |
 | P3 | 四个 workspace index 改为增量聚合 | ✅ 已完成 |
 | P4 | 重写单文件更新路径，删除单文件写入中的全量 rebuild | ✅ 已完成 |
-| P5 | canonical owner 解析 + require 深层链 | ⬜ 待开始 |
+| P4.5 | 查询期性能止血：keyed member lookup + flow 索引 + 局部热路径 | ✅ 已完成 |
+| P5 | canonical owner 解析 + require 深层链 | ✅ P5a/P5b 已完成（legacy resolve_owner_set 调用点留待 P6） |
 | P6 | 统一 callable/overload 候选与选择 | ⬜ 待开始 |
 | P7 | 身份级依赖失效，删除字符串级 `SurfaceDelta` | ⬜ 待开始 |
 
@@ -428,12 +429,193 @@ cargo clippy --workspace --all-targets -- -D warnings
   passed
 ```
 
-### P5：canonical owner 解析
+### P4.5：查询期性能止血（已完成）
 
-- 用 `resolve_owner_ids()` 替换 `resolve_owner_set()` + score。
-- `require` 初始化建立 `RequireAliasContribution`，所有 `M.foo` / `M.sub.foo` / `M.foo = ...` 都走 `OwnerId::Module`。
-- 多 workspace 优先级显式化，不再“找到第一个就返回”。
+背景：P0–P4 解决了索引层的全量扫描，但单文件诊断仍存在查询期 O(N²) 热路径。
+commit 前实测（release、Windows、`tools/perf/generate_synthetic_workspace.py` 生成的
+1201 文件 workspace，用 `bench_file` 测单文件 `diagnose_file`）：
 
+| 场景 | 修复前 | P4.5 后 |
+|---|---:|---:|
+| `local M = {}; M.x_i = i` × 1200 | 5.50s | 0.06s |
+| `M.x_i = require(...)` × 1200 | 7.96s | 0.24s |
+| 聚合文件（1200 require + 3600 次成员/方法访问） | 10.92s | 1.3s |
+| 全 workspace check（1201 文件，含冷启动） | 11.41s | 2.8s |
+
+profile 中 `AssignTypeMismatchChecker` 从 7.16s 降到约 60ms，`NeedCheckNilChecker`
+从 706ms 降到约 28ms。
+
+已完成内容：
+
+1. **keyed member lookup（P4.5a）**
+   - `semantic_model/member.rs`：新增 `owner_member_refs()`，`LuaMemberKey::Name`
+     查询走 owner/name bucket，不再 `collect_members()` 全量枚举后再过滤。
+   - `member_infos_with_key()` / `member_infos_with_key_all()` 改为 keyed 收集，
+     overload / 继承 / runtime value / union 语义保持不变。
+   - 新增 test-only `query_metrics::FULL_OWNER_MEMBER_SCANS` 作为回归守卫。
+2. **Flow 查询索引与 fast path（P4.5b）**
+   - `semantic_db/flow/flow_tree.rs` 新增：
+     - `decl_assignments` / `member_assignments`（按位置排序，二分找最近一次赋值）
+     - `decl_positions`
+     - `condition_nodes` / `cast_nodes` / `branch_nodes`
+   - `semantic_model/flow.rs`：
+     - `type_of_decl_assign_target_at()`：无 cast 时直接返回声明类型（ASSIGN_TARGET
+       本来就忽略赋值和 guard），字段赋值不再 O(offset) 回溯。
+     - `type_of_decl_at()`：声明后无赋值且范围内无 condition/cast/branch merge 时
+       直接返回声明类型。
+     - `type_of_member_at()`：范围内无 flow event 时从最近一次成员赋值直接求值。
+   - 新增 test-only `flow_metrics`：`TRACE_STEPS` + fast path hit 计数。
+3. **RedefinedLocal leaf scope（P4.5c）**
+   - `check/checker/redefined_local.rs`：叶子 scope 且 `should_merge` 时直接在
+     parent map 上插入，不再每个 `local` 语句 clone 整个 map。
+   - 新增 test-only `scope_metrics::CLONED_LOCAL_ENTRIES` 回归守卫。
+4. **依赖刷新 early return**
+   - `semantic_db/query.rs::rebuild_dependent_reference_indexes()`：`SurfaceDelta`
+     为空时直接返回，纯 value edit 不再遍历 `db.files`。
+5. **可复现 benchmark**
+   - `tools/perf/generate_synthetic_workspace.py` 生成上述 workspace。
+
+新增测试：
+
+- `semantic_db/p4_5_tests.rs`
+  - `p4_5_keyed_member_lookup_uses_owner_name_bucket`
+  - `p4_5_keyed_member_lookup_keeps_overloads`
+  - `p4_5_flow_reads_use_indexed_fast_paths`
+  - `p4_5_flow_does_not_shortcut_loop_or_branch_member_reads`
+  - `p4_5_redefined_local_leaf_scopes_do_not_clone_parent_map`
+
+运行方式：
+
+```bash
+cargo test -p emmylua_code_analysis p4_5_tests
+cargo test -p emmylua_code_analysis --lib
+cargo clippy --workspace --all-targets -- -D warnings
+
+python tools/perf/generate_synthetic_workspace.py target/perfws 1200
+cargo build --release -p emmylua_check --bin bench_file
+target/release/bench_file target/perfws target/perfws/main.lua
+```
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p4_5_tests
+  5 passed; 0 failed
+
+cargo test -p emmylua_code_analysis --lib
+  1334 passed; 0 failed; 4 ignored
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+已知剩余：聚合文件 main_1200 仍随 K 约 2.6x/倍增，profile 显示
+`ParamTypeChecker` / `AccessInvisibleChecker` / `UnusedChecker` 等仍有轻微超线性；
+P5（owner/require 身份）与 P7（身份级依赖）完成后继续复测。
+
+### P5：canonical owner 解析（P5a/P5b 已完成）
+
+P5a 已完成内容：
+
+- `exports.rs` 新增 `RequireAliasContribution`：
+  - `local M = require("mod")` -> `M` 声明映射到 `OwnerId::Module(mod_file)`；
+  - 支持 alias 链 `local N = M`（固定点解析）和括号；
+  - `FileExportContribution.aliases` 参与 surface 比较与增量更新。
+- `build_file_exports()` 的 member `owner_id` 规范化：
+  - 模块 export target 自身的成员 -> `OwnerId::Module(file_id)`；
+  - `M.foo = ...` / `function M.foo()` 如果 `M` 是 require alias -> `OwnerId::Module(target_file)`。
+- `WorkspaceMemberIndex` 增加 canonical `OwnerId` 桶：
+  - `members_of_owner_id()` / `members_of_owner_id_named()`；
+  - `members_of_owner()` / `members_of_owner_named()` 在 raw facts 结果上合并 canonical bucket，
+    因此 `require("mod").extra()` 能看到其他文件对 module 的 mutation。
+- `rebuild_all_caches()` 调整顺序：module entries/index 在 exports 之前构建，
+  保证 batch/full rebuild 时 alias 解析可用。
+- `require_module_owner()` 泛化：
+  - 支持直接 `require("mod").foo` 前缀；
+  - 支持 `local M = require(...)` / `local N = M` alias 链（带深度限制）。
+- `CheckExportChecker` 明确区分 module 原始 export surface 和其他文件 canonical mutation：
+  - 跨文件 mutation 对语义解析可见；
+  - 但不降低 `InjectField` / `UndefinedField` 对消费者的判断。
+
+启用 P0 用例：
+
+- `p0_cross_file_module_mutation_visible_through_require` 已启用并通过。
+
+新增测试：
+
+- `semantic_db/p5_tests.rs`
+  - `p5_require_alias_contribution_maps_to_module_owner`
+  - `p5_require_alias_chain_attaches_mutation_to_module_owner`
+  - `p5_require_alias_contribution_survives_batch_rebuild`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p5_tests
+  3 passed; 0 failed
+
+cargo test -p emmylua_code_analysis p0_tests
+  6 passed; 0 failed; 1 ignored
+
+cargo test -p emmylua_code_analysis --lib
+  1338 passed; 0 failed; 3 ignored
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+P5b 已完成内容：
+
+- 新增确定性身份 API：
+  - `resolve_owner_ids(&SemanticId) -> Vec<OwnerId>`；
+  - `owner_id_to_semantic_id(&OwnerId) -> Option<SemanticId>`；
+  - `canonical_owner_id(&SemanticId) -> Option<OwnerId>`；
+  - facade 暴露 `resolve_owner_ids` / `owner_id_to_semantic_id`。
+- `resolve_member_impl()` Stage 4：
+  - 候选 owner 由 `resolve_owner_ids()` 统一产生，不再局部拼 `type_defs_in_scope` + `global_decl`；
+  - 数值 score 替换为显式排序键：
+    `(non-old-owner rank, non-public rank, doc rank, discovery index)`；
+  - 行为保持等价，后续 P6 可以在此基础上直接替换为候选集合选择。
+- require 深链 canonical path：
+  - 新增 `require_module_member_owner_of_expr()`；
+  - `M.sub.foo` / `require("mod").sub.foo` 会先解析 `sub` 的值表 owner，再解析 `foo`；
+  - 仍保留 8 层深度限制。
+- 多 workspace 优先级显式化：
+  - 新增 `workspace_lookup_order()`：main > library > std > remote；
+  - `module_file_of()` 使用该顺序，同名模块 main 优先于 library/std。
+
+新增测试：
+
+- `semantic_db/p5_tests.rs`
+  - `p5b_resolve_owner_ids_is_deterministic`
+  - `p5b_deep_alias_member_chain`
+  - `p5b_main_workspace_wins_over_library_module_name`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p5_tests
+  6 passed; 0 failed
+
+cargo test -p emmylua_code_analysis --lib
+  1341 passed; 0 failed; 3 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+性能：P4.5 合成聚合文件 benchmark 约 1.2s（无回退）。
+
+遗留：
+
+- `resolve_owner_set()` 仍被 `constructor_attribute_of_type`、`member_keys_of_owner`、
+  `member_type_via_owner` 等调用点使用。尝试全量替换为 `resolve_owner_ids()` 时触发了 4 个
+  语义回归（duck typing constraint、string method、global member owner preference、pcall return），
+  已回退该全量替换。`resolve_owner_ids()` 的 API 和 Stage 4 接入已保留，计划在 P6 统一
+  callable/owner 选择时一并清理剩余调用点。
 ### P6：统一 callable/overload
 
 - 新增 `CallableCandidateSet`：
@@ -470,6 +652,42 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## 5. 更新日志
 
+- 2026-09-10：P5b 完成（确定性 owner 解析 + workspace 优先级）。
+  - 新增 `resolve_owner_ids()` / `owner_id_to_semantic_id()` / `canonical_owner_id()`；
+  - `resolve_member_impl()` Stage 4 候选 owner 改由 `resolve_owner_ids()` 产生，
+    数值 score 替换为显式排序键；
+  - `require_module_member_owner_of_expr()` 支持 `M.sub.foo` / `require("mod").sub.foo`；
+  - `workspace_lookup_order()` 显式 main > library > std，`module_file_of()` 使用；
+  - 新增 3 个 P5b 测试；
+  - 遗留：`resolve_owner_set()` 全量替换触发 4 个语义回归，已回退，留待 P6；
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1341 passed, 3 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P5a 完成（canonical module owner + require alias）。
+  - 新增 `RequireAliasContribution` 与 `FileExportContribution.aliases`；
+    `local M = require("mod")` / `local N = M` 的成员 contribution 落到
+    `OwnerId::Module(target_file)`。
+  - `WorkspaceMemberIndex` 增加 canonical `OwnerId` bucket，`members_of_owner[_named]`
+    合并 raw facts 与 canonical module members。
+  - `rebuild_all_caches()` 先构建 module entries/index，再构建 exports，保证 batch
+    rebuild 时 alias 可解析。
+  - `require_module_owner()` 支持直接 `require("mod")` 前缀和 alias 链。
+  - 启用 `p0_cross_file_module_mutation_visible_through_require`；
+    新增 `p5_tests.rs`（3 个测试）。
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1338 passed, 3 ignored）、
+    `cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P4.5 完成（查询期性能止血）。
+  - keyed member lookup：`member_infos_with_key()` 不再全量枚举 owner 成员。
+  - `FlowTree` 增加 assignment/condition/cast/branch 索引；为
+    `type_of_decl_at` / `type_of_member_at` / `type_of_decl_assign_target_at`
+    增加正确性守卫下的 O(1) fast path。
+  - `RedefinedLocalChecker` 叶子 scope 原地合并，消除每个 `local` 的 parent map clone。
+  - `rebuild_dependent_reference_indexes()` 在 SurfaceDelta 为空时直接返回。
+  - 新增 `p4_5_tests.rs`（5 个测试）与
+    `tools/perf/generate_synthetic_workspace.py`。
+  - 实测：`M.x_i = i`×1200 5.50s -> 0.06s；聚合文件 10.92s -> 1.3s；
+    全 workspace check 11.41s -> 2.8s。
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1334 passed, 4 ignored）、
+    `cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-09：P4 完成。
   - 文件新增/删除/metadata 变化全部走增量 contribution remove/add。
   - 删除 `rebuild_reference_indexes()`；全量 rebuild 仅保留给初始加载/config/roots/clear/测试。

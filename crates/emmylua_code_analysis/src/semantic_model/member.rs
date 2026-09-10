@@ -39,7 +39,7 @@ pub struct MemberInfo {
 pub fn member_infos(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
     let mut out = Vec::new();
     let mut visited = Vec::new();
-    collect_members(model, prefix_type, None, None, &mut visited, &mut out);
+    collect_members(model, prefix_type, None, None, &mut visited, &mut out, None);
     dedup_by_key(out)
 }
 
@@ -367,15 +367,26 @@ pub(crate) fn member_info_impl(
 }
 
 /// Members with the given key of a prefix type (all matches, overload scenario).
+///
+/// Keyed lookup must not enumerate every member of the owner: assignment-heavy files
+/// (`local M = {}; M.a = 1; M.b = 2; ...`) would otherwise become O(N^2).
 pub fn member_infos_with_key(
     model: &SemanticModel,
     prefix_type: &LuaType,
     key: &LuaMemberKey,
 ) -> Vec<MemberInfo> {
-    member_infos(model, prefix_type)
-        .into_iter()
-        .filter(|info| &info.key == key)
-        .collect()
+    let mut out = Vec::new();
+    let mut visited = Vec::new();
+    collect_members(
+        model,
+        prefix_type,
+        None,
+        None,
+        &mut visited,
+        &mut out,
+        Some(key),
+    );
+    dedup_by_key(out)
 }
 
 /// Members with the given key of a prefix type (all matches, no dedup; duplicate `@field` lines are kept as overloads).
@@ -386,8 +397,16 @@ pub(crate) fn member_infos_with_key_all(
 ) -> Vec<MemberInfo> {
     let mut out = Vec::new();
     let mut visited = Vec::new();
-    collect_members(model, prefix_type, None, None, &mut visited, &mut out);
-    out.into_iter().filter(|info| &info.key == key).collect()
+    collect_members(
+        model,
+        prefix_type,
+        None,
+        None,
+        &mut visited,
+        &mut out,
+        Some(key),
+    );
+    out
 }
 
 /// Member type for a prefix type + key (old `infer_member_type`).
@@ -479,6 +498,52 @@ pub fn find_self_return_cast_member(model: &SemanticModel, name: &str) -> Option
     None
 }
 
+/// Test-only counters guarding the keyed member query against accidentally
+/// falling back to full-owner enumeration.
+#[cfg(test)]
+pub(crate) mod query_metrics {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    pub(crate) static FULL_OWNER_MEMBER_SCANS: AtomicU32 = AtomicU32::new(0);
+
+    pub(crate) fn reset() {
+        FULL_OWNER_MEMBER_SCANS.store(0, Ordering::Relaxed);
+    }
+
+    pub(crate) fn full_owner_member_scans() -> u32 {
+        FULL_OWNER_MEMBER_SCANS.load(Ordering::Relaxed)
+    }
+}
+
+/// Owner member refs for a query.
+///
+/// For a named key this uses the owner/name bucket (O(matches)); only unkeyed or
+/// non-name queries may enumerate the whole owner.
+fn owner_member_refs(
+    model: &SemanticModel,
+    owner: &SemanticId,
+    filter: Option<&LuaMemberKey>,
+) -> Vec<MemberRef> {
+    match filter {
+        Some(LuaMemberKey::Name(name)) => model
+            .members_of_owner_named(owner, name.as_str())
+            .into_iter()
+            .collect(),
+        _ => {
+            #[cfg(test)]
+            query_metrics::FULL_OWNER_MEMBER_SCANS
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            model.members_of_owner(owner).into_iter().collect()
+        }
+    }
+}
+
+fn push_member_info(out: &mut Vec<MemberInfo>, filter: Option<&LuaMemberKey>, info: MemberInfo) {
+    if filter.is_none_or(|key| &info.key == key) {
+        out.push(info);
+    }
+}
+
 fn collect_members(
     model: &SemanticModel,
     prefix_type: &LuaType,
@@ -486,6 +551,7 @@ fn collect_members(
     name_bindings: Option<&HashMap<String, LuaType>>,
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<MemberInfo>,
+    filter: Option<&LuaMemberKey>,
 ) {
     match prefix_type {
         // Named type: @field + inheritance + runtime value members.
@@ -499,7 +565,15 @@ fn collect_members(
                     }
                     visited.push(def.id.clone());
                     if let Some(target) = model.alias_target(&def) {
-                        collect_members(model, &target, bindings, name_bindings, visited, out);
+                        collect_members(
+                            model,
+                            &target,
+                            bindings,
+                            name_bindings,
+                            visited,
+                            out,
+                            filter,
+                        );
                     }
                     visited.pop();
                     return;
@@ -542,11 +616,20 @@ fn collect_members(
                             name_bindings,
                             visited,
                             out,
+                            filter,
                         );
                         return;
                     }
                 }
-                collect_type_def_members(model, &def, bindings, name_bindings, visited, out);
+                collect_type_def_members(
+                    model,
+                    &def,
+                    bindings,
+                    name_bindings,
+                    visited,
+                    out,
+                    filter,
+                );
             }
         }
         // Generic instance: base type members + argument substitution.
@@ -556,7 +639,7 @@ fn collect_members(
             {
                 let expanded =
                     crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
-                collect_members(model, &expanded, None, None, visited, out);
+                collect_members(model, &expanded, None, None, visited, out, filter);
                 return;
             }
             let def = type_def_of(model, &generic.get_base_type_id());
@@ -587,6 +670,7 @@ fn collect_members(
                 Some(&generic_name_bindings),
                 visited,
                 out,
+                filter,
             );
         }
         // Array: base type members.
@@ -598,19 +682,22 @@ fn collect_members(
                 name_bindings,
                 visited,
                 out,
+                filter,
             );
         }
         // Anonymous table literal: field members of the synthesized owner (file, range).
         LuaType::TableConst(table) => {
             let owner = SemanticId::member(table.file_id, table.value);
-            for member_ref in model.members_of_owner(&owner) {
+            for member_ref in owner_member_refs(model, &owner, filter) {
                 if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
                     if let Some(expanded) =
                         expand_table_multi_return_member(model, table, &member_ref, &info)
                     {
-                        out.extend(expanded);
+                        for info in expanded {
+                            push_member_info(out, filter, info);
+                        }
                     } else {
-                        out.push(info);
+                        push_member_info(out, filter, info);
                     }
                 }
             }
@@ -626,11 +713,11 @@ fn collect_members(
                     owners.push(SemanticId::name(decl.name.clone()));
                 }
                 for decl_owner in owners {
-                    for member_ref in model.members_of_owner(&decl_owner) {
+                    for member_ref in owner_member_refs(model, &decl_owner, filter) {
                         if let Some(info) =
                             member_info_of(model, &member_ref, bindings, name_bindings)
                         {
-                            out.push(info);
+                            push_member_info(out, filter, info);
                         }
                     }
                 }
@@ -639,37 +726,53 @@ fn collect_members(
         // Rich projection object: access field members directly (`{ foo: number }`'s `.foo`).
         LuaType::Object(object) => {
             for (key, ty) in object.get_fields() {
-                out.push(MemberInfo {
-                    key: key.clone(),
-                    typ: ty.clone(),
-                    id: None,
-                    file_id: None,
-                    is_method: false,
-                });
+                push_member_info(
+                    out,
+                    filter,
+                    MemberInfo {
+                        key: key.clone(),
+                        typ: ty.clone(),
+                        id: None,
+                        file_id: None,
+                        is_method: false,
+                    },
+                );
             }
             for (_key, ty) in object.get_index_access() {
-                out.push(MemberInfo {
-                    key: LuaMemberKey::Name("[index]".into()),
-                    typ: ty.clone(),
-                    id: None,
-                    file_id: None,
-                    is_method: false,
-                });
+                push_member_info(
+                    out,
+                    filter,
+                    MemberInfo {
+                        key: LuaMemberKey::Name("[index]".into()),
+                        typ: ty.clone(),
+                        id: None,
+                        file_id: None,
+                        is_method: false,
+                    },
+                );
             }
         }
         // String value: complete members through the string library (`s.sub` / `s:sub`).
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
             let string_owner = SemanticId::name(SmolStr::new("string"));
-            for member_ref in model.members_of_owner(&string_owner) {
+            for member_ref in owner_member_refs(model, &string_owner, filter) {
                 if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
-                    out.push(info);
+                    push_member_info(out, filter, info);
                 }
             }
         }
         // Intersection: members from all components are visible (`(A & B).x` takes A/B fields).
         LuaType::Intersection(intersection) => {
             for component in intersection.get_types() {
-                collect_members(model, component, bindings, name_bindings, visited, out);
+                collect_members(
+                    model,
+                    component,
+                    bindings,
+                    name_bindings,
+                    visited,
+                    out,
+                    filter,
+                );
             }
         }
         // Union: union of component members; same-key member types merge (`(A|B).x` = `A.x | B.x`).
@@ -683,6 +786,7 @@ fn collect_members(
                     name_bindings,
                     visited,
                     &mut component_members,
+                    filter,
                 );
                 for info in component_members {
                     if let Some(existing) = out.iter_mut().find(|existing| existing.key == info.key)
@@ -691,7 +795,7 @@ fn collect_members(
                             existing.typ = LuaType::from_vec(vec![existing.typ.clone(), info.typ]);
                         }
                     } else {
-                        out.push(info);
+                        push_member_info(out, filter, info);
                     }
                 }
             }
@@ -786,6 +890,7 @@ fn collect_type_def_members(
     name_bindings: Option<&HashMap<String, LuaType>>,
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<MemberInfo>,
+    filter: Option<&LuaMemberKey>,
 ) {
     if visited.contains(&def.id) || visited.len() >= MAX_MEMBER_INHERITANCE_DEPTH {
         return;
@@ -793,9 +898,9 @@ fn collect_type_def_members(
     visited.push(def.id.clone());
 
     // 1. This class's `@field` (workspace member index, cross-file).
-    for member_ref in model.members_of_owner(&def.id) {
+    for member_ref in owner_member_refs(model, &def.id, filter) {
         if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
-            out.push(info);
+            push_member_info(out, filter, info);
         }
     }
 
@@ -811,7 +916,7 @@ fn collect_type_def_members(
                     || super_name.as_str().starts_with(&format!("{param_name}<"))
                 {
                     if let Some(bound) = bindings.get(&GenericTplId::Type(index as u32)) {
-                        collect_members(model, bound, None, None, visited, out);
+                        collect_members(model, bound, None, None, visited, out, filter);
                         found_super = true;
                     }
                     break;
@@ -822,7 +927,15 @@ fn collect_type_def_members(
             }
         }
         if let Some(super_def) = model.resolve_type_def_in(def.file_id, super_name.as_str()) {
-            collect_type_def_members(model, &super_def, bindings, name_bindings, visited, out);
+            collect_type_def_members(
+                model,
+                &super_def,
+                bindings,
+                name_bindings,
+                visited,
+                out,
+                filter,
+            );
         }
     }
 
@@ -831,9 +944,9 @@ fn collect_type_def_members(
         if owner == def.id {
             continue;
         }
-        for member_ref in model.members_of_owner(&owner) {
+        for member_ref in owner_member_refs(model, &owner, filter) {
             if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
-                out.push(info);
+                push_member_info(out, filter, info);
             }
         }
     }

@@ -86,7 +86,16 @@ fn check_index_expr(
         return;
     };
     // If the export surface contains the member → valid.
-    if semantic_model.member_info(&export_ty, &key).is_some() {
+    //
+    // Canonical module owners also aggregate mutations contributed by other
+    // files (P5 require aliases). Those are visible to semantic resolution but
+    // are *not* part of the original export surface: a consumer doing
+    // `local a = require("mod"); a.newField = 1` is still an injection.
+    let is_surface_member = semantic_model
+        .member_infos_with_key(&export_ty, &key)
+        .into_iter()
+        .any(|info| info.file_id.is_none_or(|file_id| file_id == module_file));
+    if is_surface_member {
         return;
     }
     let field_name = index_key.get_path_part();

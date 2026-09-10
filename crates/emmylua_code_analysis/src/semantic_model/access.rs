@@ -839,66 +839,62 @@ impl<'db> SemanticModel<'db> {
         //    Expand multiple identities locally (avoids dependency cycles between tracked resolve_owner_set and type_of_member):
         //    Old-path owners take priority; non-public members or members with doc declarations win by score.
         let old_owner = self.resolve_owner(&owner);
-        let mut cross_owners = vec![owner.clone()];
-        for resolved in old_owner.iter() {
-            if !cross_owners.contains(resolved) {
-                cross_owners.push(resolved.clone());
+        // P5b: candidate owners come from deterministic canonical owner
+        // resolution instead of ad-hoc type/global/alias heuristics.
+        let mut cross_owners: Vec<SemanticId> = Vec::new();
+        for owner_id in self.q().resolve_owner_ids(&owner) {
+            if let Some(raw) = self.q().owner_id_to_semantic_id(&owner_id)
+                && !cross_owners.contains(&raw)
+            {
+                cross_owners.push(raw);
             }
         }
-        match &owner {
-            SemanticId::Name(name) => {
-                if let Some(type_def) = self
-                    .type_defs_in_scope(TypeScope::Global, name.as_str())
-                    .into_iter()
-                    .next()
-                {
-                    if !cross_owners.contains(&type_def.id) {
-                        cross_owners.push(type_def.id);
-                    }
-                }
-                if let Some(decl) = self.global_decl(name.as_str())
-                    && !cross_owners.contains(&decl)
-                {
-                    cross_owners.push(decl);
-                }
-            }
-            SemanticId::TypeDef(_type_def) => {
-                if let Some(decl) = self.resolve_owner(&owner)
-                    && !cross_owners.contains(&decl)
-                {
-                    cross_owners.push(decl);
-                }
-            }
-            _ => {}
+        // Keep the raw owner itself for members stored under `Name` / `Decl` /
+        // `Member` keys (global runtime members, local table members).
+        if !cross_owners.contains(&owner) {
+            cross_owners.push(owner.clone());
         }
         if let Some(module_owner) = self.require_module_owner(index_expr)
             && !cross_owners.contains(&module_owner)
         {
             cross_owners.push(module_owner);
         }
-        let mut best: Option<(i64, MemberRef)> = None;
+        // Explicit, deterministic preference order (replaces the previous
+        // numeric score). The key is intentionally orderable, not weighted:
+        //   1. non-resolved owners before the raw owner (`old_owner`);
+        //   2. non-public members before public ones;
+        //   3. documented members before inferred ones;
+        //   4. source/discovery order.
+        // This preserves the historical score outcome while making the rule
+        // inspectable and easy to change in P6.
+        let mut best: Option<((u8, u8, u8, usize), MemberRef)> = None;
+        let mut candidate_index = 0usize;
         for resolved in &cross_owners {
-            let is_old = old_owner.as_ref() == Some(resolved);
+            let owner_rank = if old_owner.as_ref() == Some(resolved) {
+                1
+            } else {
+                0
+            };
             for member in self.members_of_owner(resolved) {
                 if member.name != name {
                     continue;
                 }
-                let mut score = if is_old { 10_000 } else { 0 };
+                let mut visibility_rank = 1u8;
+                let mut doc_rank = 1u8;
                 if let Some(facts) = self.file_facts_of(member.file_id)
                     && let Some(member_facts) = facts.member_by_id(&member.id)
                 {
                     if member_facts.visibility != VisibilityKind::Public {
-                        score -= 2_000;
+                        visibility_rank = 0;
                     }
                     if member_facts.doc_type_syntax.is_some() {
-                        score -= 1;
+                        doc_rank = 0;
                     }
                 }
-                if best
-                    .as_ref()
-                    .is_none_or(|(best_score, _)| score < *best_score)
-                {
-                    best = Some((score, member));
+                let key = (owner_rank, visibility_rank, doc_rank, candidate_index);
+                candidate_index += 1;
+                if best.as_ref().is_none_or(|(best_key, _)| key < *best_key) {
+                    best = Some((key, member));
                 }
             }
         }
@@ -967,25 +963,120 @@ impl<'db> SemanticModel<'db> {
             .iter()
             .any(|member| member.name == *name)
     }
-    /// `local M = require("mod")` -> module export declaration owner (member bridging).
+    /// `local M = require("mod")` / `require("mod")` -> module export declaration owner.
+    ///
+    /// Also follows simple local alias chains (`local N = M`) and parentheses so
+    /// every alias form attaches members to the canonical module owner.
     pub(crate) fn require_module_owner(&self, index_expr: &LuaIndexExpr) -> Option<SemanticId> {
         let prefix = index_expr.get_prefix_expr()?;
+        self.require_module_member_owner_of_expr(&prefix, 0)
+    }
+
+    /// Owner of the table/value a require-rooted expression points to.
+    ///
+    /// - direct `require("mod")` / alias `M` -> module export owner;
+    /// - `M.sub` / `require("mod").sub` -> the `sub` member's table owner,
+    ///   so `M.sub.foo` resolves `foo` against the nested table.
+    fn require_module_member_owner_of_expr(
+        &self,
+        expr: &LuaExpr,
+        depth: usize,
+    ) -> Option<SemanticId> {
+        if depth > 8 {
+            return None;
+        }
+        match expr {
+            LuaExpr::ParenExpr(paren) => {
+                self.require_module_member_owner_of_expr(&paren.get_expr()?, depth + 1)
+            }
+            LuaExpr::IndexExpr(index_expr) => {
+                let parent = self.require_module_member_owner_of_expr(
+                    &index_expr.get_prefix_expr()?,
+                    depth + 1,
+                )?;
+                let name = SmolStr::new(index_expr.get_index_key()?.get_path_part());
+                let members = self.members_of_owner_named(&parent, name.as_str());
+                let member = members.first()?;
+                self.member_value_owner_of(&member)
+                    .or_else(|| Some(member.id.clone()))
+            }
+            _ => {
+                let module_file = self.require_module_file_of_expr(expr)?;
+                self.module_export_owner_of(module_file)
+            }
+        }
+    }
+
+    /// Table/value owner behind a member definition, used for nested require paths.
+    fn member_value_owner_of(&self, member: &MemberRef) -> Option<SemanticId> {
+        let facts = self.file_facts_of(member.file_id)?;
+        let member_def = facts.member_by_id(&member.id)?;
+        let value_syntax = member_def.value_syntax?;
+        let tree = self.syntax_tree_of(member.file_id)?;
+        let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
+        let value_expr = LuaExpr::cast(node)?;
+        match value_expr {
+            LuaExpr::TableExpr(table) => {
+                Some(SemanticId::member(member.file_id, table.get_range()))
+            }
+            LuaExpr::NameExpr(name_expr) => {
+                let name = name_expr.get_name_text()?;
+                let decl =
+                    facts.find_visible_decl_before_offset(&name, name_expr.get_position())?;
+                Some(decl.id.clone())
+            }
+            _ => Some(member.id.clone()),
+        }
+    }
+
+    /// Expression -> required module file.
+    ///
+    /// Supports `require("mod")`, `local M = require("mod"); M` and
+    /// `local N = M` chains (depth-limited).
+    pub(crate) fn require_module_file_of_expr(&self, expr: &LuaExpr) -> Option<FileId> {
+        self.require_module_file_of_expr_inner(expr, 0)
+    }
+
+    fn require_module_file_of_expr_inner(&self, expr: &LuaExpr, depth: usize) -> Option<FileId> {
+        if depth > 8 {
+            return None;
+        }
+        match expr {
+            LuaExpr::CallExpr(call) => self.require_module_file_of_call(call),
+            LuaExpr::ParenExpr(paren) => {
+                self.require_module_file_of_expr_inner(&paren.get_expr()?, depth + 1)
+            }
+            LuaExpr::NameExpr(name_expr) => {
+                let decl = self.resolve_name(name_expr.get_position())?;
+                let facts = self.file_facts()?;
+                let decl = facts.decl_by_id(&decl)?;
+                let value_syntax = decl.value_expr_syntax?;
+                let tree = self.syntax_tree()?;
+                let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
+                let value_expr = LuaExpr::cast(node)?;
+                self.require_module_file_of_expr_inner(&value_expr, depth + 1)
+            }
+            _ => None,
+        }
+    }
+
+    fn require_module_file_of_call(&self, call: &LuaCallExpr) -> Option<FileId> {
+        let prefix = call.get_prefix_expr()?;
         let LuaExpr::NameExpr(name_expr) = prefix else {
             return None;
         };
-        let decl = self.resolve_name(name_expr.get_position())?;
-        let facts = self.file_facts()?;
-        let decl = facts.decl_by_id(&decl)?;
-        let call_syntax = decl.value_expr_syntax?;
-        let tree = self.syntax_tree()?;
-        let node = call_syntax.to_node_from_root(&tree.get_red_root())?;
-        let call = LuaCallExpr::cast(node)?;
+        if name_expr.get_name_text().as_deref() != Some("require") {
+            return None;
+        }
         let arg = call.get_args_list()?.get_args().next()?;
         let module_name = match self.type_of_expr(arg.get_syntax_id()) {
             LuaType::StringConst(s) | LuaType::DocStringConst(s) => s.as_ref().to_string(),
             _ => return None,
         };
-        let module_file = self.module_file_of(&module_name)?;
+        self.module_file_of(&module_name)
+    }
+
+    fn module_export_owner_of(&self, module_file: FileId) -> Option<SemanticId> {
         let module_facts = self.file_facts_of(module_file)?;
         match &module_facts.module_export {
             ModuleExport::Decl { decl, .. } => Some(decl.clone()),

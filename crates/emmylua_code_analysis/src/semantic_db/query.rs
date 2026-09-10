@@ -9,9 +9,13 @@ use std::sync::Arc;
 
 use super::def::{
     ConstructorAttribute, DeclKind, DocGenericParam, ExportKey, MemberRef, ModuleExport,
-    ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, SemanticId, TypeDef, TypeDefKind,
+    ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, OwnerId, SemanticId, TypeDef,
+    TypeDefKind,
 };
-use super::exports::{EXPORT_SHARDS, FileExports, export_shard, shard_of};
+use super::exports::{
+    EXPORT_SHARDS, FileExports, export_shard, module_export_owner_file, owner_id_from_semantic_id,
+    shard_of,
+};
 use super::facts::{FactsBuilder, FileFacts};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use super::{FileCache, SemanticDatabase, ShardCache};
@@ -96,28 +100,53 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
             continue;
         }
         let flow = super::flow::build_flow_tree(db, file_id);
-        let exports = super::exports::build_file_exports(db, file_id, file_id);
         let cache = db
             .files
             .get_mut(&file_id)
             .expect("file cache must exist after facts build");
         cache.flow = flow;
-        cache.exports = Arc::new(exports);
     }
 
+    // Build module entries/indexes *before* export contributions: resolving a
+    // `local M = require("mod")` alias needs `module_file_of()`, and the module
+    // index only depends on facts + workspace roots.
     let mut shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
     for shard in 0..EXPORT_SHARDS {
         shards.insert(
             shard,
             ShardCache {
-                exports: super::exports::build_export_shard(db, shard),
-                deprecated: build_deprecated_shard(db, shard),
+                exports: Default::default(),
+                deprecated: Default::default(),
                 module: build_module_shard(db, shard),
                 references: Default::default(),
             },
         );
     }
     db.shards = shards;
+    rebuild_module_indexes(db);
+
+    for file_id in file_ids.iter().copied() {
+        if db.file_data(file_id).is_none() {
+            continue;
+        }
+        let exports = super::exports::build_file_exports(db, file_id, file_id);
+        let cache = db
+            .files
+            .get_mut(&file_id)
+            .expect("file cache must exist after facts build");
+        cache.exports = Arc::new(exports);
+    }
+
+    for shard in 0..EXPORT_SHARDS {
+        let exports = super::exports::build_export_shard(db, shard);
+        let deprecated = build_deprecated_shard(db, shard);
+        let shard_cache = db
+            .shards
+            .get_mut(&shard)
+            .expect("module shard must exist before export shard build");
+        shard_cache.exports = exports;
+        shard_cache.deprecated = deprecated;
+    }
 
     rebuild_workspace_indexes(db);
 
@@ -539,6 +568,11 @@ fn rebuild_dependent_reference_indexes(
     let old_exports = old_exports.unwrap_or(&empty);
     let new_exports = new_exports.unwrap_or(&empty);
     let delta = surface_delta(old_exports, new_exports);
+    if delta.names.is_empty() && delta.member_names.is_empty() {
+        // Pure value edits do not change any workspace-visible key; skip the
+        // whole-file dependency scan entirely (P4.5c).
+        return;
+    }
     let mut affected: HashSet<FileId> = HashSet::new();
     for (&file_id, cache) in &db.files {
         if file_id == changed_file_id {
@@ -779,6 +813,26 @@ pub(crate) fn all_workspace_ids(db: &SemanticDatabase) -> Vec<WorkspaceId> {
     ids
 }
 
+/// Deterministic workspace priority used by cross-workspace lookups.
+///
+/// Main workspace wins over libraries, libraries over std; remote stays last.
+/// Library order keeps registration order (stable sort).
+pub(crate) fn workspace_lookup_order(db: &SemanticDatabase) -> Vec<WorkspaceId> {
+    let mut ids = all_workspace_ids(db);
+    ids.sort_by_key(|ws_id| {
+        if ws_id.is_main() {
+            0
+        } else if ws_id.is_library() {
+            1
+        } else if ws_id.is_std() {
+            2
+        } else {
+            3
+        }
+    });
+    ids
+}
+
 fn file_matches_workspace_id(db: &SemanticDatabase, file_id: FileId, ws_id: WorkspaceId) -> bool {
     let file_ws = file_workspace_id(db, file_id);
     if ws_id == WorkspaceId::REMOTE {
@@ -936,7 +990,11 @@ pub(crate) struct OwnerMembers {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceMemberIndex {
     owners: HashMap<SemanticId, OwnerMembers>,
+    /// Canonical `OwnerId` buckets. Module export / require alias members attach
+    /// here so `require("mod").extra` can see members contributed by other files.
+    owners_by_id: HashMap<OwnerId, OwnerMembers>,
     by_file: HashMap<FileId, Vec<(SemanticId, SemanticId)>>,
+    by_file_owner_id: HashMap<FileId, Vec<(OwnerId, SemanticId)>>,
 }
 
 impl WorkspaceMemberIndex {
@@ -964,56 +1022,123 @@ impl WorkspaceMemberIndex {
         Some(Arc::from(members))
     }
 
+    pub(crate) fn members_of_owner_id(&self, owner: &OwnerId) -> Option<Arc<[MemberRef]>> {
+        let bucket = self.owners_by_id.get(owner)?;
+        let members = bucket
+            .order
+            .iter()
+            .filter_map(|member_id| bucket.by_id.get(member_id).cloned())
+            .collect::<Vec<_>>();
+        Some(Arc::from(members))
+    }
+
+    pub(crate) fn members_of_owner_id_named(
+        &self,
+        owner: &OwnerId,
+        name: &str,
+    ) -> Option<Arc<[MemberRef]>> {
+        let bucket = self.owners_by_id.get(owner)?;
+        let member_ids = bucket.by_name.get(name)?;
+        let members = member_ids
+            .iter()
+            .filter_map(|member_id| bucket.by_id.get(member_id).cloned())
+            .collect::<Vec<_>>();
+        Some(Arc::from(members))
+    }
+
     pub(crate) fn remove_file(&mut self, file_id: FileId) {
-        let Some(keys) = self.by_file.remove(&file_id) else {
-            return;
-        };
-        for (owner, member_id) in keys {
-            let Some(bucket) = self.owners.get_mut(&owner) else {
-                continue;
-            };
-            if bucket.by_id.remove(&member_id).is_none() {
-                continue;
+        if let Some(keys) = self.by_file.remove(&file_id) {
+            for (owner, member_id) in keys {
+                let Some(bucket) = self.owners.get_mut(&owner) else {
+                    continue;
+                };
+                if bucket.by_id.remove(&member_id).is_none() {
+                    continue;
+                }
+                bucket.order.retain(|id| id != &member_id);
+                for member_ids in bucket.by_name.values_mut() {
+                    member_ids.retain(|id| id != &member_id);
+                }
+                bucket
+                    .by_name
+                    .retain(|_, member_ids| !member_ids.is_empty());
+                if bucket.by_id.is_empty() {
+                    self.owners.remove(&owner);
+                }
             }
-            bucket.order.retain(|id| id != &member_id);
-            for member_ids in bucket.by_name.values_mut() {
-                member_ids.retain(|id| id != &member_id);
-            }
-            bucket
-                .by_name
-                .retain(|_, member_ids| !member_ids.is_empty());
-            if bucket.by_id.is_empty() {
-                self.owners.remove(&owner);
+        }
+        if let Some(keys) = self.by_file_owner_id.remove(&file_id) {
+            for (owner, member_id) in keys {
+                let Some(bucket) = self.owners_by_id.get_mut(&owner) else {
+                    continue;
+                };
+                if bucket.by_id.remove(&member_id).is_none() {
+                    continue;
+                }
+                bucket.order.retain(|id| id != &member_id);
+                for member_ids in bucket.by_name.values_mut() {
+                    member_ids.retain(|id| id != &member_id);
+                }
+                bucket
+                    .by_name
+                    .retain(|_, member_ids| !member_ids.is_empty());
+                if bucket.by_id.is_empty() {
+                    self.owners_by_id.remove(&owner);
+                }
             }
         }
     }
 
     pub(crate) fn add_file(&mut self, file_id: FileId, exports: &FileExports) {
         let mut keys = Vec::new();
+        let mut canonical_keys = Vec::new();
         for member in &exports.members {
             let owner = member.owner.clone();
             let member_id = member.member.clone();
             let bucket = self.owners.entry(owner.clone()).or_default();
-            if bucket.by_id.contains_key(&member_id) {
-                continue;
+            if !bucket.by_id.contains_key(&member_id) {
+                bucket.by_id.insert(
+                    member_id.clone(),
+                    MemberRef {
+                        file_id: member.file_id,
+                        id: member_id.clone(),
+                        name: member.key.to_path().into(),
+                    },
+                );
+                bucket.order.push(member_id.clone());
+                bucket
+                    .by_name
+                    .entry(member.key.to_path().into())
+                    .or_default()
+                    .push(member_id.clone());
+                keys.push((owner, member_id.clone()));
             }
-            bucket.by_id.insert(
-                member_id.clone(),
-                MemberRef {
-                    file_id: member.file_id,
-                    id: member_id.clone(),
-                    name: member.key.to_path().into(),
-                },
-            );
-            bucket.order.push(member_id.clone());
-            bucket
-                .by_name
-                .entry(member.key.to_path().into())
-                .or_default()
-                .push(member_id.clone());
-            keys.push((owner, member_id));
+
+            let canonical_owner = member.owner_id.clone();
+            let canonical_bucket = self
+                .owners_by_id
+                .entry(canonical_owner.clone())
+                .or_default();
+            if !canonical_bucket.by_id.contains_key(&member_id) {
+                canonical_bucket.by_id.insert(
+                    member_id.clone(),
+                    MemberRef {
+                        file_id: member.file_id,
+                        id: member_id.clone(),
+                        name: member.key.to_path().into(),
+                    },
+                );
+                canonical_bucket.order.push(member_id.clone());
+                canonical_bucket
+                    .by_name
+                    .entry(member.key.to_path().into())
+                    .or_default()
+                    .push(member_id.clone());
+                canonical_keys.push((canonical_owner, member_id));
+            }
         }
         self.by_file.insert(file_id, keys);
+        self.by_file_owner_id.insert(file_id, canonical_keys);
     }
 }
 
@@ -1238,32 +1363,95 @@ fn resolve_member_id(
     None
 }
 
+/// Canonical module owner for a raw file-local owner identity.
+///
+/// Covers both this file's own module export target (`return M`) and local
+/// declarations bound to another module through `require`.
+fn logical_module_owner_id(db: &SemanticDatabase, owner: &SemanticId) -> Option<OwnerId> {
+    let file_id = match owner {
+        SemanticId::Decl(key) => key.file_id,
+        SemanticId::Member(key) => key.file_id,
+        _ => return None,
+    };
+    let facts = db.file_facts_of(file_id)?;
+    if let Some(module_file) = module_export_owner_file(facts, file_id, owner) {
+        return Some(OwnerId::Module(module_file));
+    }
+    let exports = db.file_cache(file_id)?.exports.as_ref();
+    exports
+        .aliases
+        .iter()
+        .find(|alias| &alias.decl == owner)
+        .map(|alias| alias.owner_id())
+}
+
+/// Append canonical `OwnerId` bucket members, deduplicating by `(file_id, id)`.
+fn extend_canonical_members(
+    db: &SemanticDatabase,
+    owner: &SemanticId,
+    out: &mut Vec<MemberRef>,
+    named: Option<&str>,
+) {
+    let Some(owner_id) = logical_module_owner_id(db, owner) else {
+        return;
+    };
+    for ws_id in all_workspace_ids(db) {
+        let index = workspace_member_index_for(db, ws_id);
+        let members = match named {
+            Some(name) => index.members_of_owner_id_named(&owner_id, name),
+            None => index.members_of_owner_id(&owner_id),
+        };
+        let Some(members) = members else {
+            continue;
+        };
+        for member in members.iter() {
+            if !out
+                .iter()
+                .any(|existing| existing.id == member.id && existing.file_id == member.file_id)
+            {
+                out.push(member.clone());
+            }
+        }
+    }
+}
+
 /// Members of an owner `SemanticId` (cross-file; directly scans 64 shard references; body no longer accesses facts per file).
 pub(crate) fn members_of_owner(db: &SemanticDatabase, owner: SemanticId) -> Arc<[MemberRef]> {
-    // An owner with a file-local identity (Decl/Member) only has members in its declaring file:
-    // read that file's facts directly, avoiding a 64-shard scan and narrowing invalidation to a single file.
+    let mut out: Vec<MemberRef> = Vec::new();
     let owner_file = match &owner {
         SemanticId::Decl(key) => Some(key.file_id),
         SemanticId::Member(key) => Some(key.file_id),
         _ => None,
     };
-    let Some(owner_file) = owner_file else {
-        return return_members_of_owner_scan(db, owner);
-    };
-    if let Some(file) = db.file_data_id(owner_file) {
-        let facts = file_facts(db, file);
-        let members = facts
-            .members_of_owner(&owner)
-            .map(|member| MemberRef {
-                file_id: owner_file,
-                id: member.id.clone(),
-                name: member.key.to_path().into(),
-            })
-            .collect::<Vec<_>>();
-        return Arc::from(members);
+    match owner_file {
+        // An owner with a file-local identity (Decl/Member) only has raw members
+        // in its declaring file; read that file's facts directly.
+        Some(owner_file_id) => {
+            if let Some(file_id) = db.file_data_id(owner_file_id) {
+                let facts = file_facts(db, file_id);
+                out.extend(facts.members_of_owner(&owner).map(|member| MemberRef {
+                    file_id: owner_file_id,
+                    id: member.id.clone(),
+                    name: member.key.to_path().into(),
+                }));
+            } else {
+                out.extend(
+                    return_members_of_owner_scan(db, owner.clone())
+                        .iter()
+                        .cloned(),
+                );
+            }
+        }
+        None => out.extend(
+            return_members_of_owner_scan(db, owner.clone())
+                .iter()
+                .cloned(),
+        ),
     }
-
-    return_members_of_owner_scan(db, owner)
+    // Module export / require alias members are contributed from other files;
+    // merge the canonical bucket on top of the raw file-local facts.
+    extend_canonical_members(db, &owner, &mut out, None);
+    Arc::from(out)
 }
 
 fn return_members_of_owner_scan(db: &SemanticDatabase, owner: SemanticId) -> Arc<[MemberRef]> {
@@ -1287,33 +1475,44 @@ pub(crate) fn members_of_owner_named(
     owner: SemanticId,
     name: SmolStr,
 ) -> Arc<[MemberRef]> {
+    let mut out: Vec<MemberRef> = Vec::new();
     let owner_file = match &owner {
         SemanticId::Decl(key) => Some(key.file_id),
         SemanticId::Member(key) => Some(key.file_id),
         _ => None,
     };
-    if let Some(owner_file) = owner_file
-        && let Some(file) = db.file_data_id(owner_file)
-    {
-        let facts = file_facts(db, file);
-        let members = facts
-            .members_of_owner_named(&owner, name.as_str())
-            .map(|member| MemberRef {
-                file_id: owner_file,
-                id: member.id.clone(),
-                name: member.key.to_path().into(),
-            })
-            .collect::<Vec<_>>();
-        return Arc::from(members);
-    }
-
-    let mut out: Vec<MemberRef> = Vec::new();
-    for ws_id in all_workspace_ids(db) {
-        let index = workspace_member_index_for(db, ws_id);
-        if let Some(members) = index.members_of_owner_named(&owner, name.as_str()) {
-            out.extend(members.iter().cloned());
+    match owner_file {
+        Some(owner_file_id) => {
+            if let Some(file_id) = db.file_data_id(owner_file_id) {
+                let facts = file_facts(db, file_id);
+                out.extend(
+                    facts
+                        .members_of_owner_named(&owner, name.as_str())
+                        .map(|member| MemberRef {
+                            file_id: owner_file_id,
+                            id: member.id.clone(),
+                            name: member.key.to_path().into(),
+                        }),
+                );
+            } else {
+                for ws_id in all_workspace_ids(db) {
+                    let index = workspace_member_index_for(db, ws_id);
+                    if let Some(members) = index.members_of_owner_named(&owner, name.as_str()) {
+                        out.extend(members.iter().cloned());
+                    }
+                }
+            }
+        }
+        None => {
+            for ws_id in all_workspace_ids(db) {
+                let index = workspace_member_index_for(db, ws_id);
+                if let Some(members) = index.members_of_owner_named(&owner, name.as_str()) {
+                    out.extend(members.iter().cloned());
+                }
+            }
         }
     }
+    extend_canonical_members(db, &owner, &mut out, Some(name.as_str()));
     Arc::from(out)
 }
 
@@ -1767,7 +1966,7 @@ pub(crate) fn module_file_of(
         }
     }
     let patterns = config.module_patterns().to_vec();
-    for ws_id in all_workspace_ids(db) {
+    for ws_id in workspace_lookup_order(db) {
         let index = workspace_module_index_for(db, ws_id);
         // Paths still containing `/` after module_map rewriting (`signalstrings/signalstrings.lua`)
         // first try exact literal relative-path matching, then `?` pattern resolution.
@@ -2077,6 +2276,193 @@ pub(crate) fn resolve_owner(db: &SemanticDatabase, owner: SemanticId) -> Option<
         global_type_by_name(db, SmolStr::new(name.as_str()))
             .or_else(|| global_decl_by_name(db, SmolStr::new(name.as_str())))
     }
+}
+
+/// Canonical `OwnerId` for a raw semantic identity.
+///
+/// Module export targets and require aliases are normalized to `OwnerId::Module`;
+/// all other identities map through the file contribution mapping.
+pub(crate) fn canonical_owner_id(db: &SemanticDatabase, owner: &SemanticId) -> Option<OwnerId> {
+    match owner {
+        SemanticId::Name(name) => Some(OwnerId::Global(SmolStr::new(name.as_str()))),
+        SemanticId::TypeDef(key) => Some(OwnerId::Type(key.scope, key.full_name.clone())),
+        SemanticId::Signature(_) => Some(OwnerId::Concrete(owner.clone())),
+        SemanticId::Decl(key) => {
+            if let Some(module_owner) = logical_module_owner_id(db, owner) {
+                return Some(module_owner);
+            }
+            let facts = db.file_facts_of(key.file_id)?;
+            Some(owner_id_from_semantic_id(facts, owner))
+        }
+        SemanticId::Member(key) => {
+            if let Some(module_owner) = logical_module_owner_id(db, owner) {
+                return Some(module_owner);
+            }
+            let facts = db.file_facts_of(key.file_id)?;
+            Some(owner_id_from_semantic_id(facts, owner))
+        }
+    }
+}
+
+/// Convert a canonical owner back to a raw definition identity.
+///
+/// `OwnerId::Module` returns the module export target; `OwnerId::Global` prefers
+/// a real declaration over the unresolved `Name`.
+pub(crate) fn owner_id_to_semantic_id(
+    db: &SemanticDatabase,
+    owner_id: &OwnerId,
+) -> Option<SemanticId> {
+    match owner_id {
+        OwnerId::Type(scope, name) => type_defs_in_scope(db, *scope, name.clone())
+            .first()
+            .map(|def| def.id.clone()),
+        OwnerId::Global(name) => {
+            global_decl_by_name(db, name.clone()).or_else(|| Some(SemanticId::name(name.clone())))
+        }
+        OwnerId::Local(file_id, name_range) => Some(SemanticId::decl(*file_id, *name_range)),
+        OwnerId::Table(file_id, key_range) => Some(SemanticId::member(*file_id, *key_range)),
+        OwnerId::Module(file_id) => module_export_owner_raw(db, *file_id),
+        OwnerId::Concrete(id) => Some(id.clone()),
+    }
+}
+
+/// Raw owner of a file's module export (`return M` / `return { ... }`).
+pub(crate) fn module_export_owner_raw(
+    db: &SemanticDatabase,
+    file_id: FileId,
+) -> Option<SemanticId> {
+    let facts = db.file_facts_of(file_id)?;
+    match &facts.module_export {
+        ModuleExport::Decl { decl, .. } => Some(decl.clone()),
+        ModuleExport::Expr { value_syntax } => {
+            Some(SemanticId::member(file_id, value_syntax.get_range()))
+        }
+        ModuleExport::Global { .. } | ModuleExport::None => None,
+    }
+}
+
+/// Direct canonical-owner member lookup across workspaces (deterministic priority).
+pub(crate) fn members_of_owner_id_named_all(
+    db: &SemanticDatabase,
+    owner_id: &OwnerId,
+    name: &str,
+) -> Vec<MemberRef> {
+    let mut out: Vec<MemberRef> = Vec::new();
+    for ws_id in workspace_lookup_order(db) {
+        let index = workspace_member_index_for(db, ws_id);
+        let Some(members) = index.members_of_owner_id_named(owner_id, name) else {
+            continue;
+        };
+        for member in members.iter() {
+            if !out
+                .iter()
+                .any(|existing| existing.id == member.id && existing.file_id == member.file_id)
+            {
+                out.push(member.clone());
+            }
+        }
+    }
+    out
+}
+
+fn push_unique_owner_id(out: &mut Vec<OwnerId>, owner_id: OwnerId) {
+    if !out.contains(&owner_id) {
+        out.push(owner_id);
+    }
+}
+
+/// Add the runtime value declaration(s) associated with a named type.
+///
+/// `---@class M` + `local M = {}` (or a global meta table) is a dual identity:
+/// members declared through the runtime table must be visible when resolving
+/// the type/global name.
+fn push_type_associated_owner_ids(
+    db: &SemanticDatabase,
+    type_id: &SemanticId,
+    out: &mut Vec<OwnerId>,
+) {
+    for ws_id in workspace_lookup_order(db) {
+        let index = workspace_decl_index_for(db, ws_id);
+        let Some((file_id, bare_name)) = index.type_def_location(type_id) else {
+            continue;
+        };
+        if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name)
+            && let Some(decl_owner) = canonical_owner_id(db, &decl_id)
+        {
+            push_unique_owner_id(out, decl_owner);
+        }
+        if let Some(facts) = db.file_facts_of(file_id)
+            && let Some(def) = facts.type_def_by_id(type_id)
+            && let Some(owner_syntax) = def.owner_syntax
+        {
+            for decl in facts.decls_by_owner_syntax(owner_syntax) {
+                if let Some(decl_owner) = canonical_owner_id(db, &decl.id) {
+                    push_unique_owner_id(out, decl_owner);
+                }
+            }
+        }
+        break;
+    }
+}
+
+/// Deterministic identity-level owner resolution.
+///
+/// This is the P5 canonical replacement for the old heuristic
+/// `resolve_owner_set()` + score path. Order is stable and explicit:
+/// 1. canonical identity of the input;
+/// 2. runtime value / `owner_syntax` associations for named types;
+/// 3. global named type for a global name;
+/// 4. dotted-name member chain (`M.sub`).
+pub(crate) fn resolve_owner_ids(db: &SemanticDatabase, owner: &SemanticId) -> Vec<OwnerId> {
+    let mut out: Vec<OwnerId> = Vec::new();
+    if let Some(owner_id) = canonical_owner_id(db, owner) {
+        push_unique_owner_id(&mut out, owner_id);
+    }
+
+    match owner {
+        SemanticId::Name(name) => {
+            push_unique_owner_id(&mut out, OwnerId::Global(SmolStr::new(name.as_str())));
+            for def in type_defs_in_scope(db, TypeScope::Global, SmolStr::new(name.as_str())).iter()
+            {
+                if let ExportKey::Type(scope, full_name) = def.export_key() {
+                    push_unique_owner_id(&mut out, OwnerId::Type(scope, full_name));
+                }
+            }
+            if let Some(dot) = name.rfind('.') {
+                let head = SmolStr::new(&name[..dot]);
+                let tail = SmolStr::new(&name[dot + 1..]);
+                for head_owner in resolve_owner_ids(db, &SemanticId::name(head)) {
+                    for member in members_of_owner_id_named_all(db, &head_owner, &tail) {
+                        if let Some(member_owner) = canonical_owner_id(db, &member.id) {
+                            push_unique_owner_id(&mut out, member_owner);
+                        }
+                    }
+                }
+            }
+        }
+        SemanticId::TypeDef(key) => {
+            push_unique_owner_id(&mut out, OwnerId::Type(key.scope, key.full_name.clone()));
+            push_type_associated_owner_ids(db, owner, &mut out);
+        }
+        SemanticId::Decl(key) => {
+            if let Some(facts) = db.file_facts_of(key.file_id)
+                && let Some(decl) = facts.decl_by_id(owner)
+                && let Some(owner_syntax) = decl.owner_syntax
+            {
+                for def in facts
+                    .type_defs_by_owner_syntax(owner_syntax)
+                    .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
+                {
+                    if let ExportKey::Type(scope, full_name) = def.export_key() {
+                        push_unique_owner_id(&mut out, OwnerId::Type(scope, full_name));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    out
 }
 
 /// Phase 2 association: resolve an owner to an **identity set** (dual identity: same-name type + runtime value).

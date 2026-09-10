@@ -56,6 +56,23 @@ enum TraceMode {
     MergeBranch,
 }
 
+/// Start position of the syntax node a declaration is attached to.
+///
+/// `None` for synthetic/foreign declarations, which must use the full trace.
+fn decl_owner_syntax_start(model: &SemanticModel, decl: &SemanticId) -> Option<TextSize> {
+    let SemanticId::Decl(key) = decl else {
+        return None;
+    };
+    if key.file_id != model.file_id() {
+        return None;
+    }
+    model
+        .file_facts_of(key.file_id)?
+        .decl_by_id(decl)?
+        .owner_syntax
+        .map(|syntax| syntax.get_range().start())
+}
+
 /// Flow-sensitive type of `decl` at `offset` (assignment-aware + condition narrowing; `Unknown` falls back to the declared type).
 ///
 /// When `offset` lies on the assignment flow node for `x = value`, **this assignment does not participate in the target type** —
@@ -68,6 +85,17 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
     let Some(flow_id) = tree.get_flow_id_at(offset) else {
         return fallback();
     };
+    // No assignment to this decl and no narrowing/merge event after declaration:
+    // the flow value is exactly the declared value. This keeps straight-line
+    // initialization sections from walking O(offset) CFG nodes for every read.
+    if let Some(decl_start) = decl_owner_syntax_start(model, decl)
+        && tree.latest_decl_assignment(decl, offset).is_none()
+        && !tree.has_flow_event_between(decl_start, offset, true)
+    {
+        #[cfg(test)]
+        flow_metrics::FAST_DECL_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return fallback();
+    }
     let mut visited = HashSet::new();
     let mut path = PathState::default();
     let start = skip_own_decl_assign(decl, &tree, flow_id, offset);
@@ -133,6 +161,14 @@ pub fn type_of_decl_assign_target_at(
     let Some(tree) = model.flow_tree() else {
         return fallback();
     };
+    // ASSIGN_TARGET ignores assignments and branch guards and only applies casts.
+    // Without any cast the declared type is the exact answer, so the whole
+    // `t.x = value` hot path becomes O(1) instead of an O(offset) CFG walk.
+    if !tree.has_tag_cast() {
+        #[cfg(test)]
+        flow_metrics::FAST_TARGET_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return fallback();
+    }
     let Some(flow_id) = tree.get_flow_id_at(offset) else {
         return fallback();
     };
@@ -252,9 +288,30 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
     let Some(flow_id) = tree.get_flow_id_at(offset) else {
         return fallback();
     };
+    let start = skip_own_member_assign(member, &tree, flow_id, offset);
+    // Start directly at the latest assignment of this member when no flow event
+    // (condition/cast/merge) sits between it and the query. This turns repeated
+    // `M.x` reads in long straight-line files from O(offset) into O(1).
+    if start == flow_id && !tree.has_complex_control() {
+        let latest = tree.latest_member_assignment(member, offset);
+        if let Some((assign_pos, assign_flow)) = latest
+            && !tree.has_flow_event_between(assign_pos, offset, false)
+        {
+            let mut visited = HashSet::new();
+            let mut path = PathState::default();
+            if let Some(ty) =
+                trace_member(model, member, &tree, assign_flow, &mut visited, &mut path)
+            {
+                #[cfg(test)]
+                flow_metrics::FAST_MEMBER_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return ty;
+            }
+        } else if latest.is_none() && !tree.has_condition() && !tree.has_tag_cast() {
+            return fallback();
+        }
+    }
     let mut visited = HashSet::new();
     let mut path = PathState::default();
-    let start = skip_own_member_assign(member, &tree, flow_id, offset);
     trace_member(model, member, &tree, start, &mut visited, &mut path).unwrap_or_else(fallback)
 }
 
@@ -1182,6 +1239,8 @@ fn trace_decl(
     let mut current = flow_id;
     let mut frames: Vec<DeclAssignmentFrame> = Vec::new();
     loop {
+        #[cfg(test)]
+        flow_metrics::TRACE_STEPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if !visited.insert(current) {
             return None;
         }
@@ -1466,6 +1525,8 @@ fn trace_member(
 ) -> Option<LuaType> {
     let mut current = flow_id;
     loop {
+        #[cfg(test)]
+        flow_metrics::TRACE_STEPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if !visited.insert(current) {
             return None;
         }
@@ -4972,4 +5033,40 @@ fn type_is_broader(broad: &LuaType, narrow: &LuaType) -> bool {
             | (LuaType::Function, LuaType::DocFunction(_))
             | (LuaType::Function, LuaType::Signature(_))
     )
+}
+
+/// Test-only counters for the flow fast paths and fallback trace work.
+#[cfg(test)]
+pub(crate) mod flow_metrics {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub(crate) static TRACE_STEPS: AtomicU64 = AtomicU64::new(0);
+    pub(crate) static FAST_DECL_HITS: AtomicU64 = AtomicU64::new(0);
+    pub(crate) static FAST_MEMBER_HITS: AtomicU64 = AtomicU64::new(0);
+    pub(crate) static FAST_TARGET_HITS: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn reset() {
+        TRACE_STEPS.store(0, Ordering::Relaxed);
+        FAST_DECL_HITS.store(0, Ordering::Relaxed);
+        FAST_MEMBER_HITS.store(0, Ordering::Relaxed);
+        FAST_TARGET_HITS.store(0, Ordering::Relaxed);
+    }
+
+    pub(crate) fn trace_steps() -> u64 {
+        TRACE_STEPS.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn fast_path_hits() -> u64 {
+        FAST_DECL_HITS.load(Ordering::Relaxed)
+            + FAST_MEMBER_HITS.load(Ordering::Relaxed)
+            + FAST_TARGET_HITS.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn fast_decl_hits() -> u64 {
+        FAST_DECL_HITS.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn fast_member_hits() -> u64 {
+        FAST_MEMBER_HITS.load(Ordering::Relaxed)
+    }
 }

@@ -17,8 +17,8 @@ use crate::{
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, Scope,
-    SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
+    ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, OwnerId,
+    Scope, SemanticId, Signature, TypeDef, TypeScope, TypeVisibility,
 };
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
@@ -342,6 +342,19 @@ impl<'db> SemanticQueries<'db> {
             return Vec::new();
         }
         query::resolve_owner_set(self.db, owner)
+    }
+
+    /// Deterministic canonical owner identities (P5b).
+    pub fn resolve_owner_ids(&self, owner: &SemanticId) -> Vec<OwnerId> {
+        if self.db.config_input().is_none() {
+            return Vec::new();
+        }
+        query::resolve_owner_ids(self.db, owner)
+    }
+
+    /// Canonical owner identity -> raw definition identity.
+    pub fn owner_id_to_semantic_id(&self, owner_id: &OwnerId) -> Option<SemanticId> {
+        query::owner_id_to_semantic_id(self.db, owner_id)
     }
 
     /// Members of an owner identified by `SemanticId` (cross-file).

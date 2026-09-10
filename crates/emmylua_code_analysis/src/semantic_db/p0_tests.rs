@@ -213,7 +213,6 @@ fn p0_deep_require_member_chain() {
 /// `extra.lua` adds a member to the table returned by `mod.lua`; a consumer must see
 /// that member through the module export identity, not through `extra.lua`'s local alias.
 #[test]
-#[ignore = "P0 known failure: cross-file module mutation is attached to the consumer-local alias"]
 fn p0_cross_file_module_mutation_visible_through_require() {
     let mut ws = VirtualWorkspace::new();
     ws.def_file(

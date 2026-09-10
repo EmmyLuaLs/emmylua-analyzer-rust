@@ -14,7 +14,11 @@ mod p2_tests;
 #[cfg(test)]
 mod p3_tests;
 #[cfg(test)]
+mod p4_5_tests;
+#[cfg(test)]
 mod p4_tests;
+#[cfg(test)]
+mod p5_tests;
 pub(crate) mod query;
 #[cfg(test)]
 mod tests;
