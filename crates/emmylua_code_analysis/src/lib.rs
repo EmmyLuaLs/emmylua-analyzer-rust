@@ -22,10 +22,13 @@ pub use crate::semantic_db::SemanticDatabase;
 pub use crate::semantic_db::def::ModuleVisibility;
 /// Public types for the semantic layer.
 pub use crate::semantic_db::def::{
-    Decl, DeclKind, DocGenericParam, LuaMemberKey, Member, MemberRef, ModuleExport, SemanticId,
-    Signature, SignatureDoc, SignatureReturnCast, TypeDef, TypeDefKind, TypeScope, TypeVisibility,
+    Decl, DeclKind, DocGenericParam, ExportKey, LuaMemberKey, Member, MemberRef, ModuleExport,
+    OwnerId, SemanticId, Signature, SignatureDoc, SignatureReturnCast, TypeDef, TypeDefKind,
+    TypeScope, TypeVisibility,
 };
-pub use crate::semantic_db::exports::{FileExports, GlobalExport, MemberExport};
+pub use crate::semantic_db::exports::{
+    FileExportContribution, FileExports, GlobalExport, MemberExport,
+};
 pub use crate::semantic_db::facts::FileFacts;
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,

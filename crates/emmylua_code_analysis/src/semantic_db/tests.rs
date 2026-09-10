@@ -951,7 +951,12 @@ N.y = 2",
     );
     let _ = export_shard(&db, shard1);
     let edited = export_shard(&db, shard2);
-    assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
+    assert!(
+        edited
+            .files
+            .get(&fid2)
+            .is_some_and(|exports| exports.members.iter().any(|m| m.key.to_path() == "y"))
+    );
 }
 
 #[test]
