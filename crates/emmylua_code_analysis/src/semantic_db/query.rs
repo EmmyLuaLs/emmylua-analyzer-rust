@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::def::{
-    ConstructorAttribute, DeclKind, DocGenericParam, ExportKey, MemberRef, ModuleExport,
-    ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, OwnerId, SemanticId, TypeDef,
-    TypeDefKind,
+    ChangedKeys, ConstructorAttribute, DeclKind, DependencyKey, DocGenericParam, ExportKey,
+    FileDependencies, LuaMemberKey, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
+    ModuleVisibility, OwnerId, SemanticId, TypeDef, TypeDefKind,
 };
 use super::exports::{
     EXPORT_SHARDS, FileExports, export_shard, module_export_owner_file, owner_id_from_semantic_id,
@@ -169,6 +169,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     }
 
     rebuild_workspace_reference_indexes(db);
+    rebuild_dependency_index(db);
 }
 
 pub(crate) fn rebuild_file_after_write(
@@ -188,7 +189,9 @@ pub(crate) fn rebuild_file_after_write(
 
     let old_cache = db.files.remove(&file_id);
     let old_exports = old_cache.as_ref().map(|cache| Arc::clone(&cache.exports));
-    let old_references = old_cache.map(|cache| cache.references);
+    let old_references = old_cache
+        .as_ref()
+        .map(|cache| Arc::clone(&cache.references));
 
     let facts = build_file_facts(db, file_id, file_id, &text);
 
@@ -199,7 +202,7 @@ pub(crate) fn rebuild_file_after_write(
             facts,
             flow: Default::default(),
             exports: Arc::new(Default::default()),
-            references: old_references.unwrap_or_default(),
+            references: old_references.clone().unwrap_or_default(),
         },
     );
 
@@ -264,7 +267,7 @@ pub(crate) fn rebuild_file_after_write(
             .files
             .insert(file_id, Arc::clone(&references));
     }
-    apply_file_reference_index(db, file_id, references);
+    apply_file_reference_index(db, file_id, Arc::clone(&references));
 
     // With no registered roots and no explicit main root, module names are derived
     // from the common path root, so a path change can affect other files' entries.
@@ -277,11 +280,14 @@ pub(crate) fn rebuild_file_after_write(
         rebuild_module_indexes(db);
     }
 
-    rebuild_dependent_reference_indexes(
+    refresh_dependent_references(
         db,
         file_id,
         old_exports.as_deref(),
         Some(new_exports.as_ref()),
+        old_references.as_deref(),
+        Some(references.as_ref()),
+        metadata_changed || fallback_may_change,
     );
 }
 
@@ -290,6 +296,7 @@ pub(crate) fn rebuild_file_after_remove(
     file_id: FileId,
     old_workspace: Option<WorkspaceId>,
     old_exports: Option<Arc<FileExports>>,
+    old_references: Option<Arc<FileReferences>>,
 ) {
     db.files.remove(&file_id);
     db.unregister_file_from_shard(file_id);
@@ -314,7 +321,15 @@ pub(crate) fn rebuild_file_after_remove(
         rebuild_module_indexes(db);
     }
 
-    rebuild_dependent_reference_indexes(db, file_id, old_exports.as_deref(), None);
+    refresh_dependent_references(
+        db,
+        file_id,
+        old_exports.as_deref(),
+        None,
+        old_references.as_deref(),
+        None,
+        false,
+    );
 }
 
 fn rebuild_all_module_shards(db: &mut SemanticDatabase) {
@@ -439,178 +454,245 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase) {
     };
 }
 
-#[derive(Default)]
-struct SurfaceDelta {
-    names: HashSet<SmolStr>,
-    member_names: HashSet<SmolStr>,
-}
+/// P7: canonical export-surface delta.
+///
+/// Pure value edits (`M.x = 1` -> `M.x = 2`) produce no key because the member
+/// identity is unchanged; consumers read the new value by id.
+pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>) -> ChangedKeys {
+    let empty = FileExports::default();
+    let old = old.unwrap_or(&empty);
+    let new = new.unwrap_or(&empty);
+    let mut changed = ChangedKeys::default();
 
-fn surface_delta(old_exports: &FileExports, new_exports: &FileExports) -> SurfaceDelta {
-    let mut delta = SurfaceDelta::default();
-
-    let old_globals: HashMap<&str, &super::exports::GlobalExport> = old_exports
+    // Globals: same-name declaration identity/payload changes.
+    let old_globals: HashMap<&str, &super::exports::GlobalExport> = old
         .globals
         .iter()
         .map(|global| (global.name.as_str(), global))
         .collect();
-    let new_globals: HashMap<&str, &super::exports::GlobalExport> = new_exports
+    let new_globals: HashMap<&str, &super::exports::GlobalExport> = new
         .globals
         .iter()
         .map(|global| (global.name.as_str(), global))
         .collect();
     for (name, old_global) in &old_globals {
         if new_globals.get(name) != Some(old_global) {
-            delta.names.insert(SmolStr::new(*name));
+            changed.insert(DependencyKey::Global(SmolStr::new(*name)));
         }
     }
     for name in new_globals.keys() {
         if !old_globals.contains_key(name) {
-            delta.names.insert(SmolStr::new(*name));
+            changed.insert(DependencyKey::Global(SmolStr::new(*name)));
         }
     }
 
-    let old_types: HashMap<&str, &TypeDef> = old_exports
-        .types
-        .iter()
-        .map(|def| (def.full_name.as_str(), def))
-        .collect();
-    let new_types: HashMap<&str, &TypeDef> = new_exports
-        .types
-        .iter()
-        .map(|def| (def.full_name.as_str(), def))
-        .collect();
-    for (name, old_def) in &old_types {
-        if new_types.get(name) != Some(old_def) {
-            delta.names.insert(SmolStr::new(*name));
+    // Named types: canonical `(scope, full_name)` key.
+    fn type_map(exports: &FileExports) -> HashMap<ExportKey, Vec<&TypeDef>> {
+        let mut map: HashMap<ExportKey, Vec<&TypeDef>> = HashMap::new();
+        for def in &exports.types {
+            map.entry(def.export_key()).or_default().push(def);
+        }
+        map
+    }
+    let old_types = type_map(old);
+    let new_types = type_map(new);
+    for (key, old_defs) in &old_types {
+        if new_types.get(key) != Some(old_defs)
+            && let ExportKey::Type(scope, name) = key
+        {
+            changed.insert(DependencyKey::Type(*scope, name.clone()));
         }
     }
-    for name in new_types.keys() {
-        if !old_types.contains_key(name) {
-            delta.names.insert(SmolStr::new(*name));
-        }
-    }
-    for def in &old_exports.types {
-        if !new_exports.types.iter().any(|new_def| new_def.id == def.id) {
-            delta.names.insert(def.name.clone());
-        }
-    }
-    for def in &new_exports.types {
-        if !old_exports.types.iter().any(|old_def| old_def.id == def.id) {
-            delta.names.insert(def.name.clone());
+    for key in new_types.keys() {
+        if !old_types.contains_key(key)
+            && let ExportKey::Type(scope, name) = key
+        {
+            changed.insert(DependencyKey::Type(*scope, name.clone()));
         }
     }
 
-    let old_runtime: HashMap<&str, &SemanticId> = old_exports
-        .runtime_values
-        .iter()
-        .map(|(name, decl)| (name.as_str(), decl))
-        .collect();
-    let new_runtime: HashMap<&str, &SemanticId> = new_exports
-        .runtime_values
-        .iter()
-        .map(|(name, decl)| (name.as_str(), decl))
-        .collect();
-    for (name, old_id) in &old_runtime {
-        if new_runtime.get(name) != Some(old_id) {
-            delta.names.insert(SmolStr::new(*name));
+    // Runtime values: `local M = {}` implementing `@class M`.
+    let runtime_map = |exports: &FileExports| {
+        exports
+            .runtime_values
+            .iter()
+            .map(|(name, decl)| (name.clone(), decl.clone()))
+            .collect::<HashMap<SmolStr, SemanticId>>()
+    };
+    let old_runtime = runtime_map(old);
+    let new_runtime = runtime_map(new);
+    for (name, old_decl) in &old_runtime {
+        if new_runtime.get(name) != Some(old_decl) {
+            changed.insert(DependencyKey::RuntimeValue(name.clone()));
+            changed.insert(DependencyKey::Global(name.clone()));
         }
     }
     for name in new_runtime.keys() {
         if !old_runtime.contains_key(name) {
-            delta.names.insert(SmolStr::new(*name));
+            changed.insert(DependencyKey::RuntimeValue(name.clone()));
+            changed.insert(DependencyKey::Global(name.clone()));
         }
     }
 
-    let member_key =
-        |member: &super::exports::MemberExport| (member.export_key(), member.member.clone());
-    let old_members: HashMap<(ExportKey, SemanticId), &super::exports::MemberExport> = old_exports
-        .members
-        .iter()
-        .map(|member| (member_key(member), member))
-        .collect();
-    let new_members: HashMap<(ExportKey, SemanticId), &super::exports::MemberExport> = new_exports
-        .members
-        .iter()
-        .map(|member| (member_key(member), member))
-        .collect();
-    for (key, old_member) in &old_members {
-        if new_members
-            .get(key)
-            .is_none_or(|new_member| !old_member.surface_eq(new_member))
-        {
-            if let ExportKey::Member(_, member_key) = &key.0 {
-                delta
-                    .member_names
-                    .insert(SmolStr::new(member_key.to_path()));
-            }
+    // Members: canonical `(OwnerId, LuaMemberKey)`.
+    fn member_map(
+        exports: &FileExports,
+    ) -> HashMap<DependencyKey, Vec<&super::exports::MemberExport>> {
+        let mut map: HashMap<DependencyKey, Vec<&super::exports::MemberExport>> = HashMap::new();
+        for member in &exports.members {
+            let ExportKey::Member(owner_id, key) = member.export_key() else {
+                continue;
+            };
+            map.entry(DependencyKey::Member(owner_id, key))
+                .or_default()
+                .push(member);
+        }
+        map
+    }
+    let old_members = member_map(old);
+    let new_members = member_map(new);
+    for (key, old_entries) in &old_members {
+        let same = new_members.get(key).is_some_and(|new_entries| {
+            new_entries.len() == old_entries.len()
+                && new_entries
+                    .iter()
+                    .zip(old_entries.iter())
+                    .all(|(new_member, old_member)| new_member.surface_eq(old_member))
+        });
+        if !same {
+            changed.insert(key.clone());
         }
     }
     for key in new_members.keys() {
-        if !old_members.contains_key(key)
-            && let ExportKey::Member(_, member_key) = &key.0
-        {
-            delta
-                .member_names
-                .insert(SmolStr::new(member_key.to_path()));
+        if !old_members.contains_key(key) {
+            changed.insert(key.clone());
         }
     }
 
-    delta
+    // Module export identity.
+    if old.module != new.module {
+        changed.insert(DependencyKey::Module(old.file_id));
+        changed.insert(DependencyKey::Module(new.file_id));
+    }
+
+    // Require aliases: consumers of the aliased module must refresh.
+    if old.aliases != new.aliases {
+        for alias in old.aliases.iter().chain(new.aliases.iter()) {
+            changed.insert(DependencyKey::Module(alias.module_file));
+        }
+    }
+
+    changed
 }
 
-fn rebuild_dependent_reference_indexes(
+/// Rebuild the reverse dependency map from all per-file references (full rebuild).
+pub(crate) fn rebuild_dependency_index(db: &mut SemanticDatabase) {
+    db.dependency_index.clear();
+    let entries: Vec<(FileId, Arc<FileReferences>)> = db
+        .files
+        .iter()
+        .map(|(file_id, cache)| (*file_id, Arc::clone(&cache.references)))
+        .collect();
+    for (file_id, references) in entries {
+        add_file_dependencies(db, file_id, &references.deps);
+    }
+}
+
+fn add_file_dependencies(db: &mut SemanticDatabase, file_id: FileId, deps: &FileDependencies) {
+    for key in deps.iter() {
+        db.dependency_index
+            .entry(key.clone())
+            .or_default()
+            .insert(file_id);
+    }
+}
+
+fn remove_file_dependencies(db: &mut SemanticDatabase, file_id: FileId, deps: &FileDependencies) {
+    for key in deps.iter() {
+        if let Some(files) = db.dependency_index.get_mut(key) {
+            files.remove(&file_id);
+            if files.is_empty() {
+                db.dependency_index.remove(key);
+            }
+        }
+    }
+}
+
+/// P7: update the changed file's contribution, then refresh only files whose
+/// canonical dependency keys intersect `changed_keys`.
+pub(crate) fn refresh_dependent_references(
     db: &mut SemanticDatabase,
     changed_file_id: FileId,
     old_exports: Option<&FileExports>,
     new_exports: Option<&FileExports>,
+    old_references: Option<&FileReferences>,
+    new_references: Option<&FileReferences>,
+    force_module_changed: bool,
 ) {
-    let empty = FileExports::default();
-    let old_exports = old_exports.unwrap_or(&empty);
-    let new_exports = new_exports.unwrap_or(&empty);
-    let delta = surface_delta(old_exports, new_exports);
-    if delta.names.is_empty() && delta.member_names.is_empty() {
-        // Pure value edits do not change any workspace-visible key; skip the
-        // whole-file dependency scan entirely (P4.5c).
+    let mut changed = changed_keys(old_exports, new_exports);
+    if force_module_changed {
+        changed.insert(DependencyKey::Module(changed_file_id));
+    }
+
+    if let Some(references) = old_references {
+        remove_file_dependencies(db, changed_file_id, &references.deps);
+    }
+    if let Some(references) = new_references {
+        add_file_dependencies(db, changed_file_id, &references.deps);
+    }
+
+    if changed.is_empty() {
         return;
     }
+
     let mut affected: HashSet<FileId> = HashSet::new();
-    for (&file_id, cache) in &db.files {
-        if file_id == changed_file_id {
-            continue;
-        }
-        if !cache.references.name_deps.is_disjoint(&delta.names)
-            || !cache
-                .references
-                .member_name_deps
-                .is_disjoint(&delta.member_names)
-        {
-            affected.insert(file_id);
+    for key in &changed {
+        if let Some(files) = db.dependency_index.get(key) {
+            for file_id in files {
+                if *file_id != changed_file_id {
+                    affected.insert(*file_id);
+                }
+            }
         }
     }
 
-    refresh_reference_indexes_for_files(db, affected);
+    for file_id in affected {
+        refresh_file_reference_index(db, file_id);
+    }
 }
 
-fn refresh_reference_indexes_for_files(db: &mut SemanticDatabase, affected: HashSet<FileId>) {
-    for file_id in affected {
-        if let Some(file) = db.file_data_id(file_id) {
-            let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
-            let references = Arc::new(build_file_references(db, file));
-            if let Some(cache) = db.files.get_mut(&file_id) {
-                cache.references = Arc::clone(&references);
-            }
-            let shard = shard_of(file_id);
-            if let Some(shard_cache) = db.shards.get_mut(&shard) {
-                shard_cache
-                    .references
-                    .files
-                    .insert(file_id, Arc::clone(&references));
-            }
-            let index = db.workspace_index.references.entry(ws_id).or_default();
-            index.remove_file(file_id);
-            index.add_file(file_id, references);
-        }
+fn refresh_file_reference_index(db: &mut SemanticDatabase, file_id: FileId) {
+    if db.file_data_id(file_id).is_none() {
+        return;
     }
+    #[cfg(test)]
+    db.rebuild_metrics
+        .dependent_reference_refreshes
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let old_references = db
+        .files
+        .get(&file_id)
+        .map(|cache| Arc::clone(&cache.references));
+    let references = Arc::new(build_file_references(db, file_id));
+    if let Some(old_references) = &old_references {
+        remove_file_dependencies(db, file_id, &old_references.deps);
+    }
+    add_file_dependencies(db, file_id, &references.deps);
+
+    if let Some(cache) = db.files.get_mut(&file_id) {
+        cache.references = Arc::clone(&references);
+    }
+    let shard = shard_of(file_id);
+    if let Some(shard_cache) = db.shards.get_mut(&shard) {
+        shard_cache
+            .references
+            .files
+            .insert(file_id, Arc::clone(&references));
+    }
+    let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
+    let index = db.workspace_index.references.entry(ws_id).or_default();
+    index.remove_file(file_id);
+    index.add_file(file_id, references);
 }
 
 fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase) {
@@ -1175,10 +1257,8 @@ pub struct FileReferences {
     pub member_refs: HashMap<SemanticId, Vec<TextRange>>,
     /// Member definition sites (`T.x = v` / `@field x` / table field keys / method names).
     pub member_defs: HashMap<SemanticId, Vec<TextRange>>,
-    /// Global/type names this file's references depend on.
-    pub name_deps: HashSet<SmolStr>,
-    /// Member names this file's references depend on (coarse but safe owner-independent invalidation).
-    pub member_name_deps: HashSet<SmolStr>,
+    /// Canonical identity-level dependencies of this file (P7).
+    pub deps: FileDependencies,
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
@@ -1187,14 +1267,18 @@ fn build_file_references(db: &SemanticDatabase, file: FileId) -> FileReferences 
     let tree = syntax_tree(db, file);
     let mut out = FileReferences::default();
 
-    // Name use sites -> declarations.
+    // Name use sites -> declarations (and identity-level dependencies).
     for name_use in &facts.name_uses {
-        out.name_deps.insert(name_use.name.clone());
         if let Some(decl) = resolve_name(db, file, name_use.syntax.get_range().start()) {
+            push_target_dependencies(db, &decl, &mut out.deps);
             out.decl_refs
                 .entry(decl)
                 .or_default()
                 .push(name_use.syntax.get_range());
+        } else {
+            // Unresolved global may be defined by a later file write.
+            out.deps
+                .insert(DependencyKey::Global(name_use.name.clone()));
         }
     }
 
@@ -1216,11 +1300,17 @@ fn build_file_references(db: &SemanticDatabase, file: FileId) -> FileReferences 
         let Some(index_expr) = LuaIndexExpr::cast(node) else {
             continue;
         };
-        if let Some((owner, name)) = member_ref_from_index_expr(&facts, &index_expr) {
-            let _ = owner;
-            out.member_name_deps.insert(name.clone());
+        let owner_and_name = member_ref_from_index_expr(&facts, &index_expr);
+        if let Some((owner, name)) = &owner_and_name
+            && let Some(owner_id) = canonical_owner_id(db, owner)
+        {
+            out.deps.insert(DependencyKey::Member(
+                owner_id,
+                LuaMemberKey::Name(name.clone()),
+            ));
         }
         if let Some(member_id) = resolve_member_id(db, &facts, &index_expr) {
+            push_target_dependencies(db, &member_id, &mut out.deps);
             let Some(key) = index_expr.get_index_key() else {
                 continue;
             };
@@ -1231,7 +1321,70 @@ fn build_file_references(db: &SemanticDatabase, file: FileId) -> FileReferences 
         }
     }
 
+    // require("mod") -> module identity dependency.
+    if let Some(config) = db.config_input() {
+        for call in tree
+            .get_red_root()
+            .descendants()
+            .filter_map(LuaCallExpr::cast)
+        {
+            if !call.is_require() {
+                continue;
+            }
+            let Some(module_name) = require_module_name_from_call(&call) else {
+                continue;
+            };
+            if let Some(module_file) = module_file_of(db, config, module_name) {
+                out.deps.insert(DependencyKey::Module(module_file));
+            }
+        }
+    }
+
     out
+}
+
+/// `require("mod")` literal argument -> module name.
+fn require_module_name_from_call(call: &LuaCallExpr) -> Option<SmolStr> {
+    let arg = call.get_args_list()?.get_args().next()?;
+    let LuaExpr::LiteralExpr(literal) = arg else {
+        return None;
+    };
+    let LuaLiteralToken::String(token) = literal.get_literal()? else {
+        return None;
+    };
+    Some(SmolStr::new(token.get_value()))
+}
+
+/// Record canonical dependencies for a resolved semantic target.
+fn push_target_dependencies(
+    db: &SemanticDatabase,
+    target: &SemanticId,
+    deps: &mut FileDependencies,
+) {
+    match target {
+        SemanticId::Name(name) => deps.insert(DependencyKey::Global(SmolStr::new(name.as_str()))),
+        SemanticId::TypeDef(key) => {
+            deps.insert(DependencyKey::Type(key.scope, key.full_name.clone()));
+            deps.insert(DependencyKey::RuntimeValue(key.full_name.clone()));
+        }
+        SemanticId::Decl(key) => {
+            if let Some(facts) = db.file_facts_of(key.file_id)
+                && let Some(decl) = facts.decl_by_id(target)
+                && matches!(decl.kind, DeclKind::Global)
+            {
+                deps.insert(DependencyKey::Global(decl.name.clone()));
+            }
+        }
+        SemanticId::Member(key) => {
+            if let Some(facts) = db.file_facts_of(key.file_id)
+                && let Some(member) = facts.member_by_id(target)
+                && let Some(owner_id) = canonical_owner_id(db, &member.owner)
+            {
+                deps.insert(DependencyKey::Member(owner_id, member.key.clone()));
+            }
+        }
+        SemanticId::Signature(_) => {}
+    }
 }
 
 /// A shard's reference index: `FileId -> per-file references`.
@@ -1584,6 +1737,14 @@ impl WorkspaceDeclIndex {
             .and_then(|decls| decls.last().cloned())
     }
 
+    /// All global declarations with this name (cross-file overload candidates).
+    pub(crate) fn global_decls_named(&self, name: &SmolStr) -> &[SemanticId] {
+        self.global_by_name
+            .get(name)
+            .map(|decls| decls.as_slice())
+            .unwrap_or(&[])
+    }
+
     pub(crate) fn runtime_value_in(
         &self,
         file_id: FileId,
@@ -1699,6 +1860,47 @@ pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Optio
         }
     }
     None
+}
+
+/// All global declarations with this name in one workspace.
+pub(crate) fn global_decls_named_in_workspace(
+    db: &SemanticDatabase,
+    ws_id: WorkspaceId,
+    name: &str,
+) -> Vec<SemanticId> {
+    let name = SmolStr::new(name);
+    workspace_decl_index_for(db, ws_id)
+        .global_decls_named(&name)
+        .to_vec()
+}
+
+/// Global overload candidates for a declaration's owning workspace.
+///
+/// Cross-file overloads are a same-workspace concept; a main workspace `f` must not
+/// merge with a std/library `f` (otherwise shadowing changes diagnostics).
+pub(crate) fn global_decls_named_for_file(
+    db: &SemanticDatabase,
+    file_id: FileId,
+    name: &str,
+) -> Vec<SemanticId> {
+    if let Some(ws_id) = file_workspace_id(db, file_id) {
+        let decls = global_decls_named_in_workspace(db, ws_id, name);
+        if !decls.is_empty() {
+            return decls;
+        }
+    }
+    global_decls_named_primary(db, name)
+}
+
+/// First non-empty workspace in explicit priority order (main > library > std).
+pub(crate) fn global_decls_named_primary(db: &SemanticDatabase, name: &str) -> Vec<SemanticId> {
+    for ws_id in workspace_lookup_order(db) {
+        let decls = global_decls_named_in_workspace(db, ws_id, name);
+        if !decls.is_empty() {
+            return decls;
+        }
+    }
+    Vec::new()
 }
 
 // ──────────────────────────────────────────────
@@ -2386,10 +2588,23 @@ fn push_type_associated_owner_ids(
         let Some((file_id, bare_name)) = index.type_def_location(type_id) else {
             continue;
         };
-        if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name)
-            && let Some(decl_owner) = canonical_owner_id(db, &decl_id)
-        {
-            push_unique_owner_id(out, decl_owner);
+        if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name) {
+            if let Some(decl_owner) = canonical_owner_id(db, &decl_id) {
+                push_unique_owner_id(out, decl_owner);
+            }
+            // Main-workspace `---@meta` API files use a global runtime table
+            // (`_KLuaPlayer = {}`) as the type surface, while its methods are
+            // declared under `Name("_KLuaPlayer")`. Include that owner so
+            // `@class _KLuaPlayer` + `function _KLuaPlayer.Msg` resolves.
+            if let SemanticId::Decl(key) = &decl_id
+                && let Some(decl_facts) = db.file_facts_of(key.file_id)
+                && let Some(decl) = decl_facts.decl_by_id(&decl_id)
+                && matches!(decl.kind, DeclKind::Global)
+                && decl_facts.is_meta
+                && file_workspace_id(db, key.file_id).is_some_and(|ws| ws.is_main())
+            {
+                push_unique_owner_id(out, OwnerId::Concrete(SemanticId::name(decl.name.clone())));
+            }
         }
         if let Some(facts) = db.file_facts_of(file_id)
             && let Some(def) = facts.type_def_by_id(type_id)
@@ -2421,11 +2636,40 @@ pub(crate) fn resolve_owner_ids(db: &SemanticDatabase, owner: &SemanticId) -> Ve
 
     match owner {
         SemanticId::Name(name) => {
-            push_unique_owner_id(&mut out, OwnerId::Global(SmolStr::new(name.as_str())));
-            for def in type_defs_in_scope(db, TypeScope::Global, SmolStr::new(name.as_str())).iter()
-            {
+            let name_str = SmolStr::new(name.as_str());
+            // Named type + its runtime value (`---@class M` + `local M = {}`).
+            for def in type_defs_in_scope(db, TypeScope::Global, name_str.clone()).iter() {
                 if let ExportKey::Type(scope, full_name) = def.export_key() {
                     push_unique_owner_id(&mut out, OwnerId::Type(scope, full_name));
+                }
+                push_type_associated_owner_ids(db, &def.id, &mut out);
+            }
+            // Global runtime declaration (`_G[name]`, std globals, ...).
+            if let Some(decl) = global_decl_by_name(db, name_str.clone())
+                && let Some(owner_id) = canonical_owner_id(db, &decl)
+            {
+                push_unique_owner_id(&mut out, owner_id);
+            }
+            // Runtime declarations named like the type, plus their `owner_syntax`
+            // associated classes (differently-named runtime tables).
+            for ws_id in workspace_lookup_order(db) {
+                for decl_id in workspace_decl_index_for(db, ws_id).runtime_decls_named(&name_str) {
+                    if let Some(owner_id) = canonical_owner_id(db, decl_id) {
+                        push_unique_owner_id(&mut out, owner_id);
+                    }
+                    if let SemanticId::Decl(key) = decl_id
+                        && let Some(facts) = db.file_facts_of(key.file_id)
+                        && let Some(decl) = facts.decl_by_id(decl_id)
+                        && let Some(owner_syntax) = decl.owner_syntax
+                    {
+                        for def in facts.type_defs_by_owner_syntax(owner_syntax).filter(|def| {
+                            matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum)
+                        }) {
+                            if let ExportKey::Type(scope, full_name) = def.export_key() {
+                                push_unique_owner_id(&mut out, OwnerId::Type(scope, full_name));
+                            }
+                        }
+                    }
                 }
             }
             if let Some(dot) = name.rfind('.') {
@@ -2469,126 +2713,17 @@ pub(crate) fn resolve_owner_ids(db: &SemanticDatabase, owner: &SemanticId) -> Ve
 /// `Name("M")` -> `{TypeDef(M), Decl(M)}`; member lookup uses the union across sets.
 /// For name chains (`a.b`), recursively take members along each head identity.
 pub(crate) fn resolve_owner_set(db: &SemanticDatabase, owner: SemanticId) -> Vec<SemanticId> {
-    match &owner {
-        SemanticId::Name(name) => {
-            // Keep the original Name: global runtime members are declared under Name keys.
-            let mut out: Vec<SemanticId> = vec![owner.clone()];
-            let name_str = SmolStr::new(name.as_str());
-            // Type (global, cross-file).
-            if let Some(type_def) = global_type_by_name(db, name_str.clone()) {
-                push_unique(&mut out, type_def);
-            }
-            // Global variable.
-            if let Some(decl) = global_decl_by_name(db, name_str.clone()) {
-                push_unique(&mut out, decl);
-            }
-            // Type runtime value: same-name decl in the file declaring the same-name type (`local M = {}` pattern).
-            let roots = db.workspace_roots().to_vec();
-            let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
-                vec![WorkspaceId::MAIN]
-            } else {
-                roots.iter().map(|root| root.id).collect()
-            };
-            let mut runtime_decls: Vec<SemanticId> = Vec::new();
-            for ws_id in ws_ids {
-                let index = workspace_decl_index_for(db, ws_id);
-                runtime_decls.extend(index.runtime_decls_named(&name_str).iter().cloned());
-            }
-            if let Some(decl) = global_decl_by_name(db, name_str.clone()) {
-                runtime_decls.push(decl);
-            }
-            // `---@class MyClass` + `x = {}`: differently-named runtime tables are also associated with the class definition by owner_syntax.
-            for decl_id in runtime_decls {
-                push_unique(&mut out, decl_id.clone());
-                let SemanticId::Decl(decl_key) = &decl_id else {
-                    continue;
-                };
-                let Some(file) = db.file_data_id(decl_key.file_id) else {
-                    continue;
-                };
-                let facts = file_facts(db, file);
-                let Some(decl) = facts.decl_by_id(&decl_id) else {
-                    continue;
-                };
-                let Some(owner_syntax) = decl.owner_syntax else {
-                    continue;
-                };
-                for def in facts
-                    .type_defs_by_owner_syntax(owner_syntax)
-                    .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
-                {
-                    push_unique(&mut out, def.id.clone());
-                }
-            }
-            // Name chain: recursively take members along each head identity.
-            if let Some(dot) = name.rfind('.') {
-                let head = SmolStr::new(&name[..dot]);
-                let tail = SmolStr::new(&name[dot + 1..]);
-                for head_owner in resolve_owner_set(db, SemanticId::name(head)) {
-                    for member in members_of_owner_named(db, head_owner, tail.clone()).iter() {
-                        push_unique(&mut out, member.id.clone());
-                    }
-                }
-            }
-            out
+    // Deterministic P5/P7 wrapper built on `resolve_owner_ids()`.
+    // The raw owner stays first for member keys stored directly under
+    // `Name` / `Decl` / `Member` identities.
+    let mut out: Vec<SemanticId> = Vec::new();
+    push_unique(&mut out, owner.clone());
+    for owner_id in resolve_owner_ids(db, &owner) {
+        if let Some(raw) = owner_id_to_semantic_id(db, &owner_id) {
+            push_unique(&mut out, raw);
         }
-        SemanticId::TypeDef(_) => {
-            let mut out = vec![owner.clone()];
-            // Type runtime value: same-name decl in the file that declares this type.
-            let roots = db.workspace_roots().to_vec();
-            let ws_ids: Vec<WorkspaceId> = if roots.is_empty() {
-                vec![WorkspaceId::MAIN]
-            } else {
-                roots.iter().map(|root| root.id).collect()
-            };
-            let mut found: Option<(FileId, SmolStr)> = None;
-            for ws_id in ws_ids {
-                let index = workspace_decl_index_for(db, ws_id);
-                if let Some((file_id, bare_name)) = index.type_def_location(&owner) {
-                    found = Some((file_id, bare_name.clone()));
-                    if let Some(decl_id) = index.runtime_value_in(file_id, &bare_name) {
-                        push_unique(&mut out, decl_id.clone());
-                        // Main-workspace `---@meta` API files use global runtime tables
-                        // (`M = {}`) as a pure type surface. Their methods are declared under
-                        // `Name("M")`; include that Name owner so `@class M` + `function M.foo()`
-                        // can be found through the class type. This is deliberately limited to
-                        // main-workspace meta files so std/remote/library meta definitions keep
-                        // their existing resolution behavior.
-                        let ws_id = file_workspace_id(db, file_id);
-                        if ws_id.is_some_and(|ws| ws.is_main())
-                            && let Some(file) = db.file_data_id(file_id)
-                        {
-                            let facts = file_facts(db, file);
-                            if facts.is_meta
-                                && facts
-                                    .decl_by_id(&decl_id)
-                                    .is_some_and(|decl| matches!(decl.kind, DeclKind::Global))
-                            {
-                                push_unique(&mut out, SemanticId::name(bare_name.clone()));
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-            // `---@class A` followed by `local m = {}`: associate the runtime-value decl by owner_syntax.
-            if let Some((file_id, bare_name)) = found
-                && let Some(member_file) = db.file_data_id(file_id)
-            {
-                let facts = file_facts(db, member_file);
-                let def = facts.type_def_by_name(bare_name.as_str());
-                if let Some(def) = def
-                    && let Some(owner_syntax) = def.owner_syntax
-                {
-                    for decl in facts.decls_by_owner_syntax(owner_syntax) {
-                        push_unique(&mut out, decl.id.clone());
-                    }
-                }
-            }
-            out
-        }
-        other => vec![other.clone()],
     }
+    out
 }
 
 fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {

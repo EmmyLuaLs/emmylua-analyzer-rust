@@ -259,6 +259,22 @@ impl<'db> SemanticQueries<'db> {
         query::global_decl_by_name(self.db, SmolStr::new(name))
     }
 
+    /// Same-workspace global declarations with this name (overload candidates).
+    pub fn global_decls_named_for_file(&self, file_id: FileId, name: &str) -> Vec<SemanticId> {
+        if self.db.config_input().is_none() {
+            return Vec::new();
+        }
+        query::global_decls_named_for_file(self.db, file_id, name)
+    }
+
+    /// First non-empty workspace's global declarations with this name.
+    pub fn global_decls_named_primary(&self, name: &str) -> Vec<SemanticId> {
+        if self.db.config_input().is_none() {
+            return Vec::new();
+        }
+        query::global_decls_named_primary(self.db, name)
+    }
+
     /// All references to a declaration.
     pub fn decl_references(&self, file_id: FileId, decl: SemanticId) -> Vec<LuaSyntaxId> {
         let Some(file) = self.db.file_data_id(file_id) else {

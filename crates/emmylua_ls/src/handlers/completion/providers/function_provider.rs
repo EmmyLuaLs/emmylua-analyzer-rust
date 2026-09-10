@@ -388,6 +388,11 @@ pub(crate) fn callable_candidates(
     model: &SemanticModel<'_>,
     prefix_expr: &LuaExpr,
 ) -> Vec<LuaFunctionType> {
+    // P6c: share the analysis-layer unified candidate set with diagnostics/VM.
+    let unified = model.callable_candidates_for_expr(prefix_expr);
+    if !unified.is_empty() {
+        return unified;
+    }
     // Name/member declarations: read the overload list in signature facts.
     if let LuaExpr::NameExpr(name_expr) = prefix_expr
         && let Some(decl) = model.resolve_name(name_expr.get_position())

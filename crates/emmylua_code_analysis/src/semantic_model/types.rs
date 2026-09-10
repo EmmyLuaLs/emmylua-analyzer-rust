@@ -996,15 +996,17 @@ impl<'db> SemanticModel<'db> {
         {
             let prefix_ty = self.type_of_expr(prefix.get_syntax_id());
             let key = LuaMemberKey::Name(resolved.name.clone());
-            let candidates = self
-                .member_infos_with_key_all(&prefix_ty, &key)
-                .into_iter()
-                .filter_map(|info| match &info.typ {
-                    LuaType::DocFunction(fun) => Some(fun.as_ref().clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            if candidates.len() > 1 {
+            let candidate_set = match &resolved.member_id {
+                Some(member_id) => {
+                    infer::callable::CallableCandidateSet::from_prefix_type_for_member(
+                        self, &prefix_ty, &key, member_id,
+                    )
+                }
+                None => {
+                    infer::callable::CallableCandidateSet::from_prefix_type(self, &prefix_ty, &key)
+                }
+            };
+            if candidate_set.candidates().len() > 1 {
                 let args = call
                     .get_args_list()
                     .map(|list| {
@@ -1017,22 +1019,16 @@ impl<'db> SemanticModel<'db> {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
-                let selected = infer::overload::select_callable(
-                    self,
-                    &candidates,
-                    &args,
-                    call.is_colon_call(),
-                    Some(&prefix_ty),
-                )
-                .or_else(|| {
-                    infer::overload::select_callable_partial(
-                        self,
-                        &candidates,
-                        &args,
-                        call.is_colon_call(),
-                        Some(&prefix_ty),
-                    )
-                });
+                let selected = candidate_set
+                    .select(self, &args, call.is_colon_call(), Some(&prefix_ty))
+                    .or_else(|| {
+                        candidate_set.select_partial(
+                            self,
+                            &args,
+                            call.is_colon_call(),
+                            Some(&prefix_ty),
+                        )
+                    });
                 if let Some((fun, bindings)) = selected {
                     let bindings = bindings
                         .into_iter()

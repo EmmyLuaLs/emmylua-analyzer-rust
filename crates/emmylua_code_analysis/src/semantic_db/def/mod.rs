@@ -27,7 +27,7 @@ pub use async_state::AsyncState;
 pub use builtin_attribute::*;
 pub use decl::{Decl, DeclKind};
 pub use generic_param::DocGenericParam;
-pub use identity::{ExportKey, OwnerId};
+pub use identity::{ChangedKeys, DependencyKey, ExportKey, FileDependencies, OwnerId};
 pub use lua_type::*;
 pub use member::{Member, MemberRef};
 pub use member_key::LuaMemberKey;

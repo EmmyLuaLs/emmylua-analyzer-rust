@@ -1,0 +1,175 @@
+//! Unified callable candidate set (P6b).
+
+use crate::semantic_model::infer::overload;
+use crate::semantic_model::infer::unify::TplBindings;
+use crate::semantic_model::{SemanticModel, member};
+use crate::{LuaFunctionType, LuaMemberKey, LuaType};
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CallableCandidateSet {
+    candidates: Vec<LuaFunctionType>,
+}
+impl CallableCandidateSet {
+    pub(crate) fn new(candidates: Vec<LuaFunctionType>) -> Self {
+        let mut deduped = Vec::new();
+        for candidate in candidates {
+            if !deduped.contains(&candidate) {
+                deduped.push(candidate);
+            }
+        }
+        Self {
+            candidates: deduped,
+        }
+    }
+
+    pub(crate) fn candidates(&self) -> &[LuaFunctionType] {
+        &self.candidates
+    }
+
+    pub(crate) fn into_candidates(self) -> Vec<LuaFunctionType> {
+        self.candidates
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.candidates.is_empty()
+    }
+    /// All callable candidates for `prefix_type.key` (all same-key/inherited members).
+    pub(crate) fn from_prefix_type(
+        model: &SemanticModel<'_>,
+        prefix_type: &LuaType,
+        key: &LuaMemberKey,
+    ) -> Self {
+        Self::from_prefix_type_filtered(model, prefix_type, key, None)
+    }
+
+    /// Candidate set scoped to one resolved member.
+    ///
+    /// File-local owners (`local M`) must not merge same-named members from a
+    /// different file; named types / globals / module owners may (cross-file
+    /// `@field` overloads, module mutations).
+    pub(crate) fn from_prefix_type_for_member(
+        model: &SemanticModel<'_>,
+        prefix_type: &LuaType,
+        key: &LuaMemberKey,
+        member_id: &crate::SemanticId,
+    ) -> Self {
+        Self::from_prefix_type_filtered(model, prefix_type, key, Some(member_id))
+    }
+
+    fn from_prefix_type_filtered(
+        model: &SemanticModel<'_>,
+        prefix_type: &LuaType,
+        key: &LuaMemberKey,
+        member_id: Option<&crate::SemanticId>,
+    ) -> Self {
+        let allow_cross_file = member_id
+            .and_then(|member_id| member_owner_allows_cross_file(model, member_id))
+            .unwrap_or(true);
+        let member_file = member_id.and_then(|member_id| member_file_of(model, member_id));
+        let infos = member::member_infos_with_key_all(model, prefix_type, key);
+        let mut candidates = Vec::new();
+        for info in infos {
+            if !allow_cross_file
+                && let (Some(info_file), Some(member_file)) = (info.file_id, member_file)
+                && info_file != member_file
+            {
+                continue;
+            }
+            Self::push_member_info(model, &info, &mut candidates);
+        }
+        Self::new(candidates)
+    }
+
+    fn push_member_info(
+        model: &SemanticModel<'_>,
+        info: &member::MemberInfo,
+        out: &mut Vec<LuaFunctionType>,
+    ) {
+        // DocFunction / union / class `---@overload` / `---@operator call`
+        // are all expanded by the VM type expansion.
+        let before = out.len();
+        out.extend(super::vm::expand_callable_types_in_model(model, &info.typ));
+        if out.len() == before
+            && let (Some(member_id), Some(file_id)) = (&info.id, info.file_id)
+        {
+            // Runtime closure members are often projected as broad `Function` /
+            // `Signature`; recover the real closure signature.
+            if let Some(fun) = member_closure_function(model, file_id, member_id) {
+                out.push(fun);
+            }
+        }
+    }
+    pub(crate) fn select(
+        &self,
+        model: &SemanticModel<'_>,
+        args: &[overload::CallArg],
+        colon_call: bool,
+        receiver: Option<&LuaType>,
+    ) -> Option<(LuaFunctionType, TplBindings)> {
+        overload::select_callable(model, self.candidates(), args, colon_call, receiver)
+    }
+
+    pub(crate) fn select_partial(
+        &self,
+        model: &SemanticModel<'_>,
+        args: &[overload::CallArg],
+        colon_call: bool,
+        receiver: Option<&LuaType>,
+    ) -> Option<(LuaFunctionType, TplBindings)> {
+        overload::select_callable_partial(model, self.candidates(), args, colon_call, receiver)
+    }
+
+    pub(crate) fn select_all(
+        &self,
+        model: &SemanticModel<'_>,
+        args: &[overload::CallArg],
+        colon_call: bool,
+        receiver: Option<&LuaType>,
+    ) -> Vec<(LuaFunctionType, TplBindings)> {
+        overload::select_callable_all(model, self.candidates(), args, colon_call, receiver)
+    }
+}
+
+fn member_closure_function(
+    model: &SemanticModel<'_>,
+    file_id: crate::FileId,
+    member_id: &crate::SemanticId,
+) -> Option<LuaFunctionType> {
+    let facts = model.file_facts_of(file_id)?;
+    let member = facts.member_by_id(member_id)?;
+    let value_syntax = member.value_syntax?;
+    model.type_of_signature_in_file(file_id, value_syntax)
+}
+
+fn member_file_of(
+    model: &SemanticModel<'_>,
+    member_id: &crate::SemanticId,
+) -> Option<crate::FileId> {
+    match member_id {
+        crate::SemanticId::Member(key) => Some(key.file_id),
+        crate::SemanticId::Decl(key) => Some(key.file_id),
+        _ => {
+            let _ = model;
+            None
+        }
+    }
+}
+
+fn member_owner_allows_cross_file(
+    model: &SemanticModel<'_>,
+    member_id: &crate::SemanticId,
+) -> Option<bool> {
+    let crate::SemanticId::Member(key) = member_id else {
+        return Some(true);
+    };
+    let facts = model.file_facts_of(key.file_id)?;
+    let member = facts.member_by_id(member_id)?;
+    match &member.owner {
+        crate::SemanticId::TypeDef(_) | crate::SemanticId::Name(_) => Some(true),
+        crate::SemanticId::Decl(decl_key) => {
+            let decl = facts.decl_by_id(&crate::SemanticId::Decl(decl_key.clone()))?;
+            Some(matches!(decl.kind, crate::DeclKind::Global))
+        }
+        _ => Some(false),
+    }
+}

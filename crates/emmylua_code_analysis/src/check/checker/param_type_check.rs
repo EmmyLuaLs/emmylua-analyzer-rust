@@ -108,11 +108,19 @@ pub(crate) fn callable_candidates_uncached(
     semantic_model: &SemanticModel<'_>,
     callee: &LuaExpr,
 ) -> Vec<LuaFunctionType> {
+    // Unified path for name callees: global cross-file overloads must be visible
+    // here exactly as they are in the VM call-selection path.
+    if let LuaExpr::NameExpr(_) = callee {
+        let candidates = semantic_model.callable_candidates_for_name_expr(callee);
+        if !candidates.is_empty() {
+            return candidates;
+        }
+    }
     // For static member calls, the member table is the authoritative source of
     // callable signatures.  Avoid paying for full VM expression inference on the
     // callee when the member lookup already tells us there is no callable here.
     if let LuaExpr::IndexExpr(index_expr) = callee {
-        let direct = member_callable_candidates(semantic_model, index_expr);
+        let direct = index_expr_callable_candidates(semantic_model, index_expr);
         if !direct.is_empty() {
             return direct;
         }
@@ -134,7 +142,7 @@ pub(crate) fn callable_candidates_uncached(
     if candidates.is_empty()
         && let LuaExpr::IndexExpr(index_expr) = callee
     {
-        candidates = member_callable_candidates(semantic_model, index_expr);
+        candidates = index_expr_callable_candidates(semantic_model, index_expr);
     }
     if candidates.is_empty()
         && let LuaExpr::NameExpr(name_expr) = callee
@@ -146,98 +154,62 @@ pub(crate) fn callable_candidates_uncached(
     candidates
 }
 
-/// Resolve callable signatures directly from an index expression's member declaration,
-/// without first inferring the whole callee expression type.
-fn member_callable_candidates(
+/// Resolve callable signatures directly from an index expression's member declaration.
+///
+/// P6b: all same-key/inherited members (repeated `---@field`, runtime closures,
+/// class call overloads/operators) are collected through `CallableCandidateSet`
+/// instead of the old single-member heuristics.
+fn index_expr_callable_candidates(
     semantic_model: &SemanticModel<'_>,
     index_expr: &LuaIndexExpr,
 ) -> Vec<LuaFunctionType> {
-    let mut candidates = Vec::new();
     let Some(resolved) = semantic_model.resolve_member(index_expr) else {
-        return candidates;
+        return Vec::new();
     };
 
-    if resolved.member_id.is_none()
-        && let Some(prefix) = index_expr.get_prefix_expr()
-    {
+    if let Some(prefix) = index_expr.get_prefix_expr() {
         let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
-        let key = LuaMemberKey::Name(resolved.name.to_string().into());
-        let member_ty = semantic_model.member_type(&prefix_ty, &key);
-        if let Some(ty) = member_ty {
-            candidates.extend(semantic_model.callable_functions_cached(&ty));
-        }
-        // Runtime function members (`string.rep`): find the member closure signature in the file of the prefix table identity.
-        if candidates.is_empty()
-            && let LuaType::TableConst(table) = &prefix_ty
-            && let Some(facts) = semantic_model.file_facts_of(table.file_id)
-        {
-            for member in facts.members_named(resolved.name.as_str()) {
-                let Some(value_syntax) = member.value_syntax else {
-                    continue;
-                };
-                if let Some(func) =
-                    semantic_model.type_of_signature_in_file(facts.file_id, value_syntax)
-                {
-                    candidates.push(func);
-                    break;
-                }
+        let key = LuaMemberKey::Name(resolved.name.clone());
+        let candidates = match &resolved.member_id {
+            Some(member_id) => {
+                crate::semantic_model::infer::callable::CallableCandidateSet::from_prefix_type_for_member(
+                    semantic_model,
+                    &prefix_ty,
+                    &key,
+                    member_id,
+                )
             }
+            None => {
+                crate::semantic_model::infer::callable::CallableCandidateSet::from_prefix_type(
+                    semantic_model,
+                    &prefix_ty,
+                    &key,
+                )
+            }
+        };
+        if !candidates.is_empty() {
+            return candidates.into_candidates();
         }
     }
 
-    if let Some(member_id) = resolved.member_id {
-        // Prefer the exact resolved member; the all-same-name scan is only needed
-        // when the exact member does not produce a callable signature.
-        if let Some(member_ty) = semantic_model.type_of_member(&member_id) {
-            candidates = semantic_model.callable_functions_cached(&member_ty);
-        }
-        if candidates.is_empty()
-            && let Some(member_file) = resolved.file_id
-            && let Some(facts) = semantic_model.file_facts_of(member_file)
-        {
-            let mut overloads = Vec::new();
-            for overload in facts.members_named(resolved.name.as_str()) {
-                if let Some(ty) = semantic_model.type_of_member(&overload.id) {
-                    overloads.extend(semantic_model.callable_functions_cached(&ty));
-                }
-            }
-            if !overloads.is_empty() {
-                candidates = overloads;
-            }
-        }
-        // Runtime method members (`self.name`) are often projected to a broad `Function`: fill in the member closure signature,
-        // so `pcall(obj.method, obj, ...)` can get the real function signature.
-        if candidates.is_empty()
-            && let Some(member_file) = resolved.file_id
-            && let Some(facts) = semantic_model.file_facts_of(member_file)
-            && let Some(member) = facts.member_by_id(&member_id)
-            && let Some(value_syntax) = member.value_syntax
-            && let Some(func) = semantic_model.type_of_signature_in_file(member_file, value_syntax)
-        {
-            candidates.push(func);
-        }
-    }
-
-    // Even if member_id was resolved, if no signature was obtained above,
-    // fall back to the runtime member closure signature in the TableConst's file (`string.rep` / `math.randomseed`).
-    if candidates.is_empty()
-        && let Some(prefix) = index_expr.get_prefix_expr()
-        && let LuaType::TableConst(table) = &semantic_model.type_of_expr(prefix.get_syntax_id())
-        && let Some(facts) = semantic_model.file_facts_of(table.file_id)
+    // Legacy fallback: prefix inference failed, but the resolved member itself
+    // carries a usable signature.
+    let mut candidates = Vec::new();
+    if let Some(member_id) = &resolved.member_id
+        && let Some(member_ty) = semantic_model.type_of_member(member_id)
     {
-        for member in facts.members_named(resolved.name.as_str()) {
-            let Some(value_syntax) = member.value_syntax else {
-                continue;
-            };
-            if let Some(func) =
-                semantic_model.type_of_signature_in_file(facts.file_id, value_syntax)
-            {
-                candidates.push(func);
-                break;
-            }
-        }
+        candidates = semantic_model.callable_functions_cached(&member_ty);
     }
-
+    if candidates.is_empty()
+        && let Some(member_file) = resolved.file_id
+        && let Some(member_id) = &resolved.member_id
+        && let Some(facts) = semantic_model.file_facts_of(member_file)
+        && let Some(member) = facts.member_by_id(member_id)
+        && let Some(value_syntax) = member.value_syntax
+        && let Some(func) = semantic_model.type_of_signature_in_file(member_file, value_syntax)
+    {
+        candidates.push(func);
+    }
     candidates
 }
 

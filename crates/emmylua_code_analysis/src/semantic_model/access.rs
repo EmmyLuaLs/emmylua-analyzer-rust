@@ -148,6 +148,15 @@ impl<'db> SemanticModel<'db> {
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
         self.q().global_decl(name)
     }
+    /// Same-workspace global declarations with this name (overload candidates).
+    pub fn global_decls_named_for_file(&self, file_id: FileId, name: &str) -> Vec<SemanticId> {
+        self.q().global_decls_named_for_file(file_id, name)
+    }
+
+    /// First non-empty workspace's global declarations with this name.
+    pub fn global_decls_named_primary(&self, name: &str) -> Vec<SemanticId> {
+        self.q().global_decls_named_primary(name)
+    }
     pub fn decl_references(&self, decl: &SemanticId) -> Vec<LuaSyntaxId> {
         self.q().decl_references(self.file_id, decl.clone())
     }
@@ -499,6 +508,85 @@ impl<'db> SemanticModel<'db> {
             .insert(ty.clone(), value.clone());
         value
     }
+    /// Unified callable candidates for a name callee.
+    ///
+    /// `f` may be declared in multiple files (global overloads); this entry goes
+    /// through the same `signature_candidates` projection used by the VM, so
+    /// diagnostics/completion see the same set.
+    pub(crate) fn callable_candidates_for_name_expr(
+        &self,
+        callee: &LuaExpr,
+    ) -> Vec<LuaFunctionType> {
+        let LuaExpr::NameExpr(name_expr) = callee else {
+            return Vec::new();
+        };
+        let Some(owner) = self.resolve_name(name_expr.get_position()) else {
+            return Vec::new();
+        };
+        // Only intervene for actual same-workspace global overloads. A single
+        // declaration keeps the legacy projection path, which preserves its
+        // generic/closure details.
+        let SemanticId::Decl(key) = &owner else {
+            return Vec::new();
+        };
+        let Some(facts) = self.file_facts_of(key.file_id) else {
+            return Vec::new();
+        };
+        let Some(decl) = facts.decl_by_id(&owner) else {
+            return Vec::new();
+        };
+        if !matches!(decl.kind, DeclKind::Global) {
+            return Vec::new();
+        }
+        let decls = self.global_decls_named_for_file(key.file_id, decl.name.as_str());
+        if decls.len() <= 1 {
+            return Vec::new();
+        }
+        let vm = infer::vm::InferVm::new(self, &[]);
+        // Identical duplicate declarations (same file content loaded twice, common in
+        // tests / project duplicates) must keep the legacy single-symbol path; only
+        // genuinely different global declarations are overloads.
+        let mut per_decl: Vec<Vec<LuaFunctionType>> = Vec::with_capacity(decls.len());
+        for decl in &decls {
+            let candidates = vm
+                .callable_candidates_for_owner_single(decl)
+                .unwrap_or_default();
+            per_decl.push(candidates);
+        }
+        let Some(first) = per_decl.first() else {
+            return Vec::new();
+        };
+        if per_decl.iter().all(|candidates| candidates == first) {
+            return Vec::new();
+        }
+        per_decl.into_iter().flatten().collect()
+    }
+
+    /// Public unified candidates for call rendering (signature help / completion / hover).
+    ///
+    /// Combines the diagnostic candidate path (member `CallableCandidateSet`,
+    /// cross-file globals) with the full signature projection (main + `---@overload`)
+    /// so all rendering paths share one candidate list.
+    pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
+        let mut out =
+            crate::check::checker::param_type_check::callable_candidates_uncached(self, callee);
+        // The diagnostic path may only project the callee value type; append the
+        // full signature candidates (main + `---@overload`) for name callees.
+        if let LuaExpr::NameExpr(name_expr) = callee
+            && let Some(owner) = self.resolve_name(name_expr.get_position())
+        {
+            let vm = infer::vm::InferVm::new(self, &[]);
+            if let Some(candidates) = vm.callable_candidates_for_owner(&owner) {
+                for candidate in candidates {
+                    if !out.contains(&candidate) {
+                        out.push(candidate);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     pub(crate) fn callable_candidates_cached(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
         let syntax = callee.get_syntax_id();
         let file_id = self.file_id;

@@ -32,6 +32,18 @@ pub fn build_signature_helper(
         return Some(help);
     }
 
+    // P6c: use the unified analysis-layer candidate set for signature help.
+    let unified = model.callable_candidates_for_expr(&prefix_expr);
+    if !unified.is_empty() {
+        return build_signature_help_candidates(
+            model,
+            &unified,
+            colon_call,
+            current_idx,
+            &prefix_text,
+        );
+    }
+
     let help = match prefix_type {
         LuaType::DocFunction(func_type) => build_doc_function_signature_help(
             model,

@@ -360,6 +360,17 @@ fn compile_expr(expr: &LuaExpr, file_id: FileId, out: &mut Vec<Instr>, stack: &m
 // Interpreter (flat PC loop)
 // ──────────────────────────────────────────────
 
+/// Expand a type into callable candidates, including aliases, unions,
+/// class `---@overload` and `---@operator call`.
+pub(crate) fn expand_callable_types_in_model(
+    model: &SemanticModel<'_>,
+    ty: &LuaType,
+) -> Vec<LuaFunctionType> {
+    let vm = InferVm::new(model, &[]);
+    let mut visited = Vec::new();
+    vm.expand_callable_types(ty, &mut visited)
+}
+
 pub struct InferVm<'a> {
     model: &'a SemanticModel<'a>,
     code: &'a [Instr],
@@ -1290,15 +1301,13 @@ impl<'a> InferVm<'a> {
         owner_ty: &LuaType,
         key: &LuaMemberKey,
     ) -> Option<LuaType> {
-        let infos =
-            crate::semantic_model::member::member_infos_with_key_all(self.model, owner_ty, key);
+        let candidates =
+            super::callable::CallableCandidateSet::from_prefix_type(self.model, owner_ty, key);
         let mut types = Vec::new();
-        for info in &infos {
-            if !matches!(info.typ, LuaType::DocFunction(_)) {
-                return None;
-            }
-            if !types.contains(&info.typ) {
-                types.push(info.typ.clone());
+        for fun in candidates.candidates() {
+            let ty = LuaType::DocFunction(Arc::new(fun.clone()));
+            if !types.contains(&ty) {
+                types.push(ty);
             }
         }
         if types.len() > 1 {
@@ -1904,9 +1913,9 @@ impl<'a> InferVm<'a> {
                     closure_syntax: arg.closure_syntax,
                 })
                 .collect();
-            let all_best = super::overload::select_callable_all(
+            let candidate_set = super::callable::CallableCandidateSet::new(candidates.clone());
+            let all_best = candidate_set.select_all(
                 self.model,
-                &candidates,
                 &call_args,
                 colon_call,
                 match_receiver.as_ref(),
@@ -2555,9 +2564,51 @@ impl<'a> InferVm<'a> {
         self.model.constructor_attribute_of_type(&def.id)
     }
 
-    /// Look up function signatures from a declaration/member identity, building the main
-    /// signature plus all `---@overload` candidates.
+    /// Cross-file callable candidate projection for an owner identity.
+    pub(crate) fn callable_candidates_for_owner(
+        &self,
+        owner: &SemanticId,
+    ) -> Option<Vec<LuaFunctionType>> {
+        self.signature_candidates(owner)
+    }
+
+    /// Single-identity candidate projection (no cross-file global expansion).
+    pub(crate) fn callable_candidates_for_owner_single(
+        &self,
+        owner: &SemanticId,
+    ) -> Option<Vec<LuaFunctionType>> {
+        self.signature_candidates_single(owner)
+    }
+
+    /// Cross-file overload wrapper.
+    ///
+    /// A global declaration is overloadable across files: collect every same-name
+    /// global declaration and concatenate their single-signature candidates.
+    /// The expansion uses [`Self::signature_candidates_single`] to avoid recursion.
     fn signature_candidates(&self, owner: &SemanticId) -> Option<Vec<LuaFunctionType>> {
+        if let SemanticId::Decl(key) = owner {
+            let facts = self.model.file_facts_of(key.file_id)?;
+            let decl = facts.decl_by_id(owner)?;
+            if matches!(decl.kind, DeclKind::Global) {
+                let decls = self
+                    .model
+                    .global_decls_named_for_file(key.file_id, decl.name.as_str());
+                if decls.len() > 1 {
+                    let mut out = Vec::new();
+                    for decl in decls {
+                        if let Some(mut candidates) = self.signature_candidates_single(&decl) {
+                            out.append(&mut candidates);
+                        }
+                    }
+                    return (!out.is_empty()).then_some(out);
+                }
+            }
+        }
+        self.signature_candidates_single(owner)
+    }
+
+    /// Single-identity signature projection: main signature + `---@overload`.
+    fn signature_candidates_single(&self, owner: &SemanticId) -> Option<Vec<LuaFunctionType>> {
         let (file_id, value_syntax, overload_syntaxes) = match owner {
             SemanticId::Decl(key) => {
                 let facts = self.model.file_facts_of(key.file_id)?;
@@ -2579,6 +2630,22 @@ impl<'a> InferVm<'a> {
                     overload_syntaxes = docs.overloads.clone();
                 }
                 (key.file_id, member.value_syntax?, overload_syntaxes)
+            }
+            SemanticId::Name(name) => {
+                // Cross-file global overloads: a global call owns `Name("f")`, but
+                // every file may declare a same-named global function. Collect all
+                // declarations so call-site selection can pick by argument types.
+                let decls = self.model.global_decls_named_primary(name.as_str());
+                if decls.is_empty() {
+                    return None;
+                }
+                let mut out = Vec::new();
+                for decl in decls {
+                    if let Some(mut candidates) = self.signature_candidates(&decl) {
+                        out.append(&mut candidates);
+                    }
+                }
+                return (!out.is_empty()).then_some(out);
             }
             _ => return None,
         };

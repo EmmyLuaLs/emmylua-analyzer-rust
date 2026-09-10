@@ -49,3 +49,40 @@ pub enum ExportKey {
     Member(OwnerId, LuaMemberKey),
     Module(FileId),
 }
+/// Identity-level dependency key (P7).
+///
+/// A file's references register the canonical keys they read; workspace writes
+/// publish the canonical keys they changed. Invalidation is the intersection of
+/// the two, not a string-name scan.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DependencyKey {
+    Global(SmolStr),
+    Type(TypeScope, SmolStr),
+    /// Runtime value implementing a named type (`local M = {}` for `@class M`).
+    RuntimeValue(SmolStr),
+    Member(OwnerId, LuaMemberKey),
+    Module(FileId),
+}
+
+/// Canonical dependency set of one file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileDependencies {
+    pub keys: hashbrown::HashSet<DependencyKey>,
+}
+
+impl FileDependencies {
+    pub fn insert(&mut self, key: DependencyKey) {
+        self.keys.insert(key);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &DependencyKey> {
+        self.keys.iter()
+    }
+}
+
+/// Canonical keys changed by a file write (export surface delta).
+pub type ChangedKeys = hashbrown::HashSet<DependencyKey>;

@@ -1,6 +1,6 @@
 # Workspace Index 与跨文件语义重构计划
 
-> 状态：P0/P1/P2/P3/P4/P4.5 已完成；P5 已完成（P5a/P5b，legacy resolve_owner_set 调用点留待 P6 清理）。
+> 状态：P0-P7 全部完成；`resolve_owner_set()` 已是 `resolve_owner_ids()` 的确定性 wrapper，不再有启发式 score。
 > 目标读者：后续接手 `semantic_db` / `semantic_model` 的开发者
 > 维护方式：本文件随每个阶段实时更新；已完成项必须附测试名和验证命令。
 
@@ -14,9 +14,9 @@
 | P3 | 四个 workspace index 改为增量聚合 | ✅ 已完成 |
 | P4 | 重写单文件更新路径，删除单文件写入中的全量 rebuild | ✅ 已完成 |
 | P4.5 | 查询期性能止血：keyed member lookup + flow 索引 + 局部热路径 | ✅ 已完成 |
-| P5 | canonical owner 解析 + require 深层链 | ✅ P5a/P5b 已完成（legacy resolve_owner_set 调用点留待 P6） |
-| P6 | 统一 callable/overload 候选与选择 | ⬜ 待开始 |
-| P7 | 身份级依赖失效，删除字符串级 `SurfaceDelta` | ⬜ 待开始 |
+| P5 | canonical owner 解析 + require 深层链 | ✅ P5a/P5b 已完成 |
+| P6 | 统一 callable/overload 候选与选择 | ✅ 已完成 |
+| P7 | 身份级依赖失效，删除字符串级 `SurfaceDelta` | ✅ 已完成 |
 
 ---
 
@@ -94,7 +94,7 @@ struct SurfaceDelta {
 
 因此既可能漏失效，也可能过度失效。
 
-### 1.5 跨文件 owner 解析是启发式合并 + 打分
+### 1.5 跨文件 owner 解析是启发式合并 + 打分（已修复：P5b/P6/P7）
 
 `resolve_owner_set()` 把 `Name`、同名 TypeDef、同名全局 Decl、同名 runtime decl、owner_syntax 关联 def、名称链 member 全部塞进一个 `Vec<SemanticId>`，再由 `resolve_member_impl()` 用 score 猜：
 
@@ -109,7 +109,7 @@ if best.as_ref().is_none_or(|(best_score, _)| score < *best_score) {
 
 这不是确定性语义解析。
 
-### 1.6 `require` 深层链和跨文件 module 修改会断
+### 1.6 `require` 深层链和跨文件 module 修改会断（已修复：P5）
 
 `require_module_owner()` 只接受 `NameExpr` 前缀：
 
@@ -126,7 +126,7 @@ let LuaExpr::NameExpr(name_expr) = prefix else {
 - `local M = require("mod"); M.foo = 1` 会挂到 consumer 本地 `Decl(M)`，而不是 module export owner；
 - `local M = require("mod"); local N = M; N.foo` 无法传递 module owner。
 
-### 1.7 重载被压成单个 `LuaType` / `MemberInfo`
+### 1.7 重载被压成单个 `LuaType` / `MemberInfo`（已修复：P6）
 
 当前存在多套不一致的 callable candidate 路径：
 
@@ -609,35 +609,206 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 性能：P4.5 合成聚合文件 benchmark 约 1.2s（无回退）。
 
-遗留：
+收尾：
 
-- `resolve_owner_set()` 仍被 `constructor_attribute_of_type`、`member_keys_of_owner`、
-  `member_type_via_owner` 等调用点使用。尝试全量替换为 `resolve_owner_ids()` 时触发了 4 个
-  语义回归（duck typing constraint、string method、global member owner preference、pcall return），
-  已回退该全量替换。`resolve_owner_ids()` 的 API 和 Stage 4 接入已保留，计划在 P6 统一
-  callable/owner 选择时一并清理剩余调用点。
-### P6：统一 callable/overload
+- `resolve_owner_set()` 已改为 `resolve_owner_ids()` 的确定性 wrapper；
+- 通过补回 Name / owner_syntax / runtime 关联顺序，修掉了之前的语义回归；
+- 全量 lib / workspace 测试通过。
+### P6：统一 callable/overload（P6a 已完成，P6b 待开始）
 
-- 新增 `CallableCandidateSet`：
-  - 同名 decl/member 的所有定义；
-  - 每个定义的 `---@overload`；
-  - `---@operator call`；
-  - repeated `---@field`；
-  - 继承链候选；
-  - generic 参数与 colon/dot 信息。
-- VM、诊断、补全、hover、signature help 统一走 `select_callable` / `select_callable_all`。
-- 删除 `member_callable_candidates()` 等启发式分支。
-- 明确 overload 合并与 tie-breaker 规则。
+P6a 已完成内容：
 
-### P7：身份级依赖失效
+- 跨文件全局 overload 进入统一候选：
+  - `WorkspaceDeclIndex::global_decls_named()` 暴露同名全局声明；
+  - `global_decls_named_in_workspace()` / `global_decls_named_for_file()` / `global_decls_named_primary()`；
+  - overload 只在同一 workspace 内合并，跨 workspace 按 main > library > std 取第一组；
+  - 避免 main 的 `f` 与 std/library 的 `f` 混合导致行为变化。
 
-- `FileDependencies { globals, types, members, modules }`。
-- workspace index 更新返回 `ChangedKeys`。
-- 只失效 `deps.intersects(changed_keys)` 的文件。
-- 删除 `SurfaceDelta` 和字符串级 `name_deps` / `member_name_deps`。
+- `InferVm::signature_candidates()` 增加跨文件 wrapper：
+  - 全局声明会收集同 workspace 同名声明并拼接候选；
+  - `signature_candidates_single()` 保留单身份投影，避免递归；
+  - 相同内容的重复声明不会被误判为 overload（保留 legacy 单符号行为）。
 
----
+- `SemanticModel::callable_candidates_for_name_expr()`：
+  - 诊断/call-site 与 VM 共用同一份全局候选；
+  - `param_type_check::callable_candidates_uncached()` 对 NameExpr 走该入口；
+  - 仅当多个声明的候选集存在差异时才启用统一 overload 集合，单声明/重复声明继续 legacy。
 
+启用 P0 用例：
+
+- `p0_cross_file_global_overloads` 已启用并通过。
+
+新增测试：
+
+- `semantic_db/p6_tests.rs`
+  - `p6_cross_file_global_overloads_are_visible_to_call_site_analysis`
+  - `p6_cross_file_global_overloads_select_by_argument_type`
+  - `p6_identical_duplicate_globals_keep_legacy_behavior`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p0_tests
+  7 passed; 0 failed; 0 ignored
+
+cargo test -p emmylua_code_analysis p6_tests
+  3 passed; 0 failed
+
+cargo test -p emmylua_code_analysis --lib
+  1345 passed; 0 failed; 2 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+性能：P4.5 合成聚合文件 benchmark 约 1.14-1.18s，无回退。
+
+P6b 已完成内容：
+
+- 新增统一的 `CallableCandidateSet`（`semantic_model/infer/callable.rs`）：
+  - `from_prefix_type()`：同 key 的 repeated `---@field`、运行时成员、继承链成员；
+  - `from_prefix_type_for_member()`：按 resolved member 的 owner 作用域过滤；
+  - local owner 不跨文件合并同名成员，TypeDef / Global / Module 允许跨文件；
+  - 通过 `expand_callable_types_in_model()` 复用 VM 的别名 / union / class `---@overload`
+    / `---@operator call` 展开；
+  - `select()` / `select_partial()` / `select_all()` 复用 `infer::overload` 的选择与
+    tie-breaker。
+- 接入诊断 call-site：
+  - `param_type_check::member_callable_candidates()` 改为调用 `CallableCandidateSet`，
+    删除原来的 `facts.members_named` / `member_type` 多段启发式；
+  - repeated `@field` 现在会让 `call_site_analysis` 拿到全部候选，并按实参类型选择。
+- 接入 call-site 渲染：
+  - `types.rs::inferred_call_doc_function()` 的 member overload 路径改用
+    `CallableCandidateSet`（hover / completion / pcall 展示共用）。
+- VM 的重复 `@field` 路径原本已通过 union 展开正确工作，保持不变；P6c 再统一到
+  `select_all`。
+
+新增测试：
+
+- `semantic_db/p6_tests.rs`
+  - `p6b_repeated_field_overloads_select_by_arguments`
+  - `p6b_member_call_site_candidates_include_all_field_overloads`
+  - `p6b_inferred_call_doc_function_selects_matching_field_overload`
+  - `p6b_member_overload_diagnostics_match_by_argument_type`
+  - `p6b_callable_candidate_set_selects_and_returns_all_matches`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p6_tests
+  8 passed; 0 failed
+
+cargo test -p emmylua_code_analysis --lib
+  1350 passed; 0 failed; 2 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+性能：P4.5 合成聚合文件 benchmark 约 1.15-1.27s，无回退。
+
+P6c 已完成内容：
+
+- 公开统一 candidate API：
+  - `SemanticModel::callable_candidates_for_expr()`；
+  - 内部复用诊断候选路径 + VM `signature_candidates`（main + `---@overload`）。
+- LS 迁移：
+  - `signature_helper/build_signature_helper.rs` 优先使用统一 API；
+  - `completion/providers/function_provider.rs::callable_candidates()` 优先使用统一 API，
+    旧逻辑仅作为空候选时的 fallback。
+- VM 迁移：
+  - union-return / callback-return 路径改用 `CallableCandidateSet::select_all()`；
+  - `index_member` 的 repeated `@field` 合并路径改用 `CallableCandidateSet::from_prefix_type()`。
+- 清理：
+  - `param_type_check::member_callable_candidates()` 已删除，改为
+    `index_expr_callable_candidates()` 且内部只走 `CallableCandidateSet`。
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis --lib
+  1350 passed; 0 failed; 2 ignored
+
+cargo test -p emmylua_ls --lib
+  214 passed; 0 failed
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+性能：合成聚合文件 benchmark 约 1.26-1.38s，与 P6b 基线相当。
+
+收尾：
+
+- `resolve_owner_set()` 已改为 `resolve_owner_ids()` 的确定性 wrapper；
+- 之前的语义回归通过补回 Name / owner_syntax / runtime 关联顺序修复；
+- 全量 lib / workspace 测试通过。
+### P7：身份级依赖失效（已完成）
+
+已完成内容：
+
+- canonical 依赖 key：
+  - `DependencyKey { Global, Type, RuntimeValue, Member, Module }`；
+  - `FileDependencies`、`ChangedKeys` 类型；
+  - member key 使用 `(OwnerId, LuaMemberKey)`，module/type/global 使用 canonical 身份。
+- 每个文件的 `FileReferences` 新增 `deps: FileDependencies`：
+  - NameExpr 解析目标 -> Global / Type / RuntimeValue / Member；
+  - 未解析的全局名 -> Global(name)（后续文件补定义时仍可失效）；
+  - member use -> `(owner_id, key)`；
+  - `require("mod")` -> Module(module_file)。
+- 反向依赖索引：
+  - `SemanticDatabase.dependency_index: key -> {file_id}`；
+  - full rebuild 后重建；
+  - 文件写入/删除时先移除旧 deps、再加入新 deps。
+- 增量失效：
+  - `changed_keys(old_exports, new_exports)` 输出 canonical ChangedKeys；
+  - `refresh_dependent_references()` 取 `dependency_index` 的并集，
+    只刷新命中的其他文件；
+  - 文件路径/metadata 变化时额外发布 Module(file)。
+- 删除：
+  - `SurfaceDelta`；
+  - `FileReferences::name_deps` / `member_name_deps`；
+  - 旧的 `rebuild_dependent_reference_indexes()` 全文件扫描。
+新增测试：
+
+- `semantic_db/p7_tests.rs`
+  - `p7_dependency_index_records_identity_keys`
+  - `p7_value_only_member_edit_has_no_changed_keys`
+  - `p7_unrelated_member_edit_does_not_refresh_dependent_files`
+  - `p7_changed_member_refreshes_only_intersecting_files`
+  - `p7_global_dependency_refresh`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis p7_tests
+  5 passed; 0 failed
+
+cargo test -p emmylua_code_analysis --lib
+  1355 passed; 0 failed; 2 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+性能：合成聚合文件 benchmark 约 1.17-1.21s，无回退。
+
+收尾：
+
+- `resolve_owner_set()` 已正式改为 `resolve_owner_ids()` 的确定性 wrapper；
+- 不再有 score，也不再依赖字符串级名字扫描；
+- P0-P7 全部测试与 clippy 通过。
 ## 4. 验收标准
 
 1. 单文件写入不再调用 `rebuild_all_caches` / `rebuild_workspace_indexes`。
@@ -652,6 +823,50 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## 5. 更新日志
 
+- 2026-09-10：P8/收尾完成。
+  - `resolve_owner_set()` 替换为 `resolve_owner_ids()` 的确定性 wrapper；
+  - 补回 Name / owner_syntax / runtime 关联规则，消除此前的语义回归；
+  - 删除最后的 score 逻辑；
+  - 最终验证：`cargo test -p emmylua_code_analysis --lib`（1355 passed, 2 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`、
+    `cargo fmt --all -- --check` 全部通过。
+- 2026-09-10：P7 完成（身份级依赖失效）。
+  - 新增 `DependencyKey` / `FileDependencies` / `ChangedKeys`；
+  - `FileReferences` 记录 canonical deps，`require` 记录 Module(file)；
+  - `SemanticDatabase.dependency_index` 维护 key -> files 反向索引；
+  - 增量写入改为 `changed_keys` + 依赖交集刷新，删除 `SurfaceDelta`、
+    `name_deps` / `member_name_deps` 与全文件扫描；
+  - 新增 `p7_tests.rs`（5 个测试）；
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1355 passed, 2 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P6c 完成（LS/VM 统一候选路径）。
+  - 新增公开的 `SemanticModel::callable_candidates_for_expr()`；
+  - LS signature help / completion 优先使用统一 candidate API；
+  - VM union-return 改用 `CallableCandidateSet::select_all()`，
+    `overloaded_callable_member_type` 改用 `from_prefix_type()`；
+  - 删除 `param_type_check::member_callable_candidates()`，改为
+    `index_expr_callable_candidates()` + `CallableCandidateSet`；
+  - 遗留 legacy `resolve_owner_set()` 少量调用点延后到 P7 清理；
+  - 验证：`cargo test --workspace`、`cargo test -p emmylua_ls --lib`（214 passed）、
+    `cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P6b 完成（member/@field/operator/继承链统一候选）。
+  - 新增 `CallableCandidateSet`：`from_prefix_type` / `from_prefix_type_for_member`，
+    复用 VM 的 alias/union/class overload/operator call 展开；
+  - `param_type_check::member_callable_candidates()` 改为统一候选集并删除多段启发式；
+  - `types.rs::inferred_call_doc_function()` member overload 路径改用统一候选集；
+  - 新增 5 个 P6b 测试；
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1350 passed, 2 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P6a 完成（跨文件全局 overload 统一）。
+  - 新增 `global_decls_named_in_workspace` / `_for_file` / `_primary`：
+    overload 只在同一 workspace 合并，跨 workspace 按 main > library > std 取第一组；
+  - `InferVm::signature_candidates()` 增加跨文件 wrapper，`signature_candidates_single()`
+    保留单身份投影；相同内容的重复声明仍走 legacy 单符号路径；
+  - `SemanticModel::callable_candidates_for_name_expr()` 统一 NameExpr 候选，并接入
+    `param_type_check`；
+  - 启用 `p0_cross_file_global_overloads`；新增 `p6_tests.rs`（3 个测试）；
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1345 passed, 2 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-10：P5b 完成（确定性 owner 解析 + workspace 优先级）。
   - 新增 `resolve_owner_ids()` / `owner_id_to_semantic_id()` / `canonical_owner_id()`；
   - `resolve_member_impl()` Stage 4 候选 owner 改由 `resolve_owner_ids()` 产生，

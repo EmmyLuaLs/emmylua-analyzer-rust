@@ -19,6 +19,10 @@ mod p4_5_tests;
 mod p4_tests;
 #[cfg(test)]
 mod p5_tests;
+#[cfg(test)]
+mod p6_tests;
+#[cfg(test)]
+mod p7_tests;
 pub(crate) mod query;
 #[cfg(test)]
 mod tests;
@@ -70,6 +74,9 @@ pub(crate) struct RebuildMetrics {
     /// Number of shard builders that scanned all files (`build_export_shard`,
     /// `build_deprecated_shard`, `build_module_shard`, `build_reference_shard`).
     pub(crate) shard_scan_builds: std::sync::atomic::AtomicU32,
+    /// Number of affected files whose reference index was refreshed by a
+    /// canonical changed-key intersection (P7).
+    pub(crate) dependent_reference_refreshes: std::sync::atomic::AtomicU32,
 }
 
 #[cfg(test)]
@@ -79,6 +86,8 @@ impl RebuildMetrics {
         self.full_rebuilds.store(0, Ordering::Relaxed);
         self.workspace_index_rebuilds.store(0, Ordering::Relaxed);
         self.shard_scan_builds.store(0, Ordering::Relaxed);
+        self.dependent_reference_refreshes
+            .store(0, Ordering::Relaxed);
     }
 
     pub(crate) fn full_rebuilds(&self) -> u32 {
@@ -93,6 +102,11 @@ impl RebuildMetrics {
 
     pub(crate) fn shard_scan_builds(&self) -> u32 {
         self.shard_scan_builds
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn dependent_reference_refreshes(&self) -> u32 {
+        self.dependent_reference_refreshes
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
@@ -125,6 +139,9 @@ pub struct SemanticDatabase {
     /// Plain merged workspace indexes (type/member/decl/module/reference).
     workspace_index: query::WorkspaceIndexCache,
 
+    /// Reverse identity-level dependency index (P7): key -> files that read it.
+    dependency_index: HashMap<DependencyKey, HashSet<FileId>>,
+
     #[cfg(test)]
     pub(crate) rebuild_metrics: RebuildMetrics,
 }
@@ -141,6 +158,7 @@ impl Default for SemanticDatabase {
             shard_files: vec![Vec::new(); exports::EXPORT_SHARDS as usize],
             module_fallback_root: None,
             workspace_index: query::WorkspaceIndexCache::new(),
+            dependency_index: HashMap::new(),
             #[cfg(test)]
             rebuild_metrics: RebuildMetrics::default(),
         }
@@ -338,8 +356,9 @@ impl SemanticDatabase {
         file_id: FileId,
         old_workspace: Option<WorkspaceId>,
         old_exports: Option<Arc<exports::FileExportContribution>>,
+        old_references: Option<Arc<query::FileReferences>>,
     ) {
-        query::rebuild_file_after_remove(self, file_id, old_workspace, old_exports);
+        query::rebuild_file_after_remove(self, file_id, old_workspace, old_exports, old_references);
     }
 
     fn reset_file_facts_cache(&mut self) {
@@ -349,9 +368,12 @@ impl SemanticDatabase {
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
         let old_workspace = self.workspace_id_of(file_id);
-        let old_exports = self.files.remove(&file_id).map(|cache| cache.exports);
+        let (old_exports, old_references) = match self.files.remove(&file_id) {
+            Some(cache) => (Some(cache.exports), Some(cache.references)),
+            None => (None, None),
+        };
         self.vfs.remove(file_id);
-        self.rebuild_file_after_remove(file_id, old_workspace, old_exports);
+        self.rebuild_file_after_remove(file_id, old_workspace, old_exports, old_references);
     }
 
     // ---- Config ----
@@ -674,6 +696,7 @@ impl SemanticDatabase {
         self.shard_files = vec![Vec::new(); exports::EXPORT_SHARDS as usize];
         self.module_fallback_root = None;
         self.workspace_index = query::WorkspaceIndexCache::new();
+        self.dependency_index = HashMap::new();
         self.rebuild_all_caches();
     }
 

@@ -244,7 +244,6 @@ fn p0_cross_file_module_mutation_visible_through_require() {
 /// Two files declare the same global function with different parameter/return types;
 /// call-site resolution must consider both declarations.
 #[test]
-#[ignore = "P0 known failure: global overload candidates collapse to one declaration"]
 fn p0_cross_file_global_overloads() {
     let mut ws = VirtualWorkspace::new();
     ws.def_file(
