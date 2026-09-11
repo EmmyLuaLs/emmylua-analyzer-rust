@@ -2181,6 +2181,12 @@ pub(crate) fn module_file_of(
         if let Some(file_id) = index.exact(&normalized) {
             return Some(file_id);
         }
+        // `require("some.prefix.mod")` may target a module registered as
+        // `mod` (or `prefix.mod`): try progressively shorter suffixes before
+        // the broader fuzzy (short require -> longer module) fallback.
+        if let Some(file_id) = index.fuzzy_prefix(&normalized) {
+            return Some(file_id);
+        }
         if let Some(file_id) = index.fuzzy(&normalized) {
             return Some(file_id);
         }
@@ -2290,6 +2296,22 @@ impl ModuleIndex {
             let candidate = root.join(&rel);
             if let Some(file_id) = self.by_path.get(&normalize_path(&candidate)) {
                 return Some(*file_id);
+            }
+        }
+        None
+    }
+
+    /// Prefix-stripping exact matching: `some.prefix.mod` also tries `prefix.mod`, `mod`.
+    ///
+    /// Longest remaining suffix wins, so an exact longer module name is always
+    /// preferred over a shorter prefix match.
+    fn fuzzy_prefix(&self, name: &str) -> Option<FileId> {
+        let mut parts: Vec<&str> = name.split('.').collect();
+        while parts.len() > 1 {
+            parts.remove(0);
+            let candidate = parts.join(".");
+            if let Some(file_id) = self.exact(&candidate) {
+                return Some(file_id);
             }
         }
         None

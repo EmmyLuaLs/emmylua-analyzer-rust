@@ -66,8 +66,17 @@ impl CallableCandidateSet {
             .and_then(|member_id| member_owner_allows_cross_file(model, member_id))
             .unwrap_or(true);
         let member_file = member_id.and_then(|member_id| member_file_of(model, member_id));
-        let infos = member::member_infos_with_key_all(model, prefix_type, key);
         let mut candidates = Vec::new();
+        // The resolved member identity is authoritative: std global members
+        // (`table.insert`) are not necessarily reachable from the prefix type
+        // surface, but still carry main + `---@overload` signatures.
+        if let Some(member_id) = member_id {
+            let vm = super::vm::InferVm::new(model, &[]);
+            if let Some(resolved_candidates) = vm.callable_candidates_for_owner_single(member_id) {
+                candidates.extend(resolved_candidates);
+            }
+        }
+        let infos = member::member_infos_with_key_all(model, prefix_type, key);
         for info in infos {
             if !allow_cross_file
                 && let (Some(info_file), Some(member_file)) = (info.file_id, member_file)
@@ -85,10 +94,20 @@ impl CallableCandidateSet {
         info: &member::MemberInfo,
         out: &mut Vec<LuaFunctionType>,
     ) {
-        // DocFunction / union / class `---@overload` / `---@operator call`
-        // are all expanded by the VM type expansion.
+        // Prefer the identity-level signature projection: it preserves the
+        // declaration main signature plus every `---@overload` (std
+        // `table.insert` relies on this for its 2-argument form).
         let before = out.len();
-        out.extend(super::vm::expand_callable_types_in_model(model, &info.typ));
+        if let (Some(member_id), Some(_file_id)) = (&info.id, info.file_id) {
+            let vm = super::vm::InferVm::new(model, &[]);
+            if let Some(candidates) = vm.callable_candidates_for_owner_single(member_id) {
+                out.extend(candidates);
+            }
+        }
+        if out.len() == before {
+            // `@field fun(...)` has no closure value syntax: project the member type.
+            out.extend(super::vm::expand_callable_types_in_model(model, &info.typ));
+        }
         if out.len() == before
             && let (Some(member_id), Some(file_id)) = (&info.id, info.file_id)
         {

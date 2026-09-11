@@ -2,6 +2,8 @@ pub(crate) mod def;
 pub(crate) mod exports;
 pub(crate) mod facade;
 pub(crate) mod facts;
+#[cfg(test)]
+mod fix_tests;
 pub(crate) mod flow;
 pub(crate) mod index;
 pub(crate) mod inputs;

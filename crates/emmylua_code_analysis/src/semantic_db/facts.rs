@@ -827,7 +827,7 @@ impl FactsBuilder {
         }
 
         // Post-processing 0: inline `---@type` ownership for table fields (comments enter doc_type_map after the field node is visited).
-        self.assign_member_doc_types();
+        self.assign_member_doc_types(chunk);
 
         // Post-processing 1: type-def full_name depends on namespace (which may appear after the class definition).
         self.finalize_type_defs();
@@ -2123,11 +2123,13 @@ impl FactsBuilder {
         }
     }
 
-    /// Inline `---@type` / `---@module` on table fields: attach to members by field syntax range.
-    fn assign_member_doc_types(&mut self) {
+    /// Inline `---@type` / `---@module` on table fields or member assignment
+    /// statements: attach to the LHS member(s) by key range.
+    fn assign_member_doc_types(&mut self, chunk: &LuaChunk) {
         if self.doc_type_map.is_empty() && self.doc_module_map.is_empty() {
             return;
         }
+        let root = chunk.get_root();
         let mut member_key_starts: Vec<(TextSize, usize)> = self
             .members
             .iter()
@@ -2149,60 +2151,82 @@ impl FactsBuilder {
                 .collect::<Vec<_>>()
         };
 
+        // `---@type T` above `xx.aaa = value`: the owner is the assignment
+        // statement, so resolve the LHS IndexExpr range explicitly.
+        let target_ranges = |owner: &LuaSyntaxId| -> Vec<TextRange> {
+            match owner.get_kind() {
+                LuaSyntaxKind::TableFieldAssign => vec![owner.get_range()],
+                LuaSyntaxKind::AssignStat => {
+                    let Some(node) = owner.to_node_from_root(&root) else {
+                        return Vec::new();
+                    };
+                    let Some(assign) = LuaAssignStat::cast(node) else {
+                        return Vec::new();
+                    };
+                    assign
+                        .get_var_and_expr_list()
+                        .0
+                        .iter()
+                        .filter_map(|var| match var {
+                            LuaVarExpr::IndexExpr(index_expr) => Some(index_expr.get_range()),
+                            _ => None,
+                        })
+                        .collect()
+                }
+                _ => Vec::new(),
+            }
+        };
+
         let mut doc_type_assignments: Vec<(usize, LuaSyntaxId)> = Vec::new();
         let mut module_assignments: Vec<(usize, SmolStr)> = Vec::new();
         let mut doc_assigned = vec![false; self.members.len()];
         let mut module_assigned = vec![false; self.members.len()];
 
         for (owner, type_syntaxes) in &self.doc_type_map {
-            if owner.get_kind() != LuaSyntaxKind::TableFieldAssign {
-                continue;
-            }
-            let owner_range = owner.get_range();
-            for index in member_indices_in_range(owner_range) {
-                if doc_assigned[index] {
-                    continue;
-                }
-                let member = &self.members[index];
-                if member.doc_type_syntax.is_some() {
+            for owner_range in target_ranges(owner) {
+                for index in member_indices_in_range(owner_range) {
+                    if doc_assigned[index] {
+                        continue;
+                    }
+                    let member = &self.members[index];
+                    if member.doc_type_syntax.is_some() {
+                        doc_assigned[index] = true;
+                        continue;
+                    }
+                    let Some(key_range) = member.id.member_key_range() else {
+                        continue;
+                    };
+                    if !owner_range.contains_range(key_range) {
+                        continue;
+                    }
+                    if let Some(type_syntax) = type_syntaxes.first().copied() {
+                        doc_type_assignments.push((index, type_syntax));
+                    }
                     doc_assigned[index] = true;
-                    continue;
                 }
-                let Some(key_range) = member.id.member_key_range() else {
-                    continue;
-                };
-                if !owner_range.contains_range(key_range) {
-                    continue;
-                }
-                if let Some(type_syntax) = type_syntaxes.first().copied() {
-                    doc_type_assignments.push((index, type_syntax));
-                }
-                doc_assigned[index] = true;
             }
         }
 
         for (owner, module_path) in &self.doc_module_map {
-            if owner.get_kind() != LuaSyntaxKind::TableFieldAssign {
-                continue;
-            }
-            let owner_range = owner.get_range();
-            for index in member_indices_in_range(owner_range) {
-                if module_assigned[index] {
-                    continue;
-                }
-                let member = &self.members[index];
-                if member.module_path.is_some() {
+            for owner_range in target_ranges(owner) {
+                for index in member_indices_in_range(owner_range) {
+                    if module_assigned[index] {
+                        continue;
+                    }
+                    let member = &self.members[index];
+                    if member.module_path.is_some() {
+                        module_assigned[index] = true;
+                        continue;
+                    }
+                    let Some(key_range) = member.id.member_key_range() else {
+                        continue;
+                    };
+                    if !owner_range.contains_range(key_range) {
+                        continue;
+                    }
+                    module_assignments.push((index, module_path.clone()));
                     module_assigned[index] = true;
-                    continue;
                 }
-                let Some(key_range) = member.id.member_key_range() else {
-                    continue;
-                };
-                if !owner_range.contains_range(key_range) {
-                    continue;
-                }
-                module_assignments.push((index, module_path.clone()));
-                module_assigned[index] = true;
             }
         }
 

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxNode, LuaVarExpr};
+use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaSyntaxNode, LuaVarExpr};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
@@ -48,14 +48,16 @@ impl Checker for DuplicateFieldChecker {
                 if dupes.len() <= 1 {
                     continue;
                 }
-                // `@field a fun()` may be declared repeatedly (function overloads); other duplicate @field entries report DuplicateDocField.
-                if is_type_def
-                    && dupes.iter().all(|member| {
-                        semantic_model.type_of_member(&member.id).is_some_and(|ty| {
-                            matches!(ty, LuaType::DocFunction(_) | LuaType::Signature(_))
-                        })
-                    })
-                {
+                let all_function = dupes
+                    .iter()
+                    .all(|member| is_function_like(semantic_model, member));
+                // `@field a fun()` may be declared repeatedly (function overloads);
+                // ordinary repeated non-function field writes are also intentional
+                // (for example a global config table assigning the same key twice).
+                if is_type_def && all_function {
+                    continue;
+                }
+                if !is_type_def && !all_function {
                     continue;
                 }
                 let code = if is_type_def {
@@ -161,4 +163,24 @@ fn required_module_file(
         _ => return None,
     };
     semantic_model.module_file_of(&module_name)
+}
+
+/// Whether a runtime member is a function/closure definition.
+fn is_function_like(
+    semantic_model: &SemanticModel<'_>,
+    member: &crate::semantic_db::def::Member,
+) -> bool {
+    if let Some(value_syntax) = member.value_syntax
+        && let Some(tree) = semantic_model.syntax_tree()
+        && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
+        && LuaClosureExpr::cast(node).is_some()
+    {
+        return true;
+    }
+    semantic_model.type_of_member(&member.id).is_some_and(|ty| {
+        matches!(
+            ty,
+            LuaType::DocFunction(_) | LuaType::Signature(_) | LuaType::Function
+        )
+    })
 }
