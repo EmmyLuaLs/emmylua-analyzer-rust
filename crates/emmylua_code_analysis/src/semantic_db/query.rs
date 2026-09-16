@@ -233,7 +233,7 @@ pub(crate) fn rebuild_file_after_write(
             shard_cache
                 .deprecated
                 .files
-                .insert(file_id, deprecated_data);
+                .insert(file_id, deprecated_data.clone());
         }
         match &module_entry {
             Some(entry) => {
@@ -249,11 +249,14 @@ pub(crate) fn rebuild_file_after_write(
     // declarations are visible while its own references are resolved below.
     apply_file_to_workspace_indexes(
         db,
-        file_id,
-        old_workspace,
-        Some(new_exports.as_ref()),
-        None,
-        module_entry,
+        WorkspaceFileUpdate {
+            file_id,
+            old_workspace,
+            new_exports: Some(new_exports.as_ref()),
+            new_references: None,
+            module_entry,
+            new_deprecated: Some(&deprecated_data),
+        },
     );
 
     let references = Arc::new(build_file_references(db, file_id));
@@ -313,7 +316,17 @@ pub(crate) fn rebuild_file_after_remove(
         shard_cache.references.files.remove(&file_id);
     }
 
-    apply_file_to_workspace_indexes(db, file_id, old_workspace, None, None, None);
+    apply_file_to_workspace_indexes(
+        db,
+        WorkspaceFileUpdate {
+            file_id,
+            old_workspace,
+            new_exports: None,
+            new_references: None,
+            module_entry: None,
+            new_deprecated: None,
+        },
+    );
 
     if db.workspace_roots().is_empty() && db.main_root().is_none() {
         db.refresh_module_fallback_root();
@@ -342,18 +355,32 @@ fn rebuild_all_module_shards(db: &mut SemanticDatabase) {
     }
 }
 
+/// One file's contribution update for the workspace indexes.
+///
+/// Bundles the parameters that used to be passed as a long positional list
+/// (`file_id`, workspace, exports, references, module entry, deprecated data).
+struct WorkspaceFileUpdate<'a> {
+    file_id: FileId,
+    old_workspace: Option<WorkspaceId>,
+    new_exports: Option<&'a FileExports>,
+    new_references: Option<Arc<FileReferences>>,
+    module_entry: Option<ModuleEntry>,
+    new_deprecated: Option<&'a DeprecatedFileData>,
+}
+
 /// Apply one file's old/new contributions to every workspace index.
 ///
 /// This is the incremental replacement for a full `rebuild_workspace_indexes`
 /// when only the file's export contribution changed.
-fn apply_file_to_workspace_indexes(
-    db: &mut SemanticDatabase,
-    file_id: FileId,
-    old_workspace: Option<WorkspaceId>,
-    new_exports: Option<&FileExports>,
-    new_references: Option<Arc<FileReferences>>,
-    module_entry: Option<ModuleEntry>,
-) {
+fn apply_file_to_workspace_indexes(db: &mut SemanticDatabase, update: WorkspaceFileUpdate<'_>) {
+    let WorkspaceFileUpdate {
+        file_id,
+        old_workspace,
+        new_exports,
+        new_references,
+        module_entry,
+        new_deprecated,
+    } = update;
     let ws_ids = all_workspace_ids(db);
     let target_ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
 
@@ -365,6 +392,9 @@ fn apply_file_to_workspace_indexes(
             index.remove_file(file_id);
         }
         if let Some(index) = db.workspace_index.decls.get_mut(ws_id) {
+            index.remove_file(file_id);
+        }
+        if let Some(index) = db.workspace_index.deprecated.get_mut(ws_id) {
             index.remove_file(file_id);
         }
         if let Some(index) = db.workspace_index.references.get_mut(ws_id) {
@@ -392,6 +422,12 @@ fn apply_file_to_workspace_indexes(
         if let Some(index) = db.workspace_index.decls.get_mut(&target_ws) {
             index.add_file(file_id, exports);
         }
+    }
+
+    if let Some(deprecated) = new_deprecated
+        && let Some(index) = db.workspace_index.deprecated.get_mut(&target_ws)
+    {
+        index.add_file(file_id, deprecated);
     }
 
     if let Some(references) = new_references
@@ -445,11 +481,16 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase) {
         .iter()
         .map(|&ws_id| (ws_id, build_workspace_module_index(db, ws_id)))
         .collect::<HashMap<_, _>>();
+    let workspace_deprecated = ws_ids
+        .iter()
+        .map(|&ws_id| (ws_id, build_workspace_deprecated_index(db, ws_id)))
+        .collect::<HashMap<_, _>>();
     db.workspace_index = WorkspaceIndexCache {
         types: workspace_types,
         members: workspace_members,
         decls: workspace_decls,
         modules: workspace_modules,
+        deprecated: workspace_deprecated,
         references: HashMap::new(),
     };
 }
@@ -840,46 +881,86 @@ fn build_deprecated_shard(db: &SemanticDatabase, shard: u8) -> DeprecatedShard {
     DeprecatedShard { files }
 }
 
-/// Deprecated global names in a single workspace.
+/// Incrementally maintained deprecated-name index for one workspace.
 ///
-/// This lets checkers like `DeprecatedChecker` test whether a global name is
-/// deprecated with a hash-set lookup instead of resolving each name through the
-/// full global-declaration pipeline.
-pub(crate) fn deprecated_global_names_for(
-    db: &SemanticDatabase,
-    ws_id: WorkspaceId,
-) -> Arc<HashSet<SmolStr>> {
-    let mut out = HashSet::new();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = deprecated_shard(db, shard);
-        for (file_id, data) in &shard.files {
-            if file_matches_workspace_id(db, *file_id, ws_id) {
-                out.extend(data.names.iter().cloned());
-            }
-        }
-    }
-    Arc::new(out)
+/// The old `deprecated_*_names_for()` API built a fresh `Arc<HashSet>` on every
+/// call. This index is updated with the same file add/remove operations as the
+/// other workspace indexes, so queries are pure hash lookups with no allocation.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeprecatedIndex {
+    global_counts: HashMap<SmolStr, u32>,
+    member_counts: HashMap<SmolStr, u32>,
+    by_file: HashMap<FileId, DeprecatedFileData>,
 }
 
-/// Deprecated member key names in a single workspace.
-///
-/// This is intentionally owner-independent: the fast-negative check only wants to
-/// know whether *any* deprecated member with this key exists. If it does, the caller
-/// falls back to the full resolver so owner/type/class-field ambiguity stays safe.
-pub(crate) fn deprecated_member_names_for(
-    db: &SemanticDatabase,
-    ws_id: WorkspaceId,
-) -> Arc<HashSet<SmolStr>> {
-    let mut out = HashSet::new();
+impl DeprecatedIndex {
+    pub(crate) fn add_file(&mut self, file_id: FileId, data: &DeprecatedFileData) {
+        if self.by_file.contains_key(&file_id) {
+            self.remove_file(file_id);
+        }
+        for name in &data.names {
+            *self.global_counts.entry(name.clone()).or_default() += 1;
+        }
+        for (_, key) in &data.member_keys {
+            *self.member_counts.entry(key.clone()).or_default() += 1;
+        }
+        if !data.names.is_empty() || !data.member_keys.is_empty() {
+            self.by_file.insert(file_id, data.clone());
+        }
+    }
+
+    pub(crate) fn remove_file(&mut self, file_id: FileId) {
+        let Some(data) = self.by_file.remove(&file_id) else {
+            return;
+        };
+        for name in &data.names {
+            if let Some(count) = self.global_counts.get_mut(name) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    self.global_counts.remove(name);
+                }
+            }
+        }
+        for (_, key) in &data.member_keys {
+            if let Some(count) = self.member_counts.get_mut(key) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    self.member_counts.remove(key);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
+        self.global_counts.contains_key(name)
+    }
+
+    pub(crate) fn is_member_name_deprecated(&self, name: &str) -> bool {
+        self.member_counts.contains_key(name)
+    }
+}
+
+fn build_workspace_deprecated_index(db: &SemanticDatabase, ws_id: WorkspaceId) -> DeprecatedIndex {
+    let mut index = DeprecatedIndex::default();
     for shard in 0..EXPORT_SHARDS {
         let shard = deprecated_shard(db, shard);
         for (file_id, data) in &shard.files {
             if file_matches_workspace_id(db, *file_id, ws_id) {
-                out.extend(data.member_keys.iter().map(|(_, key)| key.clone()));
+                index.add_file(*file_id, data);
             }
         }
     }
-    Arc::new(out)
+    index
+}
+
+pub(crate) fn workspace_deprecated_index_for(
+    db: &SemanticDatabase,
+    ws_id: WorkspaceId,
+) -> &DeprecatedIndex {
+    db.workspace_index_cache()
+        .deprecated
+        .get(&ws_id)
+        .expect("workspace deprecated index must be built before read")
 }
 
 pub(crate) fn all_workspace_ids(db: &SemanticDatabase) -> Vec<WorkspaceId> {
@@ -2416,6 +2497,7 @@ pub(crate) struct WorkspaceIndexCache {
     pub(crate) members: HashMap<WorkspaceId, WorkspaceMemberIndex>,
     pub(crate) decls: HashMap<WorkspaceId, WorkspaceDeclIndex>,
     pub(crate) modules: HashMap<WorkspaceId, ModuleIndex>,
+    pub(crate) deprecated: HashMap<WorkspaceId, DeprecatedIndex>,
     pub(crate) references: HashMap<WorkspaceId, WorkspaceReferenceIndex>,
 }
 

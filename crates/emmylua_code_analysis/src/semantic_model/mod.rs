@@ -15,8 +15,8 @@ mod types;
 #[cfg(test)]
 mod legacy_visibility_tests;
 
-use std::cell::RefCell;
-use std::collections::HashSet;
+use hashbrown::HashSet;
+use std::cell::{Ref, RefCell, RefMut};
 
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use smol_str::SmolStr;
@@ -25,16 +25,83 @@ use crate::semantic_db::SemanticDatabase;
 use crate::semantic_db::def::SemanticId;
 use crate::{FileId, LuaFunctionType, LuaType};
 
+/// Lazily allocated per-model local query cache.
+///
+/// A typical `SemanticModel` query only touches a few cache maps (or none at
+/// all). Keeping `SemanticLocalCache` inline makes every model ~1KB; this
+/// wrapper keeps the model small and allocates the cache on first use.
+#[derive(Default)]
+struct LazyCache {
+    inner: RefCell<Option<Box<cache::SemanticLocalCache>>>,
+}
+
+impl LazyCache {
+    fn ensure(&self) {
+        if self.inner.borrow().is_none() {
+            *self.inner.borrow_mut() = Some(Box::new(cache::SemanticLocalCache::default()));
+        }
+    }
+
+    fn borrow(&self) -> Ref<'_, cache::SemanticLocalCache> {
+        self.ensure();
+        Ref::map(self.inner.borrow(), |inner| {
+            inner.as_deref().expect("lazy cache initialized")
+        })
+    }
+
+    fn borrow_mut(&self) -> RefMut<'_, cache::SemanticLocalCache> {
+        self.ensure();
+        RefMut::map(self.inner.borrow_mut(), |inner| {
+            inner.as_deref_mut().expect("lazy cache initialized")
+        })
+    }
+}
+
+/// Lazily allocated in-progress set (same motivation as [`LazyCache`]).
+struct LazySet<T> {
+    inner: RefCell<Option<Box<HashSet<T>>>>,
+}
+
+impl<T> Default for LazySet<T> {
+    fn default() -> Self {
+        Self {
+            inner: RefCell::new(None),
+        }
+    }
+}
+
+impl<T> LazySet<T> {
+    fn ensure(&self) {
+        if self.inner.borrow().is_none() {
+            *self.inner.borrow_mut() = Some(Box::new(HashSet::new()));
+        }
+    }
+
+    fn borrow(&self) -> Ref<'_, HashSet<T>> {
+        self.ensure();
+        Ref::map(self.inner.borrow(), |inner| {
+            inner.as_deref().expect("lazy set initialized")
+        })
+    }
+
+    fn borrow_mut(&self) -> RefMut<'_, HashSet<T>> {
+        self.ensure();
+        RefMut::map(self.inner.borrow_mut(), |inner| {
+            inner.as_deref_mut().expect("lazy set initialized")
+        })
+    }
+}
+
 /// Semantic model: a per-file access handle, only through the semantic analysis layer.
 pub struct SemanticModel<'db> {
     db: &'db SemanticDatabase,
     file_id: FileId,
     /// Per-model local query cache. Recursion-in-progress state is stored in
     /// cache entries, so no separate O(n) guard stacks are needed.
-    cache: RefCell<cache::SemanticLocalCache>,
+    cache: LazyCache,
     /// Closure-return inference depends on the VM closure environment, so its
     /// result cannot be globally memoized; only O(1) in-progress tracking is kept.
-    closure_return_in_progress: RefCell<HashSet<LuaSyntaxId>>,
+    closure_return_in_progress: LazySet<LuaSyntaxId>,
 }
 
 /// Member-reference resolution result: index expression -> actual member declaration.
@@ -93,8 +160,8 @@ impl<'db> SemanticModel<'db> {
         Self {
             db,
             file_id,
-            cache: RefCell::new(cache::SemanticLocalCache::default()),
-            closure_return_in_progress: RefCell::new(HashSet::new()),
+            cache: LazyCache::default(),
+            closure_return_in_progress: LazySet::default(),
         }
     }
 
@@ -114,5 +181,20 @@ impl<'db> SemanticModel<'db> {
         self.closure_return_in_progress
             .borrow_mut()
             .remove(&closure_syntax);
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+    use std::mem::size_of;
+
+    #[test]
+    fn semantic_model_stays_small() {
+        let size = size_of::<SemanticModel<'static>>();
+        assert!(
+            size <= 64,
+            "SemanticModel grew to {size} bytes; keep heavy caches boxed/lazy"
+        );
     }
 }

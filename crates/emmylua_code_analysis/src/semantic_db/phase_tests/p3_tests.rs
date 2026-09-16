@@ -7,12 +7,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::SemanticDatabase;
-use super::def::TypeScope;
-use super::query::{
+use super::super::super::query::{
     build_module_entry, workspace_module_index_for, workspace_reference_index_for,
     workspace_type_index_for,
 };
+use super::super::SemanticDatabase;
+use super::super::def::TypeScope;
 use crate::{Emmyrc, FileId, WorkspaceId};
 
 fn setup() -> SemanticDatabase {

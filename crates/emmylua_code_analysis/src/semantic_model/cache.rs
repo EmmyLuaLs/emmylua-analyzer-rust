@@ -3,7 +3,7 @@
 //! A model owns one cache for its lifetime. Recursion state is represented by
 //! `CacheEntry::InProgress` so re-entry checks stay O(1).
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use emmylua_parser::{LuaExpr, LuaSyntaxId};
 use rowan::TextSize;

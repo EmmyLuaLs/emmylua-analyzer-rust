@@ -1,6 +1,6 @@
 # Workspace Index 与跨文件语义重构计划
 
-> 状态：P0-P7 全部完成；`resolve_owner_set()` 已是 `resolve_owner_ids()` 的确定性 wrapper，不再有启发式 score。
+> 状态：P0-P10 全部完成；API 审计结论已记录，第一批收敛（deprecated index / 更新参数结构）已落地。
 > 目标读者：后续接手 `semantic_db` / `semantic_model` 的开发者
 > 维护方式：本文件随每个阶段实时更新；已完成项必须附测试名和验证命令。
 
@@ -17,6 +17,9 @@
 | P5 | canonical owner 解析 + require 深层链 | ✅ P5a/P5b 已完成 |
 | P6 | 统一 callable/overload 候选与选择 | ✅ 已完成 |
 | P7 | 身份级依赖失效，删除字符串级 `SurfaceDelta` | ✅ 已完成 |
+| P8 | 真实项目语义正确性修复（table.insert / require / ---@type / duplicate-field 等） | ✅ 已完成 |
+| P9 | SemanticModel 尺寸与惰性缓存（48B） | ✅ 已完成 |
+| P10 | semantic_db API 审计与第一批收敛 | ✅ 审计完成，第一批修复已落地 |
 
 ---
 
@@ -182,7 +185,7 @@ SemanticModel queries     只读查询，不扫描文件、不重建索引
 
 已完成内容：
 
-- 新增 `crates/emmylua_code_analysis/src/semantic_db/p0_tests.rs`。
+- 新增 `crates/emmylua_code_analysis/src/semantic_db/phase_tests/p0_tests.rs`。
 - 新增 test-only `RebuildMetrics`（仅 `#[cfg(test)]`）：
   - `full_rebuilds`
   - `workspace_index_rebuilds`
@@ -255,7 +258,7 @@ cargo test --workspace --lib
 
 新增测试：
 
-- `crates/emmylua_code_analysis/src/semantic_db/p1_tests.rs`
+- `crates/emmylua_code_analysis/src/semantic_db/phase_tests/p1_tests.rs`
   - `p1_member_contribution_carries_canonical_owner_and_flags`
   - `p1_member_contribution_preserves_overloads_and_export_key`
   - `p1_surface_eq_ignores_member_value_syntax_changes`
@@ -302,7 +305,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 新增测试：
 
-- `crates/emmylua_code_analysis/src/semantic_db/p2_tests.rs`
+- `crates/emmylua_code_analysis/src/semantic_db/phase_tests/p2_tests.rs`
   - `p2_export_shard_is_per_file`
   - `p2_shard_file_lists_are_maintained_incrementally`
   - `p2_module_and_deprecated_shards_are_per_file`
@@ -358,7 +361,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 新增测试：
 
-- `crates/emmylua_code_analysis/src/semantic_db/p3_tests.rs`
+- `crates/emmylua_code_analysis/src/semantic_db/phase_tests/p3_tests.rs`
   - `p3_type_index_remove_add_matches_full_rebuild`
   - `p3_member_index_remove_add_preserves_overloads`
   - `p3_reference_index_remove_add_matches_full_rebuild`
@@ -407,7 +410,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 新增测试：
 
-- `crates/emmylua_code_analysis/src/semantic_db/p4_tests.rs`
+- `crates/emmylua_code_analysis/src/semantic_db/phase_tests/p4_tests.rs`
   - `p4_new_file_does_not_full_rebuild`
   - `p4_remove_file_does_not_full_rebuild`
   - `p4_new_file_refreshes_dependent_references`
@@ -477,7 +480,7 @@ profile 中 `AssignTypeMismatchChecker` 从 7.16s 降到约 60ms，`NeedCheckNil
 
 新增测试：
 
-- `semantic_db/p4_5_tests.rs`
+- `semantic_db/phase_tests/p4_5_tests.rs`
   - `p4_5_keyed_member_lookup_uses_owner_name_bucket`
   - `p4_5_keyed_member_lookup_keeps_overloads`
   - `p4_5_flow_reads_use_indexed_fast_paths`
@@ -543,7 +546,7 @@ P5a 已完成内容：
 
 新增测试：
 
-- `semantic_db/p5_tests.rs`
+- `semantic_db/phase_tests/p5_tests.rs`
   - `p5_require_alias_contribution_maps_to_module_owner`
   - `p5_require_alias_chain_attaches_mutation_to_module_owner`
   - `p5_require_alias_contribution_survives_batch_rebuild`
@@ -586,7 +589,7 @@ P5b 已完成内容：
 
 新增测试：
 
-- `semantic_db/p5_tests.rs`
+- `semantic_db/phase_tests/p5_tests.rs`
   - `p5b_resolve_owner_ids_is_deterministic`
   - `p5b_deep_alias_member_chain`
   - `p5b_main_workspace_wins_over_library_module_name`
@@ -640,7 +643,7 @@ P6a 已完成内容：
 
 新增测试：
 
-- `semantic_db/p6_tests.rs`
+- `semantic_db/phase_tests/p6_tests.rs`
   - `p6_cross_file_global_overloads_are_visible_to_call_site_analysis`
   - `p6_cross_file_global_overloads_select_by_argument_type`
   - `p6_identical_duplicate_globals_keep_legacy_behavior`
@@ -688,7 +691,7 @@ P6b 已完成内容：
 
 新增测试：
 
-- `semantic_db/p6_tests.rs`
+- `semantic_db/phase_tests/p6_tests.rs`
   - `p6b_repeated_field_overloads_select_by_arguments`
   - `p6b_member_call_site_candidates_include_all_field_overloads`
   - `p6b_inferred_call_doc_function_selects_matching_field_overload`
@@ -779,7 +782,7 @@ cargo clippy --workspace --all-targets -- -D warnings
   - 旧的 `rebuild_dependent_reference_indexes()` 全文件扫描。
 新增测试：
 
-- `semantic_db/p7_tests.rs`
+- `semantic_db/phase_tests/p7_tests.rs`
   - `p7_dependency_index_records_identity_keys`
   - `p7_value_only_member_edit_has_no_changed_keys`
   - `p7_unrelated_member_edit_does_not_refresh_dependent_files`
@@ -809,6 +812,198 @@ cargo clippy --workspace --all-targets -- -D warnings
 - `resolve_owner_set()` 已正式改为 `resolve_owner_ids()` 的确定性 wrapper；
 - 不再有 score，也不再依赖字符串级名字扫描；
 - P0-P7 全部测试与 clippy 通过。
+### P8：真实项目语义正确性修复（已完成）
+
+针对真实项目反馈的五类错误：
+
+1. `table.insert` overload 缺失：
+   - std `table.insert` 主签名是 3 参，2 参形式来自 `---@overload fun(list, value)`；
+   - `CallableCandidateSet` 现在以 resolved member identity 的 `signature_candidates_single()`
+     作为权威候选，再合并同 key/继承链候选；
+   - 修复前 `table.insert(t, "str")` / `table.insert(t, {})` 会误报第二参数不是 integer。
+2. 跨文件全局表 field：
+   - 增加 decl-first / field-first / 多文件多字段 / 跨文件函数字段回归用例；
+   - `J.a` / `J.b` / `function J.f()` 在 consumer 中均可解析。
+3. require 模糊查找：
+   - `module_file_of()` 新增 `fuzzy_prefix`：`require("some.prefix.mod")` 会依次尝试
+     `prefix.mod`、`mod` 的精确匹配；
+   - 顺序为 exact full -> longest suffix -> 旧 fuzzy（短 require -> 长 module）。
+4. `---@type` on member assignment：
+   - `assign_member_doc_types()` 支持 `AssignStat` owner；
+   - 支持 `---@type T` 在 `xx.aaa = value` 上方，以及 trailing `xx.aaa = value ---@type T`；
+   - 成员类型优先使用该 doc type（alias 至少保留为 `Ref(T)`，不再回退到 RHS 推断）。
+5. Duplicate field 误报：
+   - `DuplicateFieldChecker` 对非 TypeDef owner 只在所有重复定义都是
+     function/closure 时才报告 `DuplicateSetField`；
+   - `J.nAccelerateLevel = 1; J.nAccelerateLevel = 2` 这类普通重复赋值不再报错。
+
+新增测试：
+
+- `semantic_db/phase_tests/fix_tests.rs`
+  - `fix_table_insert_accepts_two_and_three_arg_forms`
+  - `fix_global_table_field_cross_file_decl_first`
+  - `fix_global_table_field_cross_file_field_first`
+  - `fix_global_table_many_cross_file_fields_and_function`
+  - `fix_global_table_repeated_field_assignment_not_duplicate`
+  - `fix_doc_type_on_member_assignment`
+  - `fix_doc_type_trailing_member_assignment`
+  - `fix_require_strips_prefix_to_find_target_module`
+
+验收结果（2026-09-10）：
+
+```text
+cargo test -p emmylua_code_analysis --lib
+  1363 passed; 0 failed; 2 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+
+cargo fmt --all -- --check
+  passed
+```
+
+### P9：SemanticModel 尺寸与惰性缓存（已完成）
+
+实测（x64 release / debug）：
+
+| 类型 | 优化前 | 优化后 |
+|---|---:|---:|
+| `SemanticModel` | ~1040 B | **48 B** |
+| `SemanticLocalCache` | 960 B（内联） | 800 B（首次访问时堆分配） |
+| `InferVm` | 160 B（栈上） | 未改 |
+
+问题：
+- `SemanticModel` 内联 `RefCell<SemanticLocalCache>`，而 cache 有 17 个
+  `HashMap`；即使只做一次简单 `resolve_name`，每个模型也会占用约 1KB。
+- LS 每个请求、每次 `model_for`、每次跨文件查询都会新建模型，尺寸成本被放大。
+
+已完成：
+- `LazyCache`：
+  - `RefCell<Option<Box<SemanticLocalCache>>>`；
+  - `borrow()` / `borrow_mut()` 保持原调用方式；
+  - 首次访问时才分配 cache。
+- `LazySet`：
+  - `closure_return_in_progress` 同样改为惰性堆分配。
+- `SemanticLocalCache` 的 `HashMap` 从 `std` 切换为 `hashbrown`：
+  - cache 从 960 B 降到 800 B；
+  - 默认 hasher 对短 key 更友好。
+- 新增尺寸守卫测试：
+  - `semantic_model::size_tests::semantic_model_stays_small`
+  - 断言 `size_of::<SemanticModel>() <= 64`。
+
+验收：
+
+```text
+cargo test -p emmylua_code_analysis semantic_model_stays_small
+  1 passed
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+```
+
+后续性能设计审查（未完成，建议按数据决定优先级）：
+
+1. `SemanticLocalCache` 首次使用仍一次分配 800 B；若内存压力来自大量短生命周期模型，
+   可按查询阶段拆成 2-3 个惰性 group（type / flow / call）。
+2. `InferVm` 160 B 栈对象包含 `computing: HashSet`、`closure_params: HashMap`、
+   `stack: Vec<Value>`；其中 `closure_params` 多数查询为空，可改惰性 Box；
+   需要先 profile 确认 VM 创建/栈复制是否在热路径。
+3. 更大的收益可能来自跨请求缓存复用：LS 当前每个 handler 新建 `SemanticModel`，
+   模型内 cache 生命周期只有一次请求。若 query 结果稳定，可考虑基于
+   `(FileId, revision)` 的分析级共享缓存；代价是同步与失效复杂度。
+4. `model_for()` 在跨文件递归中会创建独立 cache；应评估按 owner/file 聚合的
+   query cache，而不是每层模型各存一份。
+5. `hashbrown` 在 cache 中已验证；`InferVm` 因与公共 API 的
+   `std::HashMap` 互操作，暂不整体切换。
+
+### P10：semantic_db API 审计与第一批收敛（已完成审计，部分实施）
+
+本轮已完成：
+
+1. 测试迁移：
+   - P0-P7、P4.5、fix 等阶段性测试全部迁移到
+     `semantic_db/phase_tests/`；
+   - 父模块只保留 `#[cfg(test)] mod phase_tests;`；
+   - 测试模块路径变化，但 `cargo test <name>` 用法不变。
+2. `deprecated_*_names_for` 修复：
+   - 旧 API 每次调用都新建并返回 `Arc<HashSet<SmolStr>>`，
+     对 DeprecatedChecker 这种高频 fast-negative 查询是纯浪费；
+   - 改为 workspace index 中增量维护的 `DeprecatedIndex`：
+     `global_counts` / `member_counts` / `by_file`；
+   - `is_global_deprecated()` / `is_deprecated_member_name()` 现在是纯 hash 查询，
+     无 HashSet 分配，无 shard 遍历；
+   - 单文件写入/删除会同步 remove/add `DeprecatedIndex`。
+3. `apply_file_to_workspace_indexes` 参数收敛：
+   - 引入 `WorkspaceFileUpdate`，打包
+     `file_id / old_workspace / exports / references / module_entry / deprecated`；
+   - 消除长位置参数列表。
+4. 新增回归：
+   - `phase_tests/p9_tests.rs::p9_deprecated_index_is_incrementally_maintained`
+     覆盖 deprecated 字段的 add/remove 和增量非全量重建。
+API 审计结论：
+
+- `query.rs` 目前仍有明显的 Salsa 影子：
+  - 大量 `pub(crate) fn xxx(db, file_id)` 的 query-keyed 签名；
+  - `SemanticQueries` facade 与 `query` 函数双重入口；
+  - `*_input` / `file_and_config` / `rebuild_*` / `workspace_*_for` 的命名和分层
+    保留了 tracked query 时代的形状。
+- 典型假廉价返回 `Arc` 的问题：
+  - `find_global_types()`、`type_defs_in_scope()` 每次调用重新 collect + `Arc::from`；
+  - `members_of_owner()` / `members_of_owner_named()` 每次重新构造 `Vec` 再 `Arc::from`；
+  - `MemberList` / `TypeDefList` 名义上共享 `Arc`，实际调用点多数是新建；
+  - `deprecated_*_names_for` 是其中最明显的一个，已修复。
+- 冗余参数/接口：
+  - 大量函数重复 `(db, file_id)`、`(facts, file_id)`、`(config, file_id)`；
+  - 增量更新函数参数过多（本轮先收敛了最明显的 `apply_file_to_workspace_indexes`）。
+- workspace 辅助函数：
+  - `all_workspace_ids()` / `workspace_lookup_order()` 每次分配 `Vec`；
+  - `file_matches_workspace_id()` 在 shard 扫描里重复做 path->workspace 计算。
+建议的目标架构（后续增量执行）：
+
+```text
+Vfs / inputs
+   ↓
+FileCache (facts / flow / exports / references, immutable per generation)
+   ↓
+WorkspaceIndex (types / members / decls / modules / deprecated / references)
+   ↓
+AnalysisView / FileView (read-only, &db, no mutation)
+Mutation API (only &mut SemanticDatabase, explicit rebuild/apply)
+```
+
+具体改造优先级：
+
+1. 去掉 `SemanticQueries` facade，保留一层 `AnalysisView` / `FileView`；
+   `SemanticModel` 直接持有该 view，不再到处传 `db + file_id`。
+2. 聚合索引缓存 `Arc`：
+   - global type/member bucket 存 `Arc<[T]>`，返回 clone 而不是每次 collect；
+   - `MemberList` / `TypeDefList` 要么真正缓存，要么删除。
+3. workspace ids / path->workspace 缓存到 DB/VFS，不再每次分配/计算。
+4. 把剩余 `*_for` query 逐步改成 view 方法；
+   mutation 与 query 在类型上分离（`&mut SemanticDatabase` vs `&SemanticDatabase`）。
+5. 视 profile 结果决定 `FileCache.flow/references` 是否惰性化。
+
+验收：
+
+```text
+cargo test -p emmylua_code_analysis --lib
+  1365 passed; 0 failed; 2 ignored
+
+cargo test --workspace
+  exit=0
+
+cargo clippy --workspace --all-targets -- -D warnings
+  passed
+
+性能：合成聚合文件 benchmark 约 1.10-1.14s。
+```
+
 ## 4. 验收标准
 
 1. 单文件写入不再调用 `rebuild_all_caches` / `rebuild_workspace_indexes`。
@@ -823,6 +1018,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## 5. 更新日志
 
+- 2026-09-10：P10 semantic_db API 审计与第一批收敛。
+  - 阶段性测试迁移到 `semantic_db/phase_tests/`；
+  - `deprecated_*_names_for` 改为增量维护的 `DeprecatedIndex`，查询无分配；
+  - `apply_file_to_workspace_indexes` 参数收敛为 `WorkspaceFileUpdate`；
+  - 新增 `p9_deprecated_index_is_incrementally_maintained`；
+  - 审计结论：去 Salsa 影子，拆成 Vfs/FileCache/WorkspaceIndex/View/Mutation 五层；
+  - 验证：`cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P9 完成（SemanticModel 尺寸与惰性缓存）。
+  - `SemanticModel` 1040 B -> 48 B；
+  - `SemanticLocalCache` 改为首次访问时 Box 分配；
+  - `closure_return_in_progress` 改为惰性 HashSet；
+  - cache HashMap 切换 hashbrown，960 B -> 800 B；
+  - 新增尺寸守卫 `semantic_model_stays_small`；
+  - 验证：`cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
+- 2026-09-10：P8 真实项目语义正确性修复。
+  - `CallableCandidateSet` 以 resolved member identity 为权威，补齐 `table.insert` 的
+    `---@overload`，修复第二参数误报 integer；
+  - `module_file_of()` 增加前缀剥离模糊匹配，`some.prefix.mod` 可落到 `mod`；
+  - `---@type` 支持 member assignment owner（上方与 trailing 两种写法）；
+  - duplicate-field 不再对普通重复字段赋值误报，只有重复函数/闭包才报；
+  - 新增 `phase_tests/fix_tests.rs`（8 个回归测试）；
+  - 验证：`cargo test -p emmylua_code_analysis --lib`（1363 passed, 2 ignored）、
+    `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-10：P8/收尾完成。
   - `resolve_owner_set()` 替换为 `resolve_owner_ids()` 的确定性 wrapper；
   - 补回 Name / owner_syntax / runtime 关联规则，消除此前的语义回归；
@@ -836,7 +1054,7 @@ cargo clippy --workspace --all-targets -- -D warnings
   - `SemanticDatabase.dependency_index` 维护 key -> files 反向索引；
   - 增量写入改为 `changed_keys` + 依赖交集刷新，删除 `SurfaceDelta`、
     `name_deps` / `member_name_deps` 与全文件扫描；
-  - 新增 `p7_tests.rs`（5 个测试）；
+  - 新增 `phase_tests/p7_tests.rs`（5 个测试）；
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1355 passed, 2 ignored）、
     `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-10：P6c 完成（LS/VM 统一候选路径）。
@@ -864,7 +1082,7 @@ cargo clippy --workspace --all-targets -- -D warnings
     保留单身份投影；相同内容的重复声明仍走 legacy 单符号路径；
   - `SemanticModel::callable_candidates_for_name_expr()` 统一 NameExpr 候选，并接入
     `param_type_check`；
-  - 启用 `p0_cross_file_global_overloads`；新增 `p6_tests.rs`（3 个测试）；
+  - 启用 `p0_cross_file_global_overloads`；新增 `phase_tests/p6_tests.rs`（3 个测试）；
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1345 passed, 2 ignored）、
     `cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-10：P5b 完成（确定性 owner 解析 + workspace 优先级）。
@@ -887,7 +1105,7 @@ cargo clippy --workspace --all-targets -- -D warnings
     rebuild 时 alias 可解析。
   - `require_module_owner()` 支持直接 `require("mod")` 前缀和 alias 链。
   - 启用 `p0_cross_file_module_mutation_visible_through_require`；
-    新增 `p5_tests.rs`（3 个测试）。
+    新增 `phase_tests/p5_tests.rs`（3 个测试）。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1338 passed, 3 ignored）、
     `cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-10：P4.5 完成（查询期性能止血）。
@@ -897,7 +1115,7 @@ cargo clippy --workspace --all-targets -- -D warnings
     增加正确性守卫下的 O(1) fast path。
   - `RedefinedLocalChecker` 叶子 scope 原地合并，消除每个 `local` 的 parent map clone。
   - `rebuild_dependent_reference_indexes()` 在 SurfaceDelta 为空时直接返回。
-  - 新增 `p4_5_tests.rs`（5 个测试）与
+  - 新增 `phase_tests/p4_5_tests.rs`（5 个测试）与
     `tools/perf/generate_synthetic_workspace.py`。
   - 实测：`M.x_i = i`×1200 5.50s -> 0.06s；聚合文件 10.92s -> 1.3s；
     全 workspace check 11.41s -> 2.8s。
@@ -906,21 +1124,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 2026-09-09：P4 完成。
   - 文件新增/删除/metadata 变化全部走增量 contribution remove/add。
   - 删除 `rebuild_reference_indexes()`；全量 rebuild 仅保留给初始加载/config/roots/clear/测试。
-  - 新增 `p4_tests.rs`（4 个测试）。
+  - 新增 `phase_tests/p4_tests.rs`（4 个测试）。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1329 passed, 4 ignored）、
     `cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-09：P3 完成（P4 同步推进）。
   - 四个 workspace index 增加 per-file contribution 与 remove/add API。
   - 单文件写入改为 `apply_file_to_workspace_indexes()`，不再调用
     `rebuild_workspace_indexes()` / `rebuild_workspace_reference_indexes()`。
-  - 新增 `p3_tests.rs`（4 个测试）。
+  - 新增 `phase_tests/p3_tests.rs`（4 个测试）。
   - P0 `p0_export_changing_edit_does_not_rebuild_workspace_indexes` 已启用并通过。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1329 passed, 4 ignored）、
     `cargo clippy --workspace --all-targets -- -D warnings`。
 - 2026-09-09：P2 完成。
   - shard 改为 per-file map；`build_*_shard` 不再遍历 `db.file_ids()`。
   - `FileCache.references` 改为 `Arc<FileReferences>`。
-  - 新增 `p2_tests.rs`（3 个测试）。
+  - 新增 `phase_tests/p2_tests.rs`（3 个测试）。
   - P0 `p0_surface_preserving_edit_does_not_scan_all_files` 已启用并通过。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1320 passed, 5 ignored）、
     `cargo clippy --workspace --all-targets -- -D warnings`。
@@ -928,10 +1146,10 @@ cargo clippy --workspace --all-targets -- -D warnings
   - 新增 `OwnerId` / `ExportKey`。
   - `FileExports` 改为 `FileExportContribution`，`FileCache` 以 `Arc` 持有。
   - `MemberExport` 增加 `owner_id/value_syntax/is_method/visibility/order`。
-  - 新增 `p1_tests.rs`（4 个测试）。
+  - 新增 `phase_tests/p1_tests.rs`（4 个测试）。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1316 passed, 6 ignored）。
 - 2026-09-09：P0 完成。
-  - 新增 `p0_tests.rs`。
+  - 新增 `phase_tests/p0_tests.rs`。
   - 新增 test-only `RebuildMetrics`。
   - 当前已知失败基线 4 个，均已标注 `#[ignore]` 和原因。
   - 验证：`cargo test -p emmylua_code_analysis --lib`（1312 passed, 6 ignored）、

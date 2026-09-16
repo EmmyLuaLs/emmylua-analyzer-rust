@@ -172,21 +172,22 @@ impl<'db> SemanticQueries<'db> {
         if self.db.config_input().is_none() {
             return false;
         }
-        for ws_id in query::all_workspace_ids(self.db) {
-            if query::deprecated_global_names_for(self.db, ws_id).contains(name) {
+        for ws_id in query::workspace_lookup_order(self.db) {
+            if query::workspace_deprecated_index_for(self.db, ws_id).is_global_deprecated(name) {
                 return true;
             }
         }
         false
     }
 
+    /// Whether any deprecated member uses this key name.
     pub(crate) fn is_deprecated_member_name(&self, name: &str) -> bool {
         if self.db.config_input().is_none() {
             return false;
         }
-        let key = SmolStr::new(name);
-        for ws_id in query::all_workspace_ids(self.db) {
-            if query::deprecated_member_names_for(self.db, ws_id).contains(&key) {
+        for ws_id in query::workspace_lookup_order(self.db) {
+            if query::workspace_deprecated_index_for(self.db, ws_id).is_member_name_deprecated(name)
+            {
                 return true;
             }
         }

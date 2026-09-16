@@ -7,9 +7,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::SemanticDatabase;
-use super::exports::{export_shard, shard_of};
-use super::query::{deprecated_shard, module_shard, reference_shard};
+use super::super::super::query::{deprecated_shard, module_shard, reference_shard};
+use super::super::SemanticDatabase;
+use super::super::exports::{export_shard, shard_of};
 use crate::{Emmyrc, FileId};
 
 fn setup() -> SemanticDatabase {

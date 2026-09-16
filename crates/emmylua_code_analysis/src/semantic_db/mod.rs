@@ -2,29 +2,14 @@ pub(crate) mod def;
 pub(crate) mod exports;
 pub(crate) mod facade;
 pub(crate) mod facts;
+
 #[cfg(test)]
-mod fix_tests;
+mod phase_tests;
+
 pub(crate) mod flow;
 pub(crate) mod index;
 pub(crate) mod inputs;
-#[cfg(test)]
-mod p0_tests;
-#[cfg(test)]
-mod p1_tests;
-#[cfg(test)]
-mod p2_tests;
-#[cfg(test)]
-mod p3_tests;
-#[cfg(test)]
-mod p4_5_tests;
-#[cfg(test)]
-mod p4_tests;
-#[cfg(test)]
-mod p5_tests;
-#[cfg(test)]
-mod p6_tests;
-#[cfg(test)]
-mod p7_tests;
+
 pub(crate) mod query;
 #[cfg(test)]
 mod tests;

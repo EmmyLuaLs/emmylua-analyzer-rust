@@ -5,7 +5,7 @@
 
 use crate::{FileId, LuaType, VirtualWorkspace};
 
-use super::def::{DependencyKey, OwnerId};
+use super::super::def::{DependencyKey, OwnerId};
 use crate::LuaMemberKey;
 
 fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
@@ -85,7 +85,7 @@ fn p7_value_only_member_edit_has_no_changed_keys() {
     );
     let after = ws.analysis.db.file_exports_of(mod_file).clone();
 
-    let changed = super::query::changed_keys(Some(&before), Some(&after));
+    let changed = super::super::query::changed_keys(Some(&before), Some(&after));
     assert!(
         changed.is_empty(),
         "value-only member edit must not publish identity keys: {changed:?}"

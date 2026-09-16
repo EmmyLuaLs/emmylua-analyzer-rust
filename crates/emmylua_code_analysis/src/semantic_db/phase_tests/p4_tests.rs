@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::SemanticDatabase;
+use super::super::SemanticDatabase;
 use crate::{Emmyrc, FileId, LuaType, SemanticModel, WorkspaceId};
 
 fn setup() -> SemanticDatabase {
