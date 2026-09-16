@@ -70,6 +70,29 @@ pub fn function_details_md(db: &DbIndex, typ: &LuaType) -> Option<FunctionDetail
     has_description.then_some((params, returns))
 }
 
+/// Renders the `---@overload` signatures of a function type as markdown code
+/// blocks, mirroring the HTML generator's `signature_overloads_html`.
+pub fn function_overloads_md(db: &DbIndex, typ: &LuaType, func_name: &str) -> Vec<String> {
+    let LuaType::Signature(signature_id) = typ else {
+        return Vec::new();
+    };
+    let Some(signature) = db.get_signature_index().get(signature_id) else {
+        return Vec::new();
+    };
+    signature
+        .overloads
+        .iter()
+        .map(|overload| {
+            render_function_type(
+                db,
+                &LuaType::DocFunction(overload.clone()),
+                func_name,
+                false,
+            )
+        })
+        .collect()
+}
+
 pub fn render_const_type(db: &DbIndex, typ: &LuaType) -> String {
     let const_value = humanize_type(db, typ, RenderLevel::Documentation);
 

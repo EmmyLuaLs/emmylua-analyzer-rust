@@ -22,6 +22,9 @@ pub struct MemberDoc {
     /// Documented return values of a function member, with their descriptions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub returns: Vec<MemberParam>,
+    /// Additional signatures from `---@overload` declarations (rendered code blocks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overloads: Vec<String>,
 }
 
 /// A documented parameter or return value of a function member.

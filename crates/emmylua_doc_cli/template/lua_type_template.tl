@@ -31,6 +31,12 @@
 ---
 {{ method.display }}
 
+{% if method.overloads %}
+**Overloads**
+
+{% for o in method.overloads %}{{ o }}
+{% endfor %}
+{% endif %}
 {% if method.params %}
 **Parameters**
 
@@ -69,6 +75,12 @@
 ---
 {{ field.display }}
 
+{% if field.overloads %}
+**Overloads**
+
+{% for o in field.overloads %}{{ o }}
+{% endfor %}
+{% endif %}
 {% if field.params %}
 **Parameters**
 

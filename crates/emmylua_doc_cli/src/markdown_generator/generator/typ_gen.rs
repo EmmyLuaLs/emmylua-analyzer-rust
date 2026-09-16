@@ -10,7 +10,7 @@ use crate::markdown_generator::{
     escape_type_name,
     generator::collect_property,
     markdown_types::{Doc, IndexStruct, MemberDoc, MkdocsIndex},
-    render::{function_details_md, render_const_type, render_function_type},
+    render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
 
 pub fn generate_type_markdown(
@@ -114,12 +114,14 @@ fn generate_class_type_markdown(
                 let func_name = format!("{}.{}", typ_name, name);
                 let display = render_function_type(db, member_typ, &func_name, false);
                 let (params, returns) = function_details_md(db, member_typ).unwrap_or_default();
+                let overloads = function_overloads_md(db, member_typ, &func_name);
                 method_members.push(MemberDoc {
                     name: title_name,
                     display,
                     property: member_property,
                     params,
                     returns,
+                    overloads,
                 });
             } else if member_typ.is_const() {
                 let const_type_display = render_const_type(db, member_typ);

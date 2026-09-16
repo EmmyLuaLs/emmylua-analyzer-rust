@@ -10,7 +10,7 @@ use tera::Tera;
 use crate::markdown_generator::{
     escape_type_name,
     markdown_types::{Doc, IndexStruct, MemberDoc, MkdocsIndex},
-    render::{function_details_md, render_const_type, render_function_type},
+    render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
 
 use super::collect_property;
@@ -127,12 +127,14 @@ pub fn generate_member_owner_module(
                 let func_name = format!("{}.{}", owner_name, name);
                 let display = render_function_type(db, member_type, &func_name, false);
                 let (params, returns) = function_details_md(db, member_type).unwrap_or_default();
+                let overloads = function_overloads_md(db, member_type, &func_name);
                 method_members.push(MemberDoc {
                     name: title_name,
                     display,
                     property: member_property,
                     params,
                     returns,
+                    overloads,
                 });
             } else if member_type.is_const() {
                 let display = render_const_type(db, member_type);
