@@ -21,7 +21,7 @@ pub(crate) use crate::LuaDocument;
 pub(crate) use crate::LuaType;
 pub(crate) use crate::LuaTypeNode;
 pub(crate) use crate::member_key::LuaMemberKey;
-pub(crate) use crate::semantic_db::SemanticQueries;
+
 pub(crate) use crate::semantic_db::def::{
     ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
     SemanticId, Signature, TypeDef, TypeDefKind, TypeScope, TypeVisibility,

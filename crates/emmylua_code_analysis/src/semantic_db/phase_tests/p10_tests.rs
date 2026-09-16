@@ -61,7 +61,7 @@ fn p10_workspace_id_caches_follow_root_changes() {
     assert_eq!(db.workspace_lookup_order()[2], WorkspaceId::REMOTE);
     assert!(db.workspace_id_of(fid).is_some_and(|id| id.is_library()));
     assert_eq!(
-        db.q().module_file_of("mod"),
+        db.analysis().module_file_of("mod"),
         Some(fid),
         "module index must observe the newly registered root"
     );
@@ -314,4 +314,28 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
             .len(),
         2
     );
+}
+
+#[test]
+fn p10_apply_file_change_and_batch_api() {
+    let mut db = setup();
+    let fid = FileId::new(1);
+    let summary = db.apply_file_change(crate::semantic_db::FileChange::set_file(
+        fid,
+        Some(PathBuf::from("C:/ws/a.lua")),
+        "local a = 1".to_string(),
+    ));
+    assert_eq!(summary.updated, 1);
+    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
+
+    let uri = db.file_uri(fid).expect("uri");
+    let summary = db.apply_batch(crate::semantic_db::BatchChange {
+        files: vec![(uri, Some("local a = 2".to_string()))],
+    });
+    assert_eq!(summary.updated, 1);
+    assert!(summary.full_rebuild);
+
+    let summary = db.apply_file_change(crate::semantic_db::FileChange::remove(fid));
+    assert_eq!(summary.removed, 1);
+    assert!(db.file_data_id(fid).is_none());
 }

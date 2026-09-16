@@ -3066,20 +3066,20 @@ impl<'a> InferVm<'a> {
         let Some(tree) = self.model.syntax_tree_of(file_id) else {
             return self
                 .model
-                .q()
+                .analysis()
                 .doc_type_lua(file_id, type_syntax, generic_params);
         };
         let root = tree.get_red_root();
         let Some(node) = type_syntax.to_node_from_root(&root) else {
             return self
                 .model
-                .q()
+                .analysis()
                 .doc_type_lua(file_id, type_syntax, generic_params);
         };
         let Some(doc_ty) = LuaDocType::cast(node) else {
             return self
                 .model
-                .q()
+                .analysis()
                 .doc_type_lua(file_id, type_syntax, generic_params);
         };
 
@@ -3110,7 +3110,7 @@ impl<'a> InferVm<'a> {
             | LuaDocType::Conditional(_) => self.model.doc_type_lua_rich_in(file_id, type_syntax),
             _ => self
                 .model
-                .q()
+                .analysis()
                 .doc_type_lua(file_id, type_syntax, generic_params),
         }
     }

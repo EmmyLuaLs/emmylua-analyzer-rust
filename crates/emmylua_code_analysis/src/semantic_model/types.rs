@@ -54,7 +54,7 @@ impl<'db> SemanticModel<'db> {
         let cache_file = match decl {
             SemanticId::Decl(key) => key.file_id,
             SemanticId::Member(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
         let key = (cache_file, decl.clone());
         match self.cache.borrow().decl_type.get(&key) {
@@ -96,7 +96,9 @@ impl<'db> SemanticModel<'db> {
             // `---@type` annotations (including fun<T> structures) take priority over closure signatures;
             // when shell degrades to bare Table / Unknown, rich projection fills in object/keyof/intersection structures.
             if let Some(doc_syntax) = decl.doc_type_syntax {
-                if let Some(ty) = self.q().decl_type_lua(self.file_id, decl.id.clone())
+                if let Some(ty) = self
+                    .analysis()
+                    .decl_type_lua(self.view.file_id(), decl.id.clone())
                     && !matches!(ty, LuaType::Unknown)
                 {
                     // When required generic arguments are missing (`---@type Base`, and at least one parameter has no default),
@@ -253,15 +255,15 @@ impl<'db> SemanticModel<'db> {
         // Lazy type execution: `decl_type_lua` is keyed by the declaring file, entering only defining files, not consumer models.
         let decl_file = match decl {
             SemanticId::Decl(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
-        if decl_file != self.file_id
-            && let foreign_model = SemanticModel::new(self.db, decl_file)
+        if decl_file != self.view.file_id()
+            && let foreign_model = SemanticModel::new(self.db(), decl_file)
             && let Some(foreign_ty) = foreign_model.type_of_decl(decl)
         {
             return Some(foreign_ty);
         }
-        self.q().decl_type_lua(decl_file, decl.clone())
+        self.analysis().decl_type_lua(decl_file, decl.clone())
     }
     /// Parameter declarations may lose generic constraints in `type_of_decl`'s fallback path; re-attach them here.
     pub(crate) fn attach_param_decl_constraint(&self, decl: &SemanticId, ty: LuaType) -> LuaType {
@@ -423,9 +425,9 @@ impl<'db> SemanticModel<'db> {
             if let Some(target) = self.alias_target(&def) {
                 iter_ty = target;
             } else if let Some(syntax) = def.call_overloads.first() {
-                let overload = self
-                    .q()
-                    .doc_type_lua(def.file_id, *syntax, &def.generic_params);
+                let overload =
+                    self.analysis()
+                        .doc_type_lua(def.file_id, *syntax, &def.generic_params);
                 if !matches!(overload, LuaType::Unknown) {
                     iter_ty = overload;
                 }
@@ -495,7 +497,7 @@ impl<'db> SemanticModel<'db> {
         let callee_decl = self.resolve_name(name_expr.get_position())?;
         let decl_file = match &callee_decl {
             SemanticId::Decl(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
         let facts = self.file_facts_of(decl_file)?;
         let facts_decl = facts.decl_by_id(&callee_decl)?;
@@ -677,7 +679,7 @@ impl<'db> SemanticModel<'db> {
         let mut slots = Vec::new();
         for ret in return_list.get_return_type_list() {
             if let (_, Some(ret_type)) = ret.get_name_and_type() {
-                slots.push(self.q().doc_type_lua(
+                slots.push(self.analysis().doc_type_lua(
                     decl_file,
                     ret_type.get_syntax_id(),
                     &docs.generic_params,
@@ -729,7 +731,7 @@ impl<'db> SemanticModel<'db> {
     pub fn type_of_member(&self, member: &SemanticId) -> Option<LuaType> {
         let cache_file = match member {
             SemanticId::Member(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
         let key = (cache_file, member.clone());
         match self.cache.borrow().member_type.get(&key) {
@@ -752,10 +754,10 @@ impl<'db> SemanticModel<'db> {
         // Members are keyed by declaring file: take the file from the Member key.
         let member_file = match member {
             SemanticId::Member(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
         // Cross-file members are uniformly delegated to the member file's own model, keeping VM replay and cycle guards on the same model.
-        if member_file != self.file_id {
+        if member_file != self.view.file_id() {
             let foreign_model = self.model_for(member_file);
             return foreign_model.type_of_member(member);
         }
@@ -792,10 +794,10 @@ impl<'db> SemanticModel<'db> {
             }
         }
 
-        let shell = self.q().member_type(member_file, member.clone())?;
+        let shell = self.analysis().member_type(member_file, member.clone())?;
         let generic_names = self.member_generic_names(member_file, member);
         let ty = self
-            .q()
+            .analysis()
             .type_shell_lua_in(member_file, &shell, &generic_names);
         let ty = type_eval::expand_alias_generic(self, &ty);
         let ty = type_eval::eval_conditionals(self, &ty);
@@ -1133,10 +1135,10 @@ impl<'db> SemanticModel<'db> {
     }
     /// Whether a global name is deprecated in any workspace.
     pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
-        self.q().is_global_deprecated(name)
+        self.analysis().is_global_deprecated(name)
     }
     pub(crate) fn is_deprecated_member_name(&self, name: &str) -> bool {
-        self.q().is_deprecated_member_name(name)
+        self.analysis().is_deprecated_member_name(name)
     }
     /// Flow-sensitive type of a decl at offset (assignment-flow aware: last assignment's RHS type / declaration initial type,
     /// branching merges take unions).
@@ -1152,7 +1154,7 @@ impl<'db> SemanticModel<'db> {
                 .cache
                 .borrow()
                 .flow_decl
-                .get(&(self.file_id, decl.clone(), start))
+                .get(&(self.view.file_id(), decl.clone(), start))
                 .cloned();
             (Some(start), cached)
         } else {
@@ -1166,7 +1168,7 @@ impl<'db> SemanticModel<'db> {
             self.cache
                 .borrow_mut()
                 .flow_decl
-                .insert((self.file_id, decl.clone(), start), ty.clone());
+                .insert((self.view.file_id(), decl.clone(), start), ty.clone());
         }
         self.sanitize_global_generic_decl(decl, ty)
     }
@@ -1177,7 +1179,7 @@ impl<'db> SemanticModel<'db> {
             return ty;
         };
         let Some(decl) = self
-            .q()
+            .analysis()
             .file_facts(key.file_id)
             .and_then(|facts| facts.decl_by_id(decl))
         else {
@@ -1187,7 +1189,7 @@ impl<'db> SemanticModel<'db> {
             return ty;
         }
         let generic_names: HashSet<SmolStr> = self
-            .q()
+            .analysis()
             .signatures(key.file_id)
             .map(|sigs| {
                 sigs.iter()
@@ -1209,7 +1211,7 @@ impl<'db> SemanticModel<'db> {
     pub(crate) fn type_of_member_at_impl(&self, member: &SemanticId, offset: TextSize) -> LuaType {
         let cache_file = match member {
             SemanticId::Member(key) => key.file_id,
-            _ => self.file_id,
+            _ => self.view.file_id(),
         };
         if let Some(cached) =
             self.cache
@@ -1268,7 +1270,7 @@ impl<'db> SemanticModel<'db> {
         expr_syntax: LuaSyntaxId,
         offset: TextSize,
     ) -> LuaType {
-        let file_id = self.file_id;
+        let file_id = self.view.file_id();
         if let Some(cached) = self
             .cache
             .borrow()
@@ -1300,7 +1302,7 @@ impl<'db> SemanticModel<'db> {
         let facts = self.file_facts_of(def.file_id)?;
         let op = facts.operator_of(&def.id, op_name)?;
         let returns = self
-            .q()
+            .analysis()
             .doc_type_lua(def.file_id, op.returns, &def.generic_params);
         (!matches!(returns, LuaType::Unknown)).then_some(returns)
     }
@@ -1310,7 +1312,7 @@ impl<'db> SemanticModel<'db> {
         scope: TypeScope,
         full_name: &str,
     ) -> crate::semantic_db::TypeDefList {
-        self.q().type_defs_in_scope(scope, full_name)
+        self.analysis().type_defs_in_scope(scope, full_name)
     }
 }
 

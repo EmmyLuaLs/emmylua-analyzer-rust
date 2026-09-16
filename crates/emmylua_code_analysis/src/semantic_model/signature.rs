@@ -8,7 +8,7 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().members_of_owner.get(owner) {
             return cached.clone();
         }
-        let result = self.q().members_of_owner(owner.clone());
+        let result = self.analysis().members_of_owner(owner.clone());
         self.cache
             .borrow_mut()
             .members_of_owner
@@ -22,7 +22,7 @@ impl<'db> SemanticModel<'db> {
             return cached.clone();
         }
         let result = self
-            .q()
+            .analysis()
             .members_of_owner_named(owner.clone(), SmolStr::new(name));
         self.cache
             .borrow_mut()
@@ -35,15 +35,18 @@ impl<'db> SemanticModel<'db> {
         &self,
         type_def: &SemanticId,
     ) -> Option<ConstructorAttribute> {
-        self.q().constructor_attribute_of_type(type_def.clone())
+        self.analysis()
+            .constructor_attribute_of_type(type_def.clone())
     }
     /// A function's return type (doc annotation takes priority; otherwise scan function body returns).
     pub fn return_type(&self, closure_syntax: LuaSyntaxId) -> Option<LuaType> {
-        let shell = self.q().signature_return(self.file_id, closure_syntax)?;
+        let shell = self
+            .analysis()
+            .signature_return(self.view.file_id(), closure_syntax)?;
         let generic_names = self.signature_generic_names(closure_syntax);
         let mut ty = self
-            .q()
-            .type_shell_lua_in(self.file_id, &shell, &generic_names);
+            .analysis()
+            .type_shell_lua_in(self.view.file_id(), &shell, &generic_names);
         // `self` in method annotations is the receiver instance; concretize it by the owner type before return checks.
         if let Some(owner_ty) = self.method_owner_type(closure_syntax) {
             ty = infer::vm::replace_self_type(&ty, &owner_ty);
@@ -54,12 +57,12 @@ impl<'db> SemanticModel<'db> {
     /// Type of the `param_index`-th function parameter (`---@param` annotation + member field signature fallback).
     pub fn param_type(&self, closure_syntax: LuaSyntaxId, param_index: usize) -> Option<LuaType> {
         let shell = self
-            .q()
-            .param_type(self.file_id, closure_syntax, param_index)?;
+            .analysis()
+            .param_type(self.view.file_id(), closure_syntax, param_index)?;
         let generic_names = self.signature_generic_names(closure_syntax);
         let ty = self
-            .q()
-            .type_shell_lua_in(self.file_id, &shell, &generic_names);
+            .analysis()
+            .type_shell_lua_in(self.view.file_id(), &shell, &generic_names);
         if !matches!(ty, LuaType::Unknown) {
             return Some(ty);
         }
@@ -85,36 +88,36 @@ impl<'db> SemanticModel<'db> {
     }
     /// Type of the module's exported value.
     pub fn type_of_module_export(&self) -> Option<LuaType> {
-        let shell = self.q().module_export_type(self.file_id)?;
-        Some(self.q().type_shell_lua(self.file_id, &shell))
+        let shell = self.analysis().module_export_type(self.view.file_id())?;
+        Some(self.analysis().type_shell_lua(self.view.file_id(), &shell))
     }
     /// require module name -> module export type (cross-file, projected as `LuaType`).
     pub fn require_module_type(&self, module_name: &str) -> LuaType {
-        let Some(module_file) = self.q().module_file_of(module_name) else {
+        let Some(module_file) = self.analysis().module_file_of(module_name) else {
             return LuaType::Unknown;
         };
-        let Some(shell) = self.q().module_export_type(module_file) else {
+        let Some(shell) = self.analysis().module_export_type(module_file) else {
             return LuaType::Unknown;
         };
-        self.q().type_shell_lua(module_file, &shell)
+        self.analysis().type_shell_lua(module_file, &shell)
     }
     /// require module name -> module file id (consumed by require_module_visibility checks).
     pub fn module_file_of(&self, module_name: &str) -> Option<FileId> {
-        self.q().module_file_of(module_name)
+        self.analysis().module_file_of(module_name)
     }
     // -- Type / member association --
 
     pub fn resolve_type_def(&self, name: &str) -> Option<TypeDef> {
-        self.q().resolve_type_def(self.file_id, name)
+        self.view.resolve_type_def(name)
     }
     /// Resolves a named type in a specified file scope (used for cross-file constraint/default projection).
     pub fn resolve_type_def_in(&self, file_id: FileId, name: &str) -> Option<TypeDef> {
-        self.q().resolve_type_def(file_id, name)
+        self.analysis().resolve_type_def(file_id, name)
     }
     /// Type name string -> `LuaType` (semantic facade uniformly handles built-in and named types).
     /// Named types that are aliases expand to the alias target type.
     pub fn type_from_name(&self, name: &str) -> LuaType {
-        let ty = self.q().resolve_named(self.file_id, name);
+        let ty = self.analysis().resolve_named(self.view.file_id(), name);
         if let LuaType::Ref(id) | LuaType::Def(id) = &ty
             && let Some(def) = self.resolve_type_def(id.get_name())
             && def.kind == TypeDefKind::Alias
@@ -137,19 +140,20 @@ impl<'db> SemanticModel<'db> {
     }
     /// All definition locations of a named type (used by duplicate-type checks).
     pub fn type_def_locations(&self, name: &str) -> Vec<TypeDef> {
-        self.q().type_def_locations(self.file_id, name)
+        self.analysis()
+            .type_def_locations(self.view.file_id(), name)
     }
     pub fn member_keys_of_owner(&self, owner: &SemanticId) -> Vec<SmolStr> {
-        self.q().member_keys_of_owner(owner.clone())
+        self.analysis().member_keys_of_owner(owner.clone())
     }
     pub fn resolve_owner(&self, owner: &SemanticId) -> Option<SemanticId> {
-        self.q().resolve_owner(owner.clone())
+        self.analysis().resolve_owner(owner.clone())
     }
     pub(crate) fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
         if let Some(cached) = self.cache.borrow().resolve_owner_set.get(&owner) {
             return cached.clone();
         }
-        let result = self.q().resolve_owner_set(owner.clone());
+        let result = self.analysis().resolve_owner_set(owner.clone());
         self.cache
             .borrow_mut()
             .resolve_owner_set
@@ -157,12 +161,12 @@ impl<'db> SemanticModel<'db> {
         result
     }
     pub fn module_export(&self) -> Option<&'db ModuleExport> {
-        self.q().module_export(self.file_id)
+        self.view.module_export()
     }
     // -- Control flow --
 
     pub fn flow_tree(&self) -> Option<&'db FlowTree> {
-        self.q().flow_tree(self.file_id)
+        self.analysis().flow_tree(self.view.file_id())
     }
     // -- Convenience predicates --
 
@@ -171,7 +175,7 @@ impl<'db> SemanticModel<'db> {
         self.type_of_expr_impl(expr_syntax)
     }
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
-        let key = (self.file_id, expr_syntax);
+        let key = (self.view.file_id(), expr_syntax);
         match self.cache.borrow().expr_type.get(&key) {
             Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
             Some(cache::CacheEntry::InProgress) => return LuaType::Unknown,
@@ -235,18 +239,22 @@ impl<'db> SemanticModel<'db> {
         generic_names: &[SmolStr],
     ) -> LuaType {
         let return_shells = self
-            .q()
+            .analysis()
             .signature_returns(file_id, closure_syntax)
             .unwrap_or_default();
         let mut ret = if return_shells.len() > 1 {
             LuaType::Variadic(Arc::new(VariadicType::Multi(
                 return_shells
                     .iter()
-                    .map(|shell| self.q().type_shell_lua_in(file_id, shell, generic_names))
+                    .map(|shell| {
+                        self.analysis()
+                            .type_shell_lua_in(file_id, shell, generic_names)
+                    })
                     .collect(),
             )))
         } else if let Some(shell) = return_shells.first() {
-            self.q().type_shell_lua_in(file_id, shell, generic_names)
+            self.analysis()
+                .type_shell_lua_in(file_id, shell, generic_names)
         } else {
             LuaType::Unknown
         };
@@ -287,7 +295,7 @@ impl<'db> SemanticModel<'db> {
         let generic_params: Vec<GenericTpl> = signature
             .docs
             .as_ref()
-            .map(|docs| self.generic_tpls_with_metadata(self.file_id, &docs.generic_params))
+            .map(|docs| self.generic_tpls_with_metadata(self.view.file_id(), &docs.generic_params))
             .unwrap_or_default();
         let nullable_params: Vec<SmolStr> = signature
             .docs
@@ -335,12 +343,12 @@ impl<'db> SemanticModel<'db> {
             {
                 docs.overloads
                     .iter()
-                    .filter_map(
-                        |syntax| match self.doc_type_lua_rich_in(self.file_id, *syntax) {
+                    .filter_map(|syntax| {
+                        match self.doc_type_lua_rich_in(self.view.file_id(), *syntax) {
                             LuaType::DocFunction(fun) => Some(fun.as_ref().clone()),
                             _ => None,
-                        },
-                    )
+                        }
+                    })
                     .collect()
             } else {
                 self.expected_member_signatures_for_closure(closure_syntax)
@@ -389,8 +397,12 @@ impl<'db> SemanticModel<'db> {
             .iter()
             .map(|param| SmolStr::new(param.get_name()))
             .collect();
-        let mut ret =
-            self.signature_return_type(self.file_id, closure_syntax, signature, &generic_names);
+        let mut ret = self.signature_return_type(
+            self.view.file_id(),
+            closure_syntax,
+            signature,
+            &generic_names,
+        );
         ret = type_eval::expand_alias_generic(self, &ret);
         // Without an explicit `---@return`, keep the return type declared by the member on the owner type.
         // This keeps member docs like class field `---@field f fun(): never` effective on the implementation function's return.
@@ -564,7 +576,7 @@ impl<'db> SemanticModel<'db> {
             .members
             .iter()
             .find(|member| member.value_syntax == Some(closure_syntax))?;
-        let member_file = self.file_id;
+        let member_file = self.view.file_id();
         // 0. Inline `---@type` on a table field (`{ ---@type test A = function(a, b) ... }`) directly gives the function type.
         if let Some(doc_syntax) = member.doc_type_syntax {
             let mut doc_ty = type_eval::expand_alias_generic(
@@ -808,9 +820,12 @@ impl<'db> SemanticModel<'db> {
         let mut params = Vec::new();
         for (index, name) in signature.param_names.iter().enumerate() {
             let mut ty = self
-                .q()
+                .analysis()
                 .param_type(file_id, closure_syntax, index)
-                .map(|shell| self.q().type_shell_lua_in(file_id, &shell, &generic_names))
+                .map(|shell| {
+                    self.analysis()
+                        .type_shell_lua_in(file_id, &shell, &generic_names)
+                })
                 .filter(|ty| !matches!(ty, LuaType::Unknown))
                 .or_else(|| {
                     signature.docs.as_ref().and_then(|docs| {
@@ -831,7 +846,10 @@ impl<'db> SemanticModel<'db> {
         let mut ret =
             self.signature_return_type(file_id, closure_syntax, signature, &generic_names);
         ret = type_eval::expand_alias_generic(self, &ret);
-        if matches!(ret, LuaType::Unknown) && signature.docs.is_none() && file_id == self.file_id {
+        if matches!(ret, LuaType::Unknown)
+            && signature.docs.is_none()
+            && file_id == self.view.file_id()
+        {
             let inferred = infer::closure_return_lua(self, closure_syntax);
             if !matches!(inferred, LuaType::Unknown | LuaType::Any) {
                 ret = inferred;

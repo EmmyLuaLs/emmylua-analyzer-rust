@@ -3,65 +3,62 @@ use super::prelude::*;
 impl<'db> SemanticModel<'db> {
     /// Currently configured runtime version (used for `---@version` visibility checks).
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
-        self.db.lua_version()
+        self.db().lua_version()
     }
     /// A model for any file on the same analysis database.
     pub fn model_for(&self, file_id: FileId) -> Self {
-        SemanticModel::new(self.db, file_id)
+        SemanticModel::new(self.db(), file_id)
     }
     pub fn file_id(&self) -> FileId {
-        self.file_id
+        self.view.file_id()
     }
     pub fn file_path(&self) -> Option<std::path::PathBuf> {
-        self.db.file_path(self.file_id)
+        self.db().file_path(self.view.file_id())
     }
     pub fn document(&self, file_id: FileId) -> Option<LuaDocument<'db>> {
-        self.db.document(file_id)
+        self.db().document(file_id)
     }
     pub fn document_current(&self) -> Option<LuaDocument<'db>> {
-        self.document(self.file_id)
+        self.document(self.view.file_id())
     }
     pub fn strict_array_index(&self) -> bool {
-        self.db.strict_array_index()
+        self.db().strict_array_index()
     }
     pub fn file_ids(&self) -> Vec<FileId> {
-        self.db.file_ids()
+        self.db().file_ids()
     }
     pub fn main_workspace_file_ids(&self) -> Vec<FileId> {
-        self.db.main_workspace_file_ids()
+        self.db().main_workspace_file_ids()
     }
     pub fn file_path_of(&self, file_id: FileId) -> Option<std::path::PathBuf> {
-        self.db.file_path(file_id)
+        self.db().file_path(file_id)
     }
     pub fn file_uri_of(&self, file_id: FileId) -> Option<lsp_types::Uri> {
-        self.db.file_uri(file_id)
+        self.db().file_uri(file_id)
     }
     pub fn module_name_of(&self, file_id: FileId) -> Option<String> {
-        self.db.module_name_of(file_id)
+        self.db().module_name_of(file_id)
     }
     pub fn workspace_id_of(&self, file_id: FileId) -> Option<WorkspaceId> {
-        self.db.workspace_id_of(file_id)
+        self.db().workspace_id_of(file_id)
     }
     pub fn is_std_file(&self, file_id: FileId) -> bool {
-        self.db.is_std_file(file_id)
+        self.db().is_std_file(file_id)
     }
     pub fn is_main_file(&self, file_id: FileId) -> bool {
-        self.db.is_main_file(file_id)
-    }
-    pub(crate) fn q(&self) -> SemanticQueries<'db> {
-        SemanticQueries::new(self.db)
+        self.db().is_main_file(file_id)
     }
     // -- File / syntax --
 
     pub fn syntax_tree(&self) -> Option<&'db LuaSyntaxTree> {
-        self.q().syntax_tree(self.file_id)
+        self.view.syntax_tree()
     }
     /// Syntax tree of any file (used to locate cross-file doc type nodes).
     pub fn syntax_tree_of(&self, file_id: FileId) -> Option<&'db LuaSyntaxTree> {
-        self.q().syntax_tree(file_id)
+        self.analysis().syntax_tree(file_id)
     }
     pub fn chunk(&self) -> Option<LuaChunk> {
-        self.q().chunk(self.file_id)
+        self.view.chunk()
     }
     /// Innermost closure containing `offset`, found by walking token ancestors.
     pub(crate) fn enclosing_closure_at(&self, offset: TextSize) -> Option<LuaClosureExpr> {
@@ -75,57 +72,57 @@ impl<'db> SemanticModel<'db> {
         token.parent_ancestors().find_map(LuaClosureExpr::cast)
     }
     pub fn parse_errors(&self) -> Option<Vec<LuaParseError>> {
-        self.q().parse_errors(self.file_id)
+        self.view.parse_errors()
     }
     /// Whether the doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).
     pub fn is_known_doc_tag(&self, name: &str) -> bool {
-        self.q().is_known_doc_tag(self.file_id, name)
+        self.analysis().is_known_doc_tag(self.view.file_id(), name)
     }
     // -- Facts --
 
     /// Per-file facts arena (decls/scopes/members/... + `---@diagnostic` annotations).
     pub fn file_facts(&self) -> Option<&'db FileFacts> {
-        self.q().file_facts(self.file_id)
+        self.view.file_facts()
     }
     /// Cross-file facts (member flags from members_of_owner results, etc.).
     pub fn file_facts_of(&self, file_id: FileId) -> Option<&'db FileFacts> {
-        self.q().file_facts(file_id)
+        self.analysis().file_facts(file_id)
     }
     /// Exported facts for a file (types/globals/runtime_values/members/module identity layer).
     /// Cross-file consumption entry: computed only on the defining file's facts, never entering the defining file's function bodies.
     pub fn file_exports(&self, file_id: FileId) -> Option<&'db FileExports> {
-        self.q().file_exports(file_id)
+        self.analysis().file_exports(file_id)
     }
     /// Exported facts for the current file.
     pub fn file_exports_current(&self) -> Option<&'db FileExports> {
-        self.file_exports(self.file_id)
+        self.file_exports(self.view.file_id())
     }
     pub fn decls(&self) -> Option<&'db [Decl]> {
-        self.q().decls(self.file_id)
+        self.view.decls()
     }
     pub fn scopes(&self) -> Option<&'db [Scope]> {
-        self.q().scopes(self.file_id)
+        self.view.scopes()
     }
     pub fn members(&self) -> Option<&'db [Member]> {
-        self.q().members(self.file_id)
+        self.view.members()
     }
     pub fn signatures(&self) -> Option<&'db [Signature]> {
-        self.q().signatures(self.file_id)
+        self.view.signatures()
     }
     pub fn name_uses(&self) -> Option<&'db [NameUse]> {
-        self.q().name_uses(self.file_id)
+        self.view.name_uses()
     }
     pub fn decl_by_offset(&self, offset: TextSize) -> Option<SemanticId> {
-        self.q().decl_by_offset(self.file_id, offset)
+        self.view.decl_by_offset(offset)
     }
     // -- Names / references --
 
     pub fn resolve_name(&self, offset: TextSize) -> Option<SemanticId> {
-        let key = (self.file_id, offset);
+        let key = (self.view.file_id(), offset);
         if let Some(cached) = self.cache.borrow().resolve_name.get(&key) {
             return cached.clone();
         }
-        let result = self.q().resolve_name(self.file_id, offset);
+        let result = self.view.resolve_name(offset);
         self.cache
             .borrow_mut()
             .resolve_name
@@ -146,19 +143,20 @@ impl<'db> SemanticModel<'db> {
     }
     /// Workspace global declaration (cross-file). The `Decl` key carries the declaring file.
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
-        self.q().global_decl(name)
+        self.analysis().global_decl(name)
     }
     /// Same-workspace global declarations with this name (overload candidates).
     pub fn global_decls_named_for_file(&self, file_id: FileId, name: &str) -> Vec<SemanticId> {
-        self.q().global_decls_named_for_file(file_id, name)
+        self.analysis().global_decls_named_for_file(file_id, name)
     }
 
     /// First non-empty workspace's global declarations with this name.
     pub fn global_decls_named_primary(&self, name: &str) -> Vec<SemanticId> {
-        self.q().global_decls_named_primary(name)
+        self.analysis().global_decls_named_primary(name)
     }
     pub fn decl_references(&self, decl: &SemanticId) -> Vec<LuaSyntaxId> {
-        self.q().decl_references(self.file_id, decl.clone())
+        self.analysis()
+            .decl_references(self.view.file_id(), decl.clone())
     }
     /// Syntax location -> semantic declaration (mirrors old `find_decl`; M0 supports Decl / Member / TypeDef):
     /// Definition name -> declaration name hit -> index member key -> doc name type -> name use point.
@@ -391,13 +389,13 @@ impl<'db> SemanticModel<'db> {
             return match member.visibility {
                 VisibilityKind::Public | VisibilityKind::Internal => true,
                 VisibilityKind::Package | VisibilityKind::Private | VisibilityKind::Protected => {
-                    decl_file == self.file_id
+                    decl_file == self.view.file_id()
                 }
             };
         }
         // Type definitions: File scope (@private) is visible only in the same file.
         if let SemanticId::TypeDef(_) = decl {
-            return decl_file == self.file_id;
+            return decl_file == self.view.file_id();
         }
         true
     }
@@ -589,7 +587,7 @@ impl<'db> SemanticModel<'db> {
 
     pub(crate) fn callable_candidates_cached(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
         let syntax = callee.get_syntax_id();
-        let file_id = self.file_id;
+        let file_id = self.view.file_id();
         if let Some(cached) = self
             .cache
             .borrow()
@@ -608,7 +606,7 @@ impl<'db> SemanticModel<'db> {
     }
     pub(crate) fn call_site_analysis(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
         let syntax = call_expr.get_syntax_id();
-        let file_id = self.file_id;
+        let file_id = self.view.file_id();
         if let Some(cached) = self.cache.borrow().call_site.get(&(file_id, syntax)) {
             return cached.clone();
         }
@@ -677,7 +675,7 @@ impl<'db> SemanticModel<'db> {
         call_expr: &LuaCallExpr,
     ) -> Vec<(LuaFunctionType, infer::unify::TplBindings)> {
         let syntax = call_expr.get_syntax_id();
-        let file_id = self.file_id;
+        let file_id = self.view.file_id();
         if let Some(cached) = self
             .cache
             .borrow()
@@ -704,7 +702,7 @@ impl<'db> SemanticModel<'db> {
     }
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let syntax = index_expr.get_syntax_id();
-        let file_id = self.file_id;
+        let file_id = self.view.file_id();
         if let Some(cached) = self.cache.borrow().resolve_member.get(&(file_id, syntax)) {
             return cached.clone();
         }
@@ -717,8 +715,8 @@ impl<'db> SemanticModel<'db> {
     }
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let (owner, name) = self
-            .q()
-            .member_ref_of_index(self.file_id, index_expr.get_syntax_id())?;
+            .analysis()
+            .member_ref_of_index(self.view.file_id(), index_expr.get_syntax_id())?;
 
         // 1. Same-file members (owner key). Members with explicit `---@type` take priority over purely inferred runtime members;
         // if only runtime members exist and the prefix type is a named type with a same-named `@field`, skip this step --
@@ -742,7 +740,7 @@ impl<'db> SemanticModel<'db> {
                 if let Some(member_id) = member_id {
                     return Some(self.resolved_member(
                         Some(member_id),
-                        Some(self.file_id),
+                        Some(self.view.file_id()),
                         owner,
                         name,
                     ));
@@ -759,7 +757,12 @@ impl<'db> SemanticModel<'db> {
                 .field_members_of_type(&def.id, &name)
                 .map(|member| member.id.clone())
         {
-            return Some(self.resolved_member(Some(member_id), Some(self.file_id), owner, name));
+            return Some(self.resolved_member(
+                Some(member_id),
+                Some(self.view.file_id()),
+                owner,
+                name,
+            ));
         }
 
         // Compute the prefix type once for the remaining slow-path stages. `resolve_member`
@@ -789,7 +792,7 @@ impl<'db> SemanticModel<'db> {
                 // `function Game:add()`); enums/aliases only look at the `@field` surface to avoid
                 // treating fields in enum implementations as valid members.
                 let owners = if def.kind == TypeDefKind::Class {
-                    self.q().resolve_owner_set(def.id.clone())
+                    self.analysis().resolve_owner_set(def.id.clone())
                 } else {
                     vec![def.id.clone()]
                 };
@@ -930,8 +933,8 @@ impl<'db> SemanticModel<'db> {
         // P5b: candidate owners come from deterministic canonical owner
         // resolution instead of ad-hoc type/global/alias heuristics.
         let mut cross_owners: Vec<SemanticId> = Vec::new();
-        for owner_id in self.q().resolve_owner_ids(&owner) {
-            if let Some(raw) = self.q().owner_id_to_semantic_id(&owner_id)
+        for owner_id in self.analysis().resolve_owner_ids(&owner) {
+            if let Some(raw) = self.analysis().owner_id_to_semantic_id(&owner_id)
                 && !cross_owners.contains(&raw)
             {
                 cross_owners.push(raw);

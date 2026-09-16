@@ -48,10 +48,10 @@ fn p4_new_file_does_not_full_rebuild() {
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
     assert!(matches!(
-        db.q().global_decl("M"),
+        db.analysis().global_decl("M"),
         Some(crate::SemanticId::Decl(_))
     ));
-    assert_eq!(db.q().module_file_of("b"), Some(fid));
+    assert_eq!(db.analysis().module_file_of("b"), Some(fid));
 }
 
 #[test]
@@ -67,8 +67,8 @@ fn p4_remove_file_does_not_full_rebuild() {
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
-    assert!(db.q().global_decl("M").is_none());
-    assert!(db.q().module_file_of("b").is_none());
+    assert!(db.analysis().global_decl("M").is_none());
+    assert!(db.analysis().module_file_of("b").is_none());
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn p4_new_file_refreshes_dependent_references() {
 fn p4_path_change_does_not_full_rebuild() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/old.lua", "return {}");
-    assert_eq!(db.q().module_file_of("old"), Some(fid));
+    assert_eq!(db.analysis().module_file_of("old"), Some(fid));
 
     db.rebuild_metrics.reset();
     set_test_file(&mut db, 1, "C:/ws/new.lua", "return {}");
@@ -100,8 +100,8 @@ fn p4_path_change_does_not_full_rebuild() {
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
-    assert!(db.q().module_file_of("old").is_none());
-    assert_eq!(db.q().module_file_of("new"), Some(fid));
+    assert!(db.analysis().module_file_of("old").is_none());
+    assert_eq!(db.analysis().module_file_of("new"), Some(fid));
 
     // Workspace id stays stable for the same FileId.
     assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));

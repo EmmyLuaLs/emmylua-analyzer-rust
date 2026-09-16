@@ -1,7 +1,7 @@
 //! Query facade — crate-internal API for semantic_db.
 //!
 //! The public contract is only through `semantic_model::SemanticModel` (the sole public entry);
-//! this facade (`SemanticQueries`) is an implementation detail of SemanticModel and stays within the crate.
+//! this facade (`AnalysisView`) is an implementation detail of SemanticModel and stays within the crate.
 
 use std::sync::Arc;
 
@@ -134,13 +134,77 @@ impl IntoIterator for TypeDefList {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct SemanticQueries<'db> {
+pub(crate) struct AnalysisView<'db> {
     db: &'db SemanticDatabase,
 }
 
-impl<'db> SemanticQueries<'db> {
+/// File-scoped read view: AnalysisView + current FileId.
+#[derive(Clone, Copy)]
+pub(crate) struct FileView<'db> {
+    analysis: AnalysisView<'db>,
+    file_id: FileId,
+}
+impl<'db> FileView<'db> {
+    pub(crate) fn file_id(&self) -> FileId {
+        self.file_id
+    }
+    pub(crate) fn analysis(&self) -> AnalysisView<'db> {
+        self.analysis
+    }
+    pub(crate) fn db(&self) -> &'db SemanticDatabase {
+        self.analysis.db
+    }
+
+    pub(crate) fn file_facts(&self) -> Option<&'db FileFacts> {
+        self.analysis.file_facts(self.file_id)
+    }
+    pub(crate) fn syntax_tree(&self) -> Option<&'db LuaSyntaxTree> {
+        self.analysis.syntax_tree(self.file_id)
+    }
+    pub(crate) fn chunk(&self) -> Option<LuaChunk> {
+        self.analysis.chunk(self.file_id)
+    }
+    pub(crate) fn parse_errors(&self) -> Option<Vec<LuaParseError>> {
+        self.analysis.parse_errors(self.file_id)
+    }
+    pub(crate) fn decls(&self) -> Option<&'db [Decl]> {
+        self.analysis.decls(self.file_id)
+    }
+    pub(crate) fn scopes(&self) -> Option<&'db [Scope]> {
+        self.analysis.scopes(self.file_id)
+    }
+    pub(crate) fn members(&self) -> Option<&'db [Member]> {
+        self.analysis.members(self.file_id)
+    }
+    pub(crate) fn signatures(&self) -> Option<&'db [Signature]> {
+        self.analysis.signatures(self.file_id)
+    }
+    pub(crate) fn name_uses(&self) -> Option<&'db [NameUse]> {
+        self.analysis.name_uses(self.file_id)
+    }
+    pub(crate) fn decl_by_offset(&self, offset: TextSize) -> Option<SemanticId> {
+        self.analysis.decl_by_offset(self.file_id, offset)
+    }
+    pub(crate) fn resolve_name(&self, offset: TextSize) -> Option<SemanticId> {
+        self.analysis.resolve_name(self.file_id, offset)
+    }
+    pub(crate) fn resolve_type_def(&self, name: &str) -> Option<TypeDef> {
+        self.analysis.resolve_type_def(self.file_id, name)
+    }
+    pub(crate) fn module_export(&self) -> Option<&'db ModuleExport> {
+        self.analysis.module_export(self.file_id)
+    }
+}
+impl<'db> AnalysisView<'db> {
     pub fn new(db: &'db SemanticDatabase) -> Self {
         Self { db }
+    }
+
+    pub(crate) fn file(&self, file_id: FileId) -> FileView<'db> {
+        FileView {
+            analysis: *self,
+            file_id,
+        }
     }
 
     // ── Files / Syntax ──
@@ -203,12 +267,12 @@ impl<'db> SemanticQueries<'db> {
             Some(errors)
         }
     }
-
     /// Per-file control-flow graph (CFG, for flow-sensitive analysis).
     pub fn flow_tree(&self, file_id: FileId) -> Option<&'db super::flow::FlowTree> {
         let (file, _config) = file_and_config(self.db, file_id)?;
         Some(super::flow::flow_tree_of(self.db, file))
     }
+
 
     // ── Declarations ──
 

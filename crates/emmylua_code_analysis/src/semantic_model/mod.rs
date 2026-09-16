@@ -21,8 +21,8 @@ use std::cell::{Ref, RefCell, RefMut};
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use smol_str::SmolStr;
 
-use crate::semantic_db::SemanticDatabase;
 use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::{AnalysisView, FileView, SemanticDatabase};
 use crate::{FileId, LuaFunctionType, LuaType};
 
 /// Lazily allocated per-model local query cache.
@@ -94,8 +94,8 @@ impl<T> LazySet<T> {
 
 /// Semantic model: a per-file access handle, only through the semantic analysis layer.
 pub struct SemanticModel<'db> {
-    db: &'db SemanticDatabase,
-    file_id: FileId,
+    view: FileView<'db>,
+
     /// Per-model local query cache. Recursion-in-progress state is stored in
     /// cache entries, so no separate O(n) guard stacks are needed.
     cache: LazyCache,
@@ -158,11 +158,17 @@ pub(crate) struct CallSiteAnalysis {
 impl<'db> SemanticModel<'db> {
     pub fn new(db: &'db SemanticDatabase, file_id: FileId) -> Self {
         Self {
-            db,
-            file_id,
+            view: AnalysisView::new(db).file(file_id),
             cache: LazyCache::default(),
             closure_return_in_progress: LazySet::default(),
         }
+    }
+
+    pub(crate) fn db(&self) -> &'db SemanticDatabase {
+        self.view.db()
+    }
+    pub(crate) fn analysis(&self) -> AnalysisView<'db> {
+        self.view.analysis()
     }
 
     pub(crate) fn is_closure_return_in_progress(&self, closure_syntax: LuaSyntaxId) -> bool {

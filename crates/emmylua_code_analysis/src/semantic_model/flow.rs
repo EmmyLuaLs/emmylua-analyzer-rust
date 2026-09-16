@@ -2341,13 +2341,17 @@ fn call_signature_return(
     call: &emmylua_parser::LuaCallExpr,
 ) -> Option<LuaType> {
     let (file_id, closure_syntax, signature) = call_signature(model, call)?;
-    let shell = model.q().signature_return(file_id, closure_syntax)?;
+    let shell = model.analysis().signature_return(file_id, closure_syntax)?;
     let generic_names: Vec<smol_str::SmolStr> = signature
         .docs
         .as_ref()
         .map(|docs| docs.generic_params.iter().map(|p| p.name.clone()).collect())
         .unwrap_or_default();
-    Some(model.q().type_shell_lua_in(file_id, &shell, &generic_names))
+    Some(
+        model
+            .analysis()
+            .type_shell_lua_in(file_id, &shell, &generic_names),
+    )
 }
 
 /// Correlated return_overload narrowing: the condition references a discriminant variable from the same multi-return call source.

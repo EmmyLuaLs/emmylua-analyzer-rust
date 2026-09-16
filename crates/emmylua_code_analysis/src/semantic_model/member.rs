@@ -1132,7 +1132,11 @@ pub(crate) fn type_def_of(model: &SemanticModel, decl_id: &LuaTypeDeclId) -> Opt
             (TypeScope::File(FileId::new(file_id.id)), name.as_str())
         }
     };
-    model.q().type_defs_in_scope(scope, name).into_iter().next()
+    model
+        .analysis()
+        .type_defs_in_scope(scope, name)
+        .into_iter()
+        .next()
 }
 
 /// `def::LuaMemberKey` → value-domain `LuaMemberKey` (already unified; passed through directly).

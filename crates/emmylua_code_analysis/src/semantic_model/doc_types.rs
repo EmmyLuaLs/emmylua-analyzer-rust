@@ -16,7 +16,7 @@ impl<'db> SemanticModel<'db> {
     pub(crate) fn alias_target_uncached(&self, def: &TypeDef) -> Option<LuaType> {
         let syntax = def.alias_type?;
         let mut ty = self
-            .q()
+            .analysis()
             .doc_type_lua(def.file_id, syntax, &def.generic_params);
         if matches!(ty, LuaType::Table | LuaType::Unknown) {
             let rich = self.doc_type_lua_rich_in(def.file_id, syntax);
@@ -89,7 +89,7 @@ impl<'db> SemanticModel<'db> {
     }
     /// Doc type node (by syntax location, in this file) -> projected `LuaType` (consumed by checkers such as cast).
     pub fn doc_type_lua(&self, type_syntax: LuaSyntaxId) -> LuaType {
-        self.doc_type_lua_in(self.file_id, type_syntax, &[])
+        self.doc_type_lua_in(self.view.file_id(), type_syntax, &[])
     }
     /// Doc type projection for a specified file + generic context (unified entry point).
     pub fn doc_type_lua_in(
@@ -98,7 +98,7 @@ impl<'db> SemanticModel<'db> {
         type_syntax: LuaSyntaxId,
         generics: &[DocGenericParam],
     ) -> LuaType {
-        self.q().doc_type_lua(file_id, type_syntax, generics)
+        self.analysis().doc_type_lua(file_id, type_syntax, generics)
     }
     /// Builds `GenericTpl` with full metadata (constraint/default/is_const) from `DocGenericParam`.
     /// All signature projection paths go through here so constraints/defaults are not lost at different call sites.
@@ -112,7 +112,7 @@ impl<'db> SemanticModel<'db> {
             .enumerate()
             .map(|(index, param)| {
                 let constraint = param.constraint.map(|syntax| {
-                    let ty = self.q().doc_type_lua(file_id, syntax, params);
+                    let ty = self.analysis().doc_type_lua(file_id, syntax, params);
                     if matches!(ty, LuaType::Unknown | LuaType::Table) {
                         let rich = self.doc_type_lua_rich_in(file_id, syntax);
                         if !matches!(rich, LuaType::Unknown) {
@@ -141,25 +141,25 @@ impl<'db> SemanticModel<'db> {
     /// When projection fails, supplement object / intersection / union structures from the AST
     /// (the `TypeShell` layer does not yet support `{ y: integer } & { z: string }`).
     pub fn doc_type_lua_rich(&self, type_syntax: LuaSyntaxId) -> LuaType {
-        self.doc_type_lua_rich_in(self.file_id, type_syntax)
+        self.doc_type_lua_rich_in(self.view.file_id(), type_syntax)
     }
     /// Rich projection for any file (used by cross-file signature doc parameters).
     pub fn doc_type_lua_rich_in(&self, file_id: FileId, type_syntax: LuaSyntaxId) -> LuaType {
         let Some(tree) = self.syntax_tree_of(file_id) else {
-            return self.q().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
         };
         let Some(node) = type_syntax.to_node_from_root(&tree.get_red_root()) else {
-            return self.q().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
         };
         let Some(doc_ty) = LuaDocType::cast(node) else {
-            return self.q().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
         };
         match doc_ty {
             LuaDocType::Func(_) => {
                 if let Some(fun) = infer::infer_doc_func(self, file_id, type_syntax) {
                     LuaType::DocFunction(Arc::new(fun))
                 } else {
-                    self.q().doc_type_lua(file_id, type_syntax, &[])
+                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
                 }
             }
             LuaDocType::Conditional(conditional) => {
@@ -291,7 +291,7 @@ impl<'db> SemanticModel<'db> {
             }
             LuaDocType::Binary(binary) => {
                 let Some((left, right)) = binary.get_types() else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let left_ty = self.doc_type_lua_rich_in(file_id, left.get_syntax_id());
                 let right_ty = self.doc_type_lua_rich_in(file_id, right.get_syntax_id());
@@ -311,7 +311,7 @@ impl<'db> SemanticModel<'db> {
                         }
                         LuaType::Union(Arc::new(LuaUnionType::from_vec(types)))
                     }
-                    _ => self.q().doc_type_lua(file_id, type_syntax, &[]),
+                    _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
                 }
             }
             LuaDocType::Literal(literal) => match literal.get_literal() {
@@ -328,26 +328,26 @@ impl<'db> SemanticModel<'db> {
                     LuaType::BooleanConst(bool_token.is_true())
                 }
                 Some(LuaLiteralToken::Nil(_)) => LuaType::Nil,
-                _ => self.q().doc_type_lua(file_id, type_syntax, &[]),
+                _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
             },
             LuaDocType::Unary(unary) => {
                 if !unary
                     .get_op_token()
                     .is_some_and(|op| op.get_op() == LuaTypeUnaryOperator::Keyof)
                 {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 }
                 let Some(target) = unary.get_type() else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let LuaDocType::Name(name_ty) = &target else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let Some(name) = name_ty.get_name_text() else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let Some(def) = self.resolve_type_def_in(file_id, &name) else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let members: Vec<LuaType> = self
                     .members_of_owner(&def.id)
@@ -355,7 +355,7 @@ impl<'db> SemanticModel<'db> {
                     .map(|member| LuaType::StringConst(SmolStr::new(member.name.as_str()).into()))
                     .collect();
                 if members.is_empty() {
-                    self.q().doc_type_lua(file_id, type_syntax, &[])
+                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
                 } else {
                     LuaType::Union(Arc::new(LuaUnionType::from_vec(members)))
                 }
@@ -376,7 +376,7 @@ impl<'db> SemanticModel<'db> {
                     }
                 }
                 if types.is_empty() {
-                    self.q().doc_type_lua(file_id, type_syntax, &[])
+                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
                 } else {
                     LuaType::Union(Arc::new(LuaUnionType::from_vec(types)))
                 }
@@ -388,17 +388,17 @@ impl<'db> SemanticModel<'db> {
                     // Rich projection without generic context projects the T in `T...` as `Ref("T")`,
                     // leaving it to the shell layer to handle the original context so the variadic base type keeps TplRef.
                     if matches!(base, LuaType::Unknown | LuaType::Ref(_) | LuaType::Def(_)) {
-                        self.q().doc_type_lua(file_id, type_syntax, &[])
+                        self.analysis().doc_type_lua(file_id, type_syntax, &[])
                     } else {
                         LuaType::Variadic(VariadicType::Base(base).into())
                     }
                 })
-                .unwrap_or_else(|| self.q().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
             LuaDocType::Generic(generic) => {
                 let Some(name) = generic.get_name_type().and_then(|n| n.get_name_text()) else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
-                let base_id = self.q().resolve_named_id(file_id, &name);
+                let base_id = self.analysis().resolve_named_id(file_id, &name);
                 let params: Vec<LuaType> = generic
                     .get_generic_types()
                     .map(|list| {
@@ -409,7 +409,7 @@ impl<'db> SemanticModel<'db> {
                     .unwrap_or_default();
                 LuaType::Generic(Arc::new(crate::LuaGenericType::new(base_id, params)))
             }
-            _ => self.q().doc_type_lua(file_id, type_syntax, &[]),
+            _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
         }
     }
     /// Projects `---@alias X<T> T extends Pattern and True or False` to `LuaType::Conditional`.
@@ -499,7 +499,7 @@ impl<'db> SemanticModel<'db> {
             }
             LuaDocType::Binary(binary) => {
                 let Some((left, right)) = binary.get_types() else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let left_ty = self.doc_type_lua_rich_scoped(file_id, left.get_syntax_id(), state);
                 let right_ty = self.doc_type_lua_rich_scoped(file_id, right.get_syntax_id(), state);
@@ -522,7 +522,7 @@ impl<'db> SemanticModel<'db> {
                     Some(LuaTypeBinaryOperator::Extends) => LuaType::Call(Arc::new(
                         LuaAliasCallType::new(LuaAliasCallKind::Extends, vec![left_ty, right_ty]),
                     )),
-                    _ => self.q().doc_type_lua(file_id, type_syntax, &[]),
+                    _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
                 }
             }
             LuaDocType::Object(object) => {
@@ -654,17 +654,17 @@ impl<'db> SemanticModel<'db> {
                 .map(|inner| {
                     let base = self.doc_type_lua_rich_scoped(file_id, inner.get_syntax_id(), state);
                     if matches!(base, LuaType::Unknown | LuaType::Ref(_) | LuaType::Def(_)) {
-                        self.q().doc_type_lua(file_id, type_syntax, &[])
+                        self.analysis().doc_type_lua(file_id, type_syntax, &[])
                     } else {
                         LuaType::Variadic(VariadicType::Base(base).into())
                     }
                 })
-                .unwrap_or_else(|| self.q().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
             LuaDocType::Generic(generic) => {
                 let Some(name) = generic.get_name_type().and_then(|n| n.get_name_text()) else {
-                    return self.q().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
-                let base_id = self.q().resolve_named_id(file_id, &name);
+                let base_id = self.analysis().resolve_named_id(file_id, &name);
                 let params: Vec<LuaType> = generic
                     .get_generic_types()
                     .map(|list| {
@@ -684,7 +684,7 @@ impl<'db> SemanticModel<'db> {
                         self.doc_type_lua_rich_scoped(file_id, base.get_syntax_id(), state),
                     )))
                 })
-                .unwrap_or_else(|| self.q().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
             LuaDocType::Tuple(tuple) => {
                 let types: Vec<LuaType> = tuple
                     .get_types()

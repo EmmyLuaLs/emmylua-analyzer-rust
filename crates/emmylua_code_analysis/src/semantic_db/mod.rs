@@ -14,6 +14,7 @@ pub(crate) mod query;
 #[cfg(test)]
 mod tests;
 pub(crate) mod types;
+pub(crate) mod update;
 
 use hashbrown::{HashMap, HashSet};
 use std::fmt;
@@ -31,8 +32,9 @@ use crate::{
 pub use def::*;
 use inputs::{WorkspaceRoot, language_level_to_version};
 
-pub(crate) use facade::SemanticQueries;
+pub(crate) use facade::{AnalysisView, FileView};
 pub use facade::{MemberList, TypeDefList};
+pub use update::{BatchChange, FileChange, UpdateSummary};
 
 pub(crate) struct FileCache {
     facts: facts::FileFacts,
@@ -270,13 +272,13 @@ impl SemanticDatabase {
     pub(crate) fn file_facts_of(&self, file_id: FileId) -> Option<&facts::FileFacts> {
         self.file_cache(file_id).map(|cache| &cache.facts)
     }
-
     pub(crate) fn flow_tree_of(&self, file_id: FileId) -> &flow::FlowTree {
         &self
             .file_cache(file_id)
             .expect("flow tree must be built before read")
             .flow
     }
+
 
     pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExportContribution {
         self.file_cache(file_id)
@@ -394,7 +396,7 @@ impl SemanticDatabase {
     /// All reads are pure map lookups after this; writes are the only place where
     /// caches are populated.
     fn rebuild_all_caches(&mut self) {
-        query::rebuild_all_caches(self);
+        update::rebuild_all_caches(self);
     }
 
     fn rebuild_file_after_write(
@@ -403,7 +405,7 @@ impl SemanticDatabase {
         old_workspace: Option<WorkspaceId>,
         metadata_changed: bool,
     ) {
-        query::rebuild_file_after_write(self, file_id, old_workspace, metadata_changed);
+        update::rebuild_file_after_write(self, file_id, old_workspace, metadata_changed);
     }
 
     fn rebuild_file_after_remove(
@@ -413,7 +415,13 @@ impl SemanticDatabase {
         old_exports: Option<Arc<exports::FileExportContribution>>,
         old_references: Option<Arc<query::FileReferences>>,
     ) {
-        query::rebuild_file_after_remove(self, file_id, old_workspace, old_exports, old_references);
+        update::rebuild_file_after_remove(
+            self,
+            file_id,
+            old_workspace,
+            old_exports,
+            old_references,
+        );
     }
 
     fn reset_file_facts_cache(&mut self) {
@@ -826,7 +834,7 @@ impl SemanticDatabase {
 
     /// Module name → module file (for require resolution and handlers such as document_link).
     pub fn module_file_of(&self, module_name: &str) -> Option<FileId> {
-        self.q().module_file_of(module_name)
+        self.analysis().module_file_of(module_name)
     }
 
     // ── Reference index ──
@@ -900,8 +908,8 @@ impl SemanticDatabase {
         let ws_id = query::file_workspace_id(self, file_id).unwrap_or(WorkspaceId::REMOTE);
         let index = query::workspace_module_index_for(self, ws_id);
         let mut info = index.module_info(file_id)?;
-        if let Some(shell) = self.q().module_export_type(file_id) {
-            info.export_type = Some(self.q().type_shell_lua(file_id, &shell));
+        if let Some(shell) = self.analysis().module_export_type(file_id) {
+            info.export_type = Some(self.analysis().type_shell_lua(file_id, &shell));
         }
         Some(info)
     }
@@ -956,7 +964,7 @@ impl SemanticDatabase {
     }
 
     /// Query facade (crate-internal: used by semantic_model and tests).
-    pub(crate) fn q(&self) -> SemanticQueries<'_> {
-        SemanticQueries::new(self)
+    pub(crate) fn analysis(&self) -> AnalysisView<'_> {
+        AnalysisView::new(self)
     }
 }

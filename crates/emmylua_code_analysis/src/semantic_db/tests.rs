@@ -51,7 +51,7 @@ fn test_file_facts_extracts_decls_and_scopes() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1\nlocal b = 2");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     assert_eq!(facts.decls.len(), 2);
     assert_eq!(facts.decls[0].name, "a");
     assert_eq!(facts.decls[1].name, "b");
@@ -63,7 +63,7 @@ fn test_file_facts_extracts_decls_and_scopes() {
 fn test_file_facts_cache_invalidates_on_text_and_metadata_update() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
-    assert_eq!(db.q().file_facts(fid).expect("facts").decls.len(), 1);
+    assert_eq!(db.analysis().file_facts(fid).expect("facts").decls.len(), 1);
 
     // Pure text update reuses the VFS state but must still invalidate per-file facts.
     set_test_file(
@@ -73,13 +73,19 @@ fn test_file_facts_cache_invalidates_on_text_and_metadata_update() {
         "local a = 1
 local b = 2",
     );
-    let facts = db.q().file_facts(fid).expect("facts after text update");
+    let facts = db
+        .analysis()
+        .file_facts(fid)
+        .expect("facts after text update");
     assert_eq!(facts.decls.len(), 2);
     assert!(facts.decls.iter().any(|decl| decl.name == "b"));
 
     // Path/metadata update publishes a new VFS state and also replaces the facts cell.
     set_test_file(&mut db, 1, "C:/ws/b.lua", "local c = 3");
-    let facts = db.q().file_facts(fid).expect("facts after metadata update");
+    let facts = db
+        .analysis()
+        .file_facts(fid)
+        .expect("facts after metadata update");
     assert_eq!(facts.decls.len(), 1);
     assert!(facts.decls.iter().any(|decl| decl.name == "c"));
 }
@@ -89,10 +95,10 @@ fn test_decl_type_from_literal_initializer() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("type"),
+        &db.analysis().decl_type(fid, a).expect("type"),
         PrimitiveType::Number,
     );
 }
@@ -102,10 +108,10 @@ fn test_decl_type_name_resolution_chain() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1\nlocal y = x");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
-        &db.q().decl_type(fid, y).expect("type"),
+        &db.analysis().decl_type(fid, y).expect("type"),
         PrimitiveType::Number,
     );
 }
@@ -116,10 +122,10 @@ fn test_decl_type_self_reference_cycle_fixpoint() {
     // `local a = a or 1`: a's type depends on itself → triggers semantic's native fixpoint.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = a or 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("type"),
+        &db.analysis().decl_type(fid, a).expect("type"),
         PrimitiveType::Number,
     );
 }
@@ -134,15 +140,15 @@ fn test_decl_type_forward_reference_chain() {
         "local a = b or 1\nlocal b = a or 2",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     let b = decl_local(&facts, "b");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("a type"),
+        &db.analysis().decl_type(fid, a).expect("a type"),
         PrimitiveType::Number,
     );
     assert_primitive(
-        &db.q().decl_type(fid, b).expect("b type"),
+        &db.analysis().decl_type(fid, b).expect("b type"),
         PrimitiveType::Number,
     );
 }
@@ -152,7 +158,7 @@ fn test_decl_type_param_and_function() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function foo(x)\nend");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     assert!(
         facts
             .decls
@@ -175,7 +181,7 @@ fn test_resolve_type_def_public_cross_file() {
     set_test_file(&mut db, 2, "C:/ws/other.lua", "local Bar = 1");
 
     let def = db
-        .q()
+        .analysis()
         .resolve_type_def(FileId::new(2), "Foo")
         .expect("Foo resolves from other file");
     assert_eq!(def.name, "Foo");
@@ -183,8 +189,16 @@ fn test_resolve_type_def_public_cross_file() {
     assert_eq!(def.file_id, FileId::new(1));
     assert_eq!(def.kind, TypeDefKind::Class);
     assert_eq!(def.visibility, TypeVisibility::Public);
-    assert!(db.q().resolve_type_def(FileId::new(2), "Bar").is_none());
-    assert!(db.q().resolve_type_def(FileId::new(2), "Missing").is_none());
+    assert!(
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Bar")
+            .is_none()
+    );
+    assert!(
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Missing")
+            .is_none()
+    );
 }
 
 #[test]
@@ -200,14 +214,18 @@ local Foo = {}",
     set_test_file(&mut db, 2, "C:/ws/other.lua", "local x = 1");
 
     assert!(
-        db.q().resolve_type_def(FileId::new(2), "Foo").is_some(),
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Foo")
+            .is_some(),
         "Foo should resolve before the text update"
     );
 
     // Pure text update removes the class; the plain workspace index must refresh.
     set_test_file(&mut db, 1, "C:/ws/def.lua", "local x = 1");
     assert!(
-        db.q().resolve_type_def(FileId::new(2), "Foo").is_none(),
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Foo")
+            .is_none(),
         "Foo should no longer resolve after the text update"
     );
 }
@@ -226,11 +244,15 @@ fn test_resolve_type_def_private_same_file_only() {
 
     // Resolves from the same file; not from other files (scope isolation).
     let in_file = db
-        .q()
+        .analysis()
         .resolve_type_def(FileId::new(1), "Foo")
         .expect("same file");
     assert_eq!(in_file.visibility, TypeVisibility::Private);
-    assert!(db.q().resolve_type_def(FileId::new(2), "Foo").is_none());
+    assert!(
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Foo")
+            .is_none()
+    );
 }
 
 #[test]
@@ -251,7 +273,7 @@ fn test_resolve_type_def_prefers_same_file_private_over_global() {
     );
 
     let in_a = db
-        .q()
+        .analysis()
         .resolve_type_def(FileId::new(1), "Foo")
         .expect("file1 Foo");
     assert_eq!(in_a.file_id, FileId::new(1));
@@ -259,7 +281,7 @@ fn test_resolve_type_def_prefers_same_file_private_over_global() {
 
     // file2 has no private Foo → resolves to the global Foo (defined in file2).
     let in_b = db
-        .q()
+        .analysis()
         .resolve_type_def(FileId::new(2), "Foo")
         .expect("file2 Foo");
     assert_eq!(in_b.file_id, FileId::new(2));
@@ -279,14 +301,18 @@ fn test_resolve_type_def_namespace_qualified() {
 
     // In a namespace file, the bare name resolves through the qualified name to Global("pkg.Foo").
     let def = db
-        .q()
+        .analysis()
         .resolve_type_def(FileId::new(1), "Foo")
         .expect("qualified");
     assert_eq!(def.full_name, "pkg.Foo");
     assert_eq!(def.file_id, FileId::new(1));
 
     // In a non-namespace file, the bare name does not resolve (pkg.Foo is not a bare-name global).
-    assert!(db.q().resolve_type_def(FileId::new(2), "Foo").is_none());
+    assert!(
+        db.analysis()
+            .resolve_type_def(FileId::new(2), "Foo")
+            .is_none()
+    );
 }
 
 #[test]
@@ -294,11 +320,11 @@ fn test_find_decl_by_offset_and_range() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local alpha = 1\nlocal beta = 2");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let alpha = decl_local(&facts, "alpha");
-    let range = db.q().decl_range(fid, alpha.clone()).expect("range");
+    let range = db.analysis().decl_range(fid, alpha.clone()).expect("range");
     assert_eq!(
-        db.q()
+        db.analysis()
             .decls(fid)
             .unwrap()
             .iter()
@@ -309,11 +335,14 @@ fn test_find_decl_by_offset_and_range() {
     );
 
     // Offset covered by the name token → that decl.
-    let hit = db.q().decl_by_offset(fid, range.start()).expect("hit");
+    let hit = db
+        .analysis()
+        .decl_by_offset(fid, range.start())
+        .expect("hit");
     assert_eq!(hit, alpha);
     // Outside the name range (e.g. at a numeric literal) → no hit.
     let miss_offset = range.end() + TextSize::new(10);
-    assert!(db.q().decl_by_offset(fid, miss_offset).is_none());
+    assert!(db.analysis().decl_by_offset(fid, miss_offset).is_none());
 }
 
 #[test]
@@ -321,12 +350,12 @@ fn test_syntax_tree_and_parse_errors() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
 
-    assert!(db.q().syntax_tree(fid).is_some());
-    assert!(db.q().chunk(fid).is_some());
-    assert!(db.q().parse_errors(fid).is_none());
+    assert!(db.analysis().syntax_tree(fid).is_some());
+    assert!(db.analysis().chunk(fid).is_some());
+    assert!(db.analysis().parse_errors(fid).is_none());
 
     let bad = set_test_file(&mut db, 2, "C:/ws/bad.lua", "local = =");
-    assert!(db.q().parse_errors(bad).is_some());
+    assert!(db.analysis().parse_errors(bad).is_some());
 }
 
 #[test]
@@ -334,10 +363,10 @@ fn test_decl_type_doc_annotation() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type string\nlocal a");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("type"),
+        &db.analysis().decl_type(fid, a).expect("type"),
         PrimitiveType::String,
     );
 }
@@ -348,10 +377,10 @@ fn test_decl_type_doc_annotation_wins_over_initializer() {
     // `---@type` takes precedence over the initializer.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type string\nlocal a = 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("type"),
+        &db.analysis().decl_type(fid, a).expect("type"),
         PrimitiveType::String,
     );
 }
@@ -366,9 +395,9 @@ fn test_decl_type_doc_annotation_union() {
         "---@type number | string\nlocal a",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
-    let shell = db.q().decl_type(fid, a).expect("type");
+    let shell = db.analysis().decl_type(fid, a).expect("type");
     assert_eq!(
         shell.candidates,
         vec![
@@ -389,9 +418,9 @@ fn test_decl_type_doc_annotation_named_type() {
     );
     let fid = FileId::new(1);
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
-    let shell = db.q().decl_type(fid, a).expect("type");
+    let shell = db.analysis().decl_type(fid, a).expect("type");
     assert_eq!(shell.candidates, vec![TypeCandidate::Named("Foo".into())]);
 }
 
@@ -405,16 +434,16 @@ fn test_decl_type_lua_projection() {
         "---@type string\nlocal a = 1\n---@class Bar\nlocal Bar = {}\n---@type Bar\nlocal b",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     let b = decl_local(&facts, "b");
 
     // Primitive type projection.
-    let a_type = db.q().decl_type_lua(fid, a).expect("a lua type");
+    let a_type = db.analysis().decl_type_lua(fid, a).expect("a lua type");
     assert_eq!(a_type, LuaType::String);
 
     // Named type → Ref (global).
-    let b_type = db.q().decl_type_lua(fid, b).expect("b lua type");
+    let b_type = db.analysis().decl_type_lua(fid, b).expect("b lua type");
     assert_eq!(b_type, LuaType::Ref(LuaTypeDeclId::global("Bar")));
 }
 
@@ -429,9 +458,9 @@ fn test_member_extraction_and_keys() {
         "local T = { foo = 1 }\nT.bar = 'x'\nfunction T:method() end",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let t = decl_local(&facts, "T");
-    let keys = db.q().member_keys_of_decl(fid, t.clone());
+    let keys = db.analysis().member_keys_of_decl(fid, t.clone());
     assert_eq!(keys, vec!["bar", "foo", "method"]);
 
     // Table field member owner = Decl(T).
@@ -460,7 +489,7 @@ fn test_member_type() {
         "local T = { foo = 1 }\nfunction T.bar() end\nT.baz = 'x'",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let find = |name: &str| {
         facts
             .members
@@ -471,15 +500,15 @@ fn test_member_type() {
     };
 
     assert_primitive(
-        &db.q().member_type(fid, find("foo")).expect("foo"),
+        &db.analysis().member_type(fid, find("foo")).expect("foo"),
         PrimitiveType::Number,
     );
     assert_primitive(
-        &db.q().member_type(fid, find("bar")).expect("bar"),
+        &db.analysis().member_type(fid, find("bar")).expect("bar"),
         PrimitiveType::Function,
     );
     assert_primitive(
-        &db.q().member_type(fid, find("baz")).expect("baz"),
+        &db.analysis().member_type(fid, find("baz")).expect("baz"),
         PrimitiveType::String,
     );
 }
@@ -495,7 +524,7 @@ fn test_member_type_via_name_reference() {
         "local x = 1\nlocal T = {}\nT.a = x",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
         .members
         .iter()
@@ -503,7 +532,7 @@ fn test_member_type_via_name_reference() {
         .map(|m| m.id.clone())
         .expect("member a");
     assert_primitive(
-        &db.q().member_type(fid, a_local).expect("a type"),
+        &db.analysis().member_type(fid, a_local).expect("a type"),
         PrimitiveType::Number,
     );
 }
@@ -513,7 +542,7 @@ fn test_member_global_root() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "M.x = 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     assert!(facts.members.iter().any(|m| {
         matches!(&m.owner, SemanticId::Name(n) if n.as_str() == "M") && m.key.name() == Some("x")
     }));
@@ -530,7 +559,7 @@ fn test_member_chain_resolution() {
         "local T = {}\nT.a = T.b\nT.b = 1",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
         .members
         .iter()
@@ -538,7 +567,7 @@ fn test_member_chain_resolution() {
         .map(|m| m.id.clone())
         .expect("member a");
     assert_primitive(
-        &db.q().member_type(fid, a_local).expect("a type"),
+        &db.analysis().member_type(fid, a_local).expect("a type"),
         PrimitiveType::Number,
     );
 }
@@ -555,10 +584,12 @@ fn test_member_phase2_cross_file_resolution() {
     );
     // File A: M.x reference (reading does not create members; only verifies phase 2 linking).
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
-    let _ = db.q().file_facts(fid).expect("facts");
+    let _ = db.analysis().file_facts(fid).expect("facts");
 
     // Phase 2: Name("M") links to file B's global M.
-    let owner = db.q().resolve_owner(SemanticId::name(SmolStr::new("M")));
+    let owner = db
+        .analysis()
+        .resolve_owner(SemanticId::name(SmolStr::new("M")));
     let decl_b = owner.expect("resolve M");
     assert!(
         matches!(&decl_b, SemanticId::Decl(_)),
@@ -566,7 +597,9 @@ fn test_member_phase2_cross_file_resolution() {
     );
 
     // Look up cross-file members by name (B's members all use Name("M") as the key).
-    let members = db.q().members_of_owner(SemanticId::name(SmolStr::new("M")));
+    let members = db
+        .analysis()
+        .members_of_owner(SemanticId::name(SmolStr::new("M")));
     let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
     assert!(names.contains(&"x"), "文件 B 的成员 x: {:?}", names);
     assert!(names.contains(&"f"), "文件 B 的方法 f: {:?}", names);
@@ -577,7 +610,7 @@ fn test_member_phase2_cross_file_resolution() {
         .clone();
     assert_eq!(x_member.file_id, FileId::new(2));
     assert_primitive(
-        &db.q()
+        &db.analysis()
             .member_type(x_member.file_id, x_member.id.clone())
             .expect("x type"),
         PrimitiveType::Number,
@@ -593,17 +626,19 @@ fn test_member_phase2_name_chain_resolution() {
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local v = M.N.z");
 
     // Name("M.N") → global M → member N (file B).
-    let owner = db.q().resolve_owner(SemanticId::name(SmolStr::new("M.N")));
+    let owner = db
+        .analysis()
+        .resolve_owner(SemanticId::name(SmolStr::new("M.N")));
     let n_member = owner.expect("resolve M.N");
     assert!(
         matches!(&n_member, SemanticId::Member(_)),
         "Name(\"M.N\") 应解析为成员"
     );
-    let facts_b = db.q().file_facts(FileId::new(2)).expect("facts B");
+    let facts_b = db.analysis().file_facts(FileId::new(2)).expect("facts B");
     let _ = facts_b;
     // z is a member of N: members are declared with Name("M.N") as key and looked up by name key (cross-file).
     let zs = db
-        .q()
+        .analysis()
         .members_of_owner(SemanticId::name(SmolStr::new("M.N")))
         .into_iter()
         .map(|m| m.name)
@@ -611,7 +646,7 @@ fn test_member_phase2_name_chain_resolution() {
     assert_eq!(zs, vec![SmolStr::new("z")]);
 
     // Semantic integrity: M.N accesses in a.lua are independent of b.lua ordering.
-    let _ = db.q().syntax_tree(fid);
+    let _ = db.analysis().syntax_tree(fid);
 }
 
 #[test]
@@ -625,7 +660,7 @@ fn test_member_cycle_converges() {
         "local T = {}\nT.a = T.b\nT.b = T.a",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
         .members
         .iter()
@@ -640,8 +675,8 @@ fn test_member_cycle_converges() {
         .expect("member b");
 
     // Converges (Unknown), no panic.
-    let _ = db.q().member_type(fid, a_local);
-    let _ = db.q().member_type(fid, b_local);
+    let _ = db.analysis().member_type(fid, a_local);
+    let _ = db.analysis().member_type(fid, b_local);
 }
 
 #[test]
@@ -655,12 +690,12 @@ fn test_expr_logic_and_comparison() {
         "local a = true and 'x'\nlocal b = 1 < 2\nlocal c = 'a' .. 'b'",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     let b = decl_local(&facts, "b");
     let c = decl_local(&facts, "c");
 
-    let a_shell = db.q().decl_type(fid, a).expect("a");
+    let a_shell = db.analysis().decl_type(fid, a).expect("a");
     assert!(
         a_shell
             .candidates
@@ -672,10 +707,13 @@ fn test_expr_logic_and_comparison() {
             .contains(&TypeCandidate::Primitive(PrimitiveType::Boolean))
     );
     assert_primitive(
-        &db.q().decl_type(fid, b).expect("b"),
+        &db.analysis().decl_type(fid, b).expect("b"),
         PrimitiveType::Boolean,
     );
-    assert_primitive(&db.q().decl_type(fid, c).expect("c"), PrimitiveType::String);
+    assert_primitive(
+        &db.analysis().decl_type(fid, c).expect("c"),
+        PrimitiveType::String,
+    );
 }
 
 #[test]
@@ -686,10 +724,10 @@ fn test_phase2_cross_file_member_in_expr_type() {
     // File A: local y = M.x — cross-file member reference.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
-        &db.q().decl_type(fid, y).expect("y type"),
+        &db.analysis().decl_type(fid, y).expect("y type"),
         PrimitiveType::Number,
     );
 }
@@ -700,12 +738,12 @@ fn test_phase2_invalidation_on_other_file_change() {
     set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     // Editing B: M.x type changes → A's y type must invalidate and update (workspace-keyed).
     set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 's'");
     assert_primitive(
-        &db.q().decl_type(fid, y).expect("y type"),
+        &db.analysis().decl_type(fid, y).expect("y type"),
         PrimitiveType::String,
     );
 }
@@ -724,7 +762,7 @@ fn test_member_keys_of_owner_merges_field_and_runtime() {
 
     // Completion scenario: the `M.` prefix at the cursor resolves to Name("M") (unresolved global name).
     let name_owner = SemanticId::name(SmolStr::new("M"));
-    let keys = db.q().member_keys_of_owner(name_owner.clone());
+    let keys = db.analysis().member_keys_of_owner(name_owner.clone());
     // Union of @field (resolve → TypeDef key) and runtime (Name key).
     assert!(keys.contains(&SmolStr::new("f")), "含 @field: {:?}", keys);
     assert!(
@@ -734,9 +772,9 @@ fn test_member_keys_of_owner_merges_field_and_runtime() {
     );
 
     // The concrete id (TypeDef) only has its own members (@field).
-    let resolved = db.q().resolve_owner(name_owner).expect("resolve M");
+    let resolved = db.analysis().resolve_owner(name_owner).expect("resolve M");
     assert!(matches!(&resolved, SemanticId::TypeDef(_)), "类型优先");
-    let concrete_keys = db.q().member_keys_of_owner(resolved);
+    let concrete_keys = db.analysis().member_keys_of_owner(resolved);
     assert!(concrete_keys.contains(&SmolStr::new("f")));
     assert!(
         !concrete_keys.contains(&SmolStr::new("x")),
@@ -754,10 +792,10 @@ fn test_doc_generic_param_binding() {
         "---@generic T\n---@param x T\nfunction id(x)\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     let shell = db
-        .q()
+        .analysis()
         .param_type(fid, sig.closure_syntax, 0)
         .expect("param type");
     assert_eq!(
@@ -778,9 +816,9 @@ fn test_doc_fun_type_structured() {
         "---@type fun(a: number): string\nlocal f",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let f = decl_local(&facts, "f");
-    let shell = db.q().decl_type(fid, f).expect("f type");
+    let shell = db.analysis().decl_type(fid, f).expect("f type");
     let candidate = shell.candidates.first().expect("one candidate");
     let TypeCandidate::Function(fun) = candidate else {
         panic!("expected Function candidate, got {:?}", candidate);
@@ -803,9 +841,9 @@ fn test_doc_named_type_resolves_cross_file() {
     // A: ---@type Foo.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type Foo\nlocal a");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
-    let shell = db.q().decl_type(fid, a).expect("a type");
+    let shell = db.analysis().decl_type(fid, a).expect("a type");
     assert_eq!(
         shell.candidates,
         vec![TypeCandidate::Named(SmolStr::new("Foo"))],
@@ -826,10 +864,10 @@ fn test_cross_file_global_name_fallback() {
     // A: local y = M (M is in B); local c = C (pure type name).
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M\nlocal c = C");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     // Global M falls back → decl_type(its declaration) = table literal (synthesized Table type).
     let y = decl_local(&facts, "y");
-    let y_shell = db.q().decl_type(fid, y).expect("y type");
+    let y_shell = db.analysis().decl_type(fid, y).expect("y type");
     assert!(
         matches!(y_shell.candidates.as_slice(), [TypeCandidate::Table(_)]),
         "M 的类型应为合成 Table: {:?}",
@@ -837,7 +875,7 @@ fn test_cross_file_global_name_fallback() {
     );
     // Pure type name C → Named("C").
     let c = decl_local(&facts, "c");
-    let shell = db.q().decl_type(fid, c).expect("c type");
+    let shell = db.analysis().decl_type(fid, c).expect("c type");
     assert_eq!(
         shell.candidates,
         vec![TypeCandidate::Named(SmolStr::new("C"))],
@@ -858,9 +896,9 @@ fn test_require_module_resolution() {
         "local m = require('b')\nlocal v = m.x",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "m");
-    let m_shell = db.q().decl_type(fid, m).expect("m type");
+    let m_shell = db.analysis().decl_type(fid, m).expect("m type");
     assert!(
         m_shell.candidates.iter().any(
             |candidate| matches!(candidate, TypeCandidate::Table(table) if table.file_id == 2)
@@ -874,7 +912,7 @@ fn test_require_module_resolution() {
     // m.x → member x of the exported M (cross-file).
     let v = decl_local(&facts, "v");
     assert_primitive(
-        &db.q().decl_type(fid, v).expect("v type"),
+        &db.analysis().decl_type(fid, v).expect("v type"),
         PrimitiveType::Number,
     );
 }
@@ -887,10 +925,10 @@ fn test_require_module_subdir_suffix() {
     // A: require('sub.mod') suffix match → Number.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('sub.mod')");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
     assert_primitive(
-        &db.q().decl_type(fid, n).expect("n type"),
+        &db.analysis().decl_type(fid, n).expect("n type"),
         PrimitiveType::Number,
     );
 }
@@ -902,10 +940,10 @@ fn test_invalidation_granularity_cross_file_decl_reexecutes() {
     set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
-        &db.q().decl_type(fid, y.clone()).expect("y"),
+        &db.analysis().decl_type(fid, y.clone()).expect("y"),
         PrimitiveType::Number,
     );
 
@@ -917,10 +955,13 @@ fn test_invalidation_granularity_cross_file_decl_reexecutes() {
         "M = {}
 M.x = 's'",
     );
-    let y_after = db.q().decl_type(fid, y.clone()).expect("y");
+    let y_after = db.analysis().decl_type(fid, y.clone()).expect("y");
     assert_primitive(&y_after, PrimitiveType::String);
     // 再次读取仍是 String（普通函数每次都会基于最新 workspace 索引计算结果）。
-    assert_primitive(&db.q().decl_type(fid, y).expect("y"), PrimitiveType::String);
+    assert_primitive(
+        &db.analysis().decl_type(fid, y).expect("y"),
+        PrimitiveType::String,
+    );
 }
 
 #[test]
@@ -931,7 +972,7 @@ fn test_file_exports_identity_and_shard_memo() {
     let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}");
     assert_ne!(shard_of(fid1), shard_of(fid2));
 
-    let exports1 = db.q().file_exports(fid1).expect("exports1");
+    let exports1 = db.analysis().file_exports(fid1).expect("exports1");
     assert_eq!(exports1.file_id, fid1);
     assert!(exports1.globals.iter().any(|g| g.name == "M"));
     assert!(exports1.members.iter().any(|m| m.key.to_path() == "x"));
@@ -1011,7 +1052,7 @@ fn test_semantic_model_file_exports_and_signature_api() {
         Some(fid_use)
     );
 
-    let facts = db.q().file_facts(fid_impl).expect("facts");
+    let facts = db.analysis().file_facts(fid_impl).expect("facts");
     let f_decl = facts
         .decls
         .iter()
@@ -1031,10 +1072,10 @@ fn test_require_module_init_lua() {
     set_test_file(&mut db, 2, "C:/ws/pkg/init.lua", "return 7");
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('pkg')");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
     assert_primitive(
-        &db.q().decl_type(fid, n).expect("n type"),
+        &db.analysis().decl_type(fid, n).expect("n type"),
         PrimitiveType::Number,
     );
 }
@@ -1053,10 +1094,10 @@ fn test_require_module_map_rewrite() {
     set_test_file(&mut db, 2, "C:/ws/src/mod.lua", "return 9");
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('@/mod')");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
     assert_primitive(
-        &db.q().decl_type(fid, n).expect("n type"),
+        &db.analysis().decl_type(fid, n).expect("n type"),
         PrimitiveType::Number,
     );
 }
@@ -1073,14 +1114,17 @@ fn test_require_fuzzy_suffix_prefers_exact() {
         "local n = require('b')\nlocal m = require('sub.b')",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     // require("b") → fuzzy → sub.b.
     let n = decl_local(&facts, "n");
-    assert_primitive(&db.q().decl_type(fid, n).expect("n"), PrimitiveType::Number);
+    assert_primitive(
+        &db.analysis().decl_type(fid, n).expect("n"),
+        PrimitiveType::Number,
+    );
     // require("sub.b") → exact match.
     let m = decl_local(&facts, "m");
     assert_primitive(
-        &db.q().decl_type(fid, m).expect("m type"),
+        &db.analysis().decl_type(fid, m).expect("m type"),
         PrimitiveType::Number,
     );
 }
@@ -1099,7 +1143,7 @@ fn test_dual_identity_type_and_runtime_members() {
 
     // Name("M"): union of type (@field f) and runtime value (local M's member x).
     let name_owner = SemanticId::name(SmolStr::new("M"));
-    let keys = db.q().member_keys_of_owner(name_owner.clone());
+    let keys = db.analysis().member_keys_of_owner(name_owner.clone());
     assert!(keys.contains(&SmolStr::new("f")), "含 @field: {:?}", keys);
     assert!(
         keys.contains(&SmolStr::new("x")),
@@ -1108,9 +1152,9 @@ fn test_dual_identity_type_and_runtime_members() {
     );
 
     // The concrete TypeDef id is also linked to the runtime value through dual identity.
-    let type_def = db.q().resolve_owner(name_owner).expect("resolve M");
+    let type_def = db.analysis().resolve_owner(name_owner).expect("resolve M");
     assert!(matches!(&type_def, SemanticId::TypeDef(_)));
-    let type_keys = db.q().member_keys_of_owner(type_def.clone());
+    let type_keys = db.analysis().member_keys_of_owner(type_def.clone());
     assert!(
         type_keys.contains(&SmolStr::new("f")),
         "含 @field: {:?}",
@@ -1124,10 +1168,10 @@ fn test_dual_identity_type_and_runtime_members() {
 
     // Member type: `M.x` in A reads B's runtime x = 1 → Number.
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
-        &db.q().decl_type(fid, y).expect("y type"),
+        &db.analysis().decl_type(fid, y).expect("y type"),
         PrimitiveType::Number,
     );
 }
@@ -1145,9 +1189,9 @@ fn test_anonymous_table_module_member() {
         "local m = require('b')\nlocal v = m.x",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "m");
-    let m_shell = db.q().decl_type(fid, m).expect("m type");
+    let m_shell = db.analysis().decl_type(fid, m).expect("m type");
     assert!(
         matches!(m_shell.candidates.as_slice(), [TypeCandidate::Table(_)]),
         "模块导出匿名表 → Table(合成): {:?}",
@@ -1155,7 +1199,7 @@ fn test_anonymous_table_module_member() {
     );
     let v = decl_local(&facts, "v");
     assert_primitive(
-        &db.q().decl_type(fid, v).expect("v type"),
+        &db.analysis().decl_type(fid, v).expect("v type"),
         PrimitiveType::Number,
     );
 }
@@ -1171,11 +1215,11 @@ fn test_anonymous_table_function_return_member() {
         "local f = function() return { a = 's' } end\nlocal r = f()\nlocal s = r.a",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let r = decl_local(&facts, "r");
     assert!(
         matches!(
-            db.q()
+            db.analysis()
                 .decl_type(fid, r)
                 .expect("r type")
                 .candidates
@@ -1186,7 +1230,7 @@ fn test_anonymous_table_function_return_member() {
     );
     let s = decl_local(&facts, "s");
     assert_primitive(
-        &db.q().decl_type(fid, s).expect("s type"),
+        &db.analysis().decl_type(fid, s).expect("s type"),
         PrimitiveType::String,
     );
 }
@@ -1207,10 +1251,10 @@ fn test_generic_instantiation_member_substitution() {
          local v = b.value",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let v = decl_local(&facts, "v");
     assert_primitive(
-        &db.q().decl_type(fid, v).expect("v type"),
+        &db.analysis().decl_type(fid, v).expect("v type"),
         PrimitiveType::Number,
     );
 }
@@ -1233,15 +1277,15 @@ fn test_generic_instantiation_cross_file_and_function() {
         "---@type Box<string>\nlocal b\nlocal v = b.value\nlocal r = b.get()",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let v = decl_local(&facts, "v");
     assert_primitive(
-        &db.q().decl_type(fid, v).expect("v type"),
+        &db.analysis().decl_type(fid, v).expect("v type"),
         PrimitiveType::String,
     );
     let r = decl_local(&facts, "r");
     assert_primitive(
-        &db.q().decl_type(fid, r).expect("r type"),
+        &db.analysis().decl_type(fid, r).expect("r type"),
         PrimitiveType::String,
     );
 }
@@ -1260,8 +1304,8 @@ fn test_flow_tree_builds_cfg() {
          print(x)",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
-    let tree = db.q().flow_tree(fid).expect("flow tree");
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let tree = db.analysis().flow_tree(fid).expect("flow tree");
     // The print name in call statement print(x) should bind to a flow node.
     let print_use = facts
         .name_uses
@@ -1442,10 +1486,10 @@ fn test_lua_syntax_id_disambiguates_nested_same_start() {
         "local x = 1\nlocal a = (x + 1) * 2",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     assert_primitive(
-        &db.q().decl_type(fid, a).expect("type"),
+        &db.analysis().decl_type(fid, a).expect("type"),
         PrimitiveType::Number,
     );
 }
@@ -1461,12 +1505,12 @@ fn test_name_uses_and_decl_references() {
         "local a = 1\na = a + 1\nprint(a)",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
     let a_uses = facts.name_uses.iter().filter(|u| u.name == "a").count();
     assert_eq!(a_uses, 3);
 
-    let refs = db.q().decl_references(fid, a);
+    let refs = db.analysis().decl_references(fid, a);
     assert_eq!(refs.len(), 3);
 }
 
@@ -1475,7 +1519,7 @@ fn test_resolve_name_from_use() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1\nlocal y = x + 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let x = decl_local(&facts, "x");
 
     // Find the use of `x` in `y = x + 1` and resolve it back to x's declaration.
@@ -1485,14 +1529,14 @@ fn test_resolve_name_from_use() {
         .find(|u| u.name == "x")
         .expect("x use");
     let resolved = db
-        .q()
+        .analysis()
         .resolve_name(fid, x_use.syntax.get_range().start())
         .expect("resolved");
     assert_eq!(resolved, x);
 
     // The declaration position (local x) is not a NameExpr, so it does not resolve.
     assert!(
-        db.q()
+        db.analysis()
             .resolve_name(
                 fid,
                 facts
@@ -1518,7 +1562,7 @@ fn test_decl_references_respects_shadowing() {
         "local x = 1\nlocal function f()\n  local x = 2\n  return x\nend\nx = x",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let x_decls = facts
         .decls
         .iter()
@@ -1529,10 +1573,10 @@ fn test_decl_references_respects_shadowing() {
     let inner = x_decls[1].id.clone();
 
     // Outer x references: the two x's in `x = x` (write + value).
-    let outer_refs = db.q().decl_references(fid, outer);
+    let outer_refs = db.analysis().decl_references(fid, outer);
     assert_eq!(outer_refs.len(), 2);
     // Inner x reference: the x in `return x`.
-    let inner_refs = db.q().decl_references(fid, inner);
+    let inner_refs = db.analysis().decl_references(fid, inner);
     assert_eq!(inner_refs.len(), 1);
 }
 
@@ -1548,7 +1592,7 @@ local x = 456
 print(x)",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let x_decls = facts
         .decls
         .iter()
@@ -1566,7 +1610,7 @@ print(x)",
         .find(|u| u.name == "x" && u.syntax.get_range().start() > x_decls[1].name_range.start())
         .expect("x use after second decl");
     let resolved = db
-        .q()
+        .analysis()
         .resolve_name(fid, x_use.syntax.get_range().start())
         .expect("resolved");
     assert_eq!(resolved, second);
@@ -1584,10 +1628,10 @@ fn test_call_returns_function_return_type() {
         "local f = function() return 1 end\nlocal x = f()",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let x = decl_local(&facts, "x");
     assert_primitive(
-        &db.q().decl_type(fid, x).expect("x type"),
+        &db.analysis().decl_type(fid, x).expect("x type"),
         PrimitiveType::Number,
     );
 }
@@ -1602,10 +1646,10 @@ fn test_signature_doc_return() {
         "---@return string\nfunction foo() end",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     let shell = db
-        .q()
+        .analysis()
         .signature_return(fid, sig.closure_syntax)
         .expect("ret");
     assert_primitive(&shell, PrimitiveType::String);
@@ -1622,7 +1666,7 @@ fn test_signature_mutual_recursion_converges() {
         "function foo() return bar() end\nfunction bar() return foo() end",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let foo_sig = facts
         .signatures
         .iter()
@@ -1633,8 +1677,8 @@ fn test_signature_mutual_recursion_converges() {
         .iter()
         .find(|s| s.name.as_deref() == Some("bar"))
         .expect("bar sig");
-    let _ = db.q().signature_return(fid, foo_sig.closure_syntax);
-    let _ = db.q().signature_return(fid, bar_sig.closure_syntax);
+    let _ = db.analysis().signature_return(fid, foo_sig.closure_syntax);
+    let _ = db.analysis().signature_return(fid, bar_sig.closure_syntax);
 }
 
 #[test]
@@ -1642,7 +1686,7 @@ fn test_func_params_not_duplicated() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function f(x)\nend");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let param_count = facts
         .decls
         .iter()
@@ -1661,7 +1705,7 @@ fn test_signature_doc_param_type() {
         "---@param x string\nfunction f(x)\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     assert_eq!(sig.param_names, vec!["x"]);
     let docs = sig.docs.as_ref().expect("doc");
@@ -1673,13 +1717,13 @@ fn test_signature_doc_param_type() {
 fn test_named_vararg_signature_is_variadic() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function f(...args) end");
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     assert!(sig.is_variadic, "named vararg `...args` 应标记为可变参数");
     assert_eq!(sig.param_names, vec!["args"]);
 
     let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "function g(...) end");
-    let facts2 = db.q().file_facts(fid2).expect("facts");
+    let facts2 = db.analysis().file_facts(fid2).expect("facts");
     let sig2 = facts2.signatures.first().expect("signature");
     assert!(sig2.is_variadic, "`...` 仍应标记为可变参数");
     assert_eq!(sig2.param_names, vec!["..."]);
@@ -1695,7 +1739,7 @@ fn test_class_field_members() {
         "---@class Foo\n---@field bar string\n---@field count number\nlocal Foo = {}",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     // @field member owner = Type(TypeDefLocal), pointing to the Foo definition in this file.
     let foo_id = facts.type_def_by_name("Foo").expect("Foo def").id.clone();
     assert!(
@@ -1705,11 +1749,11 @@ fn test_class_field_members() {
             .any(|m| { m.owner == foo_id && m.key.name() == Some("bar") })
     );
     assert_eq!(
-        db.q().member_keys_of_type(fid, foo_id.clone()),
+        db.analysis().member_keys_of_type(fid, foo_id.clone()),
         vec!["bar", "count"]
     );
     assert!(
-        db.q()
+        db.analysis()
             .member_keys_of_decl(fid, decl_local(&facts, "Foo"))
             .is_empty()
     );
@@ -1725,7 +1769,7 @@ fn test_type_def_generic_params() {
         "---@class Box<T: Base, U = string>\nlocal Box = {}\n---@alias Pair<T, U>\nlocal Pair = 1",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let box_def = facts.type_def_by_name("Box").expect("Box def");
     assert_eq!(box_def.generic_params.len(), 2, "Box 应有 2 个泛型");
     assert_eq!(box_def.generic_params[0].name, "T");
@@ -1753,7 +1797,7 @@ fn test_doc_deprecated_on_class_and_field() {
          local OldThing = {}",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let old = facts.type_def_by_name("OldThing").expect("OldThing");
     assert!(old.deprecated, "@class 同块 @deprecated");
     assert!(
@@ -1781,7 +1825,7 @@ fn test_signature_doc_generic_and_flags() {
          function id(x)\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     let docs = sig.docs.as_ref().expect("doc");
     assert_eq!(docs.generic_params.len(), 1, "函数级 @generic");
@@ -1806,7 +1850,7 @@ fn test_signature_doc_return_overload() {
         "---@return number count\n---@return string name\nfunction f()\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     let docs = sig.docs.as_ref().expect("doc");
     assert_eq!(
@@ -1834,7 +1878,7 @@ fn test_signature_doc_return_overload_unnamed() {
         "---@return_overload false, string\nfunction f()\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     let docs = sig.docs.as_ref().expect("doc");
     assert_eq!(
@@ -1857,9 +1901,9 @@ fn test_class_field_inheritance() {
     );
 
     // Bar inherits Foo's members.
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let bar_id = facts.type_def_by_name("Bar").expect("Bar def").id.clone();
-    assert_eq!(db.q().member_keys_of_type(fid, bar_id), vec!["bar"]);
+    assert_eq!(db.analysis().member_keys_of_type(fid, bar_id), vec!["bar"]);
 }
 
 #[test]
@@ -1873,10 +1917,10 @@ fn test_member_access_resolves_class_field() {
         "---@class Foo\n---@field bar string\nlocal Foo = {}\n---@type Foo\nlocal x = {}\nlocal y = x.bar",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
-        &db.q().decl_type(fid, y).expect("y type"),
+        &db.analysis().decl_type(fid, y).expect("y type"),
         PrimitiveType::String,
     );
 }
@@ -1891,9 +1935,9 @@ fn test_module_export_decl() {
         "local M = {}\nM.x = 1\nreturn M",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "M");
-    match db.q().module_export(fid).expect("export") {
+    match db.analysis().module_export(fid).expect("export") {
         ModuleExport::Decl { decl, name } => {
             assert_eq!(decl, &m);
             assert_eq!(name, "M");
@@ -1901,7 +1945,7 @@ fn test_module_export_decl() {
         other => panic!("expected Decl, got {:?}", other),
     }
     // Module export type = declaration identity table + name identity (both owner paths reachable).
-    let shell = db.q().module_export_type(fid).expect("export type");
+    let shell = db.analysis().module_export_type(fid).expect("export type");
     assert!(
         shell.candidates.iter().any(
             |candidate| matches!(candidate, TypeCandidate::Table(table) if table.file_id == 1)
@@ -1919,10 +1963,10 @@ fn test_module_export_expr_and_none() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/mod.lua", "return { a = 1 }");
     assert!(matches!(
-        db.q().module_export(fid).expect("export"),
+        db.analysis().module_export(fid).expect("export"),
         ModuleExport::Expr { .. }
     ));
-    let shell = db.q().module_export_type(fid).expect("export type");
+    let shell = db.analysis().module_export_type(fid).expect("export type");
     assert!(
         matches!(shell.candidates.as_slice(), [TypeCandidate::Table(_)]),
         "匿名表导出 → Table(合成 owner): {:?}",
@@ -1931,7 +1975,7 @@ fn test_module_export_expr_and_none() {
 
     let no_ret = set_test_file(&mut db, 2, "C:/ws/no.lua", "local x = 1");
     assert!(matches!(
-        db.q().module_export(no_ret).expect("export"),
+        db.analysis().module_export(no_ret).expect("export"),
         ModuleExport::None
     ));
 }
@@ -1941,10 +1985,10 @@ fn test_global_assignment_extracts_decl() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "foo = 1");
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let foo = decl_local(&facts, "foo");
     assert_primitive(
-        &db.q().decl_type(fid, foo).expect("type"),
+        &db.analysis().decl_type(fid, foo).expect("type"),
         PrimitiveType::Number,
     );
 }
@@ -1959,7 +2003,7 @@ fn test_constructor_attribute_collected_on_following_param() {
         "---@generic T\n---@[constructor(\"__init\", \"Base\", false, \"doc\")]\n---@param class `T`\n---@return T\nfunction meta(class)\nend",
     );
 
-    let facts = db.q().file_facts(fid).expect("facts");
+    let facts = db.analysis().file_facts(fid).expect("facts");
     let meta = facts
         .decls
         .iter()
@@ -2097,3 +2141,4 @@ fn test_parallel_for_each_file_runs_on_shared_snapshots() {
 
     assert_eq!(visited.load(std::sync::atomic::Ordering::Relaxed), 2);
 }
+
