@@ -437,6 +437,10 @@ pub struct ExportShard {
 }
 
 pub(super) fn build_export_shard(db: &SemanticDatabase, shard: u8) -> ExportShard {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .shard_scan_builds
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut files = HashMap::new();
     for &file_id in db.file_ids_in_shard(shard) {
         if let Some(cache) = db.file_cache(file_id) {

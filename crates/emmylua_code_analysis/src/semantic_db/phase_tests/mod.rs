@@ -1,5 +1,6 @@
 mod fix_tests;
 mod p0_tests;
+mod p10_tests;
 mod p1_tests;
 mod p2_tests;
 mod p3_tests;

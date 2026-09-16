@@ -276,6 +276,36 @@ fn p0_cross_file_global_overloads() {
     );
 }
 
+/// Rebuild counters must actually be wired: a full rebuild increments all three
+/// P0 baselines, while incremental edits (tested below) must leave them at zero.
+#[test]
+fn p0_rebuild_metrics_are_incremented_by_full_rebuild() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "mod.lua",
+        r#"
+        local M = {}
+        return M
+        "#,
+    );
+
+    ws.analysis.db.rebuild_metrics.reset();
+    ws.analysis
+        .db
+        .update_main_root(std::path::PathBuf::from("C:/p0-metrics"));
+
+    let metrics = &ws.analysis.db.rebuild_metrics;
+    assert!(metrics.full_rebuilds() > 0, "full rebuild must be recorded");
+    assert!(
+        metrics.workspace_index_rebuilds() > 0,
+        "workspace index rebuild must be recorded"
+    );
+    assert!(
+        metrics.shard_scan_builds() > 0,
+        "shard builder invocations must be recorded"
+    );
+}
+
 /// A surface-preserving single-file edit must not scan all files.
 ///
 /// Changing `M.x`'s value does not change the exported member identity, so the

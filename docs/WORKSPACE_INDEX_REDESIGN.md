@@ -1,6 +1,6 @@
 # Workspace Index 与跨文件语义重构计划
 
-> 状态：P0-P10 全部完成；API 审计结论已记录，第一批收敛（deprecated index / 更新参数结构）已落地。
+> 状态：P0-P10 全部完成；API 审计结论已记录，第一批收敛（deprecated index / 更新参数结构）与第二批（workspace id 缓存 / type·member Arc bucket）均已落地。
 > 目标读者：后续接手 `semantic_db` / `semantic_model` 的开发者
 > 维护方式：本文件随每个阶段实时更新；已完成项必须附测试名和验证命令。
 
@@ -19,7 +19,7 @@
 | P7 | 身份级依赖失效，删除字符串级 `SurfaceDelta` | ✅ 已完成 |
 | P8 | 真实项目语义正确性修复（table.insert / require / ---@type / duplicate-field 等） | ✅ 已完成 |
 | P9 | SemanticModel 尺寸与惰性缓存（48B） | ✅ 已完成 |
-| P10 | semantic_db API 审计与第一批收敛 | ✅ 审计完成，第一批修复已落地 |
+| P10 | semantic_db API 审计与两批收敛 | ✅ 已完成 |
 
 ---
 
@@ -922,7 +922,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 5. `hashbrown` 在 cache 中已验证；`InferVm` 因与公共 API 的
    `std::HashMap` 互操作，暂不整体切换。
 
-### P10：semantic_db API 审计与第一批收敛（已完成审计，部分实施）
+### P10：semantic_db API 审计与两批收敛（收敛完成；view 拆分列为后续）
 
 本轮已完成：
 
@@ -946,6 +946,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 4. 新增回归：
    - `phase_tests/p9_tests.rs::p9_deprecated_index_is_incrementally_maintained`
      覆盖 deprecated 字段的 add/remove 和增量非全量重建。
+5. 第二批 API 收敛（本轮）：
+   - `SemanticDatabase` 缓存 `all_workspace_ids` / `workspace_lookup_order`，
+     仅在 workspace roots 变化时重算；查询路径不再每次分配 + 排序；
+   - `FileCache` 缓存 `workspace_id`，`find_workspace_id` 不再 clone `PathBuf`；
+     `file_matches_workspace_id` 退化为 O(1) 查缓存；
+   - `WorkspaceTypeIndex` 的 `(scope, full_name)` bucket 改存 `Arc<[TypeDef]>`，
+     重复查询直接 clone `Arc`；`find_global_types()` 的跨 workspace 聚合缓存到 WorkspaceIndexCache，增量写只刷新变化的 full_name；
+   - `WorkspaceMemberIndex` 的 `OwnerMembers` 将 owner 聚合列表与按名列表缓存为
+     `Arc<[MemberRef]>`，文件 add/remove 后每个受影响 owner 只重建一次；
+     `members_of_owner()` / `members_of_owner_named()` 读取跨 workspace 聚合缓存，
+     canonical 合并仅在确有必要时才组装新列表；
+   - 新增 `phase_tests/p10_tests.rs`：
+     - `p10_workspace_id_caches_follow_root_changes`
+     - `p10_type_buckets_share_arc_and_invalidate_on_write`
+     - `p10_global_type_aggregate_merges_workspaces_without_duplicates`
+     - `p10_member_aggregate_is_cached_across_workspaces`
+     - `p10_member_buckets_share_arc_and_preserve_overloads`
 API 审计结论：
 
 - `query.rs` 目前仍有明显的 Salsa 影子：
@@ -954,16 +971,16 @@ API 审计结论：
   - `*_input` / `file_and_config` / `rebuild_*` / `workspace_*_for` 的命名和分层
     保留了 tracked query 时代的形状。
 - 典型假廉价返回 `Arc` 的问题：
-  - `find_global_types()`、`type_defs_in_scope()` 每次调用重新 collect + `Arc::from`；
-  - `members_of_owner()` / `members_of_owner_named()` 每次重新构造 `Vec` 再 `Arc::from`；
-  - `MemberList` / `TypeDefList` 名义上共享 `Arc`，实际调用点多数是新建；
+  - `find_global_types()`、`type_defs_in_scope()` 每次调用重新 collect + `Arc::from`（已改为 WorkspaceIndexCache 中的跨 workspace 聚合缓存，文件写只刷新变化的 type full_name）；
+  - `members_of_owner()` / `members_of_owner_named()` 每次重新构造 `Vec` 再 `Arc::from`（已改为读取 WorkspaceIndexCache 的跨 workspace owner/by-name 聚合缓存，无 canonical 合并时直接返回缓存 `Arc`）；
+  - `MemberList` / `TypeDefList` 名义上共享 `Arc`，实际调用点多数是新建（现已由缓存 bucket `Arc` 直接构造，不再新建）；
   - `deprecated_*_names_for` 是其中最明显的一个，已修复。
 - 冗余参数/接口：
   - 大量函数重复 `(db, file_id)`、`(facts, file_id)`、`(config, file_id)`；
   - 增量更新函数参数过多（本轮先收敛了最明显的 `apply_file_to_workspace_indexes`）。
 - workspace 辅助函数：
-  - `all_workspace_ids()` / `workspace_lookup_order()` 每次分配 `Vec`；
-  - `file_matches_workspace_id()` 在 shard 扫描里重复做 path->workspace 计算。
+  - `all_workspace_ids()` / `workspace_lookup_order()` 每次分配 `Vec`（已缓存到 `SemanticDatabase`，仅在 roots 变化时重算）；
+  - `file_matches_workspace_id()` 在 shard 扫描里重复做 path->workspace 计算（已改为读取 `FileCache.workspace_id`，O(1)）；
 建议的目标架构（后续增量执行）：
 
 ```text
@@ -979,21 +996,25 @@ Mutation API (only &mut SemanticDatabase, explicit rebuild/apply)
 
 具体改造优先级：
 
-1. 去掉 `SemanticQueries` facade，保留一层 `AnalysisView` / `FileView`；
+1. （未完成，后续）去掉 `SemanticQueries` facade，保留一层 `AnalysisView` / `FileView`；
    `SemanticModel` 直接持有该 view，不再到处传 `db + file_id`。
-2. 聚合索引缓存 `Arc`：
+2. 聚合索引缓存 `Arc`（已完成）：
    - global type/member bucket 存 `Arc<[T]>`，返回 clone 而不是每次 collect；
    - `MemberList` / `TypeDefList` 要么真正缓存，要么删除。
-3. workspace ids / path->workspace 缓存到 DB/VFS，不再每次分配/计算。
-4. 把剩余 `*_for` query 逐步改成 view 方法；
+3. workspace ids / path->workspace 缓存到 DB/VFS，不再每次分配/计算（已完成）。
+4. （未完成，后续）把剩余 `*_for` query 逐步改成 view 方法；
    mutation 与 query 在类型上分离（`&mut SemanticDatabase` vs `&SemanticDatabase`）。
-5. 视 profile 结果决定 `FileCache.flow/references` 是否惰性化。
+5. （未完成，后续）视 profile 结果决定 `FileCache.flow/references` 是否惰性化。
 
 验收：
 
 ```text
 cargo test -p emmylua_code_analysis --lib
-  1365 passed; 0 failed; 2 ignored
+  1371 passed; 0 failed; 2 ignored
+
+# P10 专项
+cargo test -p emmylua_code_analysis p10_tests
+  5 passed; 0 failed
 
 cargo test --workspace
   exit=0
@@ -1017,6 +1038,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 ---
 
 ## 5. 更新日志
+
+- 2026-09-16：P10 第二批 API 收敛（workspace 缓存 / Arc bucket）。
+  - `all_workspace_ids` / `workspace_lookup_order` 缓存到 `SemanticDatabase`，roots 变化时重算；
+  - `FileCache.workspace_id` 缓存文件归属 workspace，path->workspace 查询不再 clone/扫描 roots；
+  - `WorkspaceTypeIndex` bucket 改存 `Arc<[TypeDef]>`，global type 查询返回跨 workspace 聚合缓存 `Arc`；
+  - `WorkspaceMemberIndex::OwnerMembers` 的 owner / by-name 聚合改为 `Arc<[MemberRef]>`，
+    文件 add/remove 批量后每 owner 只重建一次，overload 顺序保持；
+  - 新增 `phase_tests/p10_tests.rs`（5 个测试）：
+    `p10_workspace_id_caches_follow_root_changes`、
+    `p10_type_buckets_share_arc_and_invalidate_on_write`、
+    `p10_global_type_aggregate_merges_workspaces_without_duplicates`、
+    `p10_member_aggregate_is_cached_across_workspaces`、
+    `p10_member_buckets_share_arc_and_preserve_overloads`；
+  - 验证：`cargo test -p emmylua_code_analysis --lib` 1371 passed、2 ignored、0 failed；
+    `cargo test --workspace --lib` 全部通过；`cargo clippy --workspace --all-targets -- -D warnings` 通过。
+
+- 2026-09-16：P0 重建计数器补全。
+  - `shard_scan_builds` 现在由 `build_export_shard` / `build_deprecated_shard` /
+    `build_module_shard` / `build_reference_shard` 实际递增，不再是空转断言；
+  - 新增 `p0_rebuild_metrics_are_incremented_by_full_rebuild`，确保全量重建时三个计数器都有值；
+  - 验证：`cargo test -p emmylua_code_analysis p0_tests` 8 passed；
+    `cargo test --workspace --lib` 1366 passed、2 ignored、0 failed；
+    `cargo clippy --workspace --all-targets -- -D warnings` 通过。
 
 - 2026-09-10：P10 semantic_db API 审计与第一批收敛。
   - 阶段性测试迁移到 `semantic_db/phase_tests/`；
