@@ -10,7 +10,7 @@ use crate::markdown_generator::{
     escape_type_name,
     generator::collect_property,
     markdown_types::{Doc, IndexStruct, MemberDoc, MkdocsIndex},
-    render::{render_const_type, render_function_type},
+    render::{function_details_md, render_const_type, render_function_type},
 };
 
 pub fn generate_type_markdown(
@@ -113,10 +113,13 @@ fn generate_class_type_markdown(
             if member_typ.is_function() {
                 let func_name = format!("{}.{}", typ_name, name);
                 let display = render_function_type(db, member_typ, &func_name, false);
+                let (params, returns) = function_details_md(db, member_typ).unwrap_or_default();
                 method_members.push(MemberDoc {
                     name: title_name,
                     display,
                     property: member_property,
+                    params,
+                    returns,
                 });
             } else if member_typ.is_const() {
                 let const_type_display = render_const_type(db, member_typ);
@@ -127,6 +130,7 @@ fn generate_class_type_markdown(
                         typ_name, name, const_type_display
                     ),
                     property: member_property,
+                    ..Default::default()
                 });
             } else {
                 let typ_display = humanize_type(db, member_typ, RenderLevel::Detailed);
@@ -134,6 +138,7 @@ fn generate_class_type_markdown(
                     name: title_name,
                     display: format!("```lua\n{}.{} : {}\n```\n", typ_name, name, typ_display),
                     property: member_property,
+                    ..Default::default()
                 });
             }
         }
@@ -222,6 +227,7 @@ fn generate_enum_type_markdown(
                 name: name.to_string(),
                 display: typ_display,
                 property: member_property,
+                ..Default::default()
             });
         }
     }

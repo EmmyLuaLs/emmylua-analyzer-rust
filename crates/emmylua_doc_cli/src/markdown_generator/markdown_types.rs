@@ -11,11 +11,27 @@ pub struct Doc {
     pub property: Property,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct MemberDoc {
     pub name: String,
     pub display: String,
     pub property: Property,
+    /// Documented parameters of a function member, with their descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<MemberParam>,
+    /// Documented return values of a function member, with their descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub returns: Vec<MemberParam>,
+}
+
+/// A documented parameter or return value of a function member.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct MemberParam {
+    pub name: String,
+    /// Rendered type, when it is known.
+    pub type_text: Option<String>,
+    /// `@param` / `@return` description, when it is present.
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
