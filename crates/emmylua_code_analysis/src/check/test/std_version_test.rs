@@ -932,4 +932,39 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_package_loadlib_failure_location_type() {
+        // `package.loadlib` reports where a failure happened as its third
+        // result: "open" when the library cannot be loaded, "init" when the
+        // function cannot be found or initialized. The third result is absent
+        // on success, hence the nullable union.
+        //
+        // Lua 5.1's manual does not document the return list, but its
+        // implementation (loadlib.c) and LuaJIT's lib_package.c both return
+        // `nil, err, "open"|"init"` on failure, so every supported runtime is
+        // covered here.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "package.loadlib(\"/lib/libfoo.so\", \"foo\")"),
+                "(function)?",
+                "package.loadlib must return a function or nil in {version:?}"
+            );
+            assert_eq!(
+                expr_type_for(
+                    version,
+                    "select(3, package.loadlib(\"/lib/libfoo.so\", \"foo\"))"
+                ),
+                "(\"init\"|\"open\")?",
+                "package.loadlib must expose the failure location in {version:?}"
+            );
+        }
+    }
 }
