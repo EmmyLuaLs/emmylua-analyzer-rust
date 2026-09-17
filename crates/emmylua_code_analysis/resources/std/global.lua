@@ -71,11 +71,22 @@ function assert(v, ...) end
 --- the major multiplier.
 --- **"isrunning"**: returns a boolean that tells whether the collector is
 --- running (i.e., not stopped).
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
 --- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
 --- @param opt? std.collectgarbage_opt
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
+
+--- @version 5.1, JIT
+---
+--- Returns the number of kilobytes of memory in use by Lua.
+--- Equivalent to `collectgarbage("count")`.
+--- @return integer
+--- @nodiscard
+function gcinfo() end
 
 ---
 --- Opens the named file and executes its contents as a Lua chunk. When called
@@ -194,7 +205,7 @@ function loadstring(text, chunkname, mode, env) end
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT
---- @param proxy boolean | table | userdata
+--- @param proxy? boolean | table | userdata
 --- @return userdata
 function newproxy(proxy) end
 
@@ -436,6 +447,7 @@ function tostring(v) end
 --- | "function"
 --- | "thread"
 --- | "userdata"
+--- | "cdata" # LuaJIT only
 
 ---
 --- Returns the type of its only argument, coded as a string. The possible
@@ -501,6 +513,6 @@ function setfenv(f, env) end
 --- @version 5.1, JIT
 ---
 --- Retrieves the environment table of the specified function.
---- @param f function | integer The function whose environment is to be retrieved.
+--- @param f? function | integer The function whose environment is to be retrieved.
 --- @return table The environment table associated with the given function.
 function getfenv(f) end
