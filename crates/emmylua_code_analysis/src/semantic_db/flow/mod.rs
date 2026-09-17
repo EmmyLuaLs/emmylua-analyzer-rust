@@ -60,4 +60,3 @@ pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId) -> FlowTree {
     }
     binder.finish()
 }
-

@@ -15,7 +15,7 @@ use smol_str::SmolStr;
 
 use crate::semantic_db::def::{SemanticId, TypeScope};
 use crate::semantic_db::query::{self, workspace_type_index_for};
-use crate::{FileId, SemanticDatabase, WorkspaceFolder, WorkspaceId};
+use crate::{FileId, SemanticDatabase, VirtualWorkspace, WorkspaceFolder, WorkspaceId};
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
@@ -338,4 +338,62 @@ fn p10_apply_file_change_and_batch_api() {
     let summary = db.apply_file_change(crate::semantic_db::FileChange::remove(fid));
     assert_eq!(summary.removed, 1);
     assert!(db.file_data_id(fid).is_none());
+}
+
+#[test]
+fn p10_cross_file_class_member_reference() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("a.lua", "---@class A\nA = {}");
+    ws.def_file(
+        "b.lua",
+        "---@return integer\nfunction A.BBB()\n    return 1\nend",
+    );
+    ws.def_file("c.lua", "local x = A.BBB()");
+
+    let ty = ws.expr_ty("A.BBB()");
+    assert!(
+        matches!(
+            ty,
+            crate::LuaType::Integer | crate::LuaType::IntegerConst(_) | crate::LuaType::Number
+        ),
+        "A.BBB must resolve cross-file, got {ty:?}"
+    );
+}
+
+#[test]
+fn p10_cross_file_class_member_reference_resolution() {
+    use emmylua_parser::{LuaAstNode, LuaIndexExpr};
+    let mut ws = VirtualWorkspace::new();
+    let c = ws.def_file("c.lua", "local x = A.BBB()");
+    let _a = ws.def_file("a.lua", "---@class A\nA = {}");
+    let b = ws.def_file("b.lua", "function A.BBB() end");
+    let model = ws.analysis.semantic_model(c);
+    let tree = model.syntax_tree().expect("syntax");
+    let index = tree
+        .get_red_root()
+        .descendants()
+        .filter_map(LuaIndexExpr::cast)
+        .find(|expr| {
+            expr.get_index_key()
+                .is_some_and(|key| key.get_path_part() == "BBB")
+        })
+        .expect("A.BBB index expr");
+    let resolved = model.resolve_member(&index).expect("resolve member");
+    assert_eq!(resolved.file_id, Some(b), "A.BBB must resolve to B");
+    assert!(resolved.member_id.is_some(), "member id must be resolved");
+    let member_id = resolved.member_id.clone().expect("member id");
+    assert!(
+        !ws.analysis
+            .db
+            .member_reference_ranges(&member_id)
+            .is_empty(),
+        "workspace reference index must contain the A.BBB use"
+    );
+    assert!(
+        !ws.analysis
+            .db
+            .member_definition_ranges(&member_id)
+            .is_empty(),
+        "workspace definition index must contain the A.BBB definition"
+    );
 }

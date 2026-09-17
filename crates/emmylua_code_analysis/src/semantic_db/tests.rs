@@ -2141,4 +2141,3 @@ fn test_parallel_for_each_file_runs_on_shared_snapshots() {
 
     assert_eq!(visited.load(std::sync::atomic::Ordering::Relaxed), 2);
 }
-

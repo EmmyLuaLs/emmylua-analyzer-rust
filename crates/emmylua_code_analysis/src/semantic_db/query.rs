@@ -1314,7 +1314,6 @@ fn merge_canonical_members(
     out.extend(extra);
     Arc::from(out)
 }
-
 /// Read the raw (non-canonical) member bucket for an owner.
 ///
 /// Prefers the workspace member index, whose buckets are shared `Arc` values;

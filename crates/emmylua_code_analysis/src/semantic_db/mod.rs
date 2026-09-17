@@ -279,7 +279,6 @@ impl SemanticDatabase {
             .flow
     }
 
-
     pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExportContribution {
         self.file_cache(file_id)
             .expect("file exports must be built before read")

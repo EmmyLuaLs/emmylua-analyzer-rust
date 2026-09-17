@@ -273,7 +273,6 @@ impl<'db> AnalysisView<'db> {
         Some(super::flow::flow_tree_of(self.db, file))
     }
 
-
     // ── Declarations ──
 
     pub fn decls(&self, file_id: FileId) -> Option<&'db [Decl]> {

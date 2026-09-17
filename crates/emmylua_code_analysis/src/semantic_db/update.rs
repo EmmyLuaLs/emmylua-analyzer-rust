@@ -345,7 +345,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         cache.flow = flow;
     }
 
-
     // Build module entries/indexes *before* export contributions: resolving a
     // `local M = require("mod")` alias needs `module_file_of()`, and the module
     // index only depends on facts + workspace roots.
