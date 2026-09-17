@@ -228,4 +228,66 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn test_os_difftime_arity_by_version() {
+        // PUC Lua 5.1/5.2 and LuaJIT implement `t1` via `luaL_optnumber`
+        // (default 0); Lua 5.3+ require both arguments.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.difftime(1)");
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.difftime(1) must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.difftime(1)");
+            assert!(
+                diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.difftime(1) must require t1 in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_os_setlocale_locale_is_optional() {
+        // All supported runtimes accept `os.setlocale()` and return the
+        // current locale for the default category.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.setlocale()");
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.setlocale() must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_os_remove_reports_error_code() {
+        // `os.remove` returns the errno as its third result in 5.1-5.4 and LuaJIT.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let ty = expr_type_for(version, "select(3, os.remove('/nonexistent'))");
+            assert!(
+                ty.contains("integer"),
+                "os.remove must expose an integer errcode in {version:?}, got {ty}"
+            );
+        }
+    }
 }
