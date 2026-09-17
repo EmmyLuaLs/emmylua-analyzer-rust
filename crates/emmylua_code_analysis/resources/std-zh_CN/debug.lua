@@ -34,7 +34,7 @@ function debug.getfenv(o) end
 --- 以三个值返回线程的当前钩子设置：当前钩子函数、当前钩子掩码和当前
 --- 钩子计数（由 `debug.sethook` 函数设置）。
 --- @param thread? thread
---- @return function? hook
+--- @return debuglib.Hook? hook
 --- @return string mask
 --- @return integer count
 function debug.gethook(thread) end
@@ -200,6 +200,8 @@ function debug.setcstacklimit(limit) end
 --- @return T object
 function debug.setfenv(object, env) end
 
+--- @alias debuglib.Hook fun(event: string, line: integer?): any
+
 --- @alias debuglib.Hookmask
 --- |+ "c" # 当 Lua 调用函数时调用钩子。
 --- |+ "r" # 当 Lua 从函数返回时调用钩子。
@@ -221,10 +223,14 @@ function debug.setfenv(object, env) end
 --- 钩子还会获得新行号作为其第二个参数。在钩子内部，你可以用层级2调用
 --- `getinfo` 来获取关于正在运行的函数的更多信息（层级0是 `getinfo` 函数，
 --- 层级1是钩子函数）。
---- @param thread? thread
---- @param hook?   fun(event: string, line: integer?): any
---- @param mask?   debuglib.Hookmask | string
---- @param count?  integer
+--- @overload fun()
+--- @overload fun(thread: thread?)
+--- @overload fun(thread: thread?, hook: nil)
+--- @overload fun(hook: debuglib.Hook, mask: debuglib.Hookmask|string, count: integer?)
+--- @param thread thread
+--- @param hook   debuglib.Hook
+--- @param mask   debuglib.Hookmask | string
+--- @param count? integer
 function debug.sethook(thread, hook, mask, count) end
 
 --- 此函数将值 `value` 赋给栈中第 `level` 层函数的索引为 `local` 的局部变量。

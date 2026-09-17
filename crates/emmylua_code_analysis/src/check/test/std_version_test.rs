@@ -934,6 +934,81 @@ mod test {
     }
 
     #[test]
+    fn test_debug_sethook_hook_first() {
+        // `debug.sethook([thread,] hook, mask [, count])`: the common
+        // hook-first form must not be checked against the leading `thread`,
+        // and the turn-off forms must stay accepted.
+        let source = r#"
+            local function hook(event, line) end
+            local mask = "l"
+            debug.sethook()
+            debug.sethook(nil)
+            debug.sethook(hook, "l")
+            debug.sethook(hook, "l", 1)
+            debug.sethook(hook, "l", nil)
+            debug.sethook(hook, mask)
+            debug.sethook(hook, mask, 1)
+            local co = coroutine.create(function() end)
+            debug.sethook(co)
+            debug.sethook(co, nil)
+            debug.sethook(co, hook, "l")
+            debug.sethook(co, hook, "l", 1)
+        "#;
+
+        let versions = [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ];
+        for version in versions {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"
+                    || code == "redundant-parameter"
+                    || code == "missing-parameter"),
+                "valid debug.sethook calls must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        // The mask is required whenever a hook is given, including the
+        // thread-first form that does not go through the hook-first overload.
+        let bad = [
+            (
+                "hook-only",
+                "local function hook(event, line) end\ndebug.sethook(hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first without mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first with nil mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook, nil)",
+                &["param-type-mismatch"][..],
+            ),
+        ];
+        for version in versions {
+            for (case, source, expected) in bad {
+                let diagnostics = diagnostic_codes_for(version, source);
+                assert!(
+                    diagnostics
+                        .iter()
+                        .any(|code| expected.contains(&code.as_str())),
+                    "debug.sethook must reject {case} in {version:?}: {diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_debug_setuservalue_value_type_by_version() {
         // Lua 5.2 and LuaJIT (LJ_52) only accept a table (5.2 also accepts
         // nil); Lua 5.3+ accept any value.

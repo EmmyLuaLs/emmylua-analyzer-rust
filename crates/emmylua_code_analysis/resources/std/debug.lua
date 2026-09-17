@@ -41,7 +41,7 @@ function debug.getfenv(o) end
 --- current hook function, the current hook mask, and the current hook count
 --- (as set by the `debug.sethook` function).
 --- @param thread? thread
---- @return function? hook
+--- @return debuglib.Hook? hook
 --- @return string mask
 --- @return integer count
 function debug.gethook(thread) end
@@ -236,6 +236,8 @@ function debug.setcstacklimit(limit) end
 --- @return T object
 function debug.setfenv(object, env) end
 
+--- @alias debuglib.Hook fun(event: string, line: integer?): any
+
 --- @alias debuglib.Hookmask
 --- |+ "c" # Calls hook when Lua calls a function.
 --- |+ "r" # Calls hook when Lua returns from a function.
@@ -262,10 +264,14 @@ function debug.setfenv(object, env) end
 --- call `getinfo` with level 2 to get more information about the running
 --- function (level 0 is the `getinfo` function, and level 1 is the hook
 --- function)
---- @param thread? thread
---- @param hook?   fun(event: string, line: integer?): any
---- @param mask?   debuglib.Hookmask | string
---- @param count?  integer
+--- @overload fun()
+--- @overload fun(thread: thread?)
+--- @overload fun(thread: thread?, hook: nil)
+--- @overload fun(hook: debuglib.Hook, mask: debuglib.Hookmask|string, count: integer?)
+--- @param thread thread
+--- @param hook   debuglib.Hook
+--- @param mask   debuglib.Hookmask | string
+--- @param count? integer
 function debug.sethook(thread, hook, mask, count) end
 
 ---
