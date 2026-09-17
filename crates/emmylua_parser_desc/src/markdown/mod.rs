@@ -1665,17 +1665,14 @@ impl MarkdownParser {
                     let is_right_flanking =
                         !left_is_ws && (!left_is_punct || (right_is_ws || right_is_punct));
 
-                    let can_start_highlight;
-                    let can_end_highlight;
-                    if ch == '*' {
-                        can_start_highlight = is_left_flanking;
-                        can_end_highlight = is_right_flanking;
+                    let (can_start_highlight, can_end_highlight) = if ch == '*' {
+                        (is_left_flanking, is_right_flanking)
                     } else {
-                        can_start_highlight =
-                            is_left_flanking && (!is_right_flanking || left_is_punct);
-                        can_end_highlight =
-                            is_right_flanking && (!is_left_flanking || right_is_punct);
-                    }
+                        (
+                            is_left_flanking && (!is_right_flanking || left_is_punct),
+                            is_right_flanking && (!is_left_flanking || right_is_punct),
+                        )
+                    };
 
                     if can_start_highlight && can_end_highlight {
                         if self.has_highlight(ch, n_chars) {
