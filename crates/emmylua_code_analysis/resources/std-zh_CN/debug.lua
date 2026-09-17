@@ -155,10 +155,31 @@ function debug.getupvalue(f, up) end
 
 --- 返回与 userdata `u` 关联的第 `n` 个用户值以及一个布尔值，
 --- 如果 userdata 没有该值则为 **false**。
+--- @version >5.4
 --- @param u userdata
---- @param n integer
+--- @param n? integer
 --- @return any
---- @return boolean
+--- @return boolean?
+function debug.getuservalue(u, n) end
+
+--- @version 5.2
+--- 返回与 userdata `u` 关联的用户值，如果没有则为 **nil**。
+--- @param u userdata
+--- @return table?
+function debug.getuservalue(u) end
+
+--- @version 5.3
+--- 返回与 userdata `u` 关联的用户值，如果没有则为 **nil**。
+--- @param u userdata
+--- @return any
+function debug.getuservalue(u) end
+
+--- @version JIT
+--- 返回与 userdata `u` 关联的环境表，如果没有则为 **nil**。
+--- LuaJIT 忽略索引参数。
+--- @param u userdata
+--- @param n? integer
+--- @return table?
 function debug.getuservalue(u, n) end
 
 --- ### **在 `Lua 5.4.2` 中已弃用**
@@ -201,7 +222,7 @@ function debug.setfenv(object, env) end
 --- `getinfo` 来获取关于正在运行的函数的更多信息（层级0是 `getinfo` 函数，
 --- 层级1是钩子函数）。
 --- @param thread? thread
---- @param hook?   fun(event: string): any
+--- @param hook?   fun(event: string, line: integer?): any
 --- @param mask?   debuglib.Hookmask | string
 --- @param count?  integer
 function debug.sethook(thread, hook, mask, count) end
@@ -238,10 +259,37 @@ function debug.setupvalue(f, up, value) end
 --- `udata` 必须是完全 userdata。
 ---
 --- 返回 `udata`，如果 userdata 没有该值则返回 **nil**。
+--- @version >5.4
 --- @param udata userdata
 --- @param value any
---- @param n     integer
+--- @param n?    integer
 --- @return userdata?
+function debug.setuservalue(udata, value, n) end
+
+--- @version 5.2
+--- 将给定值设置为给定 `udata` 的用户值。
+--- `value` 必须是 table 或 **nil**。
+--- @param udata userdata
+--- @param value table?
+--- @return userdata
+function debug.setuservalue(udata, value) end
+
+--- @version 5.3
+--- 将给定值设置为给定 `udata` 的用户值。
+--- `udata` 必须是完全 userdata。
+---
+--- 返回 `udata`。
+--- @param udata userdata
+--- @param value any
+--- @return userdata
+function debug.setuservalue(udata, value) end
+
+--- @version JIT
+--- LuaJIT 只接受 table 作为用户值，并忽略索引参数。
+--- @param udata userdata
+--- @param value table
+--- @param n?    integer
+--- @return userdata
 function debug.setuservalue(udata, value, n) end
 
 --- @version 5.1, JIT

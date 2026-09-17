@@ -88,9 +88,19 @@ debuglib.getupvalue: |
   以 '(' （左括号）开头的变量名表示没有已知名称的变量（来自保存时没有
   调试信息的代码块的变量）。
 
-debuglib.getuservalue: |
+debuglib.getuservalue@>5.4: |
   返回与 userdata `u` 关联的第 `n` 个用户值以及一个布尔值，
   如果 userdata 没有该值则为 **false**。
+
+debuglib.getuservalue@5.2: |
+  返回与 userdata `u` 关联的用户值，如果没有则为 **nil**。
+
+debuglib.getuservalue@5.3: |
+  返回与 userdata `u` 关联的用户值，如果没有则为 **nil**。
+
+debuglib.getuservalue@JIT: |
+  返回与 userdata `u` 关联的环境表，如果没有则为 **nil**。
+  LuaJIT 忽略索引参数。
 
 debuglib.setcstacklimit: |
   ### **在 `Lua 5.4.2` 中已弃用**
@@ -142,11 +152,24 @@ debuglib.setupvalue: |
   此函数将值 `value` 赋给函数 `f` 的索引为 `up` 的上值。如果给定索引
   没有上值，函数返回 **nil**。否则，返回上值的名称。
 
-debuglib.setuservalue: |
+debuglib.setuservalue@>5.4: |
   将给定的 `value` 设置为与给定 `udata` 关联的第 `n` 个值。
   `udata` 必须是完全 userdata。
 
   返回 `udata`，如果 userdata 没有该值则返回 **nil**。
+
+debuglib.setuservalue@5.2: |
+  将给定值设置为给定 `udata` 的用户值。
+  `value` 必须是 table 或 **nil**。
+
+debuglib.setuservalue@5.3: |
+  将给定值设置为给定 `udata` 的用户值。
+  `udata` 必须是完全 userdata。
+
+  返回 `udata`。
+
+debuglib.setuservalue@JIT: |
+  LuaJIT 只接受 table 作为用户值，并忽略索引参数。
 
 debuglib.traceback@5.1,JIT: |
   生成调用栈的回溯信息。
