@@ -55,8 +55,21 @@ function string.char(...) end
 --- loaded, those upvalues receive fresh instances containing **nil**. (You can
 --- use the debug library to serialize and reload the upvalues of a function in
 --- a way adequate to your needs.)
+--- @version 5.1, 5.2
+--- @param func function
+--- @return string
+function string.dump(func) end
+
+--- @version >5.3
 --- @param func   function
 --- @param strip? boolean
+--- @return string
+function string.dump(func, strip) end
+
+--- @version JIT
+--- LuaJIT also accepts the mode string "s" (strip debug info) or "d" (deterministic output).
+--- @param func   function
+--- @param strip? boolean|string
 --- @return string
 function string.dump(func, strip) end
 
@@ -284,7 +297,7 @@ function string.match(s, pattern, init) end
 --- Returns a binary string containing the values `v1`, `v2`, etc. packed (that
 --- is, serialized in binary form) according to the format string `fmt`.
 --- @param fmt string
---- @param v1  string | number | integer
+--- @param v1? string | number | integer
 --- @param v2? string | number | integer
 --- @param ... string | number | integer
 --- @return string
