@@ -11,7 +11,6 @@ use std::marker::PhantomData;
 use rowan::{Language, TextRange, TextSize};
 
 use crate::kind::{LuaKind, LuaSyntaxKind, LuaTokenKind};
-pub use node::*;
 pub use traits::*;
 pub use tree::{LuaSyntaxTree, LuaTreeBuilder};
 

@@ -179,7 +179,7 @@ impl<'a> FlowBinder<'a> {
     }
 
     pub fn get_goto_caches(&mut self) -> Vec<GotoCache> {
-        self.goto_stats.drain(..).collect()
+        std::mem::take(&mut self.goto_stats)
     }
 
     pub fn get_flow(&self, flow_id: FlowId) -> Option<&FlowNode> {
