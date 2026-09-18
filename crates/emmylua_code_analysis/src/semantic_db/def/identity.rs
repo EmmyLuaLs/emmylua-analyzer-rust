@@ -62,6 +62,19 @@ pub enum DependencyKey {
     RuntimeValue(SmolStr),
     Member(OwnerId, LuaMemberKey),
     Module(FileId),
+    /// Module name referenced by a require literal.
+    ///
+    /// Unlike Module(FileId), this is a negative dependency: it is recorded
+    /// even when the module cannot be resolved yet, so adding, removing or
+    /// renaming the module file can refresh the consumer require aliases and
+    /// reference index through the normal changed-key intersection.
+    ModuleName(SmolStr),
+    /// Bare or qualified type name referenced before the type exists.
+    ///
+    /// This is a negative dependency recorded by unresolved name and member
+    /// owner uses. Adding, renaming or removing a matching type publishes it,
+    /// so the reference index can re-resolve without editing the consumer.
+    TypeName(SmolStr),
 }
 
 /// Canonical dependency set of one file.

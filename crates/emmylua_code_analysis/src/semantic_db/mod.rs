@@ -41,17 +41,13 @@ pub(crate) struct FileCache {
     flow: flow::FlowTree,
     exports: Arc<exports::FileExportContribution>,
     references: Arc<query::FileReferences>,
+    /// Per-file module entry, replacing ModuleShard lookup during indexing.
+    pub(crate) module_entry: Option<query::ModuleEntry>,
+    /// Per-file deprecated facts, replacing DeprecatedShard lookup.
+    pub(crate) deprecated: Arc<query::DeprecatedFileData>,
     /// Cached file -> owning workspace, so shard/index scans do not strip paths
     /// against all roots on every lookup.
     pub(crate) workspace_id: Option<WorkspaceId>,
-}
-
-#[derive(Default)]
-pub(crate) struct ShardCache {
-    exports: exports::ExportShard,
-    deprecated: query::DeprecatedShard,
-    module: query::ModuleShard,
-    references: query::ReferenceShard,
 }
 
 /// Test-only counters used by the P0/P1 incremental-index baseline tests.
@@ -63,15 +59,18 @@ pub(crate) struct ShardCache {
 pub(crate) struct RebuildMetrics {
     pub(crate) full_rebuilds: std::sync::atomic::AtomicU32,
     pub(crate) workspace_index_rebuilds: std::sync::atomic::AtomicU32,
-    /// Number of `build_*_shard` invocations (`build_export_shard`,
-    /// `build_deprecated_shard`, `build_module_shard`, `build_reference_shard`).
-    ///
-    /// In the P0 baseline these builders scanned the whole workspace; after P2
-    /// they are shard-local, so the incremental update path must keep this at 0.
-    pub(crate) shard_scan_builds: std::sync::atomic::AtomicU32,
+    /// Number of full workspace-index source scans. Each workspace index
+    /// builder increments it once; the incremental update path must keep it at 0.
+    pub(crate) full_index_source_scans: std::sync::atomic::AtomicU32,
     /// Number of affected files whose reference index was refreshed by a
     /// canonical changed-key intersection (P7).
     pub(crate) dependent_reference_refreshes: std::sync::atomic::AtomicU32,
+    /// Number of ModuleIndex::rebuild_derived invocations on the incremental write path.
+    /// Must stay 0 for edits that do not change a file module entry (for example value-only edits).
+    pub(crate) module_derived_rebuilds: std::sync::atomic::AtomicU32,
+    /// Number of dependent files whose export contribution and references
+    /// were rebuilt because a module dependency changed.
+    pub(crate) dependent_contribution_refreshes: std::sync::atomic::AtomicU32,
 }
 
 #[cfg(test)]
@@ -80,8 +79,11 @@ impl RebuildMetrics {
         use std::sync::atomic::Ordering;
         self.full_rebuilds.store(0, Ordering::Relaxed);
         self.workspace_index_rebuilds.store(0, Ordering::Relaxed);
-        self.shard_scan_builds.store(0, Ordering::Relaxed);
+        self.full_index_source_scans.store(0, Ordering::Relaxed);
         self.dependent_reference_refreshes
+            .store(0, Ordering::Relaxed);
+        self.module_derived_rebuilds.store(0, Ordering::Relaxed);
+        self.dependent_contribution_refreshes
             .store(0, Ordering::Relaxed);
     }
 
@@ -95,13 +97,23 @@ impl RebuildMetrics {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub(crate) fn shard_scan_builds(&self) -> u32 {
-        self.shard_scan_builds
+    pub(crate) fn full_index_source_scans(&self) -> u32 {
+        self.full_index_source_scans
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub(crate) fn dependent_reference_refreshes(&self) -> u32 {
         self.dependent_reference_refreshes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn module_derived_rebuilds(&self) -> u32 {
+        self.module_derived_rebuilds
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn dependent_contribution_refreshes(&self) -> u32 {
+        self.dependent_contribution_refreshes
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
@@ -130,13 +142,6 @@ pub struct SemanticDatabase {
     /// Per-file caches, kept together so file invalidation is one entry update.
     files: HashMap<FileId, FileCache>,
 
-    /// Per-shard caches, kept together so shard invalidation is one entry update.
-    shards: HashMap<u8, ShardCache>,
-
-    /// File ids grouped by stable shard, maintained on file add/remove so shard
-    /// builders never have to scan the full workspace file list.
-    shard_files: Vec<Vec<FileId>>,
-
     /// Cached fallback root for module-name derivation when no workspace roots
     /// are registered. Recomputed only on full rebuilds.
     module_fallback_root: Option<PathBuf>,
@@ -161,8 +166,6 @@ impl Default for SemanticDatabase {
             workspace_lookup_order: Arc::from(vec![WorkspaceId::MAIN, WorkspaceId::REMOTE]),
             vfs: Vfs::new(),
             files: HashMap::new(),
-            shards: HashMap::new(),
-            shard_files: vec![Vec::new(); exports::EXPORT_SHARDS as usize],
             module_fallback_root: None,
             workspace_index: query::WorkspaceIndexCache::new(),
             dependency_index: HashMap::new(),
@@ -183,57 +186,6 @@ impl SemanticDatabase {
 
     pub(crate) fn workspace_roots(&self) -> &Arc<[WorkspaceRoot]> {
         &self.workspace_roots
-    }
-
-    /// Files belonging to a stable shard.
-    pub(crate) fn file_ids_in_shard(&self, shard: u8) -> &[FileId] {
-        &self.shard_files[shard as usize]
-    }
-
-    /// Register a file id in its stable shard (idempotent).
-    pub(crate) fn register_file_in_shard(&mut self, file_id: FileId) {
-        let shard = exports::shard_of(file_id) as usize;
-        let added = {
-            let files = &mut self.shard_files[shard];
-            if files.contains(&file_id) {
-                false
-            } else {
-                files.push(file_id);
-                true
-            }
-        };
-        if added {
-            self.refresh_module_fallback_root();
-        }
-    }
-
-    /// Remove a file id from its stable shard.
-    pub(crate) fn unregister_file_from_shard(&mut self, file_id: FileId) {
-        let shard = exports::shard_of(file_id) as usize;
-        let removed = {
-            let files = &mut self.shard_files[shard];
-            let before = files.len();
-            files.retain(|&registered| registered != file_id);
-            files.len() != before
-        };
-        if removed {
-            self.refresh_module_fallback_root();
-        }
-    }
-
-    /// Rebuild the shard -> file-id lists from the VFS.
-    ///
-    /// This is the only O(file-count) pass; individual shard builders then only
-    /// visit `file_ids_in_shard(shard)`.
-    pub(crate) fn rebuild_shard_files(&mut self) {
-        for files in &mut self.shard_files {
-            files.clear();
-        }
-        for file_id in self.vfs.file_ids() {
-            let shard = exports::shard_of(file_id) as usize;
-            self.shard_files[shard].push(file_id);
-        }
-        self.refresh_module_fallback_root();
     }
 
     /// Recompute the module-name fallback root after a file add/remove.
@@ -286,36 +238,16 @@ impl SemanticDatabase {
             .as_ref()
     }
 
-    pub(crate) fn shard_cache(&self, shard: u8) -> Option<&ShardCache> {
-        self.shards.get(&shard)
+    #[cfg(test)]
+    pub(crate) fn file_module_entry_of(&self, file_id: FileId) -> Option<&query::ModuleEntry> {
+        self.file_cache(file_id)
+            .and_then(|cache| cache.module_entry.as_ref())
     }
 
-    pub(crate) fn export_shard_of(&self, shard: u8) -> &exports::ExportShard {
-        &self
-            .shard_cache(shard)
-            .expect("export shard must be built before read")
-            .exports
-    }
-
-    pub(crate) fn deprecated_shard_of(&self, shard: u8) -> &query::DeprecatedShard {
-        &self
-            .shard_cache(shard)
-            .expect("deprecated shard must be built before read")
-            .deprecated
-    }
-
-    pub(crate) fn module_shard_of(&self, shard: u8) -> &query::ModuleShard {
-        &self
-            .shard_cache(shard)
-            .expect("module shard must be built before read")
-            .module
-    }
-
-    pub(crate) fn reference_shard_of(&self, shard: u8) -> &query::ReferenceShard {
-        &self
-            .shard_cache(shard)
-            .expect("reference shard must be built before read")
-            .references
+    #[cfg(test)]
+    pub(crate) fn file_deprecated_of(&self, file_id: FileId) -> Option<&query::DeprecatedFileData> {
+        self.file_cache(file_id)
+            .map(|cache| cache.deprecated.as_ref())
     }
 
     pub(crate) fn workspace_index_cache(&self) -> &query::WorkspaceIndexCache {
@@ -403,8 +335,15 @@ impl SemanticDatabase {
         file_id: FileId,
         old_workspace: Option<WorkspaceId>,
         metadata_changed: bool,
+        old_module_entry: Option<query::ModuleEntry>,
     ) {
-        update::rebuild_file_after_write(self, file_id, old_workspace, metadata_changed);
+        update::rebuild_file_after_write(
+            self,
+            file_id,
+            old_workspace,
+            metadata_changed,
+            old_module_entry,
+        );
     }
 
     fn rebuild_file_after_remove(
@@ -413,6 +352,7 @@ impl SemanticDatabase {
         old_workspace: Option<WorkspaceId>,
         old_exports: Option<Arc<exports::FileExportContribution>>,
         old_references: Option<Arc<query::FileReferences>>,
+        old_module_entry: Option<query::ModuleEntry>,
     ) {
         update::rebuild_file_after_remove(
             self,
@@ -420,6 +360,7 @@ impl SemanticDatabase {
             old_workspace,
             old_exports,
             old_references,
+            old_module_entry,
         );
     }
 
@@ -430,12 +371,23 @@ impl SemanticDatabase {
     /// Remove a file from the workspace file list and VFS snapshot.
     fn workspace_remove_file(&mut self, file_id: FileId) {
         let old_workspace = self.workspace_id_of(file_id);
+        let old_module_entry = if self.file_facts_of(file_id).is_some() {
+            query::build_module_entry(self, file_id)
+        } else {
+            None
+        };
         let (old_exports, old_references) = match self.files.remove(&file_id) {
             Some(cache) => (Some(cache.exports), Some(cache.references)),
             None => (None, None),
         };
         self.vfs.remove(file_id);
-        self.rebuild_file_after_remove(file_id, old_workspace, old_exports, old_references);
+        self.rebuild_file_after_remove(
+            file_id,
+            old_workspace,
+            old_exports,
+            old_references,
+            old_module_entry,
+        );
     }
 
     // ---- Config ----
@@ -569,6 +521,10 @@ impl SemanticDatabase {
 
     // ---- URI / FileId mapping ----
 
+    pub(crate) fn allocate_file_id(&mut self) -> FileId {
+        self.vfs.allocate_file_id()
+    }
+
     pub fn lookup_file_id(&self, uri: &Uri) -> Option<FileId> {
         if let Some(path) = uri_to_file_path(uri)
             && let Some(id) = self.vfs.lookup_by_path(&path)
@@ -638,9 +594,14 @@ impl SemanticDatabase {
         let old_path = self.vfs.file(file_id).and_then(|file| file.path.clone());
         let old_uri = self.vfs.file(file_id).and_then(|file| file.uri.clone());
         let old_workspace = self.workspace_id_of(file_id);
+        let old_module_entry = if self.file_facts_of(file_id).is_some() {
+            query::build_module_entry(self, file_id)
+        } else {
+            None
+        };
         let metadata_changed = old_path != path || old_uri != uri;
         self.vfs.insert_at(file_id, uri, path, text);
-        self.rebuild_file_after_write(file_id, old_workspace, metadata_changed);
+        self.rebuild_file_after_write(file_id, old_workspace, metadata_changed, old_module_entry);
     }
 
     /// Reload the workspace file set while preserving existing FileIds and protected files.
@@ -756,8 +717,7 @@ impl SemanticDatabase {
         self.main_root = None;
         self.vfs = Vfs::new();
         self.files = HashMap::new();
-        self.shards = HashMap::new();
-        self.shard_files = vec![Vec::new(); exports::EXPORT_SHARDS as usize];
+
         self.module_fallback_root = None;
         self.workspace_index = query::WorkspaceIndexCache::new();
         self.dependency_index = HashMap::new();

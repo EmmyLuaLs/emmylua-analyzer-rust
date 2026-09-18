@@ -5,7 +5,7 @@
 
 use crate::{FileId, LuaType, VirtualWorkspace};
 
-use super::super::def::{DependencyKey, OwnerId};
+use super::super::def::{DependencyKey, OwnerId, TypeScope};
 use crate::LuaMemberKey;
 
 fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
@@ -227,5 +227,181 @@ fn p7_global_dependency_refresh() {
             .dependent_reference_refreshes(),
         1,
         "removing global `f` must refresh its consumer"
+    );
+}
+
+#[test]
+fn p7_type_dependency_is_recorded_and_refreshed() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("a.lua", "---@class Hidden\nlocal x = 1\nreturn x");
+    let consumer = ws.def_file("c.lua", "local y = Hidden\nreturn y");
+
+    let has_type_dep = ws.analysis.db.dependency_index.iter().any(|(key, files)| {
+        matches!(key, DependencyKey::Type(_, name) if name == "Hidden") && files.contains(&consumer)
+    });
+    assert!(has_type_dep, "name use must record a Type dependency");
+
+    ws.analysis.db.rebuild_metrics.reset();
+    ws.def_file("a.lua", "---@class Hidden2\nlocal x = 1\nreturn x");
+
+    assert_eq!(
+        ws.analysis
+            .db
+            .rebuild_metrics
+            .dependent_reference_refreshes(),
+        1,
+        "type surface edit must refresh the consumer reference index"
+    );
+}
+
+#[test]
+fn p7_unresolved_require_refreshes_when_module_added() {
+    let mut ws = VirtualWorkspace::new();
+    let consumer = ws.def_file(
+        "consumer.lua",
+        "local m = require(\"late\")\nlocal v = m.x\nreturn v",
+    );
+    assert_eq!(local_type(&ws, consumer, "v"), LuaType::Unknown);
+
+    ws.def_file("late.lua", "local M = {}\nM.x = 1\nreturn M");
+
+    assert_eq!(
+        ws.analysis
+            .db
+            .rebuild_metrics
+            .dependent_contribution_refreshes(),
+        1,
+        "resolving a require alias must rebuild the consumer contribution"
+    );
+    assert!(
+        integer_like(&local_type(&ws, consumer, "v")),
+        "adding the required module must rebuild the consumer alias contribution"
+    );
+
+    let mut fresh = VirtualWorkspace::new();
+    fresh.def_file("late.lua", "local M = {}\nM.x = 1\nreturn M");
+    let fresh_consumer = fresh.def_file(
+        "consumer.lua",
+        "local m = require(\"late\")\nlocal v = m.x\nreturn v",
+    );
+    assert_eq!(
+        local_type(&ws, consumer, "v"),
+        local_type(&fresh, fresh_consumer, "v")
+    );
+}
+
+#[test]
+fn p7_annotation_only_member_refreshes_dependent_references() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("a.lua", "---@class A\nA = {}");
+    let consumer = ws.def_file("c.lua", "local v = A.BBB()\nreturn v");
+    assert_eq!(local_type(&ws, consumer, "v"), LuaType::Unknown);
+
+    ws.analysis.db.rebuild_metrics.reset();
+    ws.def_file("a.lua", "---@class A\n---@field BBB fun(): integer\nA = {}");
+    assert_eq!(
+        ws.analysis
+            .db
+            .rebuild_metrics
+            .dependent_reference_refreshes(),
+        1,
+        "annotation-only member addition must refresh the consumer reference index"
+    );
+    assert!(
+        integer_like(&local_type(&ws, consumer, "v")),
+        "BBB field must be visible after the incremental update"
+    );
+}
+
+#[test]
+fn p7_removed_module_refreshes_consumer_alias() {
+    let mut ws = VirtualWorkspace::new();
+    let late = ws.def_file("late.lua", "local M = {}\nM.x = 1\nreturn M");
+    let consumer = ws.def_file(
+        "consumer.lua",
+        "local m = require(\"late\")\nlocal v = m.x\nreturn v",
+    );
+    assert!(integer_like(&local_type(&ws, consumer, "v")));
+
+    ws.analysis.db.remove_file(late);
+
+    assert_eq!(
+        local_type(&ws, consumer, "v"),
+        LuaType::Unknown,
+        "removing the module must rebuild the consumer alias contribution"
+    );
+}
+
+#[test]
+fn p7_unresolved_type_refreshes_when_type_added() {
+    let mut ws = VirtualWorkspace::new();
+    let consumer = ws.def_file("c.lua", "local v = LateType\nreturn v");
+
+    assert!(
+        ws.analysis
+            .db
+            .dependency_index
+            .get(&DependencyKey::TypeName("LateType".into()))
+            .is_some_and(|files| files.contains(&consumer)),
+        "unresolved name must record a negative TypeName dependency"
+    );
+
+    ws.analysis.db.rebuild_metrics.reset();
+    ws.def_file("a.lua", "---@class LateType");
+
+    assert_eq!(
+        ws.analysis
+            .db
+            .rebuild_metrics
+            .dependent_reference_refreshes(),
+        1,
+        "adding the type must refresh the consumer reference index"
+    );
+    assert!(
+        ws.analysis.db.dependency_index.iter().any(|(key, files)| {
+            matches!(key, DependencyKey::Type(_, name) if name == "LateType")
+                && files.contains(&consumer)
+        }),
+        "refreshed name use must record the positive Type dependency"
+    );
+}
+
+#[test]
+fn p7_unresolved_member_owner_type_refreshes_when_type_added() {
+    let mut ws = VirtualWorkspace::new();
+    let consumer = ws.def_file("c.lua", "local v = A.BBB\nreturn v");
+
+    assert!(
+        ws.analysis
+            .db
+            .dependency_index
+            .get(&DependencyKey::TypeName("A".into()))
+            .is_some_and(|files| files.contains(&consumer)),
+        "unresolved member owner must record a negative TypeName dependency"
+    );
+
+    ws.analysis.db.rebuild_metrics.reset();
+    ws.def_file("a.lua", "---@class A");
+
+    assert_eq!(
+        ws.analysis
+            .db
+            .rebuild_metrics
+            .dependent_reference_refreshes(),
+        1,
+        "adding the type must refresh the unresolved member owner"
+    );
+
+    let type_owner = OwnerId::Type(TypeScope::Global, "A".into());
+    assert!(
+        ws.analysis
+            .db
+            .dependency_index
+            .get(&DependencyKey::Member(
+                type_owner,
+                LuaMemberKey::Name("BBB".into()),
+            ))
+            .is_some_and(|files| files.contains(&consumer)),
+        "refreshed member use must record the Type owner dependency"
     );
 }

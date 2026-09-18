@@ -3,19 +3,18 @@
 //! Corresponds to rust-analyzer's DefMap/public surface above ItemTree:
 //! - Only collects this file's own fact identities; declarations/member types are not computed here
 //!   (type queries execute lazily by SemanticId, avoiding the cycle
-//!   file_exports → decl_type → resolve_type_def → workspace_type_index → export_shard);
-//! - Workspace shard indexes merge only this layer, without visiting FileFacts per file.
+//!   file_exports → decl_type → resolve_type_def → workspace_type_index);
+//! - Workspace indexes merge only this layer, without visiting FileFacts per file.
 //!
 //! A contribution carries canonical `OwnerId` / `ExportKey` identities plus the
 //! member data the incremental workspace-index layer needs (`value_syntax`,
 //! `is_method`, `visibility`, source `order`). Overloads are never merged here:
 //! every declaration stays a separate `MemberExport`.
 
-use std::sync::Arc;
-
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaExpr, LuaLiteralToken, LuaSyntaxId, VisibilityKind,
 };
+
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 
@@ -408,44 +407,4 @@ fn require_module_file_from_call(
         return None;
     };
     query::module_file_of(db, config, SmolStr::new(token.get_value()))
-}
-
-// ──────────────────────────────────────────────
-// Shards
-// ──────────────────────────────────────────────
-
-/// Stable shard count: 64 shards; cross-file lookup depends only on the relevant shard's memo.
-pub const EXPORT_SHARDS: u8 = 64;
-
-/// file_id → shard (stable: FileId never changes once assigned).
-pub fn shard_of(file_id: FileId) -> u8 {
-    (file_id.id % EXPORT_SHARDS as u32) as u8
-}
-
-/// A shard's export facts (write-time built map lookup).
-pub(crate) fn export_shard(db: &SemanticDatabase, shard: u8) -> &ExportShard {
-    db.export_shard_of(shard)
-}
-
-/// A shard's export contributions: `FileId -> contribution`.
-///
-/// The shard is a stable partition only. It never aggregates contributions, so
-/// updating one file replaces exactly one map entry and never scans other files.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ExportShard {
-    pub files: HashMap<FileId, Arc<FileExportContribution>>,
-}
-
-pub(super) fn build_export_shard(db: &SemanticDatabase, shard: u8) -> ExportShard {
-    #[cfg(test)]
-    db.rebuild_metrics
-        .shard_scan_builds
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut files = HashMap::new();
-    for &file_id in db.file_ids_in_shard(shard) {
-        if let Some(cache) = db.file_cache(file_id) {
-            files.insert(file_id, Arc::clone(&cache.exports));
-        }
-    }
-    ExportShard { files }
 }

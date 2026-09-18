@@ -46,7 +46,7 @@ fn p4_new_file_does_not_full_rebuild() {
 
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
-    assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
+    assert_eq!(db.rebuild_metrics.full_index_source_scans(), 0);
     assert!(matches!(
         db.analysis().global_decl("M"),
         Some(crate::SemanticId::Decl(_))
@@ -66,7 +66,7 @@ fn p4_remove_file_does_not_full_rebuild() {
 
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
-    assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
+    assert_eq!(db.rebuild_metrics.full_index_source_scans(), 0);
     assert!(db.analysis().global_decl("M").is_none());
     assert!(db.analysis().module_file_of("b").is_none());
 }
@@ -99,7 +99,7 @@ fn p4_path_change_does_not_full_rebuild() {
 
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
-    assert_eq!(db.rebuild_metrics.shard_scan_builds(), 0);
+    assert_eq!(db.rebuild_metrics.full_index_source_scans(), 0);
     assert!(db.analysis().module_file_of("old").is_none());
     assert_eq!(db.analysis().module_file_of("new"), Some(fid));
 

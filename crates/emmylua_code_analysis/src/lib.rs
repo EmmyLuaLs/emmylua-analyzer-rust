@@ -130,7 +130,21 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn update_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> Option<FileId> {
-        Some(self.db.set_file_content(uri, text))
+        let file_id = self
+            .db
+            .lookup_file_id(uri)
+            .unwrap_or_else(|| self.db.allocate_file_id());
+        let change = match text {
+            Some(text) => FileChange::Set {
+                file_id,
+                path: uri_to_file_path(uri),
+                uri: Some(uri.clone()),
+                text,
+            },
+            None => FileChange::Remove { file_id },
+        };
+        let _ = self.db.apply_file_change(change);
+        Some(file_id)
     }
 
     pub fn update_file_by_path(&mut self, path: &PathBuf, text: Option<String>) -> Option<FileId> {
@@ -160,7 +174,7 @@ impl EmmyLuaAnalysis {
 
     pub fn remove_file_by_uri(&mut self, uri: &Uri) -> Option<FileId> {
         let file_id = self.db.lookup_file_id(uri)?;
-        self.db.remove_file(file_id);
+        let _ = self.db.apply_file_change(FileChange::Remove { file_id });
         Some(file_id)
     }
 

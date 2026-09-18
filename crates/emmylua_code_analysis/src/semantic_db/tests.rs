@@ -8,9 +8,7 @@ use super::SemanticDatabase;
 use super::def::{
     ConstructorReturnMode, DeclKind, ModuleExport, SemanticId, TypeDefKind, TypeVisibility,
 };
-use super::exports::{export_shard, shard_of};
 use super::facts::FileFacts;
-use super::query::{deprecated_shard, module_shard};
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId, SemanticModel};
 
@@ -965,43 +963,23 @@ M.x = 's'",
 }
 
 #[test]
-fn test_file_exports_identity_and_shard_memo() {
+fn test_file_exports_identity_memo() {
     let mut db = setup();
-    // The two files land in different shards (FileId % 64 differs).
     let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "M = {}\nM.x = 1");
     let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}");
-    assert_ne!(shard_of(fid1), shard_of(fid2));
 
     let exports1 = db.analysis().file_exports(fid1).expect("exports1");
     assert_eq!(exports1.file_id, fid1);
     assert!(exports1.globals.iter().any(|g| g.name == "M"));
     assert!(exports1.members.iter().any(|m| m.key.to_path() == "x"));
 
-    let shard1 = shard_of(fid1);
-    let shard2 = shard_of(fid2);
-    let _ = export_shard(&db, shard1);
-    let _ = export_shard(&db, shard2);
-
-    // export_shard 已经是普通缓存，不再通过 query_execution_count 观察 memo。
-    set_test_file(
-        &mut db,
-        2,
-        "C:/ws/b.lua",
-        "N = {}
-N.y = 2",
-    );
-    let _ = export_shard(&db, shard1);
-    let edited = export_shard(&db, shard2);
-    assert!(
-        edited
-            .files
-            .get(&fid2)
-            .is_some_and(|exports| exports.members.iter().any(|m| m.key.to_path() == "y"))
-    );
+    set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}\nN.y = 2");
+    let edited = db.analysis().file_exports(fid2).expect("exports2");
+    assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
 }
 
 #[test]
-fn test_module_and_deprecated_shard_memo() {
+fn test_module_and_deprecated_file_cache() {
     let mut db = setup();
     let fid1 = set_test_file(
         &mut db,
@@ -1015,23 +993,28 @@ fn test_module_and_deprecated_shard_memo() {
         "C:/ws/b.lua",
         "---@deprecated\nNew = 1\nreturn {}",
     );
-    assert_ne!(shard_of(fid1), shard_of(fid2));
 
-    let shard1 = shard_of(fid1);
-    let shard2 = shard_of(fid2);
-    let _ = deprecated_shard(&db, shard1);
-    let _ = deprecated_shard(&db, shard2);
-    let _ = module_shard(&db, shard1);
-    let _ = module_shard(&db, shard2);
+    assert_eq!(
+        db.file_module_entry_of(fid1)
+            .map(|entry| entry.full_module_name.clone()),
+        Some("a".into())
+    );
+    assert_eq!(
+        db.file_module_entry_of(fid2)
+            .map(|entry| entry.full_module_name.clone()),
+        Some("b".into())
+    );
+    assert!(
+        db.file_deprecated_of(fid1)
+            .is_some_and(|data| data.names.iter().any(|name| name == "Old"))
+    );
 
-    // module_shard/deprecated_shard 已是普通缓存，这里只验证编辑后仍可正常读取。
     set_test_file(&mut db, 2, "C:/ws/b.lua", "return {}");
-    let _ = deprecated_shard(&db, shard1);
-    let _ = module_shard(&db, shard1);
-    let _ = deprecated_shard(&db, shard2);
-    let _ = module_shard(&db, shard2);
+    assert!(
+        db.file_deprecated_of(fid2)
+            .is_some_and(|data| data.names.is_empty())
+    );
 }
-
 #[test]
 fn test_semantic_model_file_exports_and_signature_api() {
     let mut db = setup();

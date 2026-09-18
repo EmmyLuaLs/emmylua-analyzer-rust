@@ -1,16 +1,15 @@
-//! P2 tests for per-file shard storage.
+//! P2 tests for FileCache-backed per-file facts.
 //!
-//! P2 replaces aggregate shard vectors with `FileId -> contribution` maps, so a
-//! single-file edit replaces exactly one entry and shard builders never scan the
-//! full workspace file list.
+//! The shard layer was removed; workspace indexes now read FileCache
+//! directly. These tests guard the per-file source of truth and the
+//! incremental-update invariants that replaced the old shard tests.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::super::query::{deprecated_shard, module_shard, reference_shard};
-use super::super::SemanticDatabase;
-use super::super::exports::{export_shard, shard_of};
 use crate::{Emmyrc, FileId};
+
+use super::super::SemanticDatabase;
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
@@ -26,99 +25,61 @@ fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &s
 }
 
 #[test]
-fn p2_export_shard_is_per_file() {
-    let mut db = setup();
-    // FileId 1 and 65 share the same stable shard (65 % 64 == 1).
-    let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "M = {}\nM.x = 1");
-    let fid2 = set_test_file(&mut db, 65, "C:/ws/b.lua", "N = {}\nN.y = 2");
-    let shard = shard_of(fid1);
-    assert_eq!(shard, shard_of(fid2));
-
-    let shard = export_shard(&db, shard);
-    assert_eq!(shard.files.len(), 2);
-    let first_before = Arc::clone(shard.files.get(&fid1).expect("fid1 entry"));
-    let second_before = Arc::clone(shard.files.get(&fid2).expect("fid2 entry"));
-
-    // Edit only fid1: its entry must be replaced, fid2's entry must stay the same Arc.
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "M = {}\nM.x = 10\nM.z = 3");
-
-    let shard = export_shard(&db, shard_of(fid1));
-    let first_after = shard.files.get(&fid1).expect("fid1 entry after edit");
-    let second_after = shard.files.get(&fid2).expect("fid2 entry after edit");
-
-    assert!(
-        !Arc::ptr_eq(&first_before, first_after),
-        "edited file's contribution must be replaced"
-    );
-    assert!(
-        Arc::ptr_eq(&second_before, second_after),
-        "untouched file's contribution must be reused"
-    );
-}
-
-#[test]
-fn p2_shard_file_lists_are_maintained_incrementally() {
-    let mut db = setup();
-    let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "M = {}");
-    let fid2 = set_test_file(&mut db, 65, "C:/ws/b.lua", "N = {}");
-    let shard = shard_of(fid1);
-
-    let files = db.file_ids_in_shard(shard);
-    assert!(files.contains(&fid1));
-    assert!(files.contains(&fid2));
-
-    db.remove_file(fid1);
-    let files = db.file_ids_in_shard(shard);
-    assert!(!files.contains(&fid1));
-    assert!(files.contains(&fid2));
-}
-
-#[test]
-fn p2_module_and_deprecated_shards_are_per_file() {
+fn p2_file_cache_stores_module_and_deprecated_entries() {
     let mut db = setup();
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/mod.lua",
-        "---@deprecated\nM = {}\nreturn M",
+        "C:/ws/pkg/mod.lua",
+        "---@deprecated\nG = 1\nreturn {}",
     );
-    let shard = shard_of(fid);
-
-    let deprecated = deprecated_shard(&db, shard);
+    let entry = db.file_module_entry_of(fid).expect("module entry");
+    assert_eq!(entry.full_module_name, "pkg.mod");
+    assert_eq!(entry.name, "mod");
     assert!(
-        deprecated
-            .files
-            .get(&fid)
-            .is_some_and(|data| data.names.iter().any(|name| name == "M")),
-        "deprecated global M must be stored under its file"
+        db.file_deprecated_of(fid)
+            .is_some_and(|data| data.names.iter().any(|name| name == "G"))
     );
-    let module = module_shard(&db, shard);
+    assert_eq!(db.analysis().module_file_of("pkg.mod"), Some(fid));
+}
+
+#[test]
+fn p2_module_entry_follows_path_change() {
+    let mut db = setup();
+    let fid = set_test_file(&mut db, 1, "C:/ws/old.lua", "return {}");
     assert_eq!(
-        module
-            .files
-            .get(&fid)
-            .map(|entry| entry.full_module_name.as_str()),
-        Some("mod")
+        db.file_module_entry_of(fid)
+            .map(|entry| entry.full_module_name.clone()),
+        Some("old".into())
     );
+    db.set_file(
+        fid,
+        Some(PathBuf::from("C:/ws/new.lua")),
+        "return {}".to_string(),
+    );
+    assert_eq!(
+        db.file_module_entry_of(fid)
+            .map(|entry| entry.full_module_name.clone()),
+        Some("new".into())
+    );
+    assert_eq!(db.analysis().module_file_of("old"), None);
+    assert_eq!(db.analysis().module_file_of("new"), Some(fid));
+}
 
-    // Remove @deprecated: only this file's deprecated entry is removed.
-    set_test_file(&mut db, 1, "C:/ws/mod.lua", "M = {}\nreturn M");
-    assert!(
-        deprecated_shard(&db, shard).files.get(&fid).is_none(),
-        "deprecated entry must be removed with the annotation"
+#[test]
+fn p2_incremental_write_does_not_rebuild_workspace_indexes() {
+    let mut db = setup();
+    let fid = set_test_file(&mut db, 1, "C:/ws/mod.lua", "return 1");
+    db.rebuild_metrics.reset();
+    db.set_file(
+        fid,
+        Some(PathBuf::from("C:/ws/mod.lua")),
+        "---@deprecated\nG = 1\nreturn 2".to_string(),
     );
+    assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
+    assert_eq!(db.rebuild_metrics.full_index_source_scans(), 0);
     assert!(
-        module_shard(&db, shard).files.contains_key(&fid),
-        "module entry must remain while the file still returns M"
+        db.file_deprecated_of(fid)
+            .is_some_and(|data| data.names.iter().any(|name| name == "G"))
     );
-
-    // A file without a top-level return is still a module path entry.
-    set_test_file(&mut db, 1, "C:/ws/mod.lua", "M = {}");
-    assert!(
-        module_shard(&db, shard).files.contains_key(&fid),
-        "module path entry must remain even without an explicit return"
-    );
-
-    let references = reference_shard(&db, shard);
-    assert!(references.files.contains_key(&fid));
 }

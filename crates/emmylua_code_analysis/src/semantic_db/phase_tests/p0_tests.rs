@@ -301,7 +301,7 @@ fn p0_rebuild_metrics_are_incremented_by_full_rebuild() {
         "workspace index rebuild must be recorded"
     );
     assert!(
-        metrics.shard_scan_builds() > 0,
+        metrics.full_index_source_scans() > 0,
         "shard builder invocations must be recorded"
     );
 }
@@ -349,7 +349,7 @@ fn p0_surface_preserving_edit_does_not_scan_all_files() {
         "surface-preserving edit must not rebuild workspace indexes"
     );
     assert_eq!(
-        metrics.shard_scan_builds(),
+        metrics.full_index_source_scans(),
         0,
         "shard builders must not scan all files"
     );
@@ -399,8 +399,46 @@ fn p0_export_changing_edit_does_not_rebuild_workspace_indexes() {
         "workspace indexes must be updated from the old/new contribution delta"
     );
     assert_eq!(
-        metrics.shard_scan_builds(),
+        metrics.full_index_source_scans(),
         0,
         "shard builders must not scan all files"
+    );
+}
+
+#[test]
+fn p0_value_only_edit_does_not_rebuild_module_index() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "mod.lua",
+        r#"
+        local M = {}
+        M.x = 1
+        return M
+        "#,
+    );
+    ws.def_file(
+        "consumer.lua",
+        r#"
+        local m = require("mod")
+        local v = m.x
+        return v
+        "#,
+    );
+
+    ws.analysis.db.rebuild_metrics.reset();
+
+    ws.def_file(
+        "mod.lua",
+        r#"
+        local M = {}
+        M.x = 2
+        return M
+        "#,
+    );
+
+    assert_eq!(
+        ws.analysis.db.rebuild_metrics.module_derived_rebuilds(),
+        0,
+        "value-only edit must not re-sort the workspace module index"
     );
 }

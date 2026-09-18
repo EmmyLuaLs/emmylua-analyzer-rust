@@ -13,9 +13,7 @@ use super::def::{
     FileDependencies, LuaMemberKey, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
     ModuleVisibility, OwnerId, SemanticId, TypeDef, TypeDefKind,
 };
-use super::exports::{
-    EXPORT_SHARDS, FileExports, export_shard, module_export_owner_file, owner_id_from_semantic_id,
-};
+use super::exports::{FileExports, module_export_owner_file, owner_id_from_semantic_id};
 use super::facts::{FactsBuilder, FileFacts};
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use crate::Emmyrc;
@@ -104,14 +102,14 @@ pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>)
         if new_types.get(key) != Some(old_defs)
             && let ExportKey::Type(scope, name) = key
         {
-            changed.insert(DependencyKey::Type(*scope, name.clone()));
+            insert_type_changed_keys(&mut changed, *scope, name);
         }
     }
     for key in new_types.keys() {
         if !old_types.contains_key(key)
             && let ExportKey::Type(scope, name) = key
         {
-            changed.insert(DependencyKey::Type(*scope, name.clone()));
+            insert_type_changed_keys(&mut changed, *scope, name);
         }
     }
 
@@ -187,6 +185,21 @@ pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>)
     }
 
     changed
+}
+
+/// Publish the positive Type key plus negative TypeName keys for a changed type.
+///
+/// File-private types are skipped: they are only visible in their own file, and
+/// references in the declaring file are rebuilt in the same write.
+fn insert_type_changed_keys(changed: &mut ChangedKeys, scope: TypeScope, full_name: &SmolStr) {
+    changed.insert(DependencyKey::Type(scope, full_name.clone()));
+    if matches!(scope, TypeScope::File(_)) {
+        return;
+    }
+    changed.insert(DependencyKey::TypeName(full_name.clone()));
+    if let Some((_, bare)) = full_name.rsplit_once('.') {
+        changed.insert(DependencyKey::TypeName(SmolStr::new(bare)));
+    }
 }
 
 /// Rebuild the reverse dependency map from all per-file references (full rebuild).
@@ -279,25 +292,31 @@ pub(crate) fn build_workspace_type_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> WorkspaceTypeIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let mut by_scope_name: HashMap<(TypeScope, SmolStr), Vec<TypeDef>> = HashMap::new();
     let mut by_file = HashMap::new();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, shard);
-        for (file_id, exports) in &shard.files {
-            if !file_matches_workspace_id(db, *file_id, ws_id) {
-                continue;
-            }
-            let mut keys = Vec::new();
-            for def in &exports.types {
-                let key = WorkspaceTypeIndex::type_key(def, ws_id);
-                by_scope_name
-                    .entry(key.clone())
-                    .or_default()
-                    .push(def.clone());
-                keys.push((key, def.id.clone()));
-            }
-            by_file.insert(*file_id, keys);
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        let exports = cache.exports.as_ref();
+        if !file_matches_workspace_id(db, file_id, ws_id) {
+            continue;
         }
+        let mut keys = Vec::new();
+        for def in &exports.types {
+            let key = WorkspaceTypeIndex::type_key(def, ws_id);
+            by_scope_name
+                .entry(key.clone())
+                .or_default()
+                .push(def.clone());
+            keys.push((key, def.id.clone()));
+        }
+        by_file.insert(file_id, keys);
     }
     WorkspaceTypeIndex {
         by_scope_name: by_scope_name
@@ -350,18 +369,6 @@ pub(crate) struct DeprecatedFileData {
     pub member_keys: Vec<(SemanticId, SmolStr)>,
 }
 
-/// A shard's deprecated facts: `FileId -> per-file data`.
-///
-/// Empty files are not stored; a file update replaces or removes exactly one entry.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct DeprecatedShard {
-    pub(crate) files: HashMap<FileId, DeprecatedFileData>,
-}
-
-pub(crate) fn deprecated_shard(db: &SemanticDatabase, shard: u8) -> &DeprecatedShard {
-    db.deprecated_shard_of(shard)
-}
-
 pub(crate) fn build_deprecated_file(db: &SemanticDatabase, file_id: FileId) -> DeprecatedFileData {
     let mut data = DeprecatedFileData::default();
     let Some(file) = db.file_data_id(file_id) else {
@@ -380,21 +387,6 @@ pub(crate) fn build_deprecated_file(db: &SemanticDatabase, file_id: FileId) -> D
         }
     }
     data
-}
-
-pub(crate) fn build_deprecated_shard(db: &SemanticDatabase, shard: u8) -> DeprecatedShard {
-    #[cfg(test)]
-    db.rebuild_metrics
-        .shard_scan_builds
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut files = HashMap::new();
-    for &file_id in db.file_ids_in_shard(shard) {
-        let data = build_deprecated_file(db, file_id);
-        if !data.names.is_empty() || !data.member_keys.is_empty() {
-            files.insert(file_id, data);
-        }
-    }
-    DeprecatedShard { files }
 }
 
 /// Incrementally maintained deprecated-name index for one workspace.
@@ -460,13 +452,18 @@ pub(crate) fn build_workspace_deprecated_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> DeprecatedIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let mut index = DeprecatedIndex::default();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = deprecated_shard(db, shard);
-        for (file_id, data) in &shard.files {
-            if file_matches_workspace_id(db, *file_id, ws_id) {
-                index.add_file(*file_id, data);
-            }
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        if file_matches_workspace_id(db, file_id, ws_id) {
+            index.add_file(file_id, cache.deprecated.as_ref());
         }
     }
     index
@@ -872,20 +869,26 @@ pub(crate) fn build_workspace_member_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> WorkspaceMemberIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let mut index = WorkspaceMemberIndex::default();
     let mut touched_raw: HashSet<SemanticId> = HashSet::new();
     let mut touched_canonical: HashSet<OwnerId> = HashSet::new();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, shard);
-        for (file_id, exports) in &shard.files {
-            if !file_matches_workspace_id(db, *file_id, ws_id) {
-                continue;
-            }
-            let (keys, canonical_keys) =
-                index.add_file_inner(exports, &mut touched_raw, &mut touched_canonical);
-            index.by_file.insert(*file_id, keys);
-            index.by_file_owner_id.insert(*file_id, canonical_keys);
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        let exports = cache.exports.as_ref();
+        if !file_matches_workspace_id(db, file_id, ws_id) {
+            continue;
         }
+        let (keys, canonical_keys) =
+            index.add_file_inner(exports, &mut touched_raw, &mut touched_canonical);
+        index.by_file.insert(file_id, keys);
+        index.by_file_owner_id.insert(file_id, canonical_keys);
     }
     index.rebuild_touched_caches(touched_raw, touched_canonical);
     index
@@ -1004,10 +1007,18 @@ pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> File
                 .entry(decl)
                 .or_default()
                 .push(name_use.syntax.get_range());
+        } else if let Some(type_def) = resolve_type_def(db, file, name_use.name.clone()) {
+            // A bare name may denote a named type without a runtime declaration.
+            // Record the type identity so type-surface edits refresh this file.
+            push_target_dependencies(db, &type_def.id, &mut out.deps);
         } else {
             // Unresolved global may be defined by a later file write.
             out.deps
                 .insert(DependencyKey::Global(name_use.name.clone()));
+            // Negative type dependency: a later type with this name may
+            // change how this unresolved use resolves.
+            out.deps
+                .insert(DependencyKey::TypeName(name_use.name.clone()));
         }
     }
 
@@ -1030,13 +1041,13 @@ pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> File
             continue;
         };
         let owner_and_name = member_ref_from_index_expr(&facts, &index_expr);
-        if let Some((owner, name)) = &owner_and_name
-            && let Some(owner_id) = canonical_owner_id(db, owner)
-        {
-            out.deps.insert(DependencyKey::Member(
-                owner_id,
-                LuaMemberKey::Name(name.clone()),
-            ));
+        if let Some((owner, name)) = &owner_and_name {
+            insert_member_owner_dependencies(
+                db,
+                owner,
+                &LuaMemberKey::Name(name.clone()),
+                &mut out.deps,
+            );
         }
         if let Some(member_id) = resolve_member_id(db, &facts, &index_expr) {
             push_target_dependencies(db, &member_id, &mut out.deps);
@@ -1063,6 +1074,19 @@ pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> File
             let Some(module_name) = require_module_name_from_call(&call) else {
                 continue;
             };
+            // Negative dependency: keep the literal (and its last segment)
+            // even when resolution fails, so a later module add or rename can
+            // refresh this consumer require alias and reference index.
+            out.deps
+                .insert(DependencyKey::ModuleName(module_name.clone()));
+            let last_segment = module_name
+                .rsplit(['.', '/', '\\'])
+                .next()
+                .unwrap_or(module_name.as_str());
+            if last_segment != module_name.as_str() {
+                out.deps
+                    .insert(DependencyKey::ModuleName(SmolStr::new(last_segment)));
+            }
             if let Some(module_file) = module_file_of(db, config, module_name) {
                 out.deps.insert(DependencyKey::Module(module_file));
             }
@@ -1107,40 +1131,40 @@ fn push_target_dependencies(
         SemanticId::Member(key) => {
             if let Some(facts) = db.file_facts_of(key.file_id)
                 && let Some(member) = facts.member_by_id(target)
-                && let Some(owner_id) = canonical_owner_id(db, &member.owner)
             {
-                deps.insert(DependencyKey::Member(owner_id, member.key.clone()));
+                insert_member_owner_dependencies(db, &member.owner, &member.key, deps);
             }
         }
         SemanticId::Signature(_) => {}
     }
 }
 
-/// A shard's reference index: `FileId -> per-file references`.
-///
-/// A file update replaces exactly one map entry; no aggregation over all files is
-/// required inside a shard.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ReferenceShard {
-    pub(crate) files: HashMap<FileId, Arc<FileReferences>>,
-}
-
-pub(crate) fn reference_shard(db: &SemanticDatabase, shard: u8) -> &ReferenceShard {
-    db.reference_shard_of(shard)
-}
-
-pub(crate) fn build_reference_shard(db: &SemanticDatabase, shard: u8) -> ReferenceShard {
-    #[cfg(test)]
-    db.rebuild_metrics
-        .shard_scan_builds
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut files = HashMap::new();
-    for &file_id in db.file_ids_in_shard(shard) {
-        if let Some(cache) = db.file_cache(file_id) {
-            files.insert(file_id, Arc::clone(&cache.references));
+/// Record member-key dependencies for every canonical owner identity that may
+/// denote the raw owner (global name, named type, module export, local/table owner).
+fn insert_member_owner_dependencies(
+    db: &SemanticDatabase,
+    owner: &SemanticId,
+    key: &LuaMemberKey,
+    deps: &mut FileDependencies,
+) {
+    let mut inserted = false;
+    let mut saw_type_owner = false;
+    for owner_id in resolve_owner_ids(db, owner) {
+        if matches!(&owner_id, OwnerId::Type(..)) {
+            saw_type_owner = true;
         }
+        deps.insert(DependencyKey::Member(owner_id, key.clone()));
+        inserted = true;
     }
-    ReferenceShard { files }
+    if !inserted {
+        deps.insert(DependencyKey::Member(
+            OwnerId::Concrete(owner.clone()),
+            key.clone(),
+        ));
+    }
+    if !saw_type_owner && let SemanticId::Name(name) = owner {
+        deps.insert(DependencyKey::TypeName(SmolStr::new(name.as_str())));
+    }
 }
 
 /// Workspace-level reference index: aggregates per-file references and keeps a
@@ -1204,15 +1228,20 @@ pub(crate) fn build_workspace_reference_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> WorkspaceReferenceIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let mut index = WorkspaceReferenceIndex::default();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = reference_shard(db, shard);
-        for (file_id, refs) in &shard.files {
-            if !file_matches_workspace_id(db, *file_id, ws_id) {
-                continue;
-            }
-            index.add_file(*file_id, Arc::clone(refs));
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        if !file_matches_workspace_id(db, file_id, ws_id) {
+            continue;
         }
+        index.add_file(file_id, Arc::clone(&cache.references));
     }
     index
 }
@@ -1619,13 +1648,18 @@ pub(crate) fn build_workspace_decl_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> WorkspaceDeclIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let mut index = WorkspaceDeclIndex::default();
-    for shard in 0..EXPORT_SHARDS {
-        let shard = export_shard(db, shard);
-        for (file_id, exports) in &shard.files {
-            if file_matches_workspace_id(db, *file_id, ws_id) {
-                index.add_file(*file_id, exports);
-            }
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        if file_matches_workspace_id(db, file_id, ws_id) {
+            index.add_file(file_id, cache.exports.as_ref());
         }
     }
     index
@@ -1713,21 +1747,6 @@ pub(crate) struct ModuleEntry {
     pub version_conds: Vec<LuaVersionCondition>,
 }
 
-/// A shard's module entries: `FileId -> ModuleEntry`.
-///
-/// Each file contributes one entry using its owning workspace's root, so a file
-/// update replaces exactly one entry.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ModuleShard {
-    pub(crate) files: HashMap<FileId, ModuleEntry>,
-}
-
-/// Module shard query. Each file contributes a `ModuleEntry` using its owning workspace's root,
-/// so the per-workspace index can merge shards without scanning every file again.
-pub(crate) fn module_shard(db: &SemanticDatabase, shard: u8) -> &ModuleShard {
-    db.module_shard_of(shard)
-}
-
 /// Build one file's module entry using the current workspace roots.
 pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Option<ModuleEntry> {
     let roots = db.workspace_roots();
@@ -1763,26 +1782,17 @@ pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Opti
     })
 }
 
-pub(crate) fn build_module_shard(db: &SemanticDatabase, shard: u8) -> ModuleShard {
-    #[cfg(test)]
-    db.rebuild_metrics
-        .shard_scan_builds
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut files: HashMap<FileId, ModuleEntry> = HashMap::new();
-    for &file_id in db.file_ids_in_shard(shard) {
-        if let Some(entry) = build_module_entry(db, file_id) {
-            files.insert(file_id, entry);
-        }
-    }
-    ModuleShard { files }
-}
-
 /// Workspace module index: module name (relative to workspace root) -> file.
 /// Module index scoped to a single workspace.
 pub(crate) fn build_workspace_module_index(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
 ) -> ModuleIndex {
+    #[cfg(test)]
+    db.rebuild_metrics
+        .full_index_source_scans
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let roots = db.workspace_roots();
     let ws_roots: Vec<PathBuf> = roots
         .iter()
@@ -1794,19 +1804,22 @@ pub(crate) fn build_workspace_module_index(
     let mut by_path: HashMap<PathBuf, FileId> = HashMap::new();
     let mut module_name_to_file_ids: HashMap<SmolStr, Vec<FileId>> = HashMap::new();
 
-    for shard in 0..EXPORT_SHARDS {
-        let shard = module_shard(db, shard);
-        for entry in shard.files.values() {
-            if entry.workspace_id != ws_id {
-                continue;
-            }
-            by_path.insert(normalize_path(&entry.path), entry.file_id);
-            module_name_to_file_ids
-                .entry(entry.name.clone())
-                .or_default()
-                .push(entry.file_id);
-            entries.push(entry.clone());
+    for file_id in db.vfs().file_ids() {
+        let Some(cache) = db.file_cache(file_id) else {
+            continue;
+        };
+        let Some(entry) = cache.module_entry.as_ref() else {
+            continue;
+        };
+        if entry.workspace_id != ws_id {
+            continue;
         }
+        by_path.insert(normalize_path(&entry.path), entry.file_id);
+        module_name_to_file_ids
+            .entry(entry.name.clone())
+            .or_default()
+            .push(entry.file_id);
+        entries.push(entry.clone());
     }
 
     entries.sort_by(|a, b| {
@@ -2057,7 +2070,30 @@ impl ModuleIndex {
     ///
     /// Module path/visibility changes are rare, so this is intentionally
     /// workspace-local rather than global.
-    pub(crate) fn apply_file_change(&mut self, file_id: FileId, new_entry: Option<ModuleEntry>) {
+    /// Replace one file module entry.
+    ///
+    /// Rebuilds the derived maps only when the entry actually changed:
+    /// value-only edits keep the same module entry and must not re-sort the
+    /// whole workspace module index.
+    ///
+    /// Returns true when rebuild_derived ran.
+    pub(crate) fn apply_file_change(
+        &mut self,
+        file_id: FileId,
+        new_entry: Option<ModuleEntry>,
+    ) -> bool {
+        let old_entry = self
+            .entry_by_file_id
+            .get(&file_id)
+            .and_then(|&index| self.entries.get(index));
+        let unchanged = match (old_entry, new_entry.as_ref()) {
+            (Some(old), Some(new)) => old == new,
+            (None, None) => true,
+            _ => false,
+        };
+        if unchanged {
+            return false;
+        }
         if let Some(index) = self.entry_by_file_id.get(&file_id).copied()
             && index < self.entries.len()
         {
@@ -2067,6 +2103,7 @@ impl ModuleIndex {
             self.entries.push(entry);
         }
         self.rebuild_derived();
+        true
     }
 
     fn rebuild_derived(&mut self) {

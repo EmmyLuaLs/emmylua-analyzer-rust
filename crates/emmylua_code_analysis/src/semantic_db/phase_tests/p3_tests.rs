@@ -175,7 +175,10 @@ fn p3_module_index_apply_file_change_is_workspace_local() {
     let mut index = workspace_module_index_for(&db, WorkspaceId::MAIN).clone();
 
     let entry = build_module_entry(&db, fid2).expect("module entry");
-    index.apply_file_change(fid2, Some(entry));
+    assert!(
+        !index.apply_file_change(fid2, Some(entry)),
+        "same module entry must not rebuild derived maps"
+    );
 
     assert_eq!(
         index.module_info(fid1).map(|info| info.full_module_name),

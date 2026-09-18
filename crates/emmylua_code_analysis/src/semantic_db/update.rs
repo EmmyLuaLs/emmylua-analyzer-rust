@@ -1,18 +1,18 @@
 //! Write-side mutation entry points.
 use super::FileCache;
 use super::SemanticDatabase;
-use super::ShardCache;
-use super::def::{DependencyKey, FileDependencies, SemanticId, TypeDef, TypeScope, TypeVisibility};
-use super::exports::{EXPORT_SHARDS, FileExports, shard_of};
+use super::def::{
+    ChangedKeys, DependencyKey, FileDependencies, SemanticId, TypeDef, TypeScope, TypeVisibility,
+};
+use super::exports::FileExports;
 use super::query::aggregate_member_bucket;
 use super::query::file_workspace_id_for_path;
 use super::query::{
     DeprecatedFileData, FileReferences, ModuleEntry, WorkspaceIndexCache, all_workspace_ids,
-    build_deprecated_file, build_deprecated_shard, build_file_facts, build_file_references,
-    build_global_type_aggregate, build_member_aggregates, build_module_entry, build_module_shard,
-    build_reference_shard, build_workspace_decl_index, build_workspace_deprecated_index,
-    build_workspace_member_index, build_workspace_module_index, build_workspace_reference_index,
-    build_workspace_type_index, changed_keys, file_workspace_id,
+    build_deprecated_file, build_file_facts, build_file_references, build_global_type_aggregate,
+    build_member_aggregates, build_module_entry, build_workspace_decl_index,
+    build_workspace_deprecated_index, build_workspace_member_index, build_workspace_module_index,
+    build_workspace_reference_index, build_workspace_type_index, changed_keys, file_workspace_id,
 };
 use crate::{FileId, WorkspaceId};
 use hashbrown::HashMap;
@@ -81,14 +81,34 @@ pub(crate) fn apply_file_to_workspace_indexes(
         }
     }
 
-    // Module index: remove from the old workspace, add to the new one.
-    if let Some(old_workspace) = old_workspace {
-        if let Some(index) = db.workspace_index.modules.get_mut(&old_workspace) {
-            index.apply_file_change(file_id, None);
+    // Module index: replace the entry in place when the workspace is unchanged,
+    // otherwise remove from the old workspace and add to the new one. Each
+    // apply_file_change is a no-op when the module entry did not change.
+    let mut module_derived_rebuilds = 0u32;
+    match old_workspace {
+        Some(old_workspace) if old_workspace != target_ws => {
+            if let Some(index) = db.workspace_index.modules.get_mut(&old_workspace) {
+                module_derived_rebuilds += u32::from(index.apply_file_change(file_id, None));
+            }
+            if let Some(index) = db.workspace_index.modules.get_mut(&target_ws) {
+                module_derived_rebuilds +=
+                    u32::from(index.apply_file_change(file_id, module_entry));
+            }
+        }
+        _ => {
+            if let Some(index) = db.workspace_index.modules.get_mut(&target_ws) {
+                module_derived_rebuilds +=
+                    u32::from(index.apply_file_change(file_id, module_entry));
+            }
         }
     }
-    if let Some(index) = db.workspace_index.modules.get_mut(&target_ws) {
-        index.apply_file_change(file_id, module_entry);
+    let _ = module_derived_rebuilds;
+    #[cfg(test)]
+    if module_derived_rebuilds > 0 {
+        db.rebuild_metrics.module_derived_rebuilds.fetch_add(
+            module_derived_rebuilds,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     if let Some(exports) = new_exports {
@@ -123,11 +143,15 @@ pub(crate) fn rebuild_file_after_write(
     file_id: FileId,
     old_workspace: Option<WorkspaceId>,
     metadata_changed: bool,
+    old_module_entry: Option<ModuleEntry>,
 ) {
     if db.config_input().is_none() {
         return;
     }
-    db.register_file_in_shard(file_id);
+    let is_new_file = db.file_facts_of(file_id).is_none();
+    if is_new_file {
+        db.refresh_module_fallback_root();
+    }
     let Some(data) = db.file_data(file_id) else {
         return;
     };
@@ -151,6 +175,8 @@ pub(crate) fn rebuild_file_after_write(
             flow: Default::default(),
             exports: Arc::new(Default::default()),
             references: old_references.clone().unwrap_or_default(),
+            module_entry: None,
+            deprecated: Arc::new(Default::default()),
             workspace_id,
         },
     );
@@ -167,32 +193,15 @@ pub(crate) fn rebuild_file_after_write(
         cache.exports = Arc::clone(&new_exports);
     }
 
-    // Update this file's per-file shard entries.
-    let shard = shard_of(file_id);
     let deprecated_data = build_deprecated_file(db, file_id);
     let module_entry = build_module_entry(db, file_id);
-    if let Some(shard_cache) = db.shards.get_mut(&shard) {
-        shard_cache
-            .exports
-            .files
-            .insert(file_id, Arc::clone(&new_exports));
-        if deprecated_data.names.is_empty() && deprecated_data.member_keys.is_empty() {
-            shard_cache.deprecated.files.remove(&file_id);
-        } else {
-            shard_cache
-                .deprecated
-                .files
-                .insert(file_id, deprecated_data.clone());
-        }
-        match &module_entry {
-            Some(entry) => {
-                shard_cache.module.files.insert(file_id, entry.clone());
-            }
-            None => {
-                shard_cache.module.files.remove(&file_id);
-            }
-        }
+    if let Some(cache) = db.files.get_mut(&file_id) {
+        cache.module_entry = module_entry.clone();
+        cache.deprecated = Arc::new(deprecated_data.clone());
     }
+
+    let module_name_changes =
+        module_name_changed_keys(old_module_entry.as_ref(), module_entry.as_ref());
 
     // Update export/type/member/decl/module indexes first, so the new file's
     // declarations are visible while its own references are resolved below.
@@ -214,12 +223,6 @@ pub(crate) fn rebuild_file_after_write(
         .get_mut(&file_id)
         .expect("file cache must exist after write")
         .references = Arc::clone(&references);
-    if let Some(shard_cache) = db.shards.get_mut(&shard) {
-        shard_cache
-            .references
-            .files
-            .insert(file_id, Arc::clone(&references));
-    }
     apply_file_reference_index(db, file_id, Arc::clone(&references));
 
     // With no registered roots and no explicit main root, module names are derived
@@ -229,8 +232,7 @@ pub(crate) fn rebuild_file_after_write(
         && (metadata_changed || old_exports.is_none());
     if fallback_may_change {
         db.refresh_module_fallback_root();
-        rebuild_all_module_shards(db);
-        rebuild_module_indexes(db);
+        rebuild_all_module_entries(db);
     }
 
     refresh_dependent_references(
@@ -240,7 +242,9 @@ pub(crate) fn rebuild_file_after_write(
         Some(new_exports.as_ref()),
         old_references.as_deref(),
         Some(references.as_ref()),
+        module_name_changes,
         metadata_changed || fallback_may_change,
+        fallback_may_change,
     );
 }
 
@@ -250,20 +254,13 @@ pub(crate) fn rebuild_file_after_remove(
     old_workspace: Option<WorkspaceId>,
     old_exports: Option<Arc<FileExports>>,
     old_references: Option<Arc<FileReferences>>,
+    old_module_entry: Option<ModuleEntry>,
 ) {
     db.files.remove(&file_id);
-    db.unregister_file_from_shard(file_id);
+    db.refresh_module_fallback_root();
 
     if db.config_input().is_none() {
         return;
-    }
-
-    let shard = shard_of(file_id);
-    if let Some(shard_cache) = db.shards.get_mut(&shard) {
-        shard_cache.exports.files.remove(&file_id);
-        shard_cache.deprecated.files.remove(&file_id);
-        shard_cache.module.files.remove(&file_id);
-        shard_cache.references.files.remove(&file_id);
     }
 
     apply_file_to_workspace_indexes(
@@ -281,9 +278,10 @@ pub(crate) fn rebuild_file_after_remove(
 
     if db.workspace_roots().is_empty() && db.main_root().is_none() {
         db.refresh_module_fallback_root();
-        rebuild_all_module_shards(db);
-        rebuild_module_indexes(db);
+        rebuild_all_module_entries(db);
     }
+
+    let module_name_changes = module_name_changed_keys(old_module_entry.as_ref(), None);
 
     refresh_dependent_references(
         db,
@@ -292,6 +290,8 @@ pub(crate) fn rebuild_file_after_remove(
         None,
         old_references.as_deref(),
         None,
+        module_name_changes,
+        false,
         false,
     );
 }
@@ -300,10 +300,9 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     db.rebuild_metrics
         .full_rebuilds
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    db.rebuild_shard_files();
+    db.refresh_module_fallback_root();
     if db.config_input().is_none() {
         db.files.clear();
-        db.shards.clear();
         db.workspace_index = WorkspaceIndexCache::new();
         return;
     }
@@ -328,6 +327,8 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
                 flow: Default::default(),
                 exports: Arc::new(Default::default()),
                 references: Arc::new(Default::default()),
+                module_entry: None,
+                deprecated: Arc::new(Default::default()),
                 workspace_id,
             },
         );
@@ -345,22 +346,21 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         cache.flow = flow;
     }
 
+    for file_id in file_ids.iter().copied() {
+        if db.file_data(file_id).is_none() {
+            continue;
+        }
+        let module_entry = build_module_entry(db, file_id);
+        let deprecated = Arc::new(build_deprecated_file(db, file_id));
+        if let Some(cache) = db.files.get_mut(&file_id) {
+            cache.module_entry = module_entry;
+            cache.deprecated = deprecated;
+        }
+    }
+
     // Build module entries/indexes *before* export contributions: resolving a
     // `local M = require("mod")` alias needs `module_file_of()`, and the module
     // index only depends on facts + workspace roots.
-    let mut shards = HashMap::with_capacity(EXPORT_SHARDS as usize);
-    for shard in 0..EXPORT_SHARDS {
-        shards.insert(
-            shard,
-            ShardCache {
-                exports: Default::default(),
-                deprecated: Default::default(),
-                module: build_module_shard(db, shard),
-                references: Default::default(),
-            },
-        );
-    }
-    db.shards = shards;
     rebuild_module_indexes(db);
 
     for file_id in file_ids.iter().copied() {
@@ -375,17 +375,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         cache.exports = Arc::new(exports);
     }
 
-    for shard in 0..EXPORT_SHARDS {
-        let exports = super::exports::build_export_shard(db, shard);
-        let deprecated = build_deprecated_shard(db, shard);
-        let shard_cache = db
-            .shards
-            .get_mut(&shard)
-            .expect("module shard must exist before export shard build");
-        shard_cache.exports = exports;
-        shard_cache.deprecated = deprecated;
-    }
-
     rebuild_workspace_indexes(db);
 
     for file_id in file_ids.iter().copied() {
@@ -398,26 +387,25 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         }
     }
 
-    for shard in 0..EXPORT_SHARDS {
-        let references = build_reference_shard(db, shard);
-        db.shards
-            .get_mut(&shard)
-            .expect("shard cache must exist before reference shard build")
-            .references = references;
-    }
-
     rebuild_workspace_reference_indexes(db);
     rebuild_dependency_index(db);
 }
 
-pub(crate) fn rebuild_all_module_shards(db: &mut SemanticDatabase) {
-    for shard in 0..EXPORT_SHARDS {
-        let module = build_module_shard(db, shard);
-        db.shards
-            .get_mut(&shard)
-            .expect("shard cache must exist before module rebuild")
-            .module = module;
+/// Recompute every file module entry after the fallback root changed.
+///
+/// Workspace module indexes are built from FileCache.module_entry, so all
+/// entries must be refreshed before rebuild_module_indexes.
+pub(crate) fn rebuild_all_module_entries(db: &mut SemanticDatabase) {
+    for file_id in db.file_ids() {
+        if db.file_data_id(file_id).is_none() {
+            continue;
+        }
+        let entry = build_module_entry(db, file_id);
+        if let Some(cache) = db.files.get_mut(&file_id) {
+            cache.module_entry = entry;
+        }
     }
+    rebuild_module_indexes(db);
 }
 
 /// One file's contribution update for the workspace indexes.
@@ -539,9 +527,12 @@ pub(crate) fn refresh_dependent_references(
     new_exports: Option<&FileExports>,
     old_references: Option<&FileReferences>,
     new_references: Option<&FileReferences>,
+    extra_changed: ChangedKeys,
     force_module_changed: bool,
+    force_module_contributions: bool,
 ) {
     let mut changed = changed_keys(old_exports, new_exports);
+    changed.extend(extra_changed);
     if force_module_changed {
         changed.insert(DependencyKey::Module(changed_file_id));
     }
@@ -557,19 +548,39 @@ pub(crate) fn refresh_dependent_references(
         return;
     }
 
-    let mut affected: HashSet<FileId> = HashSet::new();
-    for key in &changed {
-        if let Some(files) = db.dependency_index.get(key) {
-            for file_id in files {
-                if *file_id != changed_file_id {
-                    affected.insert(*file_id);
+    let mut processed_references: HashSet<FileId> = HashSet::new();
+    let mut processed_contributions: HashSet<FileId> = HashSet::new();
+    let mut pending: Vec<DependencyKey> = changed.into_iter().collect();
+
+    while let Some(key) = pending.pop() {
+        let needs_contribution = match &key {
+            DependencyKey::ModuleName(_) => true,
+            DependencyKey::Module(_) => force_module_contributions,
+            _ => false,
+        };
+        let Some(targets) = db
+            .dependency_index
+            .get(&key)
+            .map(|files| files.iter().copied().collect::<Vec<_>>())
+        else {
+            continue;
+        };
+        for file_id in targets {
+            if file_id == changed_file_id {
+                continue;
+            }
+            if needs_contribution {
+                if processed_contributions.insert(file_id) {
+                    processed_references.insert(file_id);
+                    let nested = refresh_file_contribution_and_references(db, file_id);
+                    if !nested.is_empty() {
+                        pending.extend(nested);
+                    }
                 }
+            } else if processed_references.insert(file_id) {
+                refresh_file_reference_index(db, file_id);
             }
         }
-    }
-
-    for file_id in affected {
-        refresh_file_reference_index(db, file_id);
     }
 }
 
@@ -594,18 +605,93 @@ fn refresh_file_reference_index(db: &mut SemanticDatabase, file_id: FileId) {
     if let Some(cache) = db.files.get_mut(&file_id) {
         cache.references = Arc::clone(&references);
     }
-    let shard = shard_of(file_id);
-    if let Some(shard_cache) = db.shards.get_mut(&shard) {
-        shard_cache
-            .references
-            .files
-            .insert(file_id, Arc::clone(&references));
-    }
     let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
     let index = db.workspace_index.references.entry(ws_id).or_default();
     index.remove_file(file_id);
     index.add_file(file_id, references);
 }
+
+/// Rebuild one file export contribution and references when a module
+/// dependency changed such that its own require aliases or canonical owner
+/// mapping may now resolve differently. Facts and flow are unchanged.
+fn refresh_file_contribution_and_references(
+    db: &mut SemanticDatabase,
+    file_id: FileId,
+) -> ChangedKeys {
+    if db.file_data_id(file_id).is_none() {
+        return ChangedKeys::default();
+    }
+    let Some(old_exports) = db
+        .files
+        .get(&file_id)
+        .map(|cache| Arc::clone(&cache.exports))
+    else {
+        return ChangedKeys::default();
+    };
+    let Some(old_references) = db
+        .files
+        .get(&file_id)
+        .map(|cache| Arc::clone(&cache.references))
+    else {
+        return ChangedKeys::default();
+    };
+    let old_workspace = db.files.get(&file_id).and_then(|cache| cache.workspace_id);
+
+    #[cfg(test)]
+    db.rebuild_metrics
+        .dependent_contribution_refreshes
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let module_entry = build_module_entry(db, file_id);
+    let deprecated = build_deprecated_file(db, file_id);
+    let exports = Arc::new(super::exports::build_file_exports(db, file_id, file_id));
+    apply_file_to_workspace_indexes(
+        db,
+        WorkspaceFileUpdate {
+            file_id,
+            old_workspace,
+            old_exports: Some(old_exports.as_ref()),
+            new_exports: Some(exports.as_ref()),
+            new_references: None,
+            module_entry,
+            new_deprecated: Some(&deprecated),
+        },
+    );
+    if let Some(cache) = db.files.get_mut(&file_id) {
+        cache.exports = Arc::clone(&exports);
+    }
+    let references = Arc::new(build_file_references(db, file_id));
+    if let Some(cache) = db.files.get_mut(&file_id) {
+        cache.references = Arc::clone(&references);
+    }
+    apply_file_reference_index(db, file_id, Arc::clone(&references));
+
+    remove_file_dependencies(db, file_id, &old_references.deps);
+    add_file_dependencies(db, file_id, &references.deps);
+
+    changed_keys(Some(old_exports.as_ref()), Some(exports.as_ref()))
+}
+/// Canonical ModuleName keys published when a file module entry changes.
+///
+/// Both the full module name and the last path segment are published: the
+/// latter is what a consumer fuzzy require dependency records.
+fn module_name_changed_keys(old: Option<&ModuleEntry>, new: Option<&ModuleEntry>) -> ChangedKeys {
+    let mut keys = ChangedKeys::default();
+    if old == new {
+        return keys;
+    }
+    let mut names: HashSet<SmolStr> = HashSet::new();
+    for entry in [old, new].into_iter().flatten() {
+        names.insert(entry.full_module_name.clone());
+        if entry.name != entry.full_module_name {
+            names.insert(entry.name.clone());
+        }
+    }
+    for name in names {
+        keys.insert(DependencyKey::ModuleName(name));
+    }
+    keys
+}
+
 pub(crate) fn refresh_global_type_keys(db: &mut SemanticDatabase, names: HashSet<SmolStr>) {
     if names.is_empty() {
         return;
