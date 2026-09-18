@@ -2019,11 +2019,12 @@ fn table_member_type(model: &SemanticModel, ty: &LuaType, key: &LuaMemberKey) ->
     let owner = SemanticId::member(table.file_id, table.value);
     let member_ref = model
         .members_of_owner(&owner)
-        .into_iter()
+        .iter()
         .find(|member| match key {
             LuaMemberKey::Name(name) => member.name.as_str() == name.as_str(),
             _ => false,
-        })?;
+        })
+        .cloned()?;
     let facts = model.file_facts_of(member_ref.file_id)?;
     let member = facts.member_by_id(&member_ref.id)?;
     let syntax = member.value_syntax?;
@@ -2089,7 +2090,7 @@ fn class_has_required_named_field(model: &SemanticModel, def: &crate::TypeDef) -
             return false;
         }
         visited.push(def.id.clone());
-        for member_ref in model.members_of_owner(&def.id) {
+        for member_ref in model.members_of_owner(&def.id).iter() {
             let Some(facts) = model.file_facts_of(member_ref.file_id) else {
                 continue;
             };
@@ -2106,8 +2107,9 @@ fn class_has_required_named_field(model: &SemanticModel, def: &crate::TypeDef) -
                 .or_else(|| {
                     model
                         .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
-                        .into_iter()
+                        .iter()
                         .next()
+                        .cloned()
                 })
             else {
                 continue;

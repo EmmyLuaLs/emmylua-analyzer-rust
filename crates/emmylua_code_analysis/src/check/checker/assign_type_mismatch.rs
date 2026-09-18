@@ -239,7 +239,7 @@ fn check_inline_table_fields(
     table: &LuaTableExpr,
 ) {
     let owner = SemanticId::member(semantic_model.file_id(), table.get_range());
-    for member_ref in semantic_model.members_of_owner(&owner) {
+    for member_ref in semantic_model.members_of_owner(&owner).iter() {
         let Some(facts) = semantic_model.file_facts_of(member_ref.file_id) else {
             continue;
         };
@@ -1012,7 +1012,7 @@ fn collect_members_with_index_signatures(
         return;
     }
     visited.push(def.id.clone());
-    for member_ref in semantic_model.members_of_owner(&def.id) {
+    for member_ref in semantic_model.members_of_owner(&def.id).iter() {
         let Some(member_file_facts) = semantic_model.file_facts_of(member_ref.file_id) else {
             continue;
         };

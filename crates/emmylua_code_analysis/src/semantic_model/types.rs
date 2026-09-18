@@ -546,7 +546,7 @@ impl<'db> SemanticModel<'db> {
                 let owner = SemanticId::member(table.file_id, table.value);
                 let mut keys: Vec<LuaType> = Vec::new();
                 let mut values: Vec<LuaType> = Vec::new();
-                for member_ref in self.members_of_owner(&owner) {
+                for member_ref in self.members_of_owner(&owner).iter() {
                     let Some(facts) = self.file_facts_of(member_ref.file_id) else {
                         continue;
                     };
@@ -616,7 +616,7 @@ impl<'db> SemanticModel<'db> {
             LuaType::Ref(id) | LuaType::Def(id) => {
                 let def = member::type_def_of(self, id)?;
                 let mut values: Vec<LuaType> = Vec::new();
-                for member_ref in self.members_of_owner(&def.id) {
+                for member_ref in self.members_of_owner(&def.id).iter() {
                     let Some(facts) = self.file_facts_of(member_ref.file_id) else {
                         continue;
                     };
@@ -698,7 +698,7 @@ impl<'db> SemanticModel<'db> {
     ) -> Option<LuaType> {
         let def = member::type_def_of(self, id)?;
         let mut values: Vec<LuaType> = Vec::new();
-        for member_ref in self.members_of_owner(&def.id) {
+        for member_ref in self.members_of_owner(&def.id).iter() {
             let facts = self.file_facts_of(member_ref.file_id)?;
             let member = facts.member_by_id(&member_ref.id)?;
             let is_integer_key = matches!(member.key, LuaMemberKey::Integer(_));

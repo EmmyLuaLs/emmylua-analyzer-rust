@@ -66,8 +66,9 @@ fn resolve_type_def_of_id(model: &SemanticModel<'_>, id: &SemanticId) -> Option<
     };
     model
         .type_defs_in_scope(key.scope, &key.full_name)
-        .into_iter()
+        .iter()
         .find(|def| def.id == *id)
+        .cloned()
 }
 
 /// `require("mod").field` → member identity in the module file facts.

@@ -18,7 +18,7 @@ pub fn search_implementations(
     let semantic_decl = model.find_decl(token.into())?;
     match &semantic_decl {
         SemanticId::TypeDef(key) => {
-            for def in model.type_defs_in_scope(key.scope, &key.full_name) {
+            for def in model.type_defs_in_scope(key.scope, &key.full_name).iter() {
                 push_location(db, def.file_id, def.name_range, &mut result);
             }
         }

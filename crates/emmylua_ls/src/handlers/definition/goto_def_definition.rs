@@ -37,7 +37,7 @@ pub fn goto_def_definition(
         SemanticId::Member(_) => goto_member_definition(model, db, decl, token),
         SemanticId::TypeDef(key) => {
             let mut locations = Vec::new();
-            for def in model.type_defs_in_scope(key.scope, &key.full_name) {
+            for def in model.type_defs_in_scope(key.scope, &key.full_name).iter() {
                 if let Some(location) = location_of(db, def.file_id, def.name_range) {
                     locations.push(location);
                 }

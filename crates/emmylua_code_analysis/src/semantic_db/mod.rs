@@ -392,14 +392,15 @@ impl SemanticDatabase {
 
     // ---- Config ----
 
-    pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
+    pub(crate) fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
         self.vfs.update_config(emmyrc.clone());
         self.config = Some(emmyrc);
         self.reset_file_facts_cache();
     }
 
     /// Main workspace root (used for require module name derivation).
-    pub fn update_main_root(&mut self, root: PathBuf) {
+    #[cfg(test)]
+    pub(crate) fn update_main_root(&mut self, root: PathBuf) {
         self.main_root = Some(root);
         // The fallback root participates in module-entry derivation, so rebuild
         // module shards/indexes instead of leaving cached entries stale.
@@ -438,7 +439,7 @@ impl SemanticDatabase {
     }
 
     /// Register the built-in std workspace root.
-    pub fn add_std_workspace(&mut self, root: PathBuf) {
+    pub(crate) fn add_std_workspace(&mut self, root: PathBuf) {
         let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_std());
         roots.push(WorkspaceRoot {
@@ -451,7 +452,7 @@ impl SemanticDatabase {
     }
 
     /// Register or replace the main workspace root.
-    pub fn add_main_workspace(&mut self, root: PathBuf) {
+    pub(crate) fn add_main_workspace(&mut self, root: PathBuf) {
         self.main_root = Some(root.clone());
         let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_main());
@@ -465,7 +466,7 @@ impl SemanticDatabase {
     }
 
     /// Register a library workspace (allocates a new `WorkspaceId`).
-    pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
+    pub(crate) fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         let mut roots = self.workspace_roots.to_vec();
         let id = WorkspaceId {
             id: self.next_library_workspace_id(&roots),
@@ -480,7 +481,7 @@ impl SemanticDatabase {
     }
 
     /// Keep only the std workspace (clear main/library before reload).
-    pub fn clear_non_std_workspaces(&mut self) {
+    pub(crate) fn clear_non_std_workspaces(&mut self) {
         let roots: Vec<WorkspaceRoot> = self
             .workspace_roots
             .iter()
@@ -501,7 +502,7 @@ impl SemanticDatabase {
     }
 
     /// Add paths that workspace reload must preserve (e.g. bundled std lib).
-    pub fn add_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+    pub(crate) fn add_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         let mut set = self.vfs.protected_paths().clone();
         set.extend(paths);
         self.vfs.set_protected_paths(set);
@@ -566,7 +567,8 @@ impl SemanticDatabase {
         file_ids
     }
 
-    pub fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
+    #[cfg(test)]
+    pub(crate) fn set_file_content(&mut self, uri: &Uri, text: Option<String>) -> FileId {
         let fid = self
             .lookup_file_id(uri)
             .unwrap_or_else(|| self.vfs.allocate_file_id());
@@ -579,7 +581,8 @@ impl SemanticDatabase {
         fid
     }
 
-    pub fn set_file(&mut self, file_id: FileId, path: Option<PathBuf>, text: String) {
+    #[cfg(test)]
+    pub(crate) fn set_file(&mut self, file_id: FileId, path: Option<PathBuf>, text: String) {
         let uri = path.as_ref().and_then(file_path_to_uri);
         self.set_file_inner(file_id, path, uri, text);
     }
@@ -702,7 +705,8 @@ impl SemanticDatabase {
         stale_uris
     }
 
-    pub fn remove_file(&mut self, file_id: FileId) {
+    #[cfg(test)]
+    pub(crate) fn remove_file(&mut self, file_id: FileId) {
         self.remove_file_inner(file_id);
     }
 

@@ -88,7 +88,7 @@ fn check_pair(
     if let Some(facts) = semantic_model.file_facts_of(def.file_id)
         && let Some(decl) = facts.decl_named(def.name.as_str())
     {
-        member_refs.extend(semantic_model.members_of_owner(&decl.id));
+        member_refs.extend(semantic_model.members_of_owner(&decl.id).iter().cloned());
     }
     let enum_value_texts: Vec<String> = member_refs
         .iter()

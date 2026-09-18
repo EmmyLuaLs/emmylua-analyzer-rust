@@ -38,7 +38,10 @@ impl Checker for InconsistentTypeAccessModifierChecker {
                 TypeScope::Internal(WorkspaceId::MAIN),
                 TypeScope::File(file_id),
             ] {
-                for visible in semantic_model.type_defs_in_scope(scope, &def.full_name) {
+                for visible in semantic_model
+                    .type_defs_in_scope(scope, &def.full_name)
+                    .iter()
+                {
                     modifiers.insert(AccessModifier::from_visibility(visible.visibility));
                     if visible.file_id == file_id {
                         current_file_ranges.push(visible.name_range);

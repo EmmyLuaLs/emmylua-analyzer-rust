@@ -302,7 +302,7 @@ fn enum_table_access(
     }
     let key_text = index_key.get_path_part();
     let mut accepted: Vec<String> = Vec::new();
-    for member_ref in semantic_model.members_of_owner(&decl.id) {
+    for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
         accepted.push(member_ref.name.to_string());
         if let Some(facts) = semantic_model.file_facts_of(member_ref.file_id)
             && let Some(member) = facts.member_by_id(&member_ref.id)
@@ -464,7 +464,7 @@ fn has_index_signature(
     def: &crate::semantic_db::def::TypeDef,
     key_ty: &LuaType,
 ) -> bool {
-    for member_ref in semantic_model.members_of_owner(&def.id) {
+    for member_ref in semantic_model.members_of_owner(&def.id).iter() {
         let Some(facts) = semantic_model.file_facts_of(member_ref.file_id) else {
             continue;
         };

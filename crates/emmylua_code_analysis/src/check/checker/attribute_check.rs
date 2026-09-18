@@ -92,13 +92,14 @@ fn is_attribute_class(semantic_model: &SemanticModel<'_>, decl_id: &LuaTypeDeclI
         for super_name in &def.super_names {
             let super_def = semantic_model
                 .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
-                .into_iter()
-                .next();
+                .iter()
+                .next()
+                .cloned();
             if let Some(super_def) = super_def
                 && !visited.contains(&super_def.id)
             {
                 visited.push(super_def.id.clone());
-                stack.push(super_def);
+                stack.push(super_def.clone());
             }
         }
     }

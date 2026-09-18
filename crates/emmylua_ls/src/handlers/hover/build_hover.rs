@@ -828,8 +828,9 @@ fn member_owner_type_and_name(
         .or_else(|| {
             model
                 .type_defs_in_scope(owner_key.scope, owner_key.full_name.as_str())
-                .into_iter()
+                .iter()
                 .find(|def| def.id == *owner)
+                .cloned()
         });
     match def {
         Some(def) => {
@@ -1389,8 +1390,9 @@ fn member_typed_field(model: &SemanticModel<'_>, member_info: &Member) -> Option
         SemanticId::TypeDef(key) => {
             let def = model
                 .type_defs_in_scope(key.scope, &key.full_name)
-                .into_iter()
-                .next()?;
+                .iter()
+                .next()
+                .cloned()?;
             model.type_def_ref(&def)
         }
         _ => return None,
@@ -1402,7 +1404,7 @@ fn member_typed_field(model: &SemanticModel<'_>, member_info: &Member) -> Option
         let Some(def) = model.type_def_of(&id) else {
             continue;
         };
-        for member_ref in model.members_of_owner(&def.id) {
+        for member_ref in model.members_of_owner(&def.id).iter() {
             if member_ref.name != key {
                 continue;
             }

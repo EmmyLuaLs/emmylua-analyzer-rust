@@ -213,7 +213,7 @@ fn collect_named_members(
         return;
     }
     visited.push(def.id.clone());
-    for member_ref in model.members_of_owner(&def.id) {
+    for member_ref in model.members_of_owner(&def.id).iter() {
         let Some(facts) = model.file_facts_of(member_ref.file_id) else {
             continue;
         };
@@ -234,8 +234,9 @@ fn collect_named_members(
             .or_else(|| {
                 model
                     .type_defs_in_scope(TypeScope::Global, super_name.as_str())
-                    .into_iter()
+                    .iter()
                     .next()
+                    .cloned()
             });
         if let Some(super_def) = super_def {
             collect_named_members(model, &super_def, visited, out);
@@ -255,7 +256,7 @@ fn collect_members_with_index_signatures(
         return;
     }
     visited.push(def.id.clone());
-    for member_ref in model.members_of_owner(&def.id) {
+    for member_ref in model.members_of_owner(&def.id).iter() {
         let Some(facts) = model.file_facts_of(member_ref.file_id) else {
             continue;
         };

@@ -280,7 +280,7 @@ impl<'a> CompletionBuilder<'a> {
         }
 
         for owner in [def.id.clone(), decl] {
-            for member_ref in self.semantic_model.members_of_owner(&owner) {
+            for member_ref in self.semantic_model.members_of_owner(&owner).iter() {
                 let member_facts = self.semantic_model.file_facts_of(member_ref.file_id)?;
                 let member = member_facts.member_by_id(&member_ref.id)?;
                 if member.key.to_path() == key_text {

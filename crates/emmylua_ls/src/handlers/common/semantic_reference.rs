@@ -117,8 +117,9 @@ fn member_constructor(
         SemanticId::TypeDef(type_key) => {
             let def = model
                 .type_defs_in_scope(type_key.scope, &type_key.full_name)
-                .into_iter()
-                .find(|def| def.id == member_def.owner)?;
+                .iter()
+                .find(|def| def.id == member_def.owner)?
+                .clone();
             let runtime = runtime_decl_of_type_def(&model, &def);
             (def, runtime)
         }
@@ -275,7 +276,7 @@ pub fn type_def_reference_ranges(
     let scope = def_scope(def);
     // Definition sites: all definitions with the same scope and full name (including `@class` names).
     if include_declaration && let model = SemanticModel::new(db, def.file_id) {
-        for d in model.type_defs_in_scope(scope, &def.full_name) {
+        for d in model.type_defs_in_scope(scope, &def.full_name).iter() {
             push_unique(&mut out, (d.file_id, d.name_range));
         }
     }
@@ -307,7 +308,7 @@ pub fn type_def_rename_ranges(
     let scope = def_scope(def);
     // Definition sites: name token of `@class Foo` → new name.
     let model = SemanticModel::new(db, def.file_id);
-    for d in model.type_defs_in_scope(scope, &def.full_name) {
+    for d in model.type_defs_in_scope(scope, &def.full_name).iter() {
         push_unique_text(&mut out, (d.file_id, d.name_range, new_name.to_string()));
     }
 
@@ -449,8 +450,9 @@ pub fn type_def_of_id(model: &SemanticModel<'_>, id: &SemanticId) -> Option<Type
     };
     model
         .type_defs_in_scope(key.scope, &key.full_name)
-        .into_iter()
+        .iter()
         .find(|def| def.id == *id)
+        .cloned()
 }
 
 // ── Helpers ──

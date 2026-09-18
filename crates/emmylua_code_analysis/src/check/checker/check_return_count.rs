@@ -123,10 +123,8 @@ fn contextual_return_expectation(
         return None;
     };
     let def = semantic_model.type_def_of(id)?;
-    let field_ref = semantic_model
-        .members_of_owner(&def.id)
-        .into_iter()
-        .find(|field| field.name.as_str() == key)?;
+    let members = semantic_model.members_of_owner(&def.id);
+    let field_ref = members.iter().find(|field| field.name.as_str() == key)?;
     let field_facts = semantic_model.file_facts_of(field_ref.file_id)?;
     let field = field_facts.member_by_id(&field_ref.id)?;
     let syntax = field.value_syntax?;

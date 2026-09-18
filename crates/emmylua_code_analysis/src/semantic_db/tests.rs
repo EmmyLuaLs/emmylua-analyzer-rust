@@ -639,7 +639,7 @@ fn test_member_phase2_name_chain_resolution() {
         .analysis()
         .members_of_owner(SemanticId::name(SmolStr::new("M.N")))
         .into_iter()
-        .map(|m| m.name)
+        .map(|m| m.name.clone())
         .collect::<Vec<_>>();
     assert_eq!(zs, vec![SmolStr::new("z")]);
 

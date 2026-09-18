@@ -46,7 +46,7 @@ pub fn structural_table_type(model: &SemanticModel, ty: &LuaType) -> LuaType {
     };
     let owner = SemanticId::member(table.file_id, table.value);
     let mut fields = hashbrown::HashMap::new();
-    for member in model.members_of_owner(&owner) {
+    for member in model.members_of_owner(&owner).iter() {
         let key = LuaMemberKey::Name(member.name.clone());
         let mut member_ty = model.type_of_member(&member.id).unwrap_or(LuaType::Unknown);
         if matches!(member_ty, LuaType::Unknown)
@@ -80,7 +80,7 @@ fn table_literal_as_array(model: &SemanticModel, ty: &LuaType) -> Option<LuaType
     };
     let owner = SemanticId::member(table.file_id, table.value);
     let mut base_types = Vec::new();
-    for member_ref in model.members_of_owner(&owner) {
+    for member_ref in model.members_of_owner(&owner).iter() {
         let Some(facts) = model.file_facts_of(member_ref.file_id) else {
             continue;
         };

@@ -867,7 +867,7 @@ fn generic_table_required_mismatch(
         .iter()
         .map(|(_, key)| key.get_path_part())
         .collect();
-    for member_ref in semantic_model.members_of_owner(&def.id) {
+    for member_ref in semantic_model.members_of_owner(&def.id).iter() {
         let Some(facts) = semantic_model.file_facts_of(member_ref.file_id) else {
             continue;
         };
@@ -1089,7 +1089,7 @@ fn enum_value_kind(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> ValueKi
     let Some(decl) = facts.decl_named(def.name.as_str()) else {
         return ValueKind::Other;
     };
-    for member_ref in semantic_model.members_of_owner(&decl.id) {
+    for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
         let Some(member_facts) = semantic_model.file_facts_of(member_ref.file_id) else {
             continue;
         };
@@ -1271,7 +1271,7 @@ fn literal_values(
                 let facts = semantic_model.file_facts_of(def.file_id)?;
                 let decl = facts.decl_named(def.name.as_str())?;
                 let mut values = Vec::new();
-                for member_ref in semantic_model.members_of_owner(&decl.id) {
+                for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
                     values.push(member_ref.name.to_string());
                     if let Some(member_facts) = semantic_model.file_facts_of(member_ref.file_id)
                         && let Some(member) = member_facts.member_by_id(&member_ref.id)

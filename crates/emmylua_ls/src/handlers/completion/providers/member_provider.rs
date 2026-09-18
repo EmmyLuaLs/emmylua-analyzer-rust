@@ -426,7 +426,7 @@ fn associated_type_member_infos(
     }
     owners.dedup();
     for owner in owners {
-        for member_ref in model.members_of_owner(&owner) {
+        for member_ref in model.members_of_owner(&owner).iter() {
             let Some(member_facts) = model.file_facts_of(member_ref.file_id) else {
                 continue;
             };

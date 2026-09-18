@@ -836,7 +836,7 @@ impl<'a> InferVm<'a> {
                         return Value::plain(LuaType::Unknown);
                     };
                     let mut types = Vec::new();
-                    for member in self.model.members_of_owner(&enum_owner) {
+                    for member in self.model.members_of_owner(&enum_owner).iter() {
                         let member_key = LuaMemberKey::Name(member.name.clone());
                         let value = self.index_member(owner.clone(), &member_key);
                         if !matches!(value.ty, LuaType::Unknown) && !types.contains(&value.ty) {
@@ -1125,7 +1125,7 @@ impl<'a> InferVm<'a> {
                 self.computing.remove(&member.id);
                 return Value {
                     ty,
-                    owner: Some(member.id),
+                    owner: Some(member.id.clone()),
                     closure_syntax: None,
                     receiver: receiver_ty.clone(),
                 };
@@ -1262,7 +1262,7 @@ impl<'a> InferVm<'a> {
                 }
                 return Value {
                     ty,
-                    owner: Some(member.id),
+                    owner: Some(member.id.clone()),
                     closure_syntax: None,
                     receiver: receiver_ty.clone(),
                 };
@@ -1483,7 +1483,7 @@ impl<'a> InferVm<'a> {
                         let owner = SemanticId::member(table.file_id, table.value);
                         let members = self.model.members_of_owner(&owner);
                         let mut indexed: Vec<(i64, LuaType)> = Vec::new();
-                        for m in members {
+                        for m in members.iter() {
                             if let Some(facts) = self.model.file_facts_of(m.file_id)
                                 && let Some(member) = facts.member_by_id(&m.id)
                             {
@@ -2096,7 +2096,7 @@ impl<'a> InferVm<'a> {
             return;
         };
         let root = tree.get_red_root();
-        for member_ref in self.model.members_of_owner(&owner) {
+        for member_ref in self.model.members_of_owner(&owner).iter() {
             let Some(facts) = self.model.file_facts_of(member_ref.file_id) else {
                 continue;
             };
@@ -2233,7 +2233,7 @@ impl<'a> InferVm<'a> {
             LuaType::TableConst(table) => {
                 let owner = SemanticId::member(table.file_id, table.value);
                 let mut indexed: Vec<(i64, LuaType)> = Vec::new();
-                for m in self.model.members_of_owner(&owner) {
+                for m in self.model.members_of_owner(&owner).iter() {
                     if let Some(facts) = self.model.file_facts_of(m.file_id)
                         && let Some(member) = facts.member_by_id(&m.id)
                     {
@@ -4411,7 +4411,7 @@ fn class_has_required_named_field(model: &SemanticModel, def: &TypeDef) -> bool 
             return false;
         }
         visited.push(def.id.clone());
-        for member_ref in model.members_of_owner(&def.id) {
+        for member_ref in model.members_of_owner(&def.id).iter() {
             let Some(facts) = model.file_facts_of(member_ref.file_id) else {
                 continue;
             };
@@ -4428,8 +4428,9 @@ fn class_has_required_named_field(model: &SemanticModel, def: &TypeDef) -> bool 
                 .or_else(|| {
                     model
                         .type_defs_in_scope(TypeScope::Global, super_name.as_str())
-                        .into_iter()
+                        .iter()
                         .next()
+                        .cloned()
                 })
             else {
                 continue;
@@ -4738,7 +4739,7 @@ fn table_literal_as_tuple(model: &SemanticModel, ty: &LuaType) -> Option<LuaType
         return None;
     }
     let mut entries = Vec::with_capacity(member_refs.len());
-    for member_ref in member_refs {
+    for member_ref in member_refs.iter() {
         let facts = model.file_facts_of(member_ref.file_id)?;
         let member = facts.member_by_id(&member_ref.id)?;
         let LuaMemberKey::Integer(key) = member.key else {

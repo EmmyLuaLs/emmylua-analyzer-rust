@@ -137,15 +137,17 @@ fn build_func_override_gutter_info(
             for super_name in supers {
                 let Some(super_def) = model
                     .type_defs_in_scope(TypeScope::Global, &super_name)
-                    .into_iter()
+                    .iter()
                     .next()
+                    .cloned()
                 else {
                     continue;
                 };
                 let Some(member_ref) = model
                     .members_of_owner(&super_def.id)
-                    .into_iter()
+                    .iter()
                     .find(|m| m.name.as_str() == member_name)
+                    .cloned()
                 else {
                     continue;
                 };

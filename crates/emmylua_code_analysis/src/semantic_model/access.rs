@@ -811,7 +811,7 @@ impl<'db> SemanticModel<'db> {
                     // Runtime members from `self.x = ...` in method bodies: attach members on the implicit self parameter
                     // to the class/runtime owner of that method (fields assigned in `function T:init`,
                     // then `p.x` from a `T` instance should resolve).
-                    for method_ref in self.members_of_owner(&resolved) {
+                    for method_ref in self.members_of_owner(&resolved).iter() {
                         let Some(method_facts) = self.file_facts_of(method_ref.file_id) else {
                             continue;
                         };
@@ -887,7 +887,7 @@ impl<'db> SemanticModel<'db> {
                     ));
                 }
                 // Runtime members defined by `self.x = ...` in that table's method bodies are also attached to the table.
-                for method_ref in self.members_of_owner(&table_owner) {
+                for method_ref in self.members_of_owner(&table_owner).iter() {
                     let Some(method_facts) = self.file_facts_of(method_ref.file_id) else {
                         continue;
                     };
@@ -966,7 +966,7 @@ impl<'db> SemanticModel<'db> {
             } else {
                 0
             };
-            for member in self.members_of_owner(resolved) {
+            for member in self.members_of_owner(resolved).iter() {
                 if member.name != name {
                     continue;
                 }
@@ -985,7 +985,7 @@ impl<'db> SemanticModel<'db> {
                 let key = (owner_rank, visibility_rank, doc_rank, candidate_index);
                 candidate_index += 1;
                 if best.as_ref().is_none_or(|(best_key, _)| key < *best_key) {
-                    best = Some((key, member));
+                    best = Some((key, member.clone()));
                 }
             }
         }

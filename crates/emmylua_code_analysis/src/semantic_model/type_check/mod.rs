@@ -425,8 +425,9 @@ fn def_extends_ctx(
             .or_else(|| {
                 model
                     .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
-                    .into_iter()
+                    .iter()
                     .next()
+                    .cloned()
             });
         if let Some(super_def) = super_def
             && def_extends_ctx(model, &super_def, target, visited)
@@ -442,7 +443,7 @@ fn enum_integer_values_ctx(
     def: &crate::TypeDef,
 ) -> std::collections::HashSet<i64> {
     let mut out = std::collections::HashSet::new();
-    for member_ref in model.members_of_owner(&def.id) {
+    for member_ref in model.members_of_owner(&def.id).iter() {
         let Some(facts) = model.file_facts_of(member_ref.file_id) else {
             continue;
         };

@@ -503,7 +503,7 @@ fn collect_fields(
         return;
     }
     visited.push(type_def_id.clone());
-    for member_ref in semantic_model.members_of_owner(type_def_id) {
+    for member_ref in semantic_model.members_of_owner(type_def_id).iter() {
         let name = member_ref.name.to_string();
         let mut ty = semantic_model
             .type_of_member(&member_ref.id)
@@ -547,7 +547,7 @@ fn find_type_def(
         return None;
     };
     let defs = semantic_model.type_defs_in_scope(key.scope, &key.full_name);
-    defs.into_iter().next()
+    defs.iter().next().cloned()
 }
 
 /// Parent type (by full name, in Global scope).
@@ -557,8 +557,9 @@ fn super_type_def(
 ) -> Option<crate::semantic_db::def::TypeDef> {
     semantic_model
         .type_defs_in_scope(crate::semantic_db::def::TypeScope::Global, full_name)
-        .into_iter()
+        .iter()
         .next()
+        .cloned()
 }
 
 /// Whether the field is optional (nullable / unknown).

@@ -73,7 +73,7 @@ fn find_member_in_owner(
     name_bindings: Option<&HashMap<String, LuaType>>,
 ) -> Option<MemberInfo> {
     if let Some(name) = key.name() {
-        for member_ref in model.members_of_owner_named(owner, name) {
+        for member_ref in model.members_of_owner_named(owner, name).iter() {
             if member_ref_matches_key(model, &member_ref, key) {
                 if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
                     return Some(info);
@@ -82,7 +82,7 @@ fn find_member_in_owner(
         }
         return None;
     }
-    for member_ref in model.members_of_owner(owner) {
+    for member_ref in model.members_of_owner(owner).iter() {
         if member_ref_matches_key(model, &member_ref, key) {
             if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
                 return Some(info);
@@ -527,13 +527,14 @@ fn owner_member_refs(
     match filter {
         Some(LuaMemberKey::Name(name)) => model
             .members_of_owner_named(owner, name.as_str())
-            .into_iter()
+            .iter()
+            .cloned()
             .collect(),
         _ => {
             #[cfg(test)]
             query_metrics::FULL_OWNER_MEMBER_SCANS
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            model.members_of_owner(owner).into_iter().collect()
+            model.members_of_owner(owner).iter().cloned().collect()
         }
     }
 }
@@ -1135,8 +1136,9 @@ pub(crate) fn type_def_of(model: &SemanticModel, decl_id: &LuaTypeDeclId) -> Opt
     model
         .analysis()
         .type_defs_in_scope(scope, name)
-        .into_iter()
+        .iter()
         .next()
+        .cloned()
 }
 
 /// `def::LuaMemberKey` → value-domain `LuaMemberKey` (already unified; passed through directly).

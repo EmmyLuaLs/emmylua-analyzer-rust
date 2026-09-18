@@ -848,12 +848,20 @@ impl SemanticDatabase {
     }
 
     pub fn apply_batch(&mut self, batch: BatchChange) -> UpdateSummary {
+        self.apply_batch_with_ids(batch).0
+    }
+
+    /// Apply a batch and return the affected file ids in input order.
+    pub fn apply_batch_with_ids(&mut self, batch: BatchChange) -> (UpdateSummary, Vec<FileId>) {
         let updated = batch.files.len();
-        self.set_files(batch.files);
-        UpdateSummary {
-            updated,
-            removed: 0,
-            full_rebuild: true,
-        }
+        let file_ids = self.set_files(batch.files);
+        (
+            UpdateSummary {
+                updated,
+                removed: 0,
+                full_rebuild: true,
+            },
+            file_ids,
+        )
     }
 }

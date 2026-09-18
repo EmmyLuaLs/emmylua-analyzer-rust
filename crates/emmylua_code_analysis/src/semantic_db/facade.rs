@@ -75,13 +75,12 @@ impl std::ops::Deref for MemberList {
     }
 }
 
-impl IntoIterator for MemberList {
-    type Item = MemberRef;
-    type IntoIter = std::vec::IntoIter<MemberRef>;
+impl<'a> IntoIterator for &'a MemberList {
+    type Item = &'a MemberRef;
+    type IntoIter = std::slice::Iter<'a, MemberRef>;
 
-    #[allow(clippy::unnecessary_to_owned)] // By-value API intentionally yields owned MemberRef.
     fn into_iter(self) -> Self::IntoIter {
-        self.0.to_vec().into_iter()
+        self.0.iter()
     }
 }
 
@@ -123,13 +122,12 @@ impl std::ops::Deref for TypeDefList {
     }
 }
 
-impl IntoIterator for TypeDefList {
-    type Item = TypeDef;
-    type IntoIter = std::vec::IntoIter<TypeDef>;
+impl<'a> IntoIterator for &'a TypeDefList {
+    type Item = &'a TypeDef;
+    type IntoIter = std::slice::Iter<'a, TypeDef>;
 
-    #[allow(clippy::unnecessary_to_owned)] // By-value API intentionally yields owned TypeDef.
     fn into_iter(self) -> Self::IntoIter {
-        self.0.to_vec().into_iter()
+        self.0.iter()
     }
 }
 

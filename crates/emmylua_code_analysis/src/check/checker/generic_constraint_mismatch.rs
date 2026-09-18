@@ -899,7 +899,7 @@ fn collect_key_names(
         return;
     }
     visited.push(def.full_name.clone());
-    for member in semantic_model.members_of_owner(&def.id) {
+    for member in semantic_model.members_of_owner(&def.id).iter() {
         if !keys.iter().any(|key| key == member.name.as_str()) {
             keys.push(member.name.to_string());
         }

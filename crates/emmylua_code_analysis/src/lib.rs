@@ -154,11 +154,12 @@ impl EmmyLuaAnalysis {
 
     pub fn update_files_by_uri(&mut self, files: Vec<(Uri, Option<String>)>) -> Vec<FileId> {
         if files.len() > 1 {
-            return self.db.set_files(files);
+            let (_, file_ids) = self.db.apply_batch_with_ids(BatchChange { files });
+            return file_ids;
         }
         files
             .into_iter()
-            .map(|(uri, text)| self.db.set_file_content(&uri, text))
+            .filter_map(|(uri, text)| self.update_file_by_uri(&uri, text))
             .collect()
     }
 

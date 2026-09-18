@@ -105,7 +105,7 @@ fn try_extract_str_tpl_ref_locations(
     // Resolve in the current file scope (namespace/using aware); cross-file resolution is guaranteed by the semantic index.
     let def = model.resolve_type_def(&type_name)?;
     let mut locations = Vec::new();
-    for d in model.type_defs_in_scope(def_scope(&def), &type_name) {
+    for d in model.type_defs_in_scope(def_scope(&def), &type_name).iter() {
         let Some(document) = db.document(d.file_id) else {
             continue;
         };
