@@ -1,5 +1,7 @@
 //! Workspace index primitives (buckets) and incremental workspace indexes.
 
+pub(crate) mod members;
+pub(crate) mod references;
 pub(crate) mod types;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
