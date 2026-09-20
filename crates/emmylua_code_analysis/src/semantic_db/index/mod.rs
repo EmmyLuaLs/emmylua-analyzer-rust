@@ -1,4 +1,6 @@
-//! Minimal bucket lookup primitive (built once; O(log n) binary search).
+//! Workspace index primitives (buckets) and incremental workspace indexes.
+
+pub(crate) mod types;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Bucket<K> {

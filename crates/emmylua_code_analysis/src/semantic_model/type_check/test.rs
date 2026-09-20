@@ -16,18 +16,17 @@ use super::{
 };
 
 /// Model-less context (structural tests don't need resolution).
-fn ctx() -> TypeCheckContext<'static> {
-    // Borrow a dummy model: structural checks don't trigger resolution, so use a leaked fake model.
-    let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(
-        Box::leak(Box::new(SemanticDatabase::new())),
-        FileId::new(0),
-    )));
-    TypeCheckContext::new(model, false)
+fn with_ctx<R>(f: impl FnOnce(&mut TypeCheckContext<'_>) -> R) -> R {
+    let db = SemanticDatabase::new();
+    let model = SemanticModel::new(&db, FileId::new(0));
+    let mut context = TypeCheckContext::new(&model, false);
+    f(&mut context)
 }
 
 fn ok(source: &LuaType, target: &LuaType) -> bool {
-    let mut context = ctx();
-    check_general_type_compact(&mut context, source, target, TypeCheckGuard::new()).is_ok()
+    with_ctx(|context| {
+        check_general_type_compact(context, source, target, TypeCheckGuard::new()).is_ok()
+    })
 }
 
 fn doc_fun(params: Vec<Option<LuaType>>, ret: LuaType) -> LuaType {

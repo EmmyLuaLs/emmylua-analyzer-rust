@@ -1176,22 +1176,32 @@ mod tests {
     use crate::VirtualWorkspace;
     use crate::semantic_model::SemanticModel;
 
-    fn model_of(source: &str) -> &'static SemanticModel<'static> {
+    struct TestModel {
+        db: SemanticDatabase,
+        file_id: FileId,
+    }
+
+    impl TestModel {
+        fn model(&self) -> SemanticModel<'_> {
+            SemanticModel::new(&self.db, self.file_id)
+        }
+    }
+
+    fn model_of(source: &str) -> TestModel {
         let emmyrc = Arc::new(Emmyrc::default());
         let mut db = SemanticDatabase::new();
         db.update_config(emmyrc);
         let uri = Uri::from_str("file:///C:/ws/member.lua").unwrap();
         let fid = db.set_file_content(&uri, Some(source.to_string()));
-        // Leak: for tests.
-        let db: &'static SemanticDatabase = Box::leak(Box::new(db));
-        Box::leak(Box::new(SemanticModel::new(db, fid)))
+
+        TestModel { db, file_id: fid }
     }
 
     /// Named type `@field` members.
     #[test]
     fn test_member_infos_class_fields() {
-        let model =
-            model_of("---@class C\n---@field x number\n---@field name string\nlocal C = {}");
+        let env = model_of("---@class C\n---@field x number\n---@field name string\nlocal C = {}");
+        let model = env.model();
         let infos = model.member_infos(&LuaType::Ref(LuaTypeDeclId::global("C")));
         let map = member_map(&infos);
         assert_eq!(map.get("x"), Some(&LuaType::Number));
@@ -1247,9 +1257,10 @@ mod tests {
     /// Inheritance chain: B : A includes A's `@field`.
     #[test]
     fn test_member_infos_inheritance() {
-        let model = model_of(
+        let env = model_of(
             "---@class A\n---@field x number\n---@class B : A\n---@field y string\nlocal A = {}\nlocal B = {}",
         );
+        let model = env.model();
         let infos = model.member_infos(&LuaType::Ref(LuaTypeDeclId::global("B")));
         let map = member_map(&infos);
         assert_eq!(map.get("x"), Some(&LuaType::Number), "继承 A.x");
@@ -1259,7 +1270,8 @@ mod tests {
     /// Runtime value members: `M.y = 1` merges into members of type M.
     #[test]
     fn test_member_infos_runtime_members() {
-        let model = model_of("---@class M\nlocal M = {}\nM.y = 1");
+        let env = model_of("---@class M\nlocal M = {}\nM.y = 1");
+        let model = env.model();
         let infos = model.member_infos(&LuaType::Ref(LuaTypeDeclId::global("M")));
         let map = member_map(&infos);
         assert_eq!(map.get("y"), Some(&LuaType::Number));
@@ -1268,7 +1280,8 @@ mod tests {
     /// Generic instance: `value` member of `Box<number>` substitutes to `number`.
     #[test]
     fn test_member_infos_generic_instance() {
-        let model = model_of("---@class Box<T>\n---@field value T\nlocal Box = {}");
+        let env = model_of("---@class Box<T>\n---@field value T\nlocal Box = {}");
+        let model = env.model();
         let generic = LuaType::Generic(Arc::new(LuaGenericType::new(
             LuaTypeDeclId::global("Box"),
             vec![LuaType::Number],
@@ -1281,7 +1294,8 @@ mod tests {
     /// Array forwarding: `C[]` includes C's members.
     #[test]
     fn test_member_infos_array_base() {
-        let model = model_of("---@class C\n---@field x number\nlocal C = {}");
+        let env = model_of("---@class C\n---@field x number\nlocal C = {}");
+        let model = env.model();
         let array = LuaType::Array(Arc::new(LuaArrayType::from_base_type(LuaType::Ref(
             LuaTypeDeclId::global("C"),
         ))));
@@ -1293,8 +1307,8 @@ mod tests {
     /// Query by key: `member_type(prefix, key)`.
     #[test]
     fn test_member_type_by_key() {
-        let model =
-            model_of("---@class C\n---@field x number\n---@field name string\nlocal C = {}");
+        let env = model_of("---@class C\n---@field x number\n---@field name string\nlocal C = {}");
+        let model = env.model();
         let ty = model
             .member_type(
                 &LuaType::Ref(LuaTypeDeclId::global("C")),
@@ -1315,9 +1329,10 @@ mod tests {
     /// Union: union of component members.
     #[test]
     fn test_member_infos_union() {
-        let model = model_of(
+        let env = model_of(
             "---@class A\n---@field x number\n---@class B\n---@field y string\nlocal A = {}\nlocal B = {}",
         );
+        let model = env.model();
         let union = LuaType::Union(Arc::new(LuaUnionType::from_vec(vec![
             LuaType::Ref(LuaTypeDeclId::global("A")),
             LuaType::Ref(LuaTypeDeclId::global("B")),
