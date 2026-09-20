@@ -9,8 +9,13 @@ use super::def::{
     ConstructorReturnMode, DeclKind, ModuleExport, SemanticId, TypeDefKind, TypeVisibility,
 };
 use super::facts::FileFacts;
+use super::flow::{FlowId, FlowNodeKind};
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
-use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId, SemanticModel};
+use crate::check::{CheckConfig, check_file};
+use crate::{
+    DiagnosticCode, Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId,
+    SemanticModel, WorkspaceFolder, WorkspaceId, file_path_to_uri,
+};
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
@@ -1298,13 +1303,13 @@ fn test_flow_tree_builds_cfg() {
     let flow_id = tree.get_flow_id(print_use.syntax).expect("print 绑定 flow");
     let node = tree.get_flow_node(flow_id).expect("flow node");
     assert!(
-        node.antecedent.is_some() || matches!(node.kind, super::flow::FlowNodeKind::Start),
+        node.antecedent.is_some() || matches!(node.kind, FlowNodeKind::Start),
         "flow 节点应有前驱或为 Start"
     );
 
     // The assignment inside the conditional if (x = 2) should also have a flow binding (via name_use syntax).
     let has_condition_node = (0..tree.node_count()).any(|i| {
-        tree.get_flow_node(super::flow::FlowId(i))
+        tree.get_flow_node(FlowId(i))
             .is_some_and(|n| n.kind.is_conditional())
     });
     assert!(has_condition_node, "if 条件应产生 True/False 条件节点");
@@ -1347,11 +1352,11 @@ fn test_lua_compilation_semantic_sync_and_check() {
     ));
 
     // check: only missing should be reported (local x, builtin print, and global global_defined are not undefined).
-    let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
-    let diagnostics = crate::check::check_file(&model, config);
+    let config = Arc::new(CheckConfig::new(&emmyrc));
+    let diagnostics = check_file(&model, config);
     let undefined: Vec<&str> = diagnostics
         .iter()
-        .filter(|d| d.code == crate::DiagnosticCode::UndefinedGlobal)
+        .filter(|d| d.code == DiagnosticCode::UndefinedGlobal)
         .map(|d| d.message.as_str())
         .collect();
     assert_eq!(undefined.len(), 1, "只报 missing: {:?}", undefined);
@@ -1366,13 +1371,13 @@ fn test_lua_compilation_semantic_sync_and_check() {
     filtered_emmyrc
         .diagnostics
         .disable
-        .push(crate::DiagnosticCode::UndefinedGlobal);
+        .push(DiagnosticCode::UndefinedGlobal);
     filtered_emmyrc
         .diagnostics
         .disable
-        .push(crate::DiagnosticCode::Unused);
-    let filtered_config = Arc::new(crate::check::CheckConfig::new(&filtered_emmyrc));
-    let filtered = crate::check::check_file(&model, filtered_config);
+        .push(DiagnosticCode::Unused);
+    let filtered_config = Arc::new(CheckConfig::new(&filtered_emmyrc));
+    let filtered = check_file(&model, filtered_config);
     assert!(filtered.is_empty(), "禁用相关码后应无诊断: {:?}", filtered);
 }
 
@@ -1399,11 +1404,11 @@ fn test_syntax_error_checks() {
         let fid = db.set_file_content(&uri, Some(source.to_string()));
         db.update_main_root(PathBuf::from("C:/ws"));
         let model = SemanticModel::new(&db, fid);
-        let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
-        let diagnostics = crate::check::check_file(&model, config);
+        let config = Arc::new(CheckConfig::new(&emmyrc));
+        let diagnostics = check_file(&model, config);
         let has_syntax_error = diagnostics
             .iter()
-            .any(|d| d.code == crate::DiagnosticCode::SyntaxError);
+            .any(|d| d.code == DiagnosticCode::SyntaxError);
         assert_eq!(
             has_syntax_error,
             *expect_error,
@@ -2034,24 +2039,18 @@ fn test_multi_workspace_roots_and_module_index() {
 
     db.add_std_workspace(std_root.clone());
     db.add_main_workspace(main_root.clone());
-    db.add_library_workspace(&crate::WorkspaceFolder::new(lib1_root.clone(), true));
-    db.add_library_workspace(&crate::WorkspaceFolder::new(lib2_root.clone(), true));
+    db.add_library_workspace(&WorkspaceFolder::new(lib1_root.clone(), true));
+    db.add_library_workspace(&WorkspaceFolder::new(lib2_root.clone(), true));
 
     let std_fid = set_test_file(&mut db, 1, "C:/std/string.lua", "return {}");
     let main_fid = set_test_file(&mut db, 2, "C:/ws/main.lua", "return {}");
     let lib1_fid = set_test_file(&mut db, 3, "C:/libs/lib1/mod.lua", "return {}");
     let lib2_fid = set_test_file(&mut db, 4, "C:/libs/lib2/other.lua", "return {}");
 
-    assert_eq!(db.workspace_id_of(std_fid), Some(crate::WorkspaceId::STD));
-    assert_eq!(db.workspace_id_of(main_fid), Some(crate::WorkspaceId::MAIN));
-    assert_eq!(
-        db.workspace_id_of(lib1_fid),
-        Some(crate::WorkspaceId { id: 3 })
-    );
-    assert_eq!(
-        db.workspace_id_of(lib2_fid),
-        Some(crate::WorkspaceId { id: 4 })
-    );
+    assert_eq!(db.workspace_id_of(std_fid), Some(WorkspaceId::STD));
+    assert_eq!(db.workspace_id_of(main_fid), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(lib1_fid), Some(WorkspaceId { id: 3 }));
+    assert_eq!(db.workspace_id_of(lib2_fid), Some(WorkspaceId { id: 4 }));
 
     assert_eq!(db.module_name_of(main_fid).as_deref(), Some("main"));
     assert_eq!(db.module_name_of(lib1_fid).as_deref(), Some("mod"));
@@ -2070,7 +2069,7 @@ fn test_multi_workspace_roots_and_module_index() {
 
     let info = db.module_info_of(lib1_fid).expect("module info");
     assert_eq!(info.full_module_name, "mod");
-    assert_eq!(info.workspace_id, crate::WorkspaceId { id: 3 });
+    assert_eq!(info.workspace_id, WorkspaceId { id: 3 });
 
     // Module tree node API
     let node_id = db.module_node("mod").expect("module node");
@@ -2104,7 +2103,7 @@ fn test_vfs_file_ids_sorted_and_lookup_uses_snapshot() {
     let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
     assert_eq!(db.file_ids(), vec![fid1, fid2]);
     assert_eq!(
-        db.lookup_file_id(&crate::file_path_to_uri(&PathBuf::from("C:/ws/b.lua")).unwrap()),
+        db.lookup_file_id(&file_path_to_uri(&PathBuf::from("C:/ws/b.lua")).unwrap()),
         Some(fid2)
     );
 }

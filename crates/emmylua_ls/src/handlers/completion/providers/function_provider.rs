@@ -8,6 +8,7 @@ use emmylua_parser::{
 use lsp_types::{CompletionItem, CompletionItemKind};
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
+use crate::handlers::hover::render::humanize;
 use crate::handlers::signature_helper::get_current_param_index;
 
 use super::{CompletionProvider, ProviderDecision};
@@ -791,7 +792,7 @@ fn type_def_matches_constraint(
             .any(|component| type_def_matches_constraint(model, def, component)),
         LuaType::Any | LuaType::Unknown => true,
         primitive => {
-            let primitive_name = crate::handlers::hover::render::humanize(model, primitive);
+            let primitive_name = humanize(model, primitive);
             let mut stack = vec![def.clone()];
             let mut visited = Vec::new();
             while let Some(current) = stack.pop() {

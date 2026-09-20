@@ -20,7 +20,7 @@ use emmylua_parser::{
 
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
-use crate::{AsyncState, LuaFunctionType, LuaType, LuaUnionType};
+use crate::{AsyncState, LuaFunctionType, LuaType, LuaUnionType, SemanticId};
 
 use super::param_type_check::callable_candidates;
 use super::{CheckContext, Checker};
@@ -101,9 +101,8 @@ fn callee_candidates(
 /// when an empty body has no return, `signature_return` is None, but async/sync parameters still participate in checks).
 fn doc_signature_for_decl(
     semantic_model: &SemanticModel<'_>,
-    decl: &crate::semantic_db::def::SemanticId,
+    decl: &SemanticId,
 ) -> Option<LuaFunctionType> {
-    use crate::semantic_db::def::SemanticId;
     let SemanticId::Decl(decl_key) = decl else {
         return None;
     };

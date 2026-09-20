@@ -15,7 +15,10 @@ use crate::semantic_db::def::{DocGenericParam, SemanticId, TypeDef};
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::infer::unify;
 use crate::semantic_model::type_check::is_compatible;
-use crate::{FileId, GenericTplId, LuaType};
+use crate::{
+    FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaIntersectionType, LuaStringTplType,
+    LuaType, LuaUnionType,
+};
 
 use super::param_count::first_param_is_self;
 use super::{CheckContext, Checker};
@@ -348,11 +351,11 @@ fn signature_docs_of_callee(
 pub(crate) fn resolved_call_signatures(
     semantic_model: &SemanticModel<'_>,
     call_expr: &LuaCallExpr,
-    candidates: &[crate::LuaFunctionType],
+    candidates: &[LuaFunctionType],
     arg_types: &[LuaType],
     colon_call: bool,
     receiver_ty: &LuaType,
-) -> Vec<(crate::LuaFunctionType, unify::TplBindings)> {
+) -> Vec<(LuaFunctionType, unify::TplBindings)> {
     let Some(callee) = call_expr.get_prefix_expr() else {
         return Vec::new();
     };
@@ -444,7 +447,7 @@ fn owner_generic_constraints(
 fn unbound_generic_actual(
     actual: &LuaType,
     owner_constraints: &HashMap<smol_str::SmolStr, (usize, LuaType)>,
-    fun: &crate::LuaFunctionType,
+    fun: &LuaFunctionType,
 ) -> LuaType {
     let (LuaType::Ref(id) | LuaType::Def(id)) = actual else {
         return actual.clone();
@@ -466,9 +469,9 @@ fn unbound_generic_actual(
 
 /// Convert `Ref("T")` in runtime member signatures back to `TplRef` with the owner class constraints.
 fn apply_owner_generics(
-    fun: crate::LuaFunctionType,
+    fun: LuaFunctionType,
     owner_constraints: &HashMap<smol_str::SmolStr, (usize, LuaType)>,
-) -> crate::LuaFunctionType {
+) -> LuaFunctionType {
     if owner_constraints.is_empty() {
         return fun;
     }
@@ -482,7 +485,7 @@ fn apply_owner_generics(
             (name.clone(), ty)
         })
         .collect();
-    crate::LuaFunctionType::new(
+    LuaFunctionType::new(
         fun.get_async_state(),
         fun.is_colon_define(),
         fun.is_variadic(),
@@ -502,7 +505,7 @@ fn bind_owner_generic_type(
             owner_constraints
                 .get(name)
                 .map(|(index, constraint)| {
-                    LuaType::TplRef(std::sync::Arc::new(crate::GenericTpl::new(
+                    LuaType::TplRef(std::sync::Arc::new(GenericTpl::new(
                         GenericTplId::Type(*index as u32),
                         smol_str::SmolStr::new(name),
                         Some(constraint.clone()),
@@ -517,7 +520,7 @@ fn bind_owner_generic_type(
             let name = str_tpl.get_name();
             if let Some((_, constraint)) = owner_constraints.get(name) {
                 Some(LuaType::StrTplRef(std::sync::Arc::new(
-                    crate::LuaStringTplType::new(
+                    LuaStringTplType::new(
                         str_tpl.get_prefix(),
                         str_tpl.get_name(),
                         str_tpl.get_tpl_id(),
@@ -538,9 +541,9 @@ fn bind_owner_generic_type(
                         .unwrap_or_else(|| component.clone())
                 })
                 .collect();
-            Some(LuaType::Union(std::sync::Arc::new(
-                crate::LuaUnionType::from_vec(types),
-            )))
+            Some(LuaType::Union(std::sync::Arc::new(LuaUnionType::from_vec(
+                types,
+            ))))
         }
         _ => Some(ty.clone()),
     }
@@ -551,7 +554,7 @@ fn check_str_tpl_params(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
     call_expr: &LuaCallExpr,
-    fun: &crate::LuaFunctionType,
+    fun: &LuaFunctionType,
     owner_constraints: &HashMap<smol_str::SmolStr, (usize, LuaType)>,
     arg_types: &[LuaType],
 ) {
@@ -641,13 +644,13 @@ fn check_str_tpl_params(
     }
 }
 
-fn tpl_refs_in(ty: &LuaType) -> Vec<std::sync::Arc<crate::GenericTpl>> {
+fn tpl_refs_in(ty: &LuaType) -> Vec<std::sync::Arc<GenericTpl>> {
     let mut out = Vec::new();
     collect_tpl_refs(ty, &mut out, 0);
     out
 }
 
-fn collect_tpl_refs(ty: &LuaType, out: &mut Vec<std::sync::Arc<crate::GenericTpl>>, depth: usize) {
+fn collect_tpl_refs(ty: &LuaType, out: &mut Vec<std::sync::Arc<GenericTpl>>, depth: usize) {
     if depth > 16 {
         return;
     }
@@ -668,7 +671,7 @@ fn collect_tpl_refs(ty: &LuaType, out: &mut Vec<std::sync::Arc<crate::GenericTpl
     }
 }
 
-fn str_tpl_refs_in(ty: &LuaType) -> Vec<std::sync::Arc<crate::LuaStringTplType>> {
+fn str_tpl_refs_in(ty: &LuaType) -> Vec<std::sync::Arc<LuaStringTplType>> {
     let mut out = Vec::new();
     collect_str_tpl_refs(ty, &mut out, 0);
     out
@@ -676,7 +679,7 @@ fn str_tpl_refs_in(ty: &LuaType) -> Vec<std::sync::Arc<crate::LuaStringTplType>>
 
 fn collect_str_tpl_refs(
     ty: &LuaType,
-    out: &mut Vec<std::sync::Arc<crate::LuaStringTplType>>,
+    out: &mut Vec<std::sync::Arc<LuaStringTplType>>,
     depth: usize,
 ) {
     if depth > 16 {
@@ -735,7 +738,7 @@ fn project_doc_type_with(
                 .enumerate()
                 .find(|(_, param)| param.name == name)
             {
-                return LuaType::TplRef(std::sync::Arc::new(crate::GenericTpl::new(
+                return LuaType::TplRef(std::sync::Arc::new(GenericTpl::new(
                     GenericTplId::Type(index as u32),
                     smol_str::SmolStr::new(name),
                     None,
@@ -771,7 +774,7 @@ fn project_doc_type_with(
                     .iter()
                     .position(|param| param.name == name)
                     .unwrap_or(0);
-                return LuaType::TplRef(std::sync::Arc::new(crate::GenericTpl::new(
+                return LuaType::TplRef(std::sync::Arc::new(GenericTpl::new(
                     GenericTplId::Type(index as u32),
                     smol_str::SmolStr::new(name),
                     None,
@@ -802,9 +805,11 @@ fn project_doc_type_with(
                 substitutions,
             );
             match binary.get_op_token().map(|op| op.get_op()) {
-                Some(emmylua_parser::LuaTypeBinaryOperator::Intersection) => LuaType::Intersection(
-                    std::sync::Arc::new(crate::LuaIntersectionType::new(vec![left_ty, right_ty])),
-                ),
+                Some(emmylua_parser::LuaTypeBinaryOperator::Intersection) => {
+                    LuaType::Intersection(std::sync::Arc::new(LuaIntersectionType::new(vec![
+                        left_ty, right_ty,
+                    ])))
+                }
                 Some(emmylua_parser::LuaTypeBinaryOperator::Union) => {
                     let mut types = Vec::new();
                     for ty in [left_ty, right_ty] {
@@ -813,7 +818,7 @@ fn project_doc_type_with(
                             other => types.push(other),
                         }
                     }
-                    LuaType::Union(std::sync::Arc::new(crate::LuaUnionType::from_vec(types)))
+                    LuaType::Union(std::sync::Arc::new(LuaUnionType::from_vec(types)))
                 }
                 _ => semantic_model.doc_type_lua_rich_in(file_id, syntax),
             }
@@ -886,7 +891,7 @@ fn keyof_type_def(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> LuaType 
         .into_iter()
         .map(|name| LuaType::StringConst(smol_str::SmolStr::new(name).into()))
         .collect();
-    LuaType::Union(std::sync::Arc::new(crate::LuaUnionType::from_vec(types)))
+    LuaType::Union(std::sync::Arc::new(LuaUnionType::from_vec(types)))
 }
 
 fn collect_key_names(

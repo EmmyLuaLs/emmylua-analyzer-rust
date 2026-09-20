@@ -7,6 +7,7 @@ mod render;
 use std::path::PathBuf;
 
 use crate::OutputDestination;
+use crate::doc_model::DocModel;
 use emmylua_code_analysis::EmmyLuaAnalysis;
 use generator::{
     generate_global_markdown, generate_index, generate_module_markdown, generate_type_markdown,
@@ -61,7 +62,7 @@ pub fn generate_markdown(
         mkdocs_index.site_name = site_name;
     }
 
-    let model = crate::doc_model::DocModel::build(analysis);
+    let model = DocModel::build(analysis);
     for doc_type in &model.types {
         generate_type_markdown(&model, &tl, doc_type, &types_out, &mut mkdocs_index);
     }

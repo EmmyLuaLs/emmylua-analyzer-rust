@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::common::{render_const, render_typ};
-use crate::doc_model::{DocFunctionInfo, DocModel, DocProperty, DocType};
+use crate::doc_model::{
+    DocFunctionInfo, DocGeneric, DocLoc, DocMember, DocModel, DocProperty, DocType, DocTypeKind,
+};
 use crate::json_generator::json_types::*;
 use emmylua_code_analysis::{Emmyrc, LuaType, RenderLevel};
 use emmylua_parser::VisibilityKind;
@@ -49,9 +51,9 @@ fn export_types(model: &DocModel) -> Vec<Type> {
         .types
         .iter()
         .map(|doc_type| match doc_type.kind {
-            crate::doc_model::DocTypeKind::Class => Type::Class(export_class(model, doc_type)),
-            crate::doc_model::DocTypeKind::Enum => Type::Enum(export_enum(model, doc_type)),
-            crate::doc_model::DocTypeKind::Alias => Type::Alias(export_alias(model, doc_type)),
+            DocTypeKind::Class => Type::Class(export_class(model, doc_type)),
+            DocTypeKind::Enum => Type::Enum(export_enum(model, doc_type)),
+            DocTypeKind::Alias => Type::Alias(export_alias(model, doc_type)),
         })
         .collect()
 }
@@ -134,7 +136,7 @@ fn export_enum(model: &DocModel, doc_type: &DocType) -> Enum {
     }
 }
 
-fn export_generics(model: &DocModel, generics: &[crate::doc_model::DocGeneric]) -> Vec<TypeVar> {
+fn export_generics(model: &DocModel, generics: &[DocGeneric]) -> Vec<TypeVar> {
     generics
         .iter()
         .map(|generic| TypeVar {
@@ -147,7 +149,7 @@ fn export_generics(model: &DocModel, generics: &[crate::doc_model::DocGeneric]) 
         .collect()
 }
 
-fn export_members(model: &DocModel, members: &[crate::doc_model::DocMember]) -> Vec<Member> {
+fn export_members(model: &DocModel, members: &[DocMember]) -> Vec<Member> {
     members
         .iter()
         .map(|member| {
@@ -246,7 +248,7 @@ fn export_locs(doc_type: &DocType) -> Vec<Loc> {
     doc_type.locations.iter().map(loc_json).collect()
 }
 
-fn loc_json(loc: &crate::doc_model::DocLoc) -> Loc {
+fn loc_json(loc: &DocLoc) -> Loc {
     Loc {
         file: loc.file.clone(),
         line: loc.line,

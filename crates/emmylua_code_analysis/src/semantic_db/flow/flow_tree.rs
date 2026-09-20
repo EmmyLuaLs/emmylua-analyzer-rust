@@ -5,8 +5,8 @@ use hashbrown::{HashMap, HashSet};
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaExpr, LuaSyntaxId};
 use rowan::{TextRange, TextSize};
 
-use super::super::def::SemanticId;
 use super::{FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind};
+use crate::semantic_db::def::SemanticId;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct FlowTree {

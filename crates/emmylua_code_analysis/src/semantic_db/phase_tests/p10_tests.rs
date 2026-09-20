@@ -15,11 +15,14 @@ use smol_str::SmolStr;
 
 use crate::semantic_db::def::{SemanticId, TypeScope};
 use crate::semantic_db::query::{self, workspace_type_index_for};
-use crate::{FileId, SemanticDatabase, VirtualWorkspace, WorkspaceFolder, WorkspaceId};
+use crate::semantic_db::{BatchChange, FileChange};
+use crate::{
+    Emmyrc, FileId, LuaType, SemanticDatabase, VirtualWorkspace, WorkspaceFolder, WorkspaceId,
+};
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
-    db.update_config(Arc::new(crate::Emmyrc::default()));
+    db.update_config(Arc::new(Emmyrc::default()));
     db.add_main_workspace(PathBuf::from("C:/ws"));
     db
 }
@@ -320,7 +323,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
 fn p10_apply_file_change_and_batch_api() {
     let mut db = setup();
     let fid = FileId::new(1);
-    let summary = db.apply_file_change(crate::semantic_db::FileChange::set_file(
+    let summary = db.apply_file_change(FileChange::set_file(
         fid,
         Some(PathBuf::from("C:/ws/a.lua")),
         "local a = 1".to_string(),
@@ -329,13 +332,13 @@ fn p10_apply_file_change_and_batch_api() {
     assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
 
     let uri = db.file_uri(fid).expect("uri");
-    let summary = db.apply_batch(crate::semantic_db::BatchChange {
+    let summary = db.apply_batch(BatchChange {
         files: vec![(uri, Some("local a = 2".to_string()))],
     });
     assert_eq!(summary.updated, 1);
     assert!(summary.full_rebuild);
 
-    let summary = db.apply_file_change(crate::semantic_db::FileChange::remove(fid));
+    let summary = db.apply_file_change(FileChange::remove(fid));
     assert_eq!(summary.removed, 1);
     assert!(db.file_data_id(fid).is_none());
 }
@@ -354,7 +357,7 @@ fn p10_cross_file_class_member_reference() {
     assert!(
         matches!(
             ty,
-            crate::LuaType::Integer | crate::LuaType::IntegerConst(_) | crate::LuaType::Number
+            LuaType::Integer | LuaType::IntegerConst(_) | LuaType::Number
         ),
         "A.BBB must resolve cross-file, got {ty:?}"
     );

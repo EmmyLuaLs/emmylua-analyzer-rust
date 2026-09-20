@@ -5,8 +5,8 @@ use emmylua_parser::{
 use rowan::TextSize;
 use smol_str::SmolStr;
 
-use super::super::def::{LuaMemberKey, SemanticId};
 use super::{DeclMultiReturnRef, DeclMultiReturnRefAt, FlowId, binder::FlowBinder};
+use crate::semantic_db::def::{LuaMemberKey, SemanticId};
 
 pub(super) fn check_local_immutable(_binder: &mut FlowBinder, _decl_id: &SemanticId) -> bool {
     // M0: no reference index, so assume immutable.

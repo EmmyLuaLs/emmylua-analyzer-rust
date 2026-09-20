@@ -17,8 +17,9 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
+use crate::semantic_db::def::{SemanticId, Signature};
 use crate::semantic_model::SemanticModel;
-use crate::{LuaType, VariadicType};
+use crate::{FileId, LuaType, VariadicType};
 
 use super::{CheckContext, Checker};
 
@@ -77,7 +78,7 @@ impl ReturnExpectation {
 /// Signature doc annotation + contextual member annotation -> expected return count.
 fn return_expectation_of(
     semantic_model: &SemanticModel<'_>,
-    signature: &crate::semantic_db::def::Signature,
+    signature: &Signature,
     closure: &LuaClosureExpr,
 ) -> ReturnExpectation {
     let mut syntaxes: Vec<(rowan::TextSize, emmylua_parser::LuaSyntaxId)> = Vec::new();
@@ -230,7 +231,7 @@ fn project_return_annotation(
 
 fn project_return_annotation_in(
     semantic_model: &SemanticModel<'_>,
-    file_id: crate::FileId,
+    file_id: FileId,
     syntax: emmylua_parser::LuaSyntaxId,
 ) -> LuaType {
     if let Some(tree) = semantic_model.syntax_tree_of(file_id)
@@ -363,12 +364,11 @@ fn call_return_annotations(
     let (file_id, closure_syntax) = match &callee {
         LuaExpr::NameExpr(name_expr) => {
             let decl = semantic_model.resolve_name(name_expr.get_position())?;
-            let crate::semantic_db::def::SemanticId::Decl(decl_key) = decl else {
+            let SemanticId::Decl(decl_key) = decl else {
                 return None;
             };
             let facts = semantic_model.file_facts_of(decl_key.file_id)?;
-            let decl =
-                facts.decl_by_id(&crate::semantic_db::def::SemanticId::Decl(decl_key.clone()))?;
+            let decl = facts.decl_by_id(&SemanticId::Decl(decl_key.clone()))?;
             (decl.file_id, decl.value_expr_syntax?)
         }
         LuaExpr::IndexExpr(index_expr) => {

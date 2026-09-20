@@ -9,6 +9,8 @@ use crate::{
     parser_error::LuaParseError,
 };
 
+use crate::text::SourceRange;
+
 use super::{
     expect_token,
     expr::{parse_closure_expr, parse_expr},
@@ -52,7 +54,7 @@ where
 }
 
 /// Expect 'end' keyword, report error at start keyword location if missing
-fn expect_end_keyword<F>(p: &mut LuaParser, start_range: crate::text::SourceRange, error_msg_fn: F)
+fn expect_end_keyword<F>(p: &mut LuaParser, start_range: SourceRange, error_msg_fn: F)
 where
     F: FnOnce() -> std::borrow::Cow<'static, str>,
 {

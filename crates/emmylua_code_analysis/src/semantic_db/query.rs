@@ -8,13 +8,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::SemanticDatabase;
+use super::def::Decl;
 use super::def::{
     ChangedKeys, ConstructorAttribute, DeclKind, DependencyKey, DocGenericParam, ExportKey,
     FileDependencies, LuaMemberKey, MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId,
     ModuleVisibility, OwnerId, SemanticId, TypeDef, TypeDefKind,
 };
-use super::exports::{FileExports, module_export_owner_file, owner_id_from_semantic_id};
+use super::exports::{
+    FileExports, GlobalExport, MemberExport, module_export_owner_file, owner_id_from_semantic_id,
+};
 use super::facts::{FactsBuilder, FileFacts};
+use super::inputs::WorkspaceRoot;
 use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
 use crate::Emmyrc;
 use crate::FileId;
@@ -67,12 +71,12 @@ pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>)
     let mut changed = ChangedKeys::default();
 
     // Globals: same-name declaration identity/payload changes.
-    let old_globals: HashMap<&str, &super::exports::GlobalExport> = old
+    let old_globals: HashMap<&str, &GlobalExport> = old
         .globals
         .iter()
         .map(|global| (global.name.as_str(), global))
         .collect();
-    let new_globals: HashMap<&str, &super::exports::GlobalExport> = new
+    let new_globals: HashMap<&str, &GlobalExport> = new
         .globals
         .iter()
         .map(|global| (global.name.as_str(), global))
@@ -137,10 +141,8 @@ pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>)
     }
 
     // Members: canonical `(OwnerId, LuaMemberKey)`.
-    fn member_map(
-        exports: &FileExports,
-    ) -> HashMap<DependencyKey, Vec<&super::exports::MemberExport>> {
-        let mut map: HashMap<DependencyKey, Vec<&super::exports::MemberExport>> = HashMap::new();
+    fn member_map(exports: &FileExports) -> HashMap<DependencyKey, Vec<&MemberExport>> {
+        let mut map: HashMap<DependencyKey, Vec<&MemberExport>> = HashMap::new();
         for member in &exports.members {
             let ExportKey::Member(owner_id, key) = member.export_key() else {
                 continue;
@@ -1928,10 +1930,7 @@ fn build_module_tree(
 ///
 /// Prefer the shortest relative path; on a tie keep the old LuaModuleIndex
 /// semantics (main root wins over non-main).
-fn best_workspace_root(
-    roots: &[crate::semantic_db::inputs::WorkspaceRoot],
-    path: &Path,
-) -> Option<(usize, WorkspaceId)> {
+fn best_workspace_root(roots: &[WorkspaceRoot], path: &Path) -> Option<(usize, WorkspaceId)> {
     let mut best: Option<(usize, WorkspaceId)> = None;
     for root in roots {
         let Ok(rel) = path.strip_prefix(&root.root) else {
@@ -1960,7 +1959,7 @@ fn best_workspace_root(
 /// Returns `(workspace id, root path)`. Callers that only need the id should use
 /// [`find_workspace_id`] to avoid cloning the root path.
 pub(crate) fn find_workspace_root(
-    roots: &[crate::semantic_db::inputs::WorkspaceRoot],
+    roots: &[WorkspaceRoot],
     path: &Path,
 ) -> Option<(WorkspaceId, PathBuf)> {
     let (_, id) = best_workspace_root(roots, path)?;
@@ -1972,16 +1971,13 @@ pub(crate) fn find_workspace_root(
 }
 
 /// Root lookup without the `PathBuf` clone used by the legacy signature.
-pub(crate) fn find_workspace_id(
-    roots: &[crate::semantic_db::inputs::WorkspaceRoot],
-    path: &Path,
-) -> Option<WorkspaceId> {
+pub(crate) fn find_workspace_id(roots: &[WorkspaceRoot], path: &Path) -> Option<WorkspaceId> {
     best_workspace_root(roots, path).map(|(_, id)| id)
 }
 
 /// File path -> owning workspace, without touching the VFS or file cache.
 pub(crate) fn file_workspace_id_for_path(
-    roots: &[crate::semantic_db::inputs::WorkspaceRoot],
+    roots: &[WorkspaceRoot],
     path: Option<&Path>,
 ) -> Option<WorkspaceId> {
     let path = path?;
@@ -2728,7 +2724,7 @@ fn iter_slot_type(
     facts: &FileFacts,
     file: FileId,
     config: &Emmyrc,
-    decl: &crate::semantic_db::def::Decl,
+    decl: &Decl,
 ) -> Option<TypeShell> {
     let key = (file, decl.id.clone());
     if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {

@@ -5,12 +5,12 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 use std::{hash::Hash, sync::Arc};
 
-use super::super::type_decl::LuaTypeDeclId;
 use super::complex::{
     GenericTpl, LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType, LuaMultiLineUnion,
     LuaObjectType, LuaStringTplType, LuaTupleType, LuaUnionType, VariadicType,
 };
+use crate::semantic_db::def::lua_type::type_decl::LuaTypeDeclId;
 
 #[derive(Debug, Clone)]
 pub enum LuaType {

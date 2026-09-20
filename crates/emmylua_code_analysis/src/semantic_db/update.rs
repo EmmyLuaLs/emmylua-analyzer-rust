@@ -4,7 +4,8 @@ use super::SemanticDatabase;
 use super::def::{
     ChangedKeys, DependencyKey, FileDependencies, SemanticId, TypeDef, TypeScope, TypeVisibility,
 };
-use super::exports::FileExports;
+use super::exports::{FileExports, build_file_exports};
+use super::flow::build_flow_tree;
 use super::query::aggregate_member_bucket;
 use super::query::file_workspace_id_for_path;
 use super::query::{
@@ -14,7 +15,7 @@ use super::query::{
     build_workspace_deprecated_index, build_workspace_member_index, build_workspace_module_index,
     build_workspace_reference_index, build_workspace_type_index, changed_keys, file_workspace_id,
 };
-use crate::{FileId, WorkspaceId};
+use crate::{FileId, WorkspaceId, file_path_to_uri};
 use hashbrown::HashMap;
 use hashbrown::HashSet;
 use smol_str::SmolStr;
@@ -181,8 +182,8 @@ pub(crate) fn rebuild_file_after_write(
         },
     );
 
-    let flow = super::flow::build_flow_tree(db, file_id);
-    let exports = super::exports::build_file_exports(db, file_id, file_id);
+    let flow = build_flow_tree(db, file_id);
+    let exports = build_file_exports(db, file_id, file_id);
     let new_exports = Arc::new(exports);
     {
         let cache = db
@@ -338,7 +339,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         if db.file_data(file_id).is_none() {
             continue;
         }
-        let flow = super::flow::build_flow_tree(db, file_id);
+        let flow = build_flow_tree(db, file_id);
         let cache = db
             .files
             .get_mut(&file_id)
@@ -367,7 +368,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         if db.file_data(file_id).is_none() {
             continue;
         }
-        let exports = super::exports::build_file_exports(db, file_id, file_id);
+        let exports = build_file_exports(db, file_id, file_id);
         let cache = db
             .files
             .get_mut(&file_id)
@@ -643,7 +644,7 @@ fn refresh_file_contribution_and_references(
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let module_entry = build_module_entry(db, file_id);
     let deprecated = build_deprecated_file(db, file_id);
-    let exports = Arc::new(super::exports::build_file_exports(db, file_id, file_id));
+    let exports = Arc::new(build_file_exports(db, file_id, file_id));
     apply_file_to_workspace_indexes(
         db,
         WorkspaceFileUpdate {
@@ -794,7 +795,7 @@ pub enum FileChange {
 
 impl FileChange {
     pub fn set_file(file_id: FileId, path: Option<std::path::PathBuf>, text: String) -> Self {
-        let uri = path.as_ref().and_then(crate::vfs::file_path_to_uri);
+        let uri = path.as_ref().and_then(file_path_to_uri);
         FileChange::Set {
             file_id,
             path,

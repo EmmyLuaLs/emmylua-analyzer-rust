@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod test {
     use crate::DiagnosticCode;
+    use crate::VirtualWorkspace;
 
     #[test]
     fn test_await_in_sync() {
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
@@ -76,7 +77,7 @@ mod test {
 
     #[test]
     fn test_issue_99() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
 
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
@@ -96,7 +97,7 @@ mod test {
 
     #[test]
     fn test_issue_101() {
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
         ws.def(
             r#"
@@ -129,7 +130,7 @@ mod test {
 
     #[test]
     fn test_issue_161() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
@@ -152,7 +153,7 @@ mod test {
 
     #[test]
     fn test_issue_721() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"

@@ -7,6 +7,7 @@ use emmylua_parser::{BinaryOperator, LuaAst, LuaAstNode, LuaExpr, LuaLiteralToke
 
 use crate::DiagnosticCode;
 use crate::LuaType;
+use crate::semantic_db::def::TypeDefKind;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::member::type_def_of;
 
@@ -74,7 +75,7 @@ fn check_pair(
     let Some(def) = type_def_of(semantic_model, id) else {
         return;
     };
-    if def.kind != crate::semantic_db::def::TypeDefKind::Enum {
+    if def.kind != TypeDefKind::Enum {
         return;
     }
     // Constant literal text.

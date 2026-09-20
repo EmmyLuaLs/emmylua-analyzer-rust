@@ -5,17 +5,22 @@ use smol_str::SmolStr;
 use crate::{
     Arc, AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel,
 };
+use crate::{
+    Emmyrc, FileId, InFiled, LuaArrayType, LuaGenericType, LuaInstanceType, SemanticDatabase,
+};
 
 use super::check_type_detail;
 use super::context::TypeCheckContext;
-use super::{check_general_type_compact, guard::TypeCheckGuard};
+use super::{
+    TypeCheckFailReason, check_general_type_compact, guard::TypeCheckGuard, is_compatible,
+};
 
 /// Model-less context (structural tests don't need resolution).
 fn ctx() -> TypeCheckContext<'static> {
     // Borrow a dummy model: structural checks don't trigger resolution, so use a leaked fake model.
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(
-        Box::leak(Box::new(crate::semantic_db::SemanticDatabase::new())),
-        crate::FileId::new(0),
+        Box::leak(Box::new(SemanticDatabase::new())),
+        FileId::new(0),
     )));
     TypeCheckContext::new(model, false)
 }
@@ -57,7 +62,7 @@ fn test_primitives_and_consts() {
     assert!(ok(&LT::Table, &LT::Table));
     assert!(ok(
         &LT::Table,
-        &LT::Array(Arc::new(crate::LuaArrayType::from_base_type(LT::Number)))
+        &LT::Array(Arc::new(LuaArrayType::from_base_type(LT::Number)))
     ));
     assert!(ok(
         &LT::Function,
@@ -142,8 +147,8 @@ fn test_ref_inheritance() {
     use lsp_types::Uri;
     use std::str::FromStr;
 
-    let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/inherit.lua").unwrap();
     let fid = db.set_file_content(
@@ -153,15 +158,9 @@ fn test_ref_inheritance() {
     let model = SemanticModel::new(&db, fid);
     let foo = LuaType::Ref(LuaTypeDeclId::global("Foo"));
     let bar = LuaType::Ref(LuaTypeDeclId::global("Bar"));
-    assert!(
-        super::is_compatible(&model, &bar, &foo),
-        "Bar ≤ Foo（继承）"
-    );
-    assert!(
-        super::is_compatible(&model, &foo, &bar),
-        "名义双向（旧语义）"
-    );
-    assert!(super::is_compatible(&model, &foo, &foo));
+    assert!(is_compatible(&model, &bar, &foo), "Bar ≤ Foo（继承）");
+    assert!(is_compatible(&model, &foo, &bar), "名义双向（旧语义）");
+    assert!(is_compatible(&model, &foo, &foo));
 }
 
 #[test]
@@ -169,8 +168,8 @@ fn test_alias_nominal() {
     use lsp_types::Uri;
     use std::str::FromStr;
 
-    let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/alias.lua").unwrap();
     let fid = db.set_file_content(
@@ -180,21 +179,21 @@ fn test_alias_nominal() {
     let model = SemanticModel::new(&db, fid);
     let my_str = LuaType::Ref(LuaTypeDeclId::global("MyStr"));
     // semantic has no alias origin: nominal (same id) passes, structural expansion is degraded.
-    assert!(super::is_compatible(&model, &my_str, &my_str));
+    assert!(is_compatible(&model, &my_str, &my_str));
 }
 
 #[test]
 fn test_generic_params() {
     use LuaType as LT;
-    let box_num_src = LT::Generic(Arc::new(crate::LuaGenericType::new(
+    let box_num_src = LT::Generic(Arc::new(LuaGenericType::new(
         LuaTypeDeclId::global("Box"),
         vec![LT::Number],
     )));
-    let box_num_tgt = LT::Generic(Arc::new(crate::LuaGenericType::new(
+    let box_num_tgt = LT::Generic(Arc::new(LuaGenericType::new(
         LuaTypeDeclId::global("Box"),
         vec![LT::Number],
     )));
-    let box_str = LT::Generic(Arc::new(crate::LuaGenericType::new(
+    let box_str = LT::Generic(Arc::new(LuaGenericType::new(
         LuaTypeDeclId::global("Box"),
         vec![LT::String],
     )));
@@ -205,9 +204,9 @@ fn test_generic_params() {
 #[test]
 fn test_instance_base() {
     use LuaType as LT;
-    let inst = LT::Instance(Arc::new(crate::LuaInstanceType::new(
+    let inst = LT::Instance(Arc::new(LuaInstanceType::new(
         LT::Number,
-        crate::InFiled::new(crate::FileId::new(0), Default::default()),
+        InFiled::new(FileId::new(0), Default::default()),
     )));
     assert!(ok(&inst, &LT::Integer));
     assert!(!ok(&inst, &LT::String));
@@ -219,8 +218,8 @@ fn test_detail_reason() {
     use lsp_types::Uri;
     use std::str::FromStr;
 
-    let emmyrc = Arc::new(crate::Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/x.lua").unwrap();
     let fid = db.set_file_content(&uri, Some("local x = 1".to_string()));
@@ -228,9 +227,7 @@ fn test_detail_reason() {
     let result = check_type_detail(&model, &LT::String, &LT::Number);
     assert!(result.is_err(), "String !≤ Number 应失败");
     match result {
-        Err(crate::semantic_model::type_check::TypeCheckFailReason::TypeNotMatchWithReason(
-            reason,
-        )) => {
+        Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => {
             assert!(
                 reason.contains("expected"),
                 "reason should contain expected: {reason}"

@@ -6,7 +6,7 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaLocalStat};
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
 
-use super::super::{CheckContext, Checker};
+use crate::check::checker::{CheckContext, Checker};
 
 pub struct NonLiteralExpressionsInAssertChecker;
 

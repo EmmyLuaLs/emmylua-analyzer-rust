@@ -9,6 +9,7 @@ use emmylua_parser::{LuaChunk, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
+use crate::LuaObjectType;
 use crate::semantic_db::types::LiteralShell;
 use crate::{
     GenericTpl, GenericTplId, LuaAliasCallKind, LuaAliasCallType, LuaArrayType, LuaStringTplType,
@@ -22,6 +23,7 @@ use super::def::{
 };
 use super::exports::{FileExports, file_exports};
 use super::facts::FileFacts;
+use super::flow::{FlowTree, flow_tree_of};
 use super::query::{
     self, decl_references, decl_type, file_and_config, file_facts, member_keys_of_decl,
     member_keys_of_type, member_type, module_export_type, resolve_name, resolve_type_def,
@@ -266,9 +268,9 @@ impl<'db> AnalysisView<'db> {
         }
     }
     /// Per-file control-flow graph (CFG, for flow-sensitive analysis).
-    pub fn flow_tree(&self, file_id: FileId) -> Option<&'db super::flow::FlowTree> {
+    pub fn flow_tree(&self, file_id: FileId) -> Option<&'db FlowTree> {
         let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(super::flow::flow_tree_of(self.db, file))
+        Some(flow_tree_of(self.db, file))
     }
 
     // ── Declarations ──
@@ -806,8 +808,9 @@ fn primitive_lua_type(primitive: PrimitiveType) -> LuaType {
         PrimitiveType::String => LuaType::String,
         PrimitiveType::Table => LuaType::Table,
         PrimitiveType::Function => LuaType::Function,
-        PrimitiveType::EmptyObject => LuaType::Object(Arc::new(
-            crate::LuaObjectType::new_with_fields(Default::default(), Vec::new()),
-        )),
+        PrimitiveType::EmptyObject => LuaType::Object(Arc::new(LuaObjectType::new_with_fields(
+            Default::default(),
+            Vec::new(),
+        ))),
     }
 }

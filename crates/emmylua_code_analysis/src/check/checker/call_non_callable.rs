@@ -7,6 +7,7 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaLocalStat};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
+use crate::semantic_db::def::TypeDefKind;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::member::type_def_of;
 
@@ -97,7 +98,7 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             let Some(def) = type_def_of(model, id) else {
                 return true;
             };
-            if def.kind == crate::semantic_db::def::TypeDefKind::Alias
+            if def.kind == TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
                 return is_callable(model, &target);

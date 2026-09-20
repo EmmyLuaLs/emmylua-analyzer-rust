@@ -10,6 +10,7 @@ use crate::DiagnosticCode;
 use crate::{Emmyrc, SemanticDatabase, SemanticModel};
 
 use super::{Diagnostic, check_source, count_by_code};
+use crate::check::{CheckConfig, check_file};
 
 fn check_export(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     let emmyrc = Arc::new(Emmyrc::default());
@@ -23,8 +24,8 @@ fn check_export(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     db.update_main_root(PathBuf::from("C:/ws"));
 
     let model = SemanticModel::new(&db, use_file);
-    let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
-    crate::check::check_file(&model, config)
+    let config = Arc::new(CheckConfig::new(&emmyrc));
+    check_file(&model, config)
 }
 
 /// `return { a = 1 }`: imported tables may only read/write fields on the export surface.

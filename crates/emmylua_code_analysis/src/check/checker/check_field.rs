@@ -4,11 +4,13 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
-use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::def::{SemanticId, TypeDef, TypeDefKind, TypeScope};
 use crate::semantic_model::SemanticModel;
-use crate::{LuaMemberKey, LuaType};
+use crate::{LuaMemberKey, LuaType, LuaUnionType};
 
+use super::param_type_check::callable_candidates;
 use super::{CheckContext, Checker};
+use crate::semantic_model::member::type_def_of;
 use crate::semantic_model::render::humanize_type;
 
 pub struct CheckFieldChecker;
@@ -176,8 +178,8 @@ fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option
                 };
             }
         };
-        let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
-        if def.kind != crate::semantic_db::def::TypeDefKind::Alias {
+        let def = type_def_of(semantic_model, &id)?;
+        if def.kind != TypeDefKind::Alias {
             return if visited.is_empty() {
                 None
             } else {
@@ -240,7 +242,7 @@ fn key_type_contains(key_ty: &LuaType, expected: &LuaType) -> bool {
 /// `---@class C: { a: number }`: when the parent type is an object literal, complete the field surface.
 fn object_super_fields(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::semantic_db::def::TypeDef,
+    def: &TypeDef,
 ) -> Vec<(String, LuaType)> {
     let Some(tree) = semantic_model.syntax_tree_of(def.file_id) else {
         return Vec::new();
@@ -289,10 +291,7 @@ fn object_super_fields(
 }
 
 /// Whether the alias target is a mapped type.
-fn is_mapped_alias(
-    semantic_model: &SemanticModel<'_>,
-    def: &crate::semantic_db::def::TypeDef,
-) -> bool {
+fn is_mapped_alias(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> bool {
     let Some(syntax) = def.alias_type else {
         return false;
     };
@@ -317,7 +316,7 @@ fn check_call_args(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
-    let candidates = super::param_type_check::callable_candidates(semantic_model, &callee);
+    let candidates = callable_candidates(semantic_model, &callee);
     let Some(args) = call_expr.get_args_list() else {
         return;
     };
@@ -481,12 +480,9 @@ fn check_against_type(
 /// Target type -> named type id (Ref/Def/Generic base class).
 fn resolve_target(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<SemanticId> {
     match ty {
-        LuaType::Ref(id) | LuaType::Def(id) => {
-            crate::semantic_model::member::type_def_of(semantic_model, id).map(|def| def.id)
-        }
+        LuaType::Ref(id) | LuaType::Def(id) => type_def_of(semantic_model, id).map(|def| def.id),
         LuaType::Generic(generic) => {
-            crate::semantic_model::member::type_def_of(semantic_model, &generic.get_base_type_id())
-                .map(|def| def.id)
+            type_def_of(semantic_model, &generic.get_base_type_id()).map(|def| def.id)
         }
         _ => None,
     }
@@ -519,7 +515,7 @@ fn collect_fields(
             && member.is_nullable
             && !ty.is_nullable()
         {
-            ty = LuaType::Union(std::sync::Arc::new(crate::LuaUnionType::from_vec(vec![
+            ty = LuaType::Union(std::sync::Arc::new(LuaUnionType::from_vec(vec![
                 ty,
                 LuaType::Nil,
             ])));
@@ -539,10 +535,7 @@ fn collect_fields(
 }
 
 /// Find a type definition by id (walk the workspace type index).
-fn find_type_def(
-    semantic_model: &SemanticModel<'_>,
-    type_def_id: &SemanticId,
-) -> Option<crate::semantic_db::def::TypeDef> {
+fn find_type_def(semantic_model: &SemanticModel<'_>, type_def_id: &SemanticId) -> Option<TypeDef> {
     let SemanticId::TypeDef(key) = type_def_id else {
         return None;
     };
@@ -551,12 +544,9 @@ fn find_type_def(
 }
 
 /// Parent type (by full name, in Global scope).
-fn super_type_def(
-    semantic_model: &SemanticModel<'_>,
-    full_name: &str,
-) -> Option<crate::semantic_db::def::TypeDef> {
+fn super_type_def(semantic_model: &SemanticModel<'_>, full_name: &str) -> Option<TypeDef> {
     semantic_model
-        .type_defs_in_scope(crate::semantic_db::def::TypeScope::Global, full_name)
+        .type_defs_in_scope(TypeScope::Global, full_name)
         .iter()
         .next()
         .cloned()

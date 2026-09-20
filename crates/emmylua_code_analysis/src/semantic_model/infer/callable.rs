@@ -1,9 +1,10 @@
 //! Unified callable candidate set (P6b).
 
+use super::vm::{InferVm, expand_callable_types_in_model};
 use crate::semantic_model::infer::overload;
 use crate::semantic_model::infer::unify::TplBindings;
 use crate::semantic_model::{SemanticModel, member};
-use crate::{LuaFunctionType, LuaMemberKey, LuaType};
+use crate::{DeclKind, FileId, LuaFunctionType, LuaMemberKey, LuaType, SemanticId};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CallableCandidateSet {
@@ -51,7 +52,7 @@ impl CallableCandidateSet {
         model: &SemanticModel<'_>,
         prefix_type: &LuaType,
         key: &LuaMemberKey,
-        member_id: &crate::SemanticId,
+        member_id: &SemanticId,
     ) -> Self {
         Self::from_prefix_type_filtered(model, prefix_type, key, Some(member_id))
     }
@@ -60,7 +61,7 @@ impl CallableCandidateSet {
         model: &SemanticModel<'_>,
         prefix_type: &LuaType,
         key: &LuaMemberKey,
-        member_id: Option<&crate::SemanticId>,
+        member_id: Option<&SemanticId>,
     ) -> Self {
         let allow_cross_file = member_id
             .and_then(|member_id| member_owner_allows_cross_file(model, member_id))
@@ -71,7 +72,7 @@ impl CallableCandidateSet {
         // (`table.insert`) are not necessarily reachable from the prefix type
         // surface, but still carry main + `---@overload` signatures.
         if let Some(member_id) = member_id {
-            let vm = super::vm::InferVm::new(model, &[]);
+            let vm = InferVm::new(model, &[]);
             if let Some(resolved_candidates) = vm.callable_candidates_for_owner_single(member_id) {
                 candidates.extend(resolved_candidates);
             }
@@ -99,14 +100,14 @@ impl CallableCandidateSet {
         // `table.insert` relies on this for its 2-argument form).
         let before = out.len();
         if let (Some(member_id), Some(_file_id)) = (&info.id, info.file_id) {
-            let vm = super::vm::InferVm::new(model, &[]);
+            let vm = InferVm::new(model, &[]);
             if let Some(candidates) = vm.callable_candidates_for_owner_single(member_id) {
                 out.extend(candidates);
             }
         }
         if out.len() == before {
             // `@field fun(...)` has no closure value syntax: project the member type.
-            out.extend(super::vm::expand_callable_types_in_model(model, &info.typ));
+            out.extend(expand_callable_types_in_model(model, &info.typ));
         }
         if out.len() == before
             && let (Some(member_id), Some(file_id)) = (&info.id, info.file_id)
@@ -151,8 +152,8 @@ impl CallableCandidateSet {
 
 fn member_closure_function(
     model: &SemanticModel<'_>,
-    file_id: crate::FileId,
-    member_id: &crate::SemanticId,
+    file_id: FileId,
+    member_id: &SemanticId,
 ) -> Option<LuaFunctionType> {
     let facts = model.file_facts_of(file_id)?;
     let member = facts.member_by_id(member_id)?;
@@ -160,13 +161,10 @@ fn member_closure_function(
     model.type_of_signature_in_file(file_id, value_syntax)
 }
 
-fn member_file_of(
-    model: &SemanticModel<'_>,
-    member_id: &crate::SemanticId,
-) -> Option<crate::FileId> {
+fn member_file_of(model: &SemanticModel<'_>, member_id: &SemanticId) -> Option<FileId> {
     match member_id {
-        crate::SemanticId::Member(key) => Some(key.file_id),
-        crate::SemanticId::Decl(key) => Some(key.file_id),
+        SemanticId::Member(key) => Some(key.file_id),
+        SemanticId::Decl(key) => Some(key.file_id),
         _ => {
             let _ = model;
             None
@@ -176,18 +174,18 @@ fn member_file_of(
 
 fn member_owner_allows_cross_file(
     model: &SemanticModel<'_>,
-    member_id: &crate::SemanticId,
+    member_id: &SemanticId,
 ) -> Option<bool> {
-    let crate::SemanticId::Member(key) = member_id else {
+    let SemanticId::Member(key) = member_id else {
         return Some(true);
     };
     let facts = model.file_facts_of(key.file_id)?;
     let member = facts.member_by_id(member_id)?;
     match &member.owner {
-        crate::SemanticId::TypeDef(_) | crate::SemanticId::Name(_) => Some(true),
-        crate::SemanticId::Decl(decl_key) => {
-            let decl = facts.decl_by_id(&crate::SemanticId::Decl(decl_key.clone()))?;
-            Some(matches!(decl.kind, crate::DeclKind::Global))
+        SemanticId::TypeDef(_) | SemanticId::Name(_) => Some(true),
+        SemanticId::Decl(decl_key) => {
+            let decl = facts.decl_by_id(&SemanticId::Decl(decl_key.clone()))?;
+            Some(matches!(decl.kind, DeclKind::Global))
         }
         _ => Some(false),
     }

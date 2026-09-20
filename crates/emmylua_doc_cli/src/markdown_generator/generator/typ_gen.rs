@@ -1,4 +1,4 @@
-use crate::doc_model::{DocMember, DocModel, DocType};
+use crate::doc_model::{DocMember, DocModel, DocType, DocTypeKind};
 use crate::markdown_generator::{
     escape_type_name,
     generator::collect_property,
@@ -24,7 +24,7 @@ pub fn generate_type_markdown(
     };
 
     match doc_type.kind {
-        crate::doc_model::DocTypeKind::Class => {
+        DocTypeKind::Class => {
             generate_class_type_markdown(
                 model,
                 tl,
@@ -35,7 +35,7 @@ pub fn generate_type_markdown(
                 mkdocs_index,
             );
         }
-        crate::doc_model::DocTypeKind::Enum => {
+        DocTypeKind::Enum => {
             generate_enum_type_markdown(
                 model,
                 tl,
@@ -46,7 +46,7 @@ pub fn generate_type_markdown(
                 mkdocs_index,
             );
         }
-        crate::doc_model::DocTypeKind::Alias => {
+        DocTypeKind::Alias => {
             generate_alias_type_markdown(
                 model,
                 tl,

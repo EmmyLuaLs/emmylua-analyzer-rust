@@ -10,7 +10,10 @@ use crate::handlers::completion::completion_builder::CompletionBuilder;
 use crate::handlers::completion::completion_data::{CompletionData, CompletionDataType};
 use crate::handlers::signature_helper::get_current_param_index;
 
-use super::{CompletionProvider, ProviderDecision, function_provider::callable_candidates};
+use super::{
+    CompletionProvider, ProviderDecision,
+    function_provider::{callable_candidates, dispatch_type},
+};
 
 pub struct TableFieldProvider;
 
@@ -206,7 +209,7 @@ fn add_table_field_value_completion(
                     });
                     return Some(ProviderDecision::Stop);
                 }
-                super::function_provider::dispatch_type(builder, &typ);
+                dispatch_type(builder, &typ);
                 return Some(ProviderDecision::Stop);
             }
         }
@@ -217,19 +220,19 @@ fn add_table_field_value_completion(
     let before = builder.get_completion_items_mut().len();
     match &expected {
         LuaType::Array(array) => {
-            super::function_provider::dispatch_type(builder, array.get_base());
+            dispatch_type(builder, array.get_base());
         }
         LuaType::Union(union) => {
             for component in union.into_vec().iter() {
                 if let LuaType::Array(array) = component {
-                    super::function_provider::dispatch_type(builder, array.get_base());
+                    dispatch_type(builder, array.get_base());
                 } else {
-                    super::function_provider::dispatch_type(builder, component);
+                    dispatch_type(builder, component);
                 }
             }
         }
         _ => {
-            super::function_provider::dispatch_type(builder, &expected);
+            dispatch_type(builder, &expected);
         }
     }
     // `Name | Name[]` may dispatch the same alias repeatedly; deduplicate the newly produced candidates.

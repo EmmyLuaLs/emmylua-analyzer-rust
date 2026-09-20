@@ -11,9 +11,11 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaSyntaxKi
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
-use crate::semantic_db::def::{TypeDefKind, TypeVisibility};
+use crate::semantic_db::def::{Decl, DeclKind, ModuleExport, TypeDef, TypeDefKind, TypeVisibility};
 use crate::semantic_model::SemanticModel;
-use crate::{LuaMemberKey, LuaType, LuaTypeDeclId};
+use crate::semantic_model::member::type_def_of;
+use crate::semantic_model::type_check::is_compatible;
+use crate::{FileId, InFiled, LuaMemberKey, LuaType, LuaTypeDeclId, TypeScope};
 
 use super::{CheckContext, Checker};
 
@@ -127,7 +129,7 @@ fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option
                 };
             }
         };
-        let def = crate::semantic_model::member::type_def_of(semantic_model, &id)?;
+        let def = type_def_of(semantic_model, &id)?;
         if def.kind != TypeDefKind::Alias {
             return if visited.is_empty() {
                 None
@@ -292,8 +294,8 @@ fn valid_named_member(
 
 fn enum_table_access(
     semantic_model: &SemanticModel<'_>,
-    decl: &crate::semantic_db::def::Decl,
-    _def: &crate::semantic_db::def::TypeDef,
+    decl: &Decl,
+    _def: &TypeDef,
     index_key: &LuaIndexKey,
 ) -> bool {
     // Dynamic keys (parameter enum type / expression) are allowed broadly.
@@ -321,12 +323,9 @@ fn enum_table_access(
 /// Finds the declaration and same-named type definition bound to a TableConst.
 fn table_binding(
     semantic_model: &SemanticModel<'_>,
-    file_id: crate::FileId,
+    file_id: FileId,
     range: TextRange,
-) -> Option<(
-    crate::semantic_db::def::Decl,
-    crate::semantic_db::def::TypeDef,
-)> {
+) -> Option<(Decl, TypeDef)> {
     let facts = semantic_model.file_facts_of(file_id)?;
     let decl = facts.decl_by_value_range(range)?;
     let def = facts
@@ -340,7 +339,7 @@ fn table_binding(
     Some((decl.clone(), def))
 }
 
-fn class_lua_type(def: &crate::semantic_db::def::TypeDef) -> LuaType {
+fn class_lua_type(def: &TypeDef) -> LuaType {
     match def.visibility {
         TypeVisibility::Public => LuaType::Ref(LuaTypeDeclId::global(&def.full_name)),
         _ => LuaType::Def(LuaTypeDeclId::file(def.file_id, &def.full_name)),
@@ -422,7 +421,7 @@ fn numeric_key_expanded_inner(
         TypeDefKind::Class => def.super_names.iter().any(|super_name| {
             matches!(super_name.as_str(), "integer" | "number" | "int")
                 || semantic_model
-                    .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
+                    .type_defs_in_scope(TypeScope::Global, super_name.as_str())
                     .into_iter()
                     .next()
                     .is_some_and(|super_def| {
@@ -452,7 +451,7 @@ fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &Lu
             .any(|k| key_matches(semantic_model, key, k)),
         LuaType::Ref(_) | LuaType::Def(_) => {
             // Alias / class inheritance: recursive target or parent chain is handled by type_check.
-            crate::semantic_model::type_check::is_compatible(semantic_model, key, table_key)
+            is_compatible(semantic_model, key, table_key)
         }
         _ => true,
     }
@@ -461,7 +460,7 @@ fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &Lu
 /// Whether the type definition has an index signature matching the key type (`@field [string]` / `@field [integer]`).
 fn has_index_signature(
     semantic_model: &SemanticModel<'_>,
-    def: &crate::semantic_db::def::TypeDef,
+    def: &TypeDef,
     key_ty: &LuaType,
 ) -> bool {
     for member_ref in semantic_model.members_of_owner(&def.id).iter() {
@@ -504,10 +503,7 @@ fn is_unconstrained_generic_name(semantic_model: &SemanticModel<'_>, ty: &LuaTyp
         .is_some_and(|facts| facts.is_unconstrained_generic_name(name))
 }
 
-fn named_type_def(
-    semantic_model: &SemanticModel<'_>,
-    ty: &LuaType,
-) -> Option<crate::semantic_db::def::TypeDef> {
+fn named_type_def(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<TypeDef> {
     let id = match ty {
         LuaType::Ref(id) | LuaType::Def(id) => id,
         LuaType::Generic(generic) => {
@@ -515,14 +511,11 @@ fn named_type_def(
         }
         _ => return None,
     };
-    crate::semantic_model::member::type_def_of(semantic_model, id)
+    type_def_of(semantic_model, id)
 }
 
 /// Whether the alias target is a mapped type (`{ [K in keyof T]: ... }`).
-fn is_mapped_alias(
-    semantic_model: &SemanticModel<'_>,
-    def: &crate::semantic_db::def::TypeDef,
-) -> bool {
+fn is_mapped_alias(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> bool {
     let Some(syntax) = def.alias_type else {
         return false;
     };
@@ -552,11 +545,7 @@ fn prefix_directly_names_decl(semantic_model: &SemanticModel<'_>, prefix: &LuaEx
         .and_then(|facts| facts.decl_by_id(&decl_id))
         .is_some_and(|decl| {
             decl.doc_type_syntax.is_none()
-                && matches!(
-                    decl.kind,
-                    crate::semantic_db::def::DeclKind::Global
-                        | crate::semantic_db::def::DeclKind::Local { .. }
-                )
+                && matches!(decl.kind, DeclKind::Global | DeclKind::Local { .. })
                 && decl.value_expr_syntax.is_some_and(|syntax| {
                     let Some(tree) = semantic_model.syntax_tree_of(decl.file_id) else {
                         return false;
@@ -632,14 +621,14 @@ fn is_enum_like_key_inner(
 /// An unbound TableConst that is the current file's module export table should report UndefinedField for missing members.
 fn is_export_surface_missing(
     semantic_model: &SemanticModel<'_>,
-    table: &crate::InFiled<TextRange>,
+    table: &InFiled<TextRange>,
     index_expr: &LuaIndexExpr,
     index_key: &LuaIndexKey,
 ) -> bool {
     let Some(facts) = semantic_model.file_facts_of(table.file_id) else {
         return false;
     };
-    let crate::semantic_db::def::ModuleExport::Decl { decl, .. } = &facts.module_export else {
+    let ModuleExport::Decl { decl, .. } = &facts.module_export else {
         return false;
     };
     let Some(export_decl) = facts.decl_by_id(decl) else {

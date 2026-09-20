@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaSyntaxNode, LuaVarExpr};
 
 use crate::DiagnosticCode;
+use crate::FileId;
 use crate::LuaType;
+use crate::semantic_db::def::{Member, SemanticId};
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};
@@ -29,21 +31,17 @@ impl Checker for DuplicateFieldChecker {
             let root = tree.get_red_root();
             check_cross_file_member_assign(context, semantic_model, &root);
         }
-        let mut by_owner: HashMap<
-            &crate::semantic_db::def::SemanticId,
-            Vec<&crate::semantic_db::def::Member>,
-        > = HashMap::new();
+        let mut by_owner: HashMap<&SemanticId, Vec<&Member>> = HashMap::new();
         for member in &facts.members {
             by_owner.entry(&member.owner).or_default().push(member);
         }
         for (owner, members) in by_owner {
             // Group by key.
-            let mut by_key: HashMap<String, Vec<&&crate::semantic_db::def::Member>> =
-                HashMap::new();
+            let mut by_key: HashMap<String, Vec<&&Member>> = HashMap::new();
             for member in &members {
                 by_key.entry(member.key.to_path()).or_default().push(member);
             }
-            let is_type_def = matches!(owner, crate::semantic_db::def::SemanticId::TypeDef(_));
+            let is_type_def = matches!(owner, SemanticId::TypeDef(_));
             for (name, dupes) in by_key {
                 if dupes.len() <= 1 {
                     continue;
@@ -145,7 +143,7 @@ fn check_cross_file_member_assign(
 fn required_module_file(
     semantic_model: &SemanticModel<'_>,
     prefix: &emmylua_parser::LuaExpr,
-) -> Option<crate::FileId> {
+) -> Option<FileId> {
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix else {
         return None;
     };
@@ -166,10 +164,7 @@ fn required_module_file(
 }
 
 /// Whether a runtime member is a function/closure definition.
-fn is_function_like(
-    semantic_model: &SemanticModel<'_>,
-    member: &crate::semantic_db::def::Member,
-) -> bool {
+fn is_function_like(semantic_model: &SemanticModel<'_>, member: &Member) -> bool {
     if let Some(value_syntax) = member.value_syntax
         && let Some(tree) = semantic_model.syntax_tree()
         && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())

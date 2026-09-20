@@ -157,7 +157,7 @@ impl HtmlMember {
     pub fn from_property(
         name: String,
         display: String,
-        property: crate::markdown_generator::markdown_types::Property,
+        property: markdown_types::Property,
     ) -> HtmlMember {
         let short_name = name.rsplit('.').next().unwrap_or(&name).to_string();
         let description = property.description.map(|s| render_markdown(&s));

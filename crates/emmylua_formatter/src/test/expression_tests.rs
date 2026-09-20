@@ -4,7 +4,7 @@ mod tests {
 
     use crate::{
         SourceText, assert_format, assert_format_with_config,
-        config::{LayoutConfig, LuaFormatConfig},
+        config::{AlignConfig, LayoutConfig, LuaFormatConfig},
         reformat_lua_code,
     };
     use emmylua_parser::LuaLanguageLevel;
@@ -1272,7 +1272,7 @@ end
                 max_line_width: 28,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 table_field: false,
                 ..Default::default()
             },

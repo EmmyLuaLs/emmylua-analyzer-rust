@@ -12,8 +12,8 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaSyntaxId};
 use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 use crate::{
-    LuaFunctionType, LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType,
-    LuaTypeDeclId, TypeDefKind, VariadicType,
+    LuaArrayType, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaObjectType, LuaTupleStatus,
+    LuaTupleType, LuaType, LuaTypeDeclId, TypeDefKind, VariadicType,
 };
 
 use super::unify::{self, TplBindings};
@@ -114,9 +114,7 @@ fn table_literal_as_array(model: &SemanticModel, ty: &LuaType) -> Option<LuaType
     } else {
         LuaType::from_vec(base_types)
     };
-    Some(LuaType::Array(Arc::new(
-        crate::LuaArrayType::from_base_type(base),
-    )))
+    Some(LuaType::Array(Arc::new(LuaArrayType::from_base_type(base))))
 }
 
 /// Expand a non-generic named alias (`LocalTimer.OnTimer` -> `DocFunction`).
@@ -347,7 +345,7 @@ fn normalize_missing_generic_arg(
                 .unwrap_or(LuaType::Unknown)
         })
         .collect();
-    LuaType::Generic(Arc::new(crate::LuaGenericType::new(arg_id.clone(), params)))
+    LuaType::Generic(Arc::new(LuaGenericType::new(arg_id.clone(), params)))
 }
 
 /// Whether the type contains an unbound generic parameter (used to avoid binding `T`

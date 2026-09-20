@@ -5,13 +5,13 @@ use internment::ArcIntern;
 use rowan::TextSize;
 use smol_str::SmolStr;
 
-use super::super::def::SemanticId;
-use super::super::facts::FileFacts;
 use super::{
     DeclMultiReturnRefAt, FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind, FlowTree,
     LuaClosureId,
 };
 use crate::FileId;
+use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::facts::FileFacts;
 
 #[derive(Debug)]
 pub struct FlowBinder<'a> {

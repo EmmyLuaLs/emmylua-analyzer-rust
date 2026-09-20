@@ -8,10 +8,10 @@ use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
 use std::{collections::hash_map::DefaultHasher, ops::Deref, sync::Arc};
 
-use super::super::basic_union::{BasicTypeKind, BasicTypeUnion};
-use super::super::type_decl::LuaTypeDeclId;
 use super::LuaTypeNode;
 use super::lua_type::LuaType;
+use crate::semantic_db::def::lua_type::basic_union::{BasicTypeKind, BasicTypeUnion};
+use crate::semantic_db::def::lua_type::type_decl::LuaTypeDeclId;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaTupleType {

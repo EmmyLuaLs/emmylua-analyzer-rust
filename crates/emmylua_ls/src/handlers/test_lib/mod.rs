@@ -22,7 +22,9 @@ use crate::{
     },
 };
 
-use super::{hover::hover, implementation::implementation, references::references};
+use super::{
+    definition::definition, hover::hover, implementation::implementation, references::references,
+};
 
 /// Calling this macro on a [`Result`] is equivalent to `result?`,
 /// but adds info about current location to the error message.
@@ -324,7 +326,7 @@ impl ProviderVirtualWorkspace {
     ) -> Result<()> {
         let (content, position) = Self::handle_file_content(block_str)?;
         let file_id = self.def(&content);
-        let result = super::definition::definition(&self.analysis, file_id, position)
+        let result = definition(&self.analysis, file_id, position)
             .ok_or("failed to get go to definition response")
             .or_fail()?;
 

@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::assert_format;
+    use crate::{
+        assert_format,
+        config::{AlignConfig, CommentConfig, EmmyDocConfig, ExpandStrategy},
+    };
 
     #[test]
     fn test_leading_comment() {
@@ -43,7 +46,7 @@ local a = 1
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 space_after_comment_dash: false,
                 ..Default::default()
             },
@@ -130,7 +133,7 @@ local x = 1
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -163,7 +166,7 @@ local t = {
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -194,7 +197,7 @@ local dd = {
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             output: OutputConfig {
@@ -577,12 +580,12 @@ end
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_across_standalone_comments: true,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -609,7 +612,7 @@ local cc  = 3 -- medium
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -640,7 +643,7 @@ local zzz = 3
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -674,7 +677,7 @@ local t = {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
                 max_line_width: 28,
-                table_expand: crate::config::ExpandStrategy::Auto,
+                table_expand: ExpandStrategy::Auto,
                 ..Default::default()
             },
             ..Default::default()
@@ -703,7 +706,7 @@ local t = {
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -733,11 +736,11 @@ local t = {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_line_comments: false,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: false,
                 table_field: false,
             },
@@ -761,11 +764,11 @@ local bbb = 2 -- y
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: false,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: false,
                 ..Default::default()
             },
@@ -789,7 +792,7 @@ local long_name = 2 -- y
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_params: false,
                 ..Default::default()
             },
@@ -825,14 +828,14 @@ end
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 table_field: true,
                 ..Default::default()
             },
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_table_fields: false,
                 ..Default::default()
             },
@@ -864,7 +867,7 @@ local t = {
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -898,7 +901,7 @@ local t = {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_line_comments: false,
                 line_comment_min_spaces_before: 3,
                 ..Default::default()
@@ -919,11 +922,11 @@ local t = {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: false,
                 ..Default::default()
             },
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_across_standalone_comments: true,
                 line_comment_min_column: 16,
@@ -949,12 +952,12 @@ local bb = 2    -- y
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_across_standalone_comments: true,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -985,12 +988,12 @@ local d  = 4 -- w
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_across_standalone_comments: true,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -1017,12 +1020,12 @@ local long_name = 2 -- y
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_across_standalone_comments: false,
                 ..Default::default()
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -1048,11 +1051,11 @@ local long_name = 2 -- y
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: false,
                 ..Default::default()
             },
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 align_in_statements: true,
                 align_same_kind_only: true,
                 ..Default::default()
@@ -1081,7 +1084,7 @@ bbbb = 2 -- y
 
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                table_expand: crate::config::ExpandStrategy::Always,
+                table_expand: ExpandStrategy::Always,
                 ..Default::default()
             },
             ..Default::default()
@@ -1583,7 +1586,7 @@ local t = {}
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 align_tag_columns: false,
                 ..Default::default()
             },
@@ -1607,7 +1610,7 @@ local function f(short, much_longer) end
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 align_declaration_tags: false,
                 ..Default::default()
             },
@@ -1631,7 +1634,7 @@ local value = {}
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 align_reference_tags: false,
                 ..Default::default()
             },
@@ -1771,7 +1774,7 @@ local value = nil
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 align_tag_columns: false,
                 ..Default::default()
             },
@@ -1795,7 +1798,7 @@ local value = nil
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
@@ -1818,7 +1821,7 @@ local value = nil
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: false,
                 ..Default::default()
             },
@@ -1841,7 +1844,7 @@ local function f(name) end
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: false,
                 space_after_description_dash: true,
                 ..Default::default()
@@ -1867,7 +1870,7 @@ local cc = {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
@@ -1895,7 +1898,7 @@ local value = nil
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
@@ -1979,7 +1982,7 @@ local function f(name) end
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 space_between_tag_columns: true,
                 space_after_description_dash: false,
                 ..Default::default()
@@ -2241,7 +2244,7 @@ local value = nil
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
-            emmy_doc: crate::config::EmmyDocConfig {
+            emmy_doc: EmmyDocConfig {
                 align_multiline_alias_descriptions: false,
                 ..Default::default()
             },
@@ -2345,7 +2348,7 @@ local a = 1
         use crate::assert_format_with_config;
         use crate::config::LuaFormatConfig;
         let config = LuaFormatConfig {
-            comments: crate::config::CommentConfig {
+            comments: CommentConfig {
                 space_after_comment_dash: true,
                 ..Default::default()
             },

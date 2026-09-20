@@ -15,7 +15,7 @@ use crate::LuaType;
 use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 
-use super::super::{CheckContext, Checker};
+use crate::check::checker::{CheckContext, Checker};
 
 pub struct PreferredLocalAliasChecker;
 

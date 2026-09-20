@@ -6,8 +6,8 @@ use crate::DiagnosticCode;
 use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
 
-use super::super::builtin::is_builtin_global;
 use super::{CheckContext, Checker};
+use crate::check::builtin::is_builtin_global;
 pub struct UndefinedGlobal;
 
 impl Checker for UndefinedGlobal {

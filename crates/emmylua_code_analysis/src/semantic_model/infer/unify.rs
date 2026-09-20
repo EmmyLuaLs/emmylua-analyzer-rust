@@ -6,7 +6,12 @@
 
 use std::collections::HashMap;
 
-use crate::{GenericTplId, LuaType};
+use crate::{
+    Arc, GenericParam, GenericTplId, LuaAliasCallType, LuaArrayType, LuaConditionalType,
+    LuaFunctionType, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType,
+    LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType,
+    LuaUnionType, VariadicType,
+};
 
 pub type TplBindings = HashMap<GenericTplId, LuaType>;
 
@@ -211,16 +216,16 @@ pub fn unify_bindings(param: &LuaType, arg: &LuaType, bindings: &mut TplBindings
         // Variadic types: `T...` can unify with a single value or a structurally
         // matching Variadic.
         Variadic(param_variadic) => match (param_variadic.as_ref(), arg) {
-            (crate::VariadicType::Base(p), Variadic(arg_variadic)) => match arg_variadic.as_ref() {
-                crate::VariadicType::Base(a) => unify_bindings(p, a, bindings),
-                crate::VariadicType::Multi(_) => false,
+            (VariadicType::Base(p), Variadic(arg_variadic)) => match arg_variadic.as_ref() {
+                VariadicType::Base(a) => unify_bindings(p, a, bindings),
+                VariadicType::Multi(_) => false,
             },
-            (crate::VariadicType::Base(p), _) if !matches!(arg, Unknown | Any) => {
+            (VariadicType::Base(p), _) if !matches!(arg, Unknown | Any) => {
                 unify_bindings(p, arg, bindings)
             }
-            (crate::VariadicType::Base(_), _) => true,
-            (crate::VariadicType::Multi(p_types), Variadic(arg_variadic)) => {
-                if let crate::VariadicType::Multi(a_types) = arg_variadic.as_ref()
+            (VariadicType::Base(_), _) => true,
+            (VariadicType::Multi(p_types), Variadic(arg_variadic)) => {
+                if let VariadicType::Multi(a_types) = arg_variadic.as_ref()
                     && p_types.len() == a_types.len()
                 {
                     for (p, a) in p_types.iter().zip(a_types.iter()) {
@@ -233,8 +238,8 @@ pub fn unify_bindings(param: &LuaType, arg: &LuaType, bindings: &mut TplBindings
                     false
                 }
             }
-            (crate::VariadicType::Multi(_), Unknown | Any) => true,
-            (crate::VariadicType::Multi(_), _) => false,
+            (VariadicType::Multi(_), Unknown | Any) => true,
+            (VariadicType::Multi(_), _) => false,
         },
         // Fallback: matching param/arg types are ok; unknown/any actual args are ok.
         _ => {
@@ -260,14 +265,14 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
         }
         Array(array) => {
             let base = substitute(array.get_base(), bindings);
-            Array(crate::Arc::new(crate::LuaArrayType::from_base_type(base)))
+            Array(Arc::new(LuaArrayType::from_base_type(base)))
         }
         TableGeneric(generic) => {
             let params = generic
                 .iter()
                 .map(|t| substitute(t, bindings))
                 .collect::<Vec<_>>();
-            TableGeneric(crate::Arc::new(params))
+            TableGeneric(Arc::new(params))
         }
         Tuple(tuple) => {
             let types = tuple
@@ -275,9 +280,9 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
                 .iter()
                 .map(|t| substitute(t, bindings))
                 .collect();
-            Tuple(crate::Arc::new(crate::LuaTupleType::new(
+            Tuple(Arc::new(LuaTupleType::new(
                 types,
-                crate::LuaTupleStatus::DocResolve,
+                LuaTupleStatus::DocResolve,
             )))
         }
         DocFunction(fun) => {
@@ -287,7 +292,7 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
                 .map(|(name, ty)| (name.clone(), ty.as_ref().map(|t| substitute(t, bindings))))
                 .collect();
             let ret = substitute(fun.get_ret(), bindings);
-            DocFunction(crate::Arc::new(crate::LuaFunctionType::new(
+            DocFunction(Arc::new(LuaFunctionType::new(
                 fun.get_async_state(),
                 fun.is_colon_define(),
                 fun.is_variadic(),
@@ -302,9 +307,9 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
                 .iter()
                 .map(|t| substitute(t, bindings))
                 .collect();
-            Union(crate::Arc::new(crate::LuaUnionType::from_vec(types)))
+            Union(Arc::new(LuaUnionType::from_vec(types)))
         }
-        Generic(generic) => Generic(crate::Arc::new(crate::LuaGenericType::new(
+        Generic(generic) => Generic(Arc::new(LuaGenericType::new(
             generic.get_base_type_id(),
             generic
                 .get_params()
@@ -323,28 +328,26 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
                 .iter()
                 .map(|(key, ty)| (substitute(key, bindings), substitute(ty, bindings)))
                 .collect();
-            Object(crate::Arc::new(crate::LuaObjectType::new_with_fields(
+            Object(Arc::new(LuaObjectType::new_with_fields(
                 fields,
                 index_access,
             )))
         }
-        Intersection(intersection) => {
-            Intersection(crate::Arc::new(crate::LuaIntersectionType::new(
-                intersection
-                    .get_types()
-                    .iter()
-                    .map(|t| substitute(t, bindings))
-                    .collect(),
-            )))
-        }
-        Call(call) => Call(crate::Arc::new(crate::LuaAliasCallType::new(
+        Intersection(intersection) => Intersection(Arc::new(LuaIntersectionType::new(
+            intersection
+                .get_types()
+                .iter()
+                .map(|t| substitute(t, bindings))
+                .collect(),
+        ))),
+        Call(call) => Call(Arc::new(LuaAliasCallType::new(
             call.get_call_kind(),
             call.get_operands()
                 .iter()
                 .map(|t| substitute(t, bindings))
                 .collect(),
         ))),
-        Conditional(conditional) => Conditional(crate::Arc::new(crate::LuaConditionalType::new(
+        Conditional(conditional) => Conditional(Arc::new(LuaConditionalType::new(
             substitute(conditional.get_checked_type(), bindings),
             substitute(conditional.get_extends_type(), bindings),
             substitute(conditional.get_true_type(), bindings),
@@ -352,10 +355,10 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
             conditional.get_infer_params().to_vec(),
             conditional.has_new,
         ))),
-        Mapped(mapped) => Mapped(crate::Arc::new(crate::LuaMappedType::new(
+        Mapped(mapped) => Mapped(Arc::new(LuaMappedType::new(
             (
                 mapped.param.0,
-                crate::GenericParam::new(
+                GenericParam::new(
                     mapped.param.1.name.clone(),
                     mapped
                         .param
@@ -377,39 +380,39 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
             mapped.is_readonly,
             mapped.is_optional,
         ))),
-        StrTplRef(str_tpl) => StrTplRef(crate::Arc::new(crate::LuaStringTplType::new(
+        StrTplRef(str_tpl) => StrTplRef(Arc::new(LuaStringTplType::new(
             str_tpl.get_prefix(),
             str_tpl.get_name(),
             str_tpl.get_tpl_id(),
             str_tpl.get_suffix(),
             str_tpl.get_constraint().map(|t| substitute(t, bindings)),
         ))),
-        MultiLineUnion(union) => MultiLineUnion(crate::Arc::new(crate::LuaMultiLineUnion::new(
+        MultiLineUnion(union) => MultiLineUnion(Arc::new(LuaMultiLineUnion::new(
             union
                 .get_unions()
                 .iter()
                 .map(|(ty, desc)| (substitute(ty, bindings), desc.clone()))
                 .collect(),
         ))),
-        TypeGuard(guard) => TypeGuard(crate::Arc::new(substitute(guard, bindings))),
+        TypeGuard(guard) => TypeGuard(Arc::new(substitute(guard, bindings))),
         Variadic(variadic) => {
             let substituted = match variadic.as_ref() {
-                crate::VariadicType::Base(base) => {
+                VariadicType::Base(base) => {
                     let sub = substitute(base, bindings);
                     if let Variadic(inner) = sub {
                         // `R...` where R is bound to an entire multi-return -> expand to
                         // that Variadic directly.
                         return Variadic(inner);
                     }
-                    crate::VariadicType::Base(sub)
+                    VariadicType::Base(sub)
                 }
-                crate::VariadicType::Multi(types) => crate::VariadicType::Multi(
-                    types.iter().map(|t| substitute(t, bindings)).collect(),
-                ),
+                VariadicType::Multi(types) => {
+                    VariadicType::Multi(types.iter().map(|t| substitute(t, bindings)).collect())
+                }
             };
-            Variadic(crate::Arc::new(substituted))
+            Variadic(Arc::new(substituted))
         }
-        Instance(inst) => Instance(crate::Arc::new(crate::LuaInstanceType::new(
+        Instance(inst) => Instance(Arc::new(LuaInstanceType::new(
             substitute(inst.get_base(), bindings),
             inst.get_range().clone(),
         ))),

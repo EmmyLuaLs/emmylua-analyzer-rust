@@ -7,16 +7,18 @@ use rowan::NodeOrToken;
 use crate::formatter::render::comment_is_inline_after_anchor;
 use crate::ir::{self, DocIR};
 
-use super::super::expr;
-use super::super::model::{FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan, TokenSpacingExpected};
-use super::super::sequence::{
+use super::FormatContext;
+use crate::formatter::expr;
+use crate::formatter::model::{
+    FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
+};
+use crate::formatter::sequence::{
     SequenceEntry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
     sequence_starts_with_inline_comment,
 };
-use super::super::trivia::{
+use crate::formatter::trivia::{
     count_blank_lines_before, has_non_trivia_before_on_same_line_tokenwise,
 };
-use super::FormatContext;
 
 pub(super) fn render_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     expr::format_expr(ctx, plan, expr)

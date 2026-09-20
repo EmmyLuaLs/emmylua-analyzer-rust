@@ -2,7 +2,7 @@
 //!
 //! Parts still missing from semantic fall back: alias origin, enum field unions, call operator.
 
-use crate::{LuaType, LuaTypeDeclId};
+use crate::{LuaGenericType, LuaType, LuaTypeDeclId, TypeDef};
 use emmylua_parser::{LuaAstNode, LuaDocTagClass};
 
 use super::context::TypeCheckContext;
@@ -14,7 +14,7 @@ use super::{TypeCheckResult, check_general_type_compact};
 fn is_sub_type_of_generic(
     context: &TypeCheckContext,
     sub: &LuaTypeDeclId,
-    target: &crate::LuaGenericType,
+    target: &LuaGenericType,
 ) -> bool {
     use std::collections::HashSet;
     let target_base = target.get_base_type_id();
@@ -55,7 +55,7 @@ fn is_sub_type_of_generic(
 }
 
 /// Extract full parent types from `---@class` annotations (preserving generic arguments such as `Holder<string>`).
-pub(crate) fn full_super_types(context: &TypeCheckContext, def: &crate::TypeDef) -> Vec<LuaType> {
+pub(crate) fn full_super_types(context: &TypeCheckContext, def: &TypeDef) -> Vec<LuaType> {
     let Some(tree) = context.model.syntax_tree_of(def.file_id) else {
         return Vec::new();
     };

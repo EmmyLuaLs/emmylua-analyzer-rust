@@ -12,10 +12,14 @@ use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_check::{
     TypeCheckFailReason, check_assign_type_detail, is_compatible,
 };
-use crate::{Decl, LuaMemberKey, LuaType, LuaTypeNode, SemanticId, TypeDef, TypeScope};
+use crate::{
+    Decl, LuaMemberKey, LuaType, LuaTypeNode, SemanticId, TypeDef, TypeDefKind, TypeScope,
+};
 
 use super::{CheckContext, Checker};
+use crate::semantic_model::member::type_def_of;
 use crate::semantic_model::render::humanize_type;
+use crate::semantic_model::type_check::is_assign_compatible as type_check_is_assign_compatible;
 
 pub struct AssignTypeMismatchChecker;
 
@@ -531,11 +535,11 @@ fn is_structured_table_target(semantic_model: &SemanticModel<'_>, ty: &LuaType) 
                 return false;
             };
             match def.kind {
-                crate::TypeDefKind::Class => true,
-                crate::TypeDefKind::Alias => semantic_model
+                TypeDefKind::Class => true,
+                TypeDefKind::Alias => semantic_model
                     .alias_target(&def)
                     .is_some_and(|target| is_structured_table_target(semantic_model, &target)),
-                crate::TypeDefKind::Enum => false,
+                TypeDefKind::Enum => false,
             }
         }
         _ => false,
@@ -751,7 +755,7 @@ fn is_assign_compatible(
     source: &LuaType,
     target: &LuaType,
 ) -> bool {
-    if crate::semantic_model::type_check::is_assign_compatible(semantic_model, source, target) {
+    if type_check_is_assign_compatible(semantic_model, source, target) {
         return true;
     }
 
@@ -826,7 +830,7 @@ fn check_table_fields(
     // Alias target: expand it, then check as object/array/class.
     if let LuaType::Ref(_) | LuaType::Def(_) = target
         && let Some(def) = named_def(semantic_model, target)
-        && def.kind == crate::TypeDefKind::Alias
+        && def.kind == TypeDefKind::Alias
         && let Some(alias_target) = semantic_model.alias_target(&def)
         && is_structured_table_target(semantic_model, &alias_target)
     {
@@ -1060,7 +1064,7 @@ fn collect_members_with_index_signatures(
 /// Local declaration attached to a `---@class B` comment -> class reference type.
 fn class_contract_for_decl(semantic_model: &SemanticModel<'_>, decl: &Decl) -> Option<LuaType> {
     let def = facts_type_def_for_decl(semantic_model, decl)?;
-    if def.kind == crate::TypeDefKind::Enum {
+    if def.kind == TypeDefKind::Enum {
         return None;
     }
     Some(semantic_model.type_def_ref(&def))
@@ -1083,7 +1087,7 @@ fn named_def(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<TypeDef
         }
         _ => return None,
     };
-    crate::semantic_model::member::type_def_of(semantic_model, id)
+    type_def_of(semantic_model, id)
 }
 
 /// The `---@type C` comment immediately before an assignment statement -> target type (`_ = c` scenario).

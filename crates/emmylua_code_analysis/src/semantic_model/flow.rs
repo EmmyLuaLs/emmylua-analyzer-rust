@@ -21,11 +21,19 @@ use emmylua_parser::{
 };
 use rowan::TextSize;
 
-use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::def::{SemanticId, Signature};
 use crate::semantic_db::flow::{FlowAntecedent, FlowEffect, FlowId, FlowNodeKind, FlowTree};
-use crate::{FileId, LuaMemberKey, LuaType};
+use crate::{
+    FileId, GenericTplId, LuaArrayLen, LuaArrayType, LuaMemberKey, LuaTupleStatus, LuaTupleType,
+    LuaType, LuaUnionType, TypeDef, TypeDefKind, TypeScope, VariadicType,
+};
 
 use super::SemanticModel;
+use super::member::find_self_return_cast_member;
+use crate::semantic_model::infer::infer_call_with_bindings;
+use crate::semantic_model::infer::unify::substitute;
+use crate::semantic_model::infer::vm::{binary_type, widen_const};
+use crate::signature::LuaSignatureId;
 
 /// Backtracking options: independently collect condition guards, cast widening, and assignment hits.
 #[derive(Clone, Copy)]
@@ -454,10 +462,8 @@ pub fn type_of_expr_at(
                     && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
                     && let Some(closure) = emmylua_parser::LuaClosureExpr::cast(node)
                 {
-                    member_ty = LuaType::Signature(crate::signature::LuaSignatureId::from_closure(
-                        member_file,
-                        &closure,
-                    ));
+                    member_ty =
+                        LuaType::Signature(LuaSignatureId::from_closure(member_file, &closure));
                 }
                 let resolved_is_runtime = model
                     .file_facts_of(match &member_id {
@@ -609,12 +615,7 @@ pub fn type_of_expr_at(
             {
                 return apply_expr_casts(model, expr_syntax, LuaType::Unknown);
             }
-            let result = crate::semantic_model::infer::vm::binary_type(
-                model,
-                op_token.get_op(),
-                &left_ty,
-                &right_ty,
-            );
+            let result = binary_type(model, op_token.get_op(), &left_ty, &right_ty);
             apply_expr_casts(model, expr_syntax, result)
         }
         _ => model.type_of_expr(expr_syntax),
@@ -651,9 +652,9 @@ fn array_table_literal_tuple_type(model: &SemanticModel, expr: &LuaExpr) -> Opti
         }
         types.push(model.type_of_expr(field.get_value_expr()?.get_syntax_id()));
     }
-    Some(LuaType::Tuple(Arc::new(crate::LuaTupleType::new(
+    Some(LuaType::Tuple(Arc::new(LuaTupleType::new(
         types,
-        crate::LuaTupleStatus::InferResolve,
+        LuaTupleStatus::InferResolve,
     ))))
 }
 
@@ -749,11 +750,11 @@ fn logical_truthy_components(ty: &LuaType) -> Vec<LuaType> {
     }
 }
 
-fn array_index_in_known_range(index: i64, len: &crate::LuaArrayLen) -> bool {
+fn array_index_in_known_range(index: i64, len: &LuaArrayLen) -> bool {
     match len {
-        crate::LuaArrayLen::Max(max) => index > 0 && index <= *max,
-        crate::LuaArrayLen::Min(min) => index > 0 && index <= *min,
-        crate::LuaArrayLen::None => false,
+        LuaArrayLen::Max(max) => index > 0 && index <= *max,
+        LuaArrayLen::Min(min) => index > 0 && index <= *min,
+        LuaArrayLen::None => false,
     }
 }
 
@@ -1692,20 +1693,14 @@ fn apply_narrowing(model: &SemanticModel, mut ty: LuaType, narrowing: &Narrowing
         Narrowing::ArrayLen(max) => {
             if let LuaType::Array(array) = &mut ty {
                 let base = array.get_base().clone();
-                ty = LuaType::Array(Arc::new(crate::LuaArrayType::new(
-                    base,
-                    crate::LuaArrayLen::Max(*max),
-                )));
+                ty = LuaType::Array(Arc::new(LuaArrayType::new(base, LuaArrayLen::Max(*max))));
             }
             ty
         }
         Narrowing::ArrayMinLen(min) => {
             if let LuaType::Array(array) = &mut ty {
                 let base = array.get_base().clone();
-                ty = LuaType::Array(Arc::new(crate::LuaArrayType::new(
-                    base,
-                    crate::LuaArrayLen::Min(*min),
-                )));
+                ty = LuaType::Array(Arc::new(LuaArrayType::new(base, LuaArrayLen::Min(*min))));
             }
             ty
         }
@@ -2084,8 +2079,8 @@ fn is_empty_table_literal(model: &SemanticModel, ty: &LuaType) -> bool {
         .is_empty()
 }
 
-fn class_has_required_named_field(model: &SemanticModel, def: &crate::TypeDef) -> bool {
-    fn collect(model: &SemanticModel, def: &crate::TypeDef, visited: &mut Vec<SemanticId>) -> bool {
+fn class_has_required_named_field(model: &SemanticModel, def: &TypeDef) -> bool {
+    fn collect(model: &SemanticModel, def: &TypeDef, visited: &mut Vec<SemanticId>) -> bool {
         if visited.contains(&def.id) {
             return false;
         }
@@ -2106,7 +2101,7 @@ fn class_has_required_named_field(model: &SemanticModel, def: &crate::TypeDef) -
                 .resolve_type_def_in(def.file_id, super_name.as_str())
                 .or_else(|| {
                     model
-                        .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
+                        .type_defs_in_scope(TypeScope::Global, super_name.as_str())
                         .iter()
                         .next()
                         .cloned()
@@ -2134,12 +2129,12 @@ fn empty_table_compatible_with(model: &SemanticModel, ty: &LuaType) -> bool {
                 return false;
             };
             match def.kind {
-                crate::TypeDefKind::Alias => model
+                TypeDefKind::Alias => model
                     .alias_target(&def)
                     .map(|target| empty_table_compatible_with(model, &target))
                     .unwrap_or(false),
-                crate::TypeDefKind::Class => !class_has_required_named_field(model, &def),
-                crate::TypeDefKind::Enum => false,
+                TypeDefKind::Class => !class_has_required_named_field(model, &def),
+                TypeDefKind::Enum => false,
             }
         }
         LuaType::Object(object) => object
@@ -2322,11 +2317,7 @@ fn resolve_callable_closure(
 fn call_signature(
     model: &SemanticModel,
     call: &emmylua_parser::LuaCallExpr,
-) -> Option<(
-    FileId,
-    emmylua_parser::LuaSyntaxId,
-    crate::semantic_db::def::signature::Signature,
-)> {
+) -> Option<(FileId, emmylua_parser::LuaSyntaxId, Signature)> {
     let LuaExpr::NameExpr(callee_name) = call.get_prefix_expr()? else {
         return None;
     };
@@ -2784,12 +2775,10 @@ fn widen_const_type(ty: LuaType) -> LuaType {
         }
         LuaType::Variadic(variadic) => {
             let widened = match variadic.as_ref() {
-                crate::VariadicType::Base(base) => {
-                    crate::VariadicType::Base(widen_const_type(base.clone()))
+                VariadicType::Base(base) => VariadicType::Base(widen_const_type(base.clone())),
+                VariadicType::Multi(types) => {
+                    VariadicType::Multi(types.iter().map(|t| widen_const_type(t.clone())).collect())
                 }
-                crate::VariadicType::Multi(types) => crate::VariadicType::Multi(
-                    types.iter().map(|t| widen_const_type(t.clone())).collect(),
-                ),
             };
             LuaType::Variadic(Arc::new(widened))
         }
@@ -2831,8 +2820,7 @@ fn return_overload_rows_for_call(
 
     // Generic rows: infer bindings from call-site arguments and substitute them to get instantiated return_overload rows.
     if rows.iter().any(|row| row.iter().any(|ty| ty.contain_tpl()))
-        && let Some((_, bindings)) =
-            crate::semantic_model::infer::infer_call_with_bindings(model, call.get_syntax_id())
+        && let Some((_, bindings)) = infer_call_with_bindings(model, call.get_syntax_id())
     {
         let instantiated = rows
             .iter()
@@ -2840,9 +2828,7 @@ fn return_overload_rows_for_call(
                 row.iter()
                     .map(|raw_ty| {
                         if raw_ty.contain_tpl() {
-                            widen_const_type(crate::semantic_model::infer::unify::substitute(
-                                raw_ty, &bindings,
-                            ))
+                            widen_const_type(substitute(raw_ty, &bindings))
                         } else {
                             raw_ty.clone()
                         }
@@ -3423,7 +3409,7 @@ fn return_cast_for_call_uncached(
             model
                 .resolve_member(index)
                 .and_then(|r| r.member_id)
-                .or_else(|| super::member::find_self_return_cast_member(model, &name))?
+                .or_else(|| find_self_return_cast_member(model, &name))?
         }
         _ => return None,
     };
@@ -3611,13 +3597,13 @@ fn resolve_type_guard_generic(
     model: &SemanticModel,
     file_id: FileId,
     call: &emmylua_parser::LuaCallExpr,
-    signature: &crate::semantic_db::def::Signature,
+    signature: &Signature,
     guard_ty: LuaType,
 ) -> LuaType {
     let (generic_index, generic_name, keep_literal) = match &guard_ty {
         LuaType::TplRef(tpl) => (
             match tpl.get_tpl_id() {
-                crate::GenericTplId::Type(idx) | crate::GenericTplId::Func(idx) => idx as usize,
+                GenericTplId::Type(idx) | GenericTplId::Func(idx) => idx as usize,
                 _ => return guard_ty,
             },
             tpl.get_name().to_string(),
@@ -3625,7 +3611,7 @@ fn resolve_type_guard_generic(
         ),
         LuaType::StrTplRef(str_tpl) => {
             let index = match str_tpl.get_tpl_id() {
-                crate::GenericTplId::Type(idx) | crate::GenericTplId::Func(idx) => idx as usize,
+                GenericTplId::Type(idx) | GenericTplId::Func(idx) => idx as usize,
                 _ => return guard_ty,
             };
             (index, str_tpl.get_name().to_string(), false)
@@ -3686,7 +3672,7 @@ fn resolve_type_guard_generic(
     if keep_literal {
         arg_ty
     } else {
-        crate::semantic_model::infer::vm::widen_const(&arg_ty)
+        widen_const(&arg_ty)
     }
 }
 
@@ -4243,7 +4229,7 @@ fn remove_falsy(ty: LuaType) -> LuaType {
     match types.len() {
         0 => LuaType::Unknown,
         1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(types).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
     }
 }
 
@@ -4264,7 +4250,7 @@ fn remove_truthy(ty: LuaType) -> LuaType {
     match types.len() {
         0 => LuaType::Unknown,
         1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(types).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
     }
 }
 
@@ -4312,7 +4298,7 @@ fn remove_type(ty: LuaType, removed: &LuaType) -> LuaType {
     match types.len() {
         0 => LuaType::Unknown,
         1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(types).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
     }
 }
 
@@ -4422,7 +4408,7 @@ fn filter_type_by_primitive(
         // would incorrectly keep the whole alias in the `type(x)=='string'` branch.
         if let LuaType::Ref(id) | LuaType::Def(id) = &component {
             if let Some(def) = model.type_def_of(id)
-                && def.kind == crate::TypeDefKind::Alias
+                && def.kind == TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
                 // Single-target aliases (e.g. `---@alias MyFun fun(): string[]`) keep the named alias:
@@ -4450,7 +4436,7 @@ fn filter_type_by_primitive(
     match kept.len() {
         0 => LuaType::Never,
         1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(kept).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
     }
 }
 
@@ -4470,7 +4456,7 @@ fn filter_type_by_member_discriminant(
     for component in components {
         if let LuaType::Ref(id) | LuaType::Def(id) = &component {
             if let Some(def) = model.type_def_of(id)
-                && def.kind == crate::TypeDefKind::Alias
+                && def.kind == TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
                 let expanded =
@@ -4494,7 +4480,7 @@ fn filter_type_by_member_discriminant(
     match kept.len() {
         0 => LuaType::Never,
         1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(kept).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
     }
 }
 
@@ -4514,7 +4500,7 @@ fn filter_type_by_member_truthiness(
     for component in components {
         if let LuaType::Ref(id) | LuaType::Def(id) = &component {
             if let Some(def) = model.type_def_of(id)
-                && def.kind == crate::TypeDefKind::Alias
+                && def.kind == TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
                 let expanded = filter_type_by_member_truthiness(model, target, key, keep_matching);
@@ -4534,7 +4520,7 @@ fn filter_type_by_member_truthiness(
     match kept.len() {
         0 => LuaType::Never,
         1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(kept).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
     }
 }
 
@@ -4593,7 +4579,7 @@ fn component_matches_primitive(
     if *primitive == LuaType::Table
         && let LuaType::Ref(id) | LuaType::Def(id) = component
         && let Some(def) = model.type_def_of(id)
-        && def.kind == crate::TypeDefKind::Enum
+        && def.kind == TypeDefKind::Enum
     {
         return false;
     }
@@ -4978,7 +4964,7 @@ fn merge_components(types: Vec<LuaType>) -> LuaType {
     match types.len() {
         0 => LuaType::Unknown,
         1 => types.into_iter().next().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(types).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
     }
 }
 
@@ -5014,7 +5000,7 @@ fn merge_types(left: LuaType, right: LuaType) -> LuaType {
     match types.len() {
         0 => LuaType::Unknown,
         1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(types).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
     }
 }
 

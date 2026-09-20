@@ -655,7 +655,7 @@ pub(crate) fn render_header_exprs_with_leading_docs(
 ) -> Vec<DocIR> {
     let attach_first_multiline = expr_docs
         .first()
-        .is_some_and(|docs| crate::ir::ir_has_forced_line_break(docs))
+        .is_some_and(|docs| ir::ir_has_forced_line_break(docs))
         || matches!(
             expr_list_plan.kind,
             StatementExprListLayoutKind::PreserveFirstMultiline

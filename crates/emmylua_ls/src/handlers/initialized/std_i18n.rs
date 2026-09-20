@@ -1063,7 +1063,7 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        MetaBlock, MetaEntry, MetaFile, MetaKind, apply_meta_translations,
+        MetaBlock, MetaEntry, MetaFile, MetaKind, STD_I18N_DIR, apply_meta_translations,
         build_line_start_offsets, fnv1a64_hex, generate, range_to_offsets,
     };
 
@@ -1209,7 +1209,7 @@ function coroutine.status(co) end
 
     #[test]
     fn test_parse_generated_v2_meta() {
-        let file = super::STD_I18N_DIR
+        let file = STD_I18N_DIR
             .get_file("coroutine/meta.yaml")
             .expect("generated coroutine meta exists");
         let meta: MetaFile =
@@ -1225,7 +1225,7 @@ function coroutine.status(co) end
 
     #[test]
     fn test_apply_generated_meta_to_std_source() {
-        let file = super::STD_I18N_DIR
+        let file = STD_I18N_DIR
             .get_file("coroutine/meta.yaml")
             .expect("generated coroutine meta exists");
         let meta: MetaFile =

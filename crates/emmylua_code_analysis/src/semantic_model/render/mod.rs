@@ -13,7 +13,12 @@ use crate::{
     AsyncState, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType,
     VariadicType,
 };
+use crate::{
+    GenericParam, LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaMappedType, LuaObjectType,
+    LuaTupleType, TypeDef, TypeDefKind,
+};
 
+use super::type_eval::{eval_conditionals, expand_alias_generic, expand_index_call, expand_mapped};
 use super::{SemanticModel, infer};
 
 // ─── RenderLevel ────────────────────────────────────────────────────────────
@@ -286,7 +291,7 @@ impl<'a> TypeHumanizer<'a> {
             }
             LuaType::Mapped(mapped) => self.write_mapped_type(mapped, w),
             LuaType::Call(call) => {
-                if let Some(expanded) = super::type_eval::expand_index_call(self.model, call) {
+                if let Some(expanded) = expand_index_call(self.model, call) {
                     self.write_type(&expanded, w)?;
                 } else {
                     w.write_str("call<")?;
@@ -311,7 +316,7 @@ impl<'a> TypeHumanizer<'a> {
     }
 
     /// Resolves default generic arguments of a type definition, supporting forward/backward references and iterating to a fixpoint.
-    fn resolve_generic_defaults(&self, def: &crate::TypeDef, provided: &[LuaType]) -> Vec<LuaType> {
+    fn resolve_generic_defaults(&self, def: &TypeDef, provided: &[LuaType]) -> Vec<LuaType> {
         let n = def.generic_params.len();
         let mut resolved: Vec<Option<LuaType>> = vec![None; n];
         for (i, ty) in provided.iter().enumerate() {
@@ -383,7 +388,7 @@ impl<'a> TypeHumanizer<'a> {
                 resolved_params = Some(resolved);
             }
             // Detailed mode: aliases render as `Alias<...> = target type`.
-            if self.level == RenderLevel::Detailed && def.kind == crate::TypeDefKind::Alias {
+            if self.level == RenderLevel::Detailed && def.kind == TypeDefKind::Alias {
                 if let Some(target) = self.model.alias_target(&def) {
                     let mut bindings = std::collections::HashMap::new();
                     if let Some(resolved) = &resolved_params {
@@ -441,7 +446,7 @@ impl<'a> TypeHumanizer<'a> {
         // Detailed mode: generic aliases render as `Alias<...> = target type`.
         if self.level == RenderLevel::Detailed
             && let Some(def) = &def
-            && def.kind == crate::TypeDefKind::Alias
+            && def.kind == TypeDefKind::Alias
             && let Some(target) = self.model.alias_target(def)
         {
             let mut bindings = std::collections::HashMap::new();
@@ -455,8 +460,8 @@ impl<'a> TypeHumanizer<'a> {
             }
             let target = self.substitute_named_refs(&target, &name_bindings);
             let target = infer::unify::substitute(&target, &bindings);
-            let target = super::type_eval::expand_alias_generic(self.model, &target);
-            let target = super::type_eval::eval_conditionals(self.model, &target);
+            let target = expand_alias_generic(self.model, &target);
+            let target = eval_conditionals(self.model, &target);
             w.write_str(" = ")?;
             let saved = self.level;
             self.level = self.child_level();
@@ -668,10 +673,10 @@ impl<'a> TypeHumanizer<'a> {
                 .get(id.get_name())
                 .cloned()
                 .unwrap_or_else(|| ty.clone()),
-            Array(array) => Array(Arc::new(crate::LuaArrayType::from_base_type(
+            Array(array) => Array(Arc::new(LuaArrayType::from_base_type(
                 self.substitute_named_refs(array.get_base(), map),
             ))),
-            Tuple(tuple) => Tuple(Arc::new(crate::LuaTupleType::new(
+            Tuple(tuple) => Tuple(Arc::new(LuaTupleType::new(
                 tuple
                     .get_types()
                     .iter()
@@ -686,7 +691,7 @@ impl<'a> TypeHumanizer<'a> {
                     .map(|t| self.substitute_named_refs(t, map))
                     .collect(),
             ))),
-            Object(object) => Object(Arc::new(crate::LuaObjectType::new_with_fields(
+            Object(object) => Object(Arc::new(LuaObjectType::new_with_fields(
                 object
                     .get_fields()
                     .iter()
@@ -714,7 +719,7 @@ impl<'a> TypeHumanizer<'a> {
                         .collect(),
                 ),
             })),
-            Call(call) => Call(Arc::new(crate::LuaAliasCallType::new(
+            Call(call) => Call(Arc::new(LuaAliasCallType::new(
                 call.get_call_kind(),
                 call.get_operands()
                     .iter()
@@ -734,10 +739,10 @@ impl<'a> TypeHumanizer<'a> {
                     .default
                     .as_ref()
                     .map(|t| self.substitute_named_refs(t, map));
-                Mapped(Arc::new(crate::LuaMappedType::new(
+                Mapped(Arc::new(LuaMappedType::new(
                     (
                         mapped.param.0,
-                        crate::GenericParam::new(
+                        GenericParam::new(
                             mapped.param.1.name.clone(),
                             constraint,
                             default,
@@ -750,7 +755,7 @@ impl<'a> TypeHumanizer<'a> {
                     mapped.is_optional,
                 )))
             }
-            Conditional(conditional) => Conditional(Arc::new(crate::LuaConditionalType::new(
+            Conditional(conditional) => Conditional(Arc::new(LuaConditionalType::new(
                 self.substitute_named_refs(conditional.get_checked_type(), map),
                 self.substitute_named_refs(conditional.get_extends_type(), map),
                 self.substitute_named_refs(conditional.get_true_type(), map),
@@ -763,12 +768,8 @@ impl<'a> TypeHumanizer<'a> {
     }
 
     /// Mapped types: prefer semantic expansion into an object; keep the mapped structure when expansion fails.
-    fn write_mapped_type<W: Write>(
-        &mut self,
-        mapped: &crate::LuaMappedType,
-        w: &mut W,
-    ) -> fmt::Result {
-        if let Some(expanded) = super::type_eval::expand_mapped(self.model, mapped) {
+    fn write_mapped_type<W: Write>(&mut self, mapped: &LuaMappedType, w: &mut W) -> fmt::Result {
+        if let Some(expanded) = expand_mapped(self.model, mapped) {
             return self.write_type(&expanded, w);
         }
         w.write_str("{ [")?;

@@ -8,20 +8,25 @@ use lsp_types::Uri;
 use emmylua_parser::{LuaAstNode, LuaClosureExpr};
 
 use crate::member_key::LuaMemberKey;
+use crate::semantic_db::SemanticDatabase;
 use crate::semantic_db::def::SemanticId;
 use crate::semantic_model::SemanticModel;
-use crate::{Emmyrc, LuaType};
+use crate::{
+    Emmyrc, FileId, GenericTpl, GenericTplId, InFiled, LuaInstanceType, LuaType, LuaTypeDeclId,
+};
 
-use super::super::infer::infer_expr;
+use super::unify::{TplBindings, substitute, unify_bindings};
+use super::vm::{closure_param_vm, infer_expr_vm};
+use crate::semantic_model::infer::infer_expr;
 
 fn model_of(source: &str) -> (&'static SemanticModel<'static>, Arc<Emmyrc>) {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/infer.lua").unwrap();
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     // Leak for tests.
-    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
     (model, emmyrc)
 }
@@ -120,7 +125,7 @@ fn test_infer_expr_function_structure() {
 fn test_infer_expr_member_cross_file() {
     // B defines M.x = 1; A reads M.x -> Number.
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("M = {}\nM.x = 1".to_string()));
@@ -128,7 +133,7 @@ fn test_infer_expr_member_cross_file() {
     let fid = db.set_file_content(&uri_a, Some("local y = M.x".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let y = decl_of(&model, "y");
@@ -173,8 +178,8 @@ fn test_unify_and_substitute() {
     use crate::{LuaArrayType, LuaType as LT};
 
     // TplRef(T) array param vs number[] actual arg -> T = number.
-    let tpl_t = LT::TplRef(Arc::new(crate::GenericTpl::new(
-        crate::GenericTplId::Type(0),
+    let tpl_t = LT::TplRef(Arc::new(GenericTpl::new(
+        GenericTplId::Type(0),
         "T".into(),
         None,
         None,
@@ -184,15 +189,12 @@ fn test_unify_and_substitute() {
     let param = LT::Array(Arc::new(LuaArrayType::from_base_type(tpl_t.clone())));
     let arg = LT::Array(Arc::new(LuaArrayType::from_base_type(LT::Number)));
 
-    let mut bindings = super::unify::TplBindings::new();
-    assert!(super::unify::unify_bindings(&param, &arg, &mut bindings));
-    assert_eq!(
-        bindings.get(&crate::GenericTplId::Type(0)),
-        Some(&LT::Number)
-    );
+    let mut bindings = TplBindings::new();
+    assert!(unify_bindings(&param, &arg, &mut bindings));
+    assert_eq!(bindings.get(&GenericTplId::Type(0)), Some(&LT::Number));
 
     // Substitution: TplRef(T) -> number.
-    let substituted = super::unify::substitute(&tpl_t, &bindings);
+    let substituted = substitute(&tpl_t, &bindings);
     assert_eq!(substituted, LT::Number);
 }
 
@@ -200,23 +202,23 @@ fn test_unify_and_substitute() {
 fn test_substitute_nested_variants_keeps_instance_range() {
     use crate::{LuaGenericType, LuaType as LT};
 
-    let tpl_t = LT::TplRef(Arc::new(crate::GenericTpl::new(
-        crate::GenericTplId::Type(0),
+    let tpl_t = LT::TplRef(Arc::new(GenericTpl::new(
+        GenericTplId::Type(0),
         "T".into(),
         None,
         None,
         false,
         None,
     )));
-    let mut bindings = super::unify::TplBindings::new();
-    bindings.insert(crate::GenericTplId::Type(0), LT::Number);
+    let mut bindings = TplBindings::new();
+    bindings.insert(GenericTplId::Type(0), LT::Number);
 
     // Recursive substitution in Generic.
     let generic = LT::Generic(Arc::new(LuaGenericType::new(
-        crate::LuaTypeDeclId::global("Mock"),
+        LuaTypeDeclId::global("Mock"),
         vec![tpl_t.clone()],
     )));
-    let substituted = super::unify::substitute(&generic, &bindings);
+    let substituted = substitute(&generic, &bindings);
     let LT::Generic(sub_generic) = substituted else {
         panic!("expected Generic, got {substituted:?}");
     };
@@ -225,11 +227,11 @@ fn test_substitute_nested_variants_keeps_instance_range() {
     // Instance substitution must preserve the original file/range (regression: it was
     // once rebuilt as FileId(0)).
     let range = rowan::TextRange::new(rowan::TextSize::from(11), rowan::TextSize::from(22));
-    let instance = LT::Instance(Arc::new(crate::LuaInstanceType::new(
+    let instance = LT::Instance(Arc::new(LuaInstanceType::new(
         tpl_t,
-        crate::InFiled::new(crate::FileId::new(7), range),
+        InFiled::new(FileId::new(7), range),
     )));
-    let substituted = super::unify::substitute(&instance, &bindings);
+    let substituted = substitute(&instance, &bindings);
     let LT::Instance(sub_instance) = substituted else {
         panic!("expected Instance, got {substituted:?}");
     };
@@ -249,7 +251,7 @@ fn test_vm_name_binary() {
         .find(|d| d.name == "y")
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
-    let ty = super::vm::infer_expr_vm(&model, init);
+    let ty = infer_expr_vm(&model, init);
     assert_eq!(ty, LuaType::IntegerConst(2));
 }
 
@@ -264,7 +266,7 @@ fn test_vm_member_access() {
         .find(|d| d.name == "y")
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
-    let ty = super::vm::infer_expr_vm(&model, init);
+    let ty = infer_expr_vm(&model, init);
     assert_eq!(ty, LuaType::Number);
 }
 
@@ -279,7 +281,7 @@ fn test_vm_call() {
         .find(|d| d.name == "y")
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
-    let ty = super::vm::infer_expr_vm(&model, init);
+    let ty = infer_expr_vm(&model, init);
     assert_eq!(ty, LuaType::Number);
 }
 
@@ -299,8 +301,8 @@ fn test_vm_method_return_self_is_owner_type() {
         .find(|d| d.name == "y")
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
-    let ty = super::vm::infer_expr_vm(model, init);
-    assert_eq!(ty, LuaType::Ref(crate::LuaTypeDeclId::global("B")));
+    let ty = infer_expr_vm(model, init);
+    assert_eq!(ty, LuaType::Ref(LuaTypeDeclId::global("B")));
 }
 
 #[test]
@@ -318,7 +320,7 @@ fn test_vm_closure_param_env() {
         .expect("closure");
     let closure_syntax = closure.get_syntax_id();
     // M0: callee `each` has no generic doc -> param type Unknown (no panic; mechanism works).
-    let ty = super::vm::closure_param_vm(&model, closure_syntax, 0);
+    let ty = closure_param_vm(&model, closure_syntax, 0);
     let _ = ty;
 }
 
@@ -346,14 +348,8 @@ fn test_vm_generic_map_closure_params() {
     let closure_syntax = closure.get_syntax_id();
 
     // Closure param back-inference: x -> number, y -> number.
-    assert_eq!(
-        super::vm::closure_param_vm(&model, closure_syntax, 0),
-        LuaType::Number
-    );
-    assert_eq!(
-        super::vm::closure_param_vm(&model, closure_syntax, 1),
-        LuaType::Number
-    );
+    assert_eq!(closure_param_vm(&model, closure_syntax, 0), LuaType::Number);
+    assert_eq!(closure_param_vm(&model, closure_syntax, 1), LuaType::Number);
 
     // The use of `x` inside the closure reads the environment via VM LoadName -> number.
     let x_use = closure
@@ -399,14 +395,8 @@ fn test_vm_generic_tag_closure_params() {
         .expect("closure");
     let closure_syntax = closure.get_syntax_id();
 
-    assert_eq!(
-        super::vm::closure_param_vm(&model, closure_syntax, 0),
-        LuaType::Number
-    );
-    assert_eq!(
-        super::vm::closure_param_vm(&model, closure_syntax, 1),
-        LuaType::Number
-    );
+    assert_eq!(closure_param_vm(&model, closure_syntax, 0), LuaType::Number);
+    assert_eq!(closure_param_vm(&model, closure_syntax, 1), LuaType::Number);
     let call_expr = closure
         .ancestors::<emmylua_parser::LuaCallExpr>()
         .next()
@@ -833,7 +823,7 @@ fn test_setmetatable_passthrough() {
 #[test]
 fn test_require_via_variable() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("return { value = 42 }".to_string()));
@@ -844,7 +834,7 @@ fn test_require_via_variable() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let v = decl_of(&model, "v");
@@ -861,7 +851,7 @@ fn test_require_via_variable() {
 #[test]
 fn test_require_literal_vm() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
     let fid_b = db.set_file_content(&uri_b, Some("return { value = 42 }".to_string()));
@@ -872,7 +862,7 @@ fn test_require_literal_vm() {
     );
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
-    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
 
     let v = decl_of(&model, "v");
@@ -924,7 +914,7 @@ fn test_is_reference_to_member() {
 #[test]
 fn test_is_visible_private_field() {
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     // Defining file: ---@field private secret number (visibility prefix syntax).
     let uri_b = Uri::from_str("file:///C:/ws/b.lua").unwrap();
@@ -936,7 +926,7 @@ fn test_is_visible_private_field() {
     let uri_a = Uri::from_str("file:///C:/ws/a.lua").unwrap();
     let fid = db.set_file_content(&uri_a, Some("local c = {}\nlocal v = c.secret".to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let db: &'static crate::semantic_db::SemanticDatabase = Box::leak(Box::new(db));
+    let db: &'static SemanticDatabase = Box::leak(Box::new(db));
     let model: &'static SemanticModel<'static> = Box::leak(Box::new(SemanticModel::new(db, fid)));
     let model_b: &'static SemanticModel<'static> =
         Box::leak(Box::new(SemanticModel::new(db, fid_b)));

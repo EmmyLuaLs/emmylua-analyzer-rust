@@ -708,8 +708,8 @@ mod tests {
         let config = LuaFormatConfig::default();
         let source = "local a = 1\nlocal b = ()\n";
 
-        let result = crate::reformat_lua_code_with_info(
-            &crate::SourceText {
+        let result = reformat_lua_code_with_info(
+            &SourceText {
                 text: source,
                 level: LuaLanguageLevel::default(),
             },

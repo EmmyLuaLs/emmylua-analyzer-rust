@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod test {
     use crate::DiagnosticCode;
+    use crate::VirtualWorkspace;
 
     #[test]
     fn test_feat_209() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::NonLiteralExpressionsInAssert);
 
         assert!(!ws.has_no_diagnostic(

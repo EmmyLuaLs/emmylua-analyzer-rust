@@ -53,10 +53,10 @@ use std::sync::Arc;
 
 use lsp_types::Uri;
 
-use crate::DiagnosticCode;
-use crate::Emmyrc;
+use crate::config::EmmyrcLuaVersion;
+use crate::{DiagnosticCode, EmmyLuaAnalysis, Emmyrc, SemanticDatabase, SemanticModel};
 
-use super::checker::Diagnostic;
+use super::{CheckConfig, check_file, checker::Diagnostic};
 
 /// Run all checks on a single source file and return diagnostics.
 pub(crate) fn check_source(source: &str) -> Vec<Diagnostic> {
@@ -66,14 +66,14 @@ pub(crate) fn check_source(source: &str) -> Vec<Diagnostic> {
 /// Run all checks on a single source file with a custom emmyrc and return diagnostics.
 pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diagnostic> {
     let emmyrc = Arc::new(emmyrc);
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let fid = db.set_file_content(&uri, Some(source.to_string()));
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let model = crate::SemanticModel::new(&db, fid);
-    let config = Arc::new(super::CheckConfig::new(&emmyrc));
-    super::check_file(&model, config)
+    let model = SemanticModel::new(&db, fid);
+    let config = Arc::new(CheckConfig::new(&emmyrc));
+    check_file(&model, config)
 }
 
 /// Count diagnostics for the specified code.
@@ -84,7 +84,7 @@ pub(crate) fn count_by_code(diagnostics: &[Diagnostic], code: DiagnosticCode) ->
 /// End-to-end: EmmyLuaAnalysis::diagnose_file_with_config → lsp Diagnostic (range/code/severity).
 #[test]
 fn test_diagnose_semantic_end_to_end() {
-    let mut analysis = crate::EmmyLuaAnalysis::new();
+    let mut analysis = EmmyLuaAnalysis::new();
     let uri = Uri::from_str("file:///C:/ws/test.lua").expect("uri");
     let source = "local x = undefined_global\nlocal y = x + 1";
     let fid = analysis
@@ -92,7 +92,7 @@ fn test_diagnose_semantic_end_to_end() {
         .expect("file id");
 
     let emmyrc = analysis.get_emmyrc();
-    let config = Arc::new(super::CheckConfig::new(&emmyrc));
+    let config = Arc::new(CheckConfig::new(&emmyrc));
     let diagnostics = analysis
         .diagnose_file_with_config(fid, config)
         .expect("diagnostics");
@@ -120,7 +120,7 @@ fn test_diagnose_semantic_end_to_end() {
 #[test]
 fn test_check_config_default_enable_rules() {
     // Default-enabled codes are enabled in the default config.
-    let config = super::CheckConfig::new(&Emmyrc::default());
+    let config = CheckConfig::new(&Emmyrc::default());
     assert!(config.is_code_enabled(&DiagnosticCode::SyntaxError));
     assert!(config.is_code_enabled(&DiagnosticCode::UndefinedGlobal));
     // Default-disabled codes (UnknownDocTag, etc.) must not be reported.
@@ -130,8 +130,8 @@ fn test_check_config_default_enable_rules() {
     // Lua 5.5+ enables IterVariableReassign by default; Lua 5.4 disables it.
     assert!(config.is_code_enabled(&DiagnosticCode::IterVariableReassign));
     let mut emmyrc54 = Emmyrc::default();
-    emmyrc54.runtime.version = crate::config::EmmyrcLuaVersion::Lua54;
-    let config54 = super::CheckConfig::new(&emmyrc54);
+    emmyrc54.runtime.version = EmmyrcLuaVersion::Lua54;
+    let config54 = CheckConfig::new(&emmyrc54);
     assert!(!config54.is_code_enabled(&DiagnosticCode::IterVariableReassign));
     // Explicit disable/enable overrides the default.
     let mut emmyrc = Emmyrc::default();
@@ -140,7 +140,7 @@ fn test_check_config_default_enable_rules() {
         .diagnostics
         .enables
         .push(DiagnosticCode::UnknownDocTag);
-    let config = super::CheckConfig::new(&emmyrc);
+    let config = CheckConfig::new(&emmyrc);
     assert!(!config.is_code_enabled(&DiagnosticCode::SyntaxError));
     assert!(config.is_code_enabled(&DiagnosticCode::UnknownDocTag));
 }

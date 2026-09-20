@@ -8,9 +8,9 @@ use crate::LuaType;
 use crate::LuaTypeDeclId;
 use crate::semantic_db::def::{TypeDef, TypeDefKind};
 
-use super::super::SemanticModel;
-use super::super::render::humanize_type;
 use super::fail_reason::TypeCheckFailReason;
+use crate::semantic_model::SemanticModel;
+use crate::semantic_model::render::humanize_type;
 
 #[derive(Clone)]
 pub struct TypeCheckContext<'db> {

@@ -16,7 +16,7 @@ use crate::semantic_model::SemanticModel;
 use crate::semantic_model::member;
 use crate::semantic_model::type_check;
 use crate::semantic_model::type_check::{TypeCheckFailReason, check_type_detail};
-use crate::{LuaFunctionType, LuaType, LuaTypeDeclId, TypeDef};
+use crate::{LuaFunctionType, LuaType, LuaTypeDeclId, TypeDef, TypeScope};
 
 use super::{CheckContext, Checker};
 use crate::semantic_model::render::humanize_type;
@@ -91,7 +91,7 @@ fn is_attribute_class(semantic_model: &SemanticModel<'_>, decl_id: &LuaTypeDeclI
         }
         for super_name in &def.super_names {
             let super_def = semantic_model
-                .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
+                .type_defs_in_scope(TypeScope::Global, super_name.as_str())
                 .iter()
                 .next()
                 .cloned();

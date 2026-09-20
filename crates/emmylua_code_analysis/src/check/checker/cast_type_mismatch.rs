@@ -9,6 +9,7 @@ use emmylua_parser::{LuaAstNode, LuaDocTagCast};
 use crate::DiagnosticCode;
 use crate::LuaType;
 use crate::semantic_model::SemanticModel;
+use crate::semantic_model::member::type_def_of;
 use crate::semantic_model::type_check::is_compatible;
 
 use super::{CheckContext, Checker};
@@ -35,7 +36,7 @@ fn cast_origin_constraint(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> O
         LuaType::TplRef(tpl) => tpl.get_constraint().cloned(),
         LuaType::Ref(id) | LuaType::Def(id) => {
             // Resolved type names (Animal) are not generic parameters.
-            if crate::semantic_model::member::type_def_of(semantic_model, id).is_some() {
+            if type_def_of(semantic_model, id).is_some() {
                 return None;
             }
             let name = id.get_name();

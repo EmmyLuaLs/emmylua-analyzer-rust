@@ -4,6 +4,8 @@
 //! member of a runtime table; `full_owner_member_scans` stays at zero for name
 //! lookups and would catch a regression to the old collect-then-filter path.
 
+use crate::check::checker::redefined_local::scope_metrics;
+use crate::semantic_model::flow::flow_metrics;
 use crate::semantic_model::member::query_metrics;
 use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, VirtualWorkspace};
 
@@ -95,7 +97,7 @@ fn p4_5_flow_reads_use_indexed_fast_paths() {
     assert_eq!(member_reads.len(), N, "member reads");
     assert!(decl_reads.len() >= N, "decl reads: {}", decl_reads.len());
 
-    crate::semantic_model::flow::flow_metrics::reset();
+    flow_metrics::reset();
     for expr in member_reads {
         let _ = model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start());
     }
@@ -103,17 +105,17 @@ fn p4_5_flow_reads_use_indexed_fast_paths() {
         let _ = model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start());
     }
 
-    let metrics = crate::semantic_model::flow::flow_metrics::trace_steps();
+    let metrics = flow_metrics::trace_steps();
     assert!(
-        crate::semantic_model::flow::flow_metrics::fast_path_hits() > 0,
+        flow_metrics::fast_path_hits() > 0,
         "indexed flow fast path must be used"
     );
     assert!(
-        crate::semantic_model::flow::flow_metrics::fast_member_hits() > 0,
+        flow_metrics::fast_member_hits() > 0,
         "member fast path must be used"
     );
     assert!(
-        crate::semantic_model::flow::flow_metrics::fast_decl_hits() > 0,
+        flow_metrics::fast_decl_hits() > 0,
         "decl fast path must be used"
     );
     assert!(
@@ -134,12 +136,12 @@ fn p4_5_redefined_local_leaf_scopes_do_not_clone_parent_map() {
 
     let mut ws = VirtualWorkspace::new();
     let fid = ws.def_file("m.lua", &source);
-    crate::check::checker::redefined_local::scope_metrics::reset();
+    scope_metrics::reset();
     let _ = ws
         .analysis
         .diagnose_file(fid, tokio_util::sync::CancellationToken::new());
     assert_eq!(
-        crate::check::checker::redefined_local::scope_metrics::cloned_local_entries(),
+        scope_metrics::cloned_local_entries(),
         0,
         "leaf local scopes must merge into the parent map in place"
     );
@@ -180,13 +182,13 @@ fn p4_5_flow_does_not_shortcut_loop_or_branch_member_reads() {
         .collect();
     assert_eq!(reads.len(), 2, "reads: {reads:?}");
 
-    crate::semantic_model::flow::flow_metrics::reset();
+    flow_metrics::reset();
     for expr in reads {
         let ty = model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start());
         assert!(!matches!(ty, LuaType::Unknown), "flow type: {ty:?}");
     }
     assert_eq!(
-        crate::semantic_model::flow::flow_metrics::fast_member_hits(),
+        flow_metrics::fast_member_hits(),
         0,
         "member fast path must not shortcut loop/branch flow"
     );

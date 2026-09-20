@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use emmylua_parser::LuaAstNode;
 use rowan::TextRange;
 
-use crate::DiagnosticCode;
 use crate::semantic_db::def::{DeclKind, ScopeChild, ScopeKind, SemanticId};
 use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, FileFacts};
 
 use super::{CheckContext, Checker};
 
@@ -28,7 +28,7 @@ impl Checker for RedefinedLocalChecker {
 fn check_scope(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
-    facts: &crate::FileFacts,
+    facts: &FileFacts,
     scope_idx: u32,
     parent_locals: &mut HashMap<String, SemanticId>,
 ) {
@@ -96,7 +96,7 @@ fn check_scope(
 fn check_decls(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
-    facts: &crate::FileFacts,
+    facts: &FileFacts,
     children: &[ScopeChild],
     locals: &mut HashMap<String, SemanticId>,
 ) {

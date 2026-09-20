@@ -10,10 +10,12 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::member_key::LuaMemberKey;
+use crate::semantic_db::MemberList;
 use crate::semantic_db::def::SemanticId;
 use crate::semantic_db::flow::FlowId;
 use crate::{FileId, LuaFunctionType, LuaType};
 
+use super::infer::unify::TplBindings;
 use super::member::MemberInfo;
 use super::{CallSiteAnalysis, ResolvedMember};
 
@@ -42,11 +44,10 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) callable_candidates: HashMap<(FileId, LuaSyntaxId), Vec<LuaFunctionType>>,
     pub(crate) call_site: HashMap<(FileId, LuaSyntaxId), CallSiteAnalysis>,
     pub(crate) call_site_signatures:
-        HashMap<(FileId, LuaSyntaxId), Vec<(LuaFunctionType, super::infer::unify::TplBindings)>>,
+        HashMap<(FileId, LuaSyntaxId), Vec<(LuaFunctionType, TplBindings)>>,
     pub(crate) member_infos: HashMap<LuaType, Vec<MemberInfo>>,
-    pub(crate) members_of_owner: HashMap<SemanticId, crate::semantic_db::MemberList>,
-    pub(crate) members_of_owner_named:
-        HashMap<(SemanticId, SmolStr), crate::semantic_db::MemberList>,
+    pub(crate) members_of_owner: HashMap<SemanticId, MemberList>,
+    pub(crate) members_of_owner_named: HashMap<(SemanticId, SmolStr), MemberList>,
     pub(crate) member_info: HashMap<(LuaType, LuaMemberKey), Option<MemberInfo>>,
     pub(crate) type_check: HashMap<(LuaType, LuaType), bool>,
     pub(crate) callable_functions: HashMap<LuaType, Vec<LuaFunctionType>>,

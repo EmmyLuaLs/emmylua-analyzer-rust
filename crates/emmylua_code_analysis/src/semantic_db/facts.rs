@@ -19,6 +19,7 @@ use smol_str::SmolStr;
 
 use crate::DiagnosticCode;
 use crate::FileId;
+use crate::semantic_db::def::SignatureReturnCast;
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
@@ -1333,7 +1334,7 @@ impl FactsBuilder {
                         };
                         let fallback = op_types.get(1).and_then(|op| op.get_type());
                         let entry = self.signature_doc_map.entry(owner_syntax).or_default();
-                        entry.return_cast = Some(crate::semantic_db::def::SignatureReturnCast {
+                        entry.return_cast = Some(SignatureReturnCast {
                             name: name_token.get_name_text().into(),
                             cast: cast_type.get_syntax_id(),
                             fallback: fallback.map(|ty| ty.get_syntax_id()),

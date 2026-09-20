@@ -9,6 +9,7 @@ use lsp_types::{CompletionItem, Documentation, MarkupContent};
 
 use super::completion_data::{CompletionData, CompletionDataType};
 use crate::context::ClientId;
+use crate::handlers::hover::hover;
 
 pub fn resolve_completion(
     analysis: &EmmyLuaAnalysis,
@@ -29,7 +30,7 @@ pub fn resolve_completion(
         return completion_item;
     };
 
-    let Some(hover) = crate::handlers::hover::hover(analysis, file_id, position) else {
+    let Some(hover) = hover(analysis, file_id, position) else {
         return completion_item;
     };
     let value = match hover.contents {

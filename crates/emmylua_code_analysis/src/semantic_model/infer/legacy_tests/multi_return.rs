@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::VirtualWorkspace;
+    use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
     fn test_pcall_return() {
@@ -65,7 +65,7 @@ mod test {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
         assert!(ws.has_no_diagnostic(
-            crate::DiagnosticCode::UnbalancedAssignments,
+            DiagnosticCode::UnbalancedAssignments,
             r#"
         local fmt = ""
         local scol, ecol, match, key, time_fmt = fmt:find('(<([^:>]+):?([^>]*)>)')

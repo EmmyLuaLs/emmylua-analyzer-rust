@@ -7,6 +7,8 @@ use emmylua_code_analysis::{
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
 
+use crate::handlers::hover::render::humanize;
+
 use crate::handlers::completion::{
     completion_builder::CompletionBuilder,
     completion_data::{CompletionData, CompletionDataType},
@@ -742,10 +744,7 @@ fn overload_detail(model: &SemanticModel<'_>, func: &LuaFunctionType) -> String 
     let ret_text = if matches!(ret, LuaType::Nil) {
         String::new()
     } else {
-        format!(
-            "-> {}",
-            crate::handlers::hover::render::humanize(model, ret)
-        )
+        format!("-> {}", humanize(model, ret))
     };
     format!("({params}){ret_text}")
 }

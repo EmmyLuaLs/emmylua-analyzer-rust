@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate::semantic_db::TypeDefList;
 
 impl<'db> SemanticModel<'db> {
     // -- Types --
@@ -1307,11 +1308,7 @@ impl<'db> SemanticModel<'db> {
         (!matches!(returns, LuaType::Unknown)).then_some(returns)
     }
     /// All type definitions for a scope + full name (cross-file; used by checkers / inheritance chains).
-    pub fn type_defs_in_scope(
-        &self,
-        scope: TypeScope,
-        full_name: &str,
-    ) -> crate::semantic_db::TypeDefList {
+    pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> TypeDefList {
         self.analysis().type_defs_in_scope(scope, full_name)
     }
 }

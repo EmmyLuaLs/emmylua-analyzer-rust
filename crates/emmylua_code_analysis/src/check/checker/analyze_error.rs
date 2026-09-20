@@ -14,6 +14,7 @@ use emmylua_parser::{
 use smol_str::SmolStr;
 
 use crate::DiagnosticCode;
+use crate::TypeDef;
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};
@@ -142,7 +143,7 @@ fn check_generic_type(
 /// Required generic argument check (mirrors legacy `complete_type_generic_args`: params with defaults may be omitted).
 fn check_missing_type_args(
     context: &mut CheckContext<'_>,
-    def: &crate::TypeDef,
+    def: &TypeDef,
     arg_count: usize,
     range: rowan::TextRange,
 ) {

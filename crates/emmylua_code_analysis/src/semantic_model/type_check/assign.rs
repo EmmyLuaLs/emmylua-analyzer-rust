@@ -4,6 +4,9 @@
 
 use crate::{LuaMemberKey, LuaType, SemanticId, TypeDef, TypeScope};
 
+use crate::semantic_model::SemanticModel;
+use crate::semantic_model::member::type_def_of;
+
 use super::context::TypeCheckContext;
 use super::guard::TypeCheckGuard;
 use super::{TypeCheckResult, check_general_type_compact};
@@ -192,7 +195,7 @@ fn param_accepts_assign(
     check_general_type_compact(context, target, source, guard)
 }
 
-fn named_def(model: &crate::semantic_model::SemanticModel<'_>, ty: &LuaType) -> Option<TypeDef> {
+fn named_def(model: &SemanticModel<'_>, ty: &LuaType) -> Option<TypeDef> {
     let id = match ty {
         LuaType::Ref(id) | LuaType::Def(id) => id,
         LuaType::Generic(generic) => {
@@ -200,11 +203,11 @@ fn named_def(model: &crate::semantic_model::SemanticModel<'_>, ty: &LuaType) -> 
         }
         _ => return None,
     };
-    crate::semantic_model::member::type_def_of(model, id)
+    type_def_of(model, id)
 }
 
 fn collect_named_members(
-    model: &crate::semantic_model::SemanticModel<'_>,
+    model: &SemanticModel<'_>,
     def: &TypeDef,
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<(LuaMemberKey, LuaType)>,
@@ -245,7 +248,7 @@ fn collect_named_members(
 }
 
 fn collect_members_with_index_signatures(
-    model: &crate::semantic_model::SemanticModel<'_>,
+    model: &SemanticModel<'_>,
     def: &TypeDef,
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<(String, LuaType)>,

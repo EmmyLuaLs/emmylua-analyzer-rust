@@ -28,7 +28,10 @@ pub use context::TypeCheckContext;
 pub use fail_reason::TypeCheckFailReason;
 
 use crate::semantic_model::SemanticModel;
-use crate::{LuaType, LuaTypeDeclId};
+use crate::semantic_model::type_eval::expand_alias_generic;
+use crate::{
+    InFiled, LuaType, LuaTypeDeclId, LuaUnionType, SemanticId, TypeDef, TypeDefKind, TypeScope,
+};
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
@@ -137,8 +140,7 @@ fn check_general_type_compact(
             LuaType::Mapped(_) | LuaType::Call(_) | LuaType::Conditional(_)
         )
     {
-        let expanded =
-            crate::semantic_model::type_eval::expand_alias_generic(context.model, source);
+        let expanded = expand_alias_generic(context.model, source);
         if expanded != *source {
             return check_general_type_compact(
                 context,
@@ -181,7 +183,7 @@ fn check_general_type_compact(
         // Assignment mode: an integer enum target accepts broad integers; literals must be member values.
         if let LuaType::Ref(target_id) | LuaType::Def(target_id) = compact_type
             && let Some(def) = context.model.resolve_type_def(target_id.get_name())
-            && def.kind == crate::TypeDefKind::Enum
+            && def.kind == TypeDefKind::Enum
         {
             match source {
                 LuaType::Integer | LuaType::DocIntegerConst(_) => return Ok(()),
@@ -389,8 +391,8 @@ fn check_union_intersection_source(
 
 fn table_associated_type_def(
     model: &SemanticModel,
-    table: &crate::InFiled<rowan::TextRange>,
-) -> Option<crate::TypeDef> {
+    table: &InFiled<rowan::TextRange>,
+) -> Option<TypeDef> {
     let facts = model.file_facts_of(table.file_id)?;
     let decl = facts.decl_by_value_range(table.value)?;
     facts.type_def_by_owner_syntax(decl.owner_syntax?).cloned()
@@ -398,9 +400,9 @@ fn table_associated_type_def(
 
 fn defs_related_ctx(
     model: &SemanticModel,
-    left: &crate::TypeDef,
-    right: &crate::TypeDef,
-    visited: &mut Vec<crate::SemanticId>,
+    left: &TypeDef,
+    right: &TypeDef,
+    visited: &mut Vec<SemanticId>,
 ) -> bool {
     def_extends_ctx(model, left, right, visited)
         || def_extends_ctx(model, right, left, &mut Vec::new())
@@ -408,9 +410,9 @@ fn defs_related_ctx(
 
 fn def_extends_ctx(
     model: &SemanticModel,
-    source: &crate::TypeDef,
-    target: &crate::TypeDef,
-    visited: &mut Vec<crate::SemanticId>,
+    source: &TypeDef,
+    target: &TypeDef,
+    visited: &mut Vec<SemanticId>,
 ) -> bool {
     if source.id == target.id {
         return true;
@@ -424,7 +426,7 @@ fn def_extends_ctx(
             .resolve_type_def_in(source.file_id, super_name.as_str())
             .or_else(|| {
                 model
-                    .type_defs_in_scope(crate::TypeScope::Global, super_name.as_str())
+                    .type_defs_in_scope(TypeScope::Global, super_name.as_str())
                     .iter()
                     .next()
                     .cloned()
@@ -438,10 +440,7 @@ fn def_extends_ctx(
     false
 }
 
-fn enum_integer_values_ctx(
-    model: &SemanticModel,
-    def: &crate::TypeDef,
-) -> std::collections::HashSet<i64> {
+fn enum_integer_values_ctx(model: &SemanticModel, def: &TypeDef) -> std::collections::HashSet<i64> {
     let mut out = std::collections::HashSet::new();
     for member_ref in model.members_of_owner(&def.id).iter() {
         let Some(facts) = model.file_facts_of(member_ref.file_id) else {
@@ -504,7 +503,7 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
         | (LuaType::Any, LuaType::Any) => true,
         (LuaType::Ref(left), LuaType::Ref(right)) => left == right,
         (LuaType::Union(u), LuaType::Ref(id)) => {
-            if let crate::LuaUnionType::Nullable(LuaType::Ref(left)) = u.deref() {
+            if let LuaUnionType::Nullable(LuaType::Ref(left)) = u.deref() {
                 return left == id;
             }
             false

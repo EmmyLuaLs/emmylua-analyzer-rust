@@ -1,8 +1,8 @@
 use emmylua_code_analysis::LuaType;
 
-use crate::doc_model::{DocGlobal, DocMember, DocModel, DocModule, DocType};
+use crate::doc_model::{DocGlobal, DocMember, DocModel, DocModule, DocType, DocTypeKind};
 use crate::html_generator::html_type::{self, TypeLinker};
-use crate::html_generator::types::{HtmlDoc, HtmlMember};
+use crate::html_generator::types::{HtmlDoc, HtmlMember, HtmlParam};
 use crate::markdown_generator::generator::collect_property;
 
 use super::html_type::{render_const_type_html, render_function_signature_html, render_type_html};
@@ -24,9 +24,9 @@ pub fn build_type_doc(ctx: &GenContext, doc_type: &DocType) -> Option<HtmlDoc> {
     };
 
     match doc_type.kind {
-        crate::doc_model::DocTypeKind::Class => build_class_doc(ctx, doc_type, &mut doc),
-        crate::doc_model::DocTypeKind::Enum => build_enum_doc(ctx, doc_type, &mut doc),
-        crate::doc_model::DocTypeKind::Alias => build_alias_doc(ctx, doc_type, &mut doc),
+        DocTypeKind::Class => build_class_doc(ctx, doc_type, &mut doc),
+        DocTypeKind::Enum => build_enum_doc(ctx, doc_type, &mut doc),
+        DocTypeKind::Alias => build_alias_doc(ctx, doc_type, &mut doc),
     }
     Some(doc)
 }
@@ -78,12 +78,12 @@ fn build_alias_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
     if let Some(origin_typ) = &doc_type.alias_type {
         let is_union = matches!(origin_typ, LuaType::Union(_) | LuaType::MultiLineUnion(_));
         let style = if is_union {
-            super::html_type::TypeStyle::Multiline
+            html_type::TypeStyle::Multiline
         } else {
-            super::html_type::TypeStyle::Inline
+            html_type::TypeStyle::Inline
         };
         let origin_type_display =
-            super::html_type::render_type_style(model, origin_typ, ctx.linker, style);
+            html_type::render_type_style(model, origin_typ, ctx.linker, style);
         let name = html_escape(&doc.name);
         doc.display = Some(if is_union {
             signature_pre(format!("(alias) {name} =\n{origin_type_display}"))
@@ -171,10 +171,7 @@ pub fn collect_members(
     ctx: &GenContext,
     members: &[DocMember],
     owner_name: &str,
-) -> (
-    Vec<crate::html_generator::types::HtmlMember>,
-    Vec<crate::html_generator::types::HtmlMember>,
-) {
+) -> (Vec<HtmlMember>, Vec<HtmlMember>) {
     let model = ctx.model;
     let mut methods = Vec::new();
     let mut fields = Vec::new();
@@ -203,7 +200,7 @@ pub fn collect_members(
             html_member.params = func
                 .params
                 .iter()
-                .map(|param| super::types::HtmlParam {
+                .map(|param| HtmlParam {
                     name: param.name.clone(),
                     type_html: param
                         .ty
@@ -216,7 +213,7 @@ pub fn collect_members(
             html_member.returns = func
                 .returns
                 .iter()
-                .map(|ty| super::types::HtmlParam {
+                .map(|ty| HtmlParam {
                     name: String::new(),
                     type_html: render_type_html(model, ty, ctx.linker),
                     description: None,

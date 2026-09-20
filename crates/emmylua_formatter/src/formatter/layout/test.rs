@@ -3,7 +3,7 @@ use emmylua_parser::{
     LuaTokenKind, ParserConfig,
 };
 
-use crate::config::LuaFormatConfig;
+use crate::config::{LayoutConfig, LuaFormatConfig};
 use crate::formatter::FormatContext;
 use crate::formatter::layout::analyze_layout;
 use crate::formatter::model::{FormatPlan, LayoutNodePlan, StatementExprListLayoutKind};
@@ -222,7 +222,7 @@ fn test_layout_collects_expr_sequence_metadata() {
 #[test]
 fn test_layout_prefers_multiline_call_args_from_source_when_enabled() {
     let config = LuaFormatConfig {
-        layout: crate::config::LayoutConfig {
+        layout: LayoutConfig {
             prefer_call_args_layout_from_source: true,
             ..Default::default()
         },
@@ -253,7 +253,7 @@ fn test_layout_prefers_multiline_call_args_from_source_when_enabled() {
 #[test]
 fn test_layout_prefers_multiline_keyed_table_from_source_when_enabled() {
     let config = LuaFormatConfig {
-        layout: crate::config::LayoutConfig {
+        layout: LayoutConfig {
             prefer_table_layout_from_source: true,
             ..Default::default()
         },

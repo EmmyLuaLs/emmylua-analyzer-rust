@@ -4,7 +4,7 @@
 mod tests {
     use crate::DiagnosticCode;
 
-    use super::super::{check_source, count_by_code};
+    use crate::check::test::{check_source, count_by_code};
 
     /// Assigning to an undefined global inside a nested closure → reported.
     #[test]

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::{Emmyrc, FileId};
 
-use super::super::SemanticDatabase;
+use crate::semantic_db::SemanticDatabase;
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();

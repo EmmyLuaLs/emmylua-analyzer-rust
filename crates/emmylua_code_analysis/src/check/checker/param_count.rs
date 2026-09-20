@@ -13,6 +13,7 @@ use crate::DiagnosticCode;
 use crate::check::checker::param_type_check;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::infer::unify::{self, TplBindings};
+use crate::semantic_model::infer::vm::InferVm;
 use crate::{
     AsyncState, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
     SemanticId, TypeDef, VariadicType,
@@ -834,12 +835,9 @@ pub(crate) fn callable_functions(
             out
         }
         LuaType::TableConst(table) => {
-            crate::semantic_model::infer::vm::InferVm::setmetatable_call_candidate_for_table(
-                semantic_model,
-                table,
-            )
-            .into_iter()
-            .collect()
+            InferVm::setmetatable_call_candidate_for_table(semantic_model, table)
+                .into_iter()
+                .collect()
         }
         LuaType::Union(union) => union
             .into_vec()

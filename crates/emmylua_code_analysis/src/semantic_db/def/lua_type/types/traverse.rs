@@ -1,3 +1,4 @@
+use super::LuaInstanceType;
 use crate::TypeVisitTrait;
 
 use super::{
@@ -201,7 +202,7 @@ impl LuaTypeNode for VariadicType {
     }
 }
 
-impl LuaTypeNode for super::LuaInstanceType {
+impl LuaTypeNode for LuaInstanceType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
         stack.push(self.get_base());
     }
@@ -266,7 +267,7 @@ impl_type_visit_trait!(
     LuaAliasCallType,
     LuaGenericType,
     VariadicType,
-    super::LuaInstanceType,
+    LuaInstanceType,
     LuaMultiLineUnion,
     LuaArrayType,
     LuaConditionalType,

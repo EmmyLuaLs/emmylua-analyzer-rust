@@ -2,10 +2,12 @@
 
 use crate::DiagnosticCode;
 use crate::Emmyrc;
+use crate::check::{CheckConfig, check_file};
+use crate::{SemanticDatabase, SemanticModel, WorkspaceFolder};
 
-use super::{check_source, check_source_with_emmyrc, count_by_code};
+use super::{Diagnostic, check_source, check_source_with_emmyrc, count_by_code};
 
-fn check_with_code(source: &str, code: DiagnosticCode) -> Vec<super::Diagnostic> {
+fn check_with_code(source: &str, code: DiagnosticCode) -> Vec<Diagnostic> {
     let mut emmyrc = Emmyrc::default();
     emmyrc.diagnostics.enables.push(code);
     check_source_with_emmyrc(source, emmyrc)
@@ -38,9 +40,9 @@ fn test_library_file_has_no_diagnostics() {
     use std::sync::Arc;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
-    db.add_library_workspace(&crate::WorkspaceFolder::new(
+    db.add_library_workspace(&WorkspaceFolder::new(
         std::path::PathBuf::from("C:/libs/some-lib"),
         true,
     ));
@@ -51,9 +53,8 @@ fn test_library_file_has_no_diagnostics() {
         Some("local undefined_global = 1\nlocal x = 1\nx = \"string\"".to_string()),
     );
 
-    let model = crate::SemanticModel::new(&db, fid);
-    let diagnostics =
-        crate::check::check_file(&model, Arc::new(crate::check::CheckConfig::new(&emmyrc)));
+    let model = SemanticModel::new(&db, fid);
+    let diagnostics = check_file(&model, Arc::new(CheckConfig::new(&emmyrc)));
     assert_eq!(
         diagnostics.len(),
         0,
@@ -143,7 +144,7 @@ fn test_access_invisible_cross_file() {
     use crate::semantic_model::SemanticModel;
 
     let emmyrc = Arc::new(Emmyrc::default());
-    let mut db = crate::SemanticDatabase::new();
+    let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
     // Definition file: private field.
     let uri_b = Uri::from_str("file:///C:/ws/def.lua").unwrap();
@@ -160,10 +161,7 @@ fn test_access_invisible_cross_file() {
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
     let _ = fid_b;
     let model = SemanticModel::new(&db, fid);
-    let diagnostics = crate::check::check_file(
-        &model,
-        Arc::new(crate::check::CheckConfig::new(&emmyrc.clone())),
-    );
+    let diagnostics = check_file(&model, Arc::new(CheckConfig::new(&emmyrc.clone())));
     assert_eq!(
         count_by_code(&diagnostics, DiagnosticCode::AccessInvisible),
         1

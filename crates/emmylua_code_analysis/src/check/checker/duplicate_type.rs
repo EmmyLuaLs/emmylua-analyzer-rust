@@ -9,6 +9,7 @@ use emmylua_parser::{
 use rowan::TextRange;
 
 use crate::DiagnosticCode;
+use crate::semantic_db::def::TypeDef;
 use crate::semantic_db::def::TypeDefFlags;
 use crate::semantic_model::SemanticModel;
 
@@ -42,7 +43,7 @@ impl Checker for DuplicateTypeChecker {
 }
 
 /// (type_times, partial_times, constructor_times): meta definitions are skipped.
-fn count_flags(locations: &[crate::semantic_db::def::TypeDef]) -> (usize, usize, usize) {
+fn count_flags(locations: &[TypeDef]) -> (usize, usize, usize) {
     let (mut type_times, mut partial_times, mut constructor_times) = (0, 0, 0);
     for location in locations {
         let TypeDefFlags {

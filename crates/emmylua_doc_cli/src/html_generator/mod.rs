@@ -11,7 +11,8 @@ use emmylua_code_analysis::LuaType;
 use tera::Tera;
 
 use crate::OutputDestination;
-use crate::doc_model::{DocModel, DocTypeKey};
+use crate::doc_model::{DocGlobal, DocModel, DocTypeKey};
+use crate::markdown_generator::escape_type_name;
 use types::{HtmlDoc, NavGroup, NavItem, NavModel, NavTreeNode};
 
 use self::generators::{GenContext, build_global_doc, build_module_doc, build_type_doc};
@@ -172,7 +173,7 @@ fn build_link_map(model: &DocModel) -> std::collections::HashMap<String, String>
     map
 }
 
-fn global_documented(global: &crate::doc_model::DocGlobal) -> bool {
+fn global_documented(global: &DocGlobal) -> bool {
     !matches!(global.ty, LuaType::Ref(_) | LuaType::Def(_))
 }
 
@@ -273,7 +274,7 @@ fn group_key(name: &str) -> String {
 }
 
 fn escape(name: String) -> String {
-    super::markdown_generator::escape_type_name(&name)
+    escape_type_name(&name)
 }
 
 // ─── Module hierarchy tree ───────────────────────────────────────────────

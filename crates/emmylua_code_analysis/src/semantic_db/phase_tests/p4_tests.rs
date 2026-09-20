@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::SemanticDatabase;
-use crate::{Emmyrc, FileId, LuaType, SemanticModel, WorkspaceId};
+use crate::semantic_db::SemanticDatabase;
+use crate::{Emmyrc, FileId, LuaType, SemanticId, SemanticModel, WorkspaceId};
 
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
@@ -49,7 +49,7 @@ fn p4_new_file_does_not_full_rebuild() {
     assert_eq!(db.rebuild_metrics.full_index_source_scans(), 0);
     assert!(matches!(
         db.analysis().global_decl("M"),
-        Some(crate::SemanticId::Decl(_))
+        Some(SemanticId::Decl(_))
     ));
     assert_eq!(db.analysis().module_file_of("b"), Some(fid));
 }

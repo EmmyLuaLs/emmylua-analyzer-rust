@@ -1,7 +1,7 @@
 //! Correctness regression tests for inference/checking issues found in real projects.
 //! Each test here maps to a concrete false-positive/false-negative report.
 
-use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+use crate::{DiagnosticCode, FileId, LuaType, VirtualWorkspace};
 
 #[test]
 fn fix_table_insert_accepts_two_and_three_arg_forms() {
@@ -19,7 +19,7 @@ fn fix_table_insert_accepts_two_and_three_arg_forms() {
     );
 }
 
-fn local_type(ws: &VirtualWorkspace, file_id: crate::FileId, name: &str) -> LuaType {
+fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
     let model = ws.analysis.semantic_model(file_id);
     let facts = model.file_facts().expect("file facts");
     let decl = facts.decl_named(name).expect("local declaration");

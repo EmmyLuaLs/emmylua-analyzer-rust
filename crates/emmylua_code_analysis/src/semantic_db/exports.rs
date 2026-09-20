@@ -18,10 +18,10 @@ use emmylua_parser::{
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 
-use crate::FileId;
 use crate::semantic_db::def::{
     DeclKind, ExportKey, LuaMemberKey, ModuleExport, OwnerId, SemanticId, TypeDef, TypeScope,
 };
+use crate::{Emmyrc, FileId};
 
 use super::SemanticDatabase;
 use super::facts::FileFacts;
@@ -364,7 +364,7 @@ pub(crate) fn build_require_alias_contributions(
 
 fn require_alias_target(
     db: &SemanticDatabase,
-    config: &crate::Emmyrc,
+    config: &Emmyrc,
     facts: &FileFacts,
     root: &emmylua_parser::LuaSyntaxNode,
     expr: &LuaExpr,
@@ -389,7 +389,7 @@ fn require_alias_target(
 
 fn require_module_file_from_call(
     db: &SemanticDatabase,
-    config: &crate::Emmyrc,
+    config: &Emmyrc,
     call: &LuaCallExpr,
 ) -> Option<FileId> {
     let prefix = call.get_prefix_expr()?;

@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate::{LuaArrayType, LuaConditionalType, LuaGenericType, LuaMappedType};
 
 impl<'db> SemanticModel<'db> {
     /// Alias target type (after projection; generic parameter references keep `TplRef`, and instantiation is substituted by the caller).
@@ -62,7 +63,7 @@ impl<'db> SemanticModel<'db> {
                         mapped.param.1.attributes.clone(),
                     ),
                 );
-                ty = LuaType::Mapped(Arc::new(crate::LuaMappedType::new(
+                ty = LuaType::Mapped(Arc::new(LuaMappedType::new(
                     param,
                     mapped.value.clone(),
                     mapped.is_readonly,
@@ -220,7 +221,7 @@ impl<'db> SemanticModel<'db> {
                         None,
                     ),
                 );
-                LuaType::Mapped(Arc::new(crate::LuaMappedType::new(
+                LuaType::Mapped(Arc::new(LuaMappedType::new(
                     param,
                     value_ty,
                     mapped.is_readonly(),
@@ -407,7 +408,7 @@ impl<'db> SemanticModel<'db> {
                             .collect()
                     })
                     .unwrap_or_default();
-                LuaType::Generic(Arc::new(crate::LuaGenericType::new(base_id, params)))
+                LuaType::Generic(Arc::new(LuaGenericType::new(base_id, params)))
             }
             _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
         }
@@ -454,7 +455,7 @@ impl<'db> SemanticModel<'db> {
         let infer_params = state.leave_scope();
         let false_type = self.doc_type_lua_rich_scoped(file_id, when_false.get_syntax_id(), state);
 
-        LuaType::Conditional(Arc::new(crate::LuaConditionalType::new(
+        LuaType::Conditional(Arc::new(LuaConditionalType::new(
             checked_type,
             extends_type,
             true_type,
@@ -675,12 +676,12 @@ impl<'db> SemanticModel<'db> {
                             .collect()
                     })
                     .unwrap_or_default();
-                LuaType::Generic(Arc::new(crate::LuaGenericType::new(base_id, params)))
+                LuaType::Generic(Arc::new(LuaGenericType::new(base_id, params)))
             }
             LuaDocType::Array(array) => array
                 .get_type()
                 .map(|base| {
-                    LuaType::Array(Arc::new(crate::LuaArrayType::from_base_type(
+                    LuaType::Array(Arc::new(LuaArrayType::from_base_type(
                         self.doc_type_lua_rich_scoped(file_id, base.get_syntax_id(), state),
                     )))
                 })

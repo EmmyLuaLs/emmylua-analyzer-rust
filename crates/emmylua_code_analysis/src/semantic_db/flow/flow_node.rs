@@ -6,7 +6,7 @@ use internment::ArcIntern;
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
-use super::super::def::{LuaMemberKey, SemanticId};
+use crate::semantic_db::def::{LuaMemberKey, SemanticId};
 
 /// Effect summary carried on flow nodes (consumed by semantic_model/flow to avoid reparsing the AST during backtracking).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

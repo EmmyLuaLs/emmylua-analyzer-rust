@@ -10,6 +10,7 @@ use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxId, LuaTokenKind,
 };
 
+use crate::semantic_model::infer::callable::CallableCandidateSet;
 use crate::semantic_model::infer::function_solver::functions_compatible;
 use crate::semantic_model::infer::unify;
 use crate::semantic_model::infer::vm::unify_call_bindings;
@@ -171,21 +172,13 @@ fn index_expr_callable_candidates(
         let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
         let key = LuaMemberKey::Name(resolved.name.clone());
         let candidates = match &resolved.member_id {
-            Some(member_id) => {
-                crate::semantic_model::infer::callable::CallableCandidateSet::from_prefix_type_for_member(
-                    semantic_model,
-                    &prefix_ty,
-                    &key,
-                    member_id,
-                )
-            }
-            None => {
-                crate::semantic_model::infer::callable::CallableCandidateSet::from_prefix_type(
-                    semantic_model,
-                    &prefix_ty,
-                    &key,
-                )
-            }
+            Some(member_id) => CallableCandidateSet::from_prefix_type_for_member(
+                semantic_model,
+                &prefix_ty,
+                &key,
+                member_id,
+            ),
+            None => CallableCandidateSet::from_prefix_type(semantic_model, &prefix_ty, &key),
         };
         if !candidates.is_empty() {
             return candidates.into_candidates();

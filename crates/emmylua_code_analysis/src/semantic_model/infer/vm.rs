@@ -22,6 +22,12 @@ use crate::semantic_db::def::{
     SignatureDoc,
 };
 use crate::semantic_db::types::PrimitiveType;
+use crate::semantic_model::flow::type_of_expr_with_cast;
+use crate::semantic_model::member::{MemberInfo, table_const_class_type, table_metatable_type};
+use crate::semantic_model::type_eval::{
+    class_generic_map, eval_conditionals, expand_alias_generic, sanitize_unresolved_generics,
+    sanitize_unresolved_generics_with_model, substitute_named_refs,
+};
 use crate::{
     AsyncState, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind, LuaArrayType,
     LuaFunctionType, LuaGenericType, LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType,
@@ -29,8 +35,17 @@ use crate::{
     TypeVisibility, VariadicType,
 };
 
-use super::super::SemanticModel;
+use super::callable::CallableCandidateSet;
+use super::overload::{
+    CallArg, call_operator_self_type, match_call_candidate, pcall_callback_ret, pcall_return_type,
+    select_callable, select_callable_partial,
+};
 use super::unify;
+use crate::semantic_model::SemanticModel;
+use crate::{
+    GenericParam, LuaAliasCallType, LuaConditionalType, LuaInstanceType, LuaIntersectionType,
+    LuaMappedType, LuaMultiLineUnion,
+};
 
 #[derive(Debug, Clone)]
 pub enum Instr {
@@ -1301,8 +1316,7 @@ impl<'a> InferVm<'a> {
         owner_ty: &LuaType,
         key: &LuaMemberKey,
     ) -> Option<LuaType> {
-        let candidates =
-            super::callable::CallableCandidateSet::from_prefix_type(self.model, owner_ty, key);
+        let candidates = CallableCandidateSet::from_prefix_type(self.model, owner_ty, key);
         let mut types = Vec::new();
         for fun in candidates.candidates() {
             let ty = LuaType::DocFunction(Arc::new(fun.clone()));
@@ -1401,16 +1415,10 @@ impl<'a> InferVm<'a> {
                                     Some(info.typ.clone())
                                 }
                                 LuaType::TableConst(index_table)
-                                    if crate::semantic_model::member::table_const_class_type(
-                                        self.model,
-                                        index_table,
-                                    )
-                                    .is_some() =>
+                                    if table_const_class_type(self.model, index_table)
+                                        .is_some() =>
                                 {
-                                    crate::semantic_model::member::table_const_class_type(
-                                        self.model,
-                                        index_table,
-                                    )
+                                    table_const_class_type(self.model, index_table)
                                 }
                                 _ => None,
                             };
@@ -1450,14 +1458,14 @@ impl<'a> InferVm<'a> {
                 // first boolean slot, the rest come from the callback return.
                 "pcall" | "xpcall" => {
                     let callback_ret = args.first().and_then(|arg| {
-                        let call_args: Vec<super::overload::CallArg> = args[1..]
+                        let call_args: Vec<CallArg> = args[1..]
                             .iter()
-                            .map(|a| super::overload::CallArg {
+                            .map(|a| CallArg {
                                 ty: a.ty.clone(),
                                 closure_syntax: a.closure_syntax,
                             })
                             .collect();
-                        super::overload::pcall_callback_ret(
+                        pcall_callback_ret(
                             self.model,
                             &arg.ty,
                             arg.owner.as_ref(),
@@ -1466,10 +1474,7 @@ impl<'a> InferVm<'a> {
                         )
                     });
                     if let Some((callback_ret, include_error_string)) = callback_ret {
-                        return Value::plain(super::overload::pcall_return_type(
-                            callback_ret,
-                            include_error_string,
-                        ));
+                        return Value::plain(pcall_return_type(callback_ret, include_error_string));
                     }
                     return Value::plain(LuaType::Boolean);
                 }
@@ -1636,21 +1641,17 @@ impl<'a> InferVm<'a> {
         let class_map = callee
             .receiver
             .as_ref()
-            .and_then(|receiver| {
-                crate::semantic_model::type_eval::class_generic_map(self.model, receiver)
-            })
+            .and_then(|receiver| class_generic_map(self.model, receiver))
             .unwrap_or_default();
         for param in callee_fun.get_generic_params() {
             if bindings.contains_key(&param.get_tpl_id()) {
                 continue;
             }
             if let Some(default) = param.get_default_type() {
-                let default =
-                    crate::semantic_model::type_eval::substitute_named_refs(default, &class_map);
+                let default = substitute_named_refs(default, &class_map);
                 bindings.insert(param.get_tpl_id(), default);
             } else if let Some(constraint) = param.get_constraint() {
-                let constraint =
-                    crate::semantic_model::type_eval::substitute_named_refs(constraint, &class_map);
+                let constraint = substitute_named_refs(constraint, &class_map);
                 bindings.insert(param.get_tpl_id(), constraint);
             }
         }
@@ -1665,10 +1666,7 @@ impl<'a> InferVm<'a> {
             }
             for param in callee_fun.get_generic_params() {
                 if let Some(value) = bindings.get(&param.get_tpl_id()).cloned() {
-                    let new_value = crate::semantic_model::type_eval::substitute_named_refs(
-                        &value,
-                        &name_bindings,
-                    );
+                    let new_value = substitute_named_refs(&value, &name_bindings);
                     let new_value = unify::substitute(&new_value, &bindings);
                     if new_value != value {
                         changed = true;
@@ -1870,9 +1868,9 @@ impl<'a> InferVm<'a> {
                 // Returning Unknown may also mean a structural generic overload was selected
                 // (e.g. `fun(): unknown`). Only override the fallback when the actual callback
                 // has a matching structural (DocFunction-param) overload.
-                let call_args: Vec<super::overload::CallArg> = callback_args
+                let call_args: Vec<CallArg> = callback_args
                     .iter()
-                    .map(|a| super::overload::CallArg {
+                    .map(|a| CallArg {
                         ty: a.ty.clone(),
                         closure_syntax: a.closure_syntax,
                     })
@@ -1882,10 +1880,8 @@ impl<'a> InferVm<'a> {
                         fun.get_params()
                             .iter()
                             .any(|(_, ty)| matches!(ty, Some(LuaType::DocFunction(_))))
-                            && super::overload::match_call_candidate(
-                                self.model, fun, &call_args, false, None,
-                            )
-                            .is_some()
+                            && match_call_candidate(self.model, fun, &call_args, false, None)
+                                .is_some()
                     });
                 if has_structural_overload {
                     self.bind_callback_return(
@@ -1906,14 +1902,14 @@ impl<'a> InferVm<'a> {
         if (self.callback_call_depth > 0 || matches!(callee.ty, LuaType::Union(_)))
             && candidates.len() > 1
         {
-            let call_args: Vec<super::overload::CallArg> = args
+            let call_args: Vec<CallArg> = args
                 .iter()
-                .map(|arg| super::overload::CallArg {
+                .map(|arg| CallArg {
                     ty: arg.ty.clone(),
                     closure_syntax: arg.closure_syntax,
                 })
                 .collect();
-            let candidate_set = super::callable::CallableCandidateSet::new(candidates.clone());
+            let candidate_set = CallableCandidateSet::new(candidates.clone());
             let all_best = candidate_set.select_all(
                 self.model,
                 &call_args,
@@ -1940,19 +1936,15 @@ impl<'a> InferVm<'a> {
         let ret = callee
             .receiver
             .as_ref()
-            .and_then(|receiver| {
-                crate::semantic_model::type_eval::class_generic_map(self.model, receiver)
-            })
-            .map(|class_map| {
-                crate::semantic_model::type_eval::substitute_named_refs(&ret, &class_map)
-            })
+            .and_then(|receiver| class_generic_map(self.model, receiver))
+            .map(|class_map| substitute_named_refs(&ret, &class_map))
             .unwrap_or(ret);
         let call_self_ty = if colon_call {
             callee.receiver.as_ref().and_then(|receiver| {
                 receiver_class_type(self.model, receiver).or_else(|| Some(receiver.clone()))
             })
         } else {
-            super::overload::call_operator_self_type(self.model, &callee.ty).or_else(|| {
+            call_operator_self_type(self.model, &callee.ty).or_else(|| {
                 if matches!(callee.ty, LuaType::TableConst(_)) {
                     // For `setmetatable({}, { __call = function(self) ... end })`, the call
                     // operator's first param is the table itself, so `---@return self` should
@@ -1980,11 +1972,7 @@ impl<'a> InferVm<'a> {
         // Unbound generic params in the call result must not leak as bare TplRefs; degrade
         // them all to Unknown.
         let allowed_tpls: HashSet<GenericTplId> = HashSet::new();
-        let ret = crate::semantic_model::type_eval::sanitize_unresolved_generics_with_model(
-            self.model,
-            &ret,
-            &allowed_tpls,
-        );
+        let ret = sanitize_unresolved_generics_with_model(self.model, &ret, &allowed_tpls);
         let ret = self.expand_unpack_return(ret);
         let ret = self.expand_returned_variadic_function(ret, args, &callee_fun);
         Value::plain(ret)
@@ -2115,8 +2103,7 @@ impl<'a> InferVm<'a> {
             let Some(field_ty) = self.model.member_type(expected_ty, &member.key) else {
                 continue;
             };
-            let field_ty =
-                crate::semantic_model::type_eval::expand_alias_generic(self.model, &field_ty);
+            let field_ty = expand_alias_generic(self.model, &field_ty);
             let Some(fun) = callback_fun_from_param(self.model, &field_ty) else {
                 continue;
             };
@@ -2175,8 +2162,7 @@ impl<'a> InferVm<'a> {
             let mut ty = vm.run();
             // `---@as` / flow casts are attached to return expression nodes; flow queries can
             // give a more precise return type than bare VM (e.g. `{} --[[@as Promise<integer>]]`).
-            let flow_ty =
-                crate::semantic_model::flow::type_of_expr_with_cast(self.model, expr_syntax);
+            let flow_ty = type_of_expr_with_cast(self.model, expr_syntax);
             if !matches!(flow_ty, LuaType::Unknown | LuaType::Any) && flow_ty != ty {
                 ty = flow_ty;
             }
@@ -2337,10 +2323,7 @@ impl<'a> InferVm<'a> {
             },
             VariadicType::Multi(_) => return ret,
         };
-        let mut ret_ty = crate::semantic_model::type_eval::sanitize_unresolved_generics(
-            fun.get_ret(),
-            &HashSet::new(),
-        );
+        let mut ret_ty = sanitize_unresolved_generics(fun.get_ret(), &HashSet::new());
         // After degradation, an unbound `R...` should not retain the "unknown variadic return"
         // shape; treat it as Unknown directly.
         if let LuaType::Variadic(variadic) = &ret_ty
@@ -2436,8 +2419,8 @@ impl<'a> InferVm<'a> {
         }
         let ret = bind_signature_generics(callee_fun.get_ret(), callee_fun.get_generic_params());
         let ret = unify::substitute(&ret, bindings);
-        let ret = crate::semantic_model::type_eval::expand_alias_generic(self.model, &ret);
-        let ret = crate::semantic_model::type_eval::eval_conditionals(self.model, &ret);
+        let ret = expand_alias_generic(self.model, &ret);
+        let ret = eval_conditionals(self.model, &ret);
         // `---@param ... T...` + `---@return T`: T is bound at the call site to the whole
         // variadic sequence (tuple). In "return that variadic sequence" semantics, the tuple
         // must expand into multiple return slots rather than being returned as one tuple value.
@@ -2515,7 +2498,7 @@ impl<'a> InferVm<'a> {
         model: &SemanticModel,
         table: &InFiled<rowan::TextRange>,
     ) -> Option<LuaFunctionType> {
-        let metatable_ty = crate::semantic_model::member::table_metatable_type(model, table)?;
+        let metatable_ty = table_metatable_type(model, table)?;
         let call_info =
             model.member_info(&metatable_ty, &LuaMemberKey::Name(SmolStr::new("__call")))?;
         let call_file = call_info.file_id?;
@@ -3256,14 +3239,14 @@ impl<'a> InferVm<'a> {
         colon_call: bool,
         receiver: Option<&LuaType>,
     ) -> Option<(LuaFunctionType, unify::TplBindings)> {
-        let call_args: Vec<super::overload::CallArg> = args
+        let call_args: Vec<CallArg> = args
             .iter()
-            .map(|arg| super::overload::CallArg {
+            .map(|arg| CallArg {
                 ty: arg.ty.clone(),
                 closure_syntax: arg.closure_syntax,
             })
             .collect();
-        super::overload::select_callable(self.model, candidates, &call_args, colon_call, receiver)
+        select_callable(self.model, candidates, &call_args, colon_call, receiver)
     }
 
     /// Fallback selection when no candidate fully matches: allow a plain `... T` to infer
@@ -3275,16 +3258,14 @@ impl<'a> InferVm<'a> {
         colon_call: bool,
         receiver: Option<&LuaType>,
     ) -> Option<(LuaFunctionType, unify::TplBindings)> {
-        let call_args: Vec<super::overload::CallArg> = args
+        let call_args: Vec<CallArg> = args
             .iter()
-            .map(|arg| super::overload::CallArg {
+            .map(|arg| CallArg {
                 ty: arg.ty.clone(),
                 closure_syntax: arg.closure_syntax,
             })
             .collect();
-        super::overload::select_callable_partial(
-            self.model, candidates, &call_args, colon_call, receiver,
-        )
+        select_callable_partial(self.model, candidates, &call_args, colon_call, receiver)
     }
 }
 
@@ -3331,7 +3312,7 @@ fn constructor_candidate(
                 .members_of_owner(&SemanticId::name(def.name.clone()))
                 .into_iter()
                 .find(|member| member.name == attribute.name)
-                .map(|member| crate::semantic_model::member::MemberInfo {
+                .map(|member| MemberInfo {
                     key: key.clone(),
                     typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
                     id: Some(member.id.clone()),
@@ -3584,7 +3565,7 @@ pub(crate) fn replace_self_type(ty: &LuaType, self_ty: &LuaType) -> LuaType {
                 .map(|t| replace_self_type(t, self_ty))
                 .collect(),
         ))),
-        Intersection(intersection) => Intersection(Arc::new(crate::LuaIntersectionType::new(
+        Intersection(intersection) => Intersection(Arc::new(LuaIntersectionType::new(
             intersection
                 .get_types()
                 .iter()
@@ -3614,19 +3595,19 @@ pub(crate) fn replace_self_type(ty: &LuaType, self_ty: &LuaType) -> LuaType {
                     .collect(),
             ),
         })),
-        Call(call) => Call(Arc::new(crate::LuaAliasCallType::new(
+        Call(call) => Call(Arc::new(LuaAliasCallType::new(
             call.get_call_kind(),
             call.get_operands()
                 .iter()
                 .map(|t| replace_self_type(t, self_ty))
                 .collect(),
         ))),
-        Instance(instance) => Instance(Arc::new(crate::LuaInstanceType::new(
+        Instance(instance) => Instance(Arc::new(LuaInstanceType::new(
             replace_self_type(instance.get_base(), self_ty),
             instance.get_range().clone(),
         ))),
         TypeGuard(guard) => TypeGuard(Arc::new(replace_self_type(guard, self_ty))),
-        Conditional(conditional) => Conditional(Arc::new(crate::LuaConditionalType::new(
+        Conditional(conditional) => Conditional(Arc::new(LuaConditionalType::new(
             replace_self_type(conditional.get_checked_type(), self_ty),
             replace_self_type(conditional.get_extends_type(), self_ty),
             replace_self_type(conditional.get_true_type(), self_ty),
@@ -3634,13 +3615,13 @@ pub(crate) fn replace_self_type(ty: &LuaType, self_ty: &LuaType) -> LuaType {
             conditional.get_infer_params().to_vec(),
             conditional.has_new,
         ))),
-        Mapped(mapped) => Mapped(Arc::new(crate::LuaMappedType::new(
+        Mapped(mapped) => Mapped(Arc::new(LuaMappedType::new(
             mapped.param.clone(),
             replace_self_type(&mapped.value, self_ty),
             mapped.is_readonly,
             mapped.is_optional,
         ))),
-        MultiLineUnion(union) => MultiLineUnion(Arc::new(crate::LuaMultiLineUnion::new(
+        MultiLineUnion(union) => MultiLineUnion(Arc::new(LuaMultiLineUnion::new(
             union
                 .get_unions()
                 .iter()
@@ -3792,10 +3773,7 @@ fn super_generic_type(
                                 })
                                 .collect();
                             ty = unify::substitute(&ty, &tpl_bindings);
-                            ty = crate::semantic_model::type_eval::substitute_named_refs(
-                                &ty,
-                                &name_bindings,
-                            );
+                            ty = substitute_named_refs(&ty, &name_bindings);
                         }
                         params.push(ty);
                     }
@@ -3967,8 +3945,7 @@ pub(crate) fn unify_call_bindings(
                     .unwrap_or_else(|| arg.clone()),
                 other => other.clone(),
             };
-            let expanded_arg =
-                crate::semantic_model::type_eval::expand_alias_generic(model, &expanded_arg);
+            let expanded_arg = expand_alias_generic(model, &expanded_arg);
             if &expanded_arg != arg {
                 return unify_call_bindings(model, param, &expanded_arg, bindings);
             }
@@ -4317,7 +4294,7 @@ pub fn infer_expr_vm(model: &SemanticModel, expr_syntax: LuaSyntaxId) -> LuaType
 /// Extract the callback function type from a param type, supporting `fun(...)` and unions
 /// containing function components (`string | fun(...)`).
 fn callback_fun_from_param(model: &SemanticModel, ty: &LuaType) -> Option<LuaFunctionType> {
-    let ty = crate::semantic_model::type_eval::expand_alias_generic(model, ty);
+    let ty = expand_alias_generic(model, ty);
     match ty {
         LuaType::DocFunction(fun) => Some(fun.as_ref().clone()),
         LuaType::Ref(id) | LuaType::Def(id)
@@ -4842,17 +4819,17 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
             }
             ty.clone()
         }
-        LuaType::Call(call) => LuaType::Call(Arc::new(crate::LuaAliasCallType::new(
+        LuaType::Call(call) => LuaType::Call(Arc::new(LuaAliasCallType::new(
             call.get_call_kind(),
             call.get_operands()
                 .iter()
                 .map(|t| bind_signature_generics(t, generics))
                 .collect(),
         ))),
-        LuaType::Mapped(mapped) => LuaType::Mapped(Arc::new(crate::LuaMappedType::new(
+        LuaType::Mapped(mapped) => LuaType::Mapped(Arc::new(LuaMappedType::new(
             (
                 mapped.param.0,
-                crate::GenericParam::new(
+                GenericParam::new(
                     mapped.param.1.name.clone(),
                     mapped
                         .param
@@ -4883,7 +4860,7 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .collect(),
         ))),
         LuaType::Conditional(conditional) => {
-            LuaType::Conditional(Arc::new(crate::LuaConditionalType::new(
+            LuaType::Conditional(Arc::new(LuaConditionalType::new(
                 bind_signature_generics(conditional.get_checked_type(), generics),
                 bind_signature_generics(conditional.get_extends_type(), generics),
                 bind_signature_generics(conditional.get_true_type(), generics),
@@ -4899,7 +4876,7 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .collect(),
         )),
         LuaType::Intersection(intersection) => {
-            LuaType::Intersection(Arc::new(crate::LuaIntersectionType::new(
+            LuaType::Intersection(Arc::new(LuaIntersectionType::new(
                 intersection
                     .get_types()
                     .iter()

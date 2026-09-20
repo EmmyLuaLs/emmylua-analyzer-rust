@@ -3,8 +3,11 @@ use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
 
-use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeScope};
+use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind, TypeScope};
 use crate::semantic_model::infer::unify::{self, TplBindings};
+use crate::semantic_model::type_eval::{
+    eval_conditionals, expand_alias_generic, substitute_named_refs,
+};
 use crate::{
     FileId, GenericTplId, InFiled, LuaMemberKey, LuaType, LuaTypeDeclId, LuaTypeIdentifier,
     WorkspaceId,
@@ -13,6 +16,8 @@ use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
 use super::SemanticModel;
+use super::infer::vm::reassign_function_generics_to_func_ids;
+use crate::VariadicType;
 
 /// Maximum inheritance/parent-type depth expanded during member lookup.
 ///
@@ -174,7 +179,7 @@ fn direct_member_info_alias(
             return None;
         }
         let def = type_def_of(model, &id)?;
-        if def.kind != crate::semantic_db::def::TypeDefKind::Alias {
+        if def.kind != TypeDefKind::Alias {
             return direct_member_info(model, &current, key);
         }
         visited.push(id.clone());
@@ -190,7 +195,7 @@ fn direct_member_info(
     match prefix_type {
         LuaType::Ref(id) | LuaType::Def(id) => {
             let def = type_def_of(model, id)?;
-            if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
+            if def.kind == TypeDefKind::Alias {
                 return direct_member_info_alias(model, prefix_type, key);
             }
             let mut visited = Vec::new();
@@ -230,9 +235,8 @@ fn direct_member_info(
         }
         LuaType::Generic(generic) => {
             let def = type_def_of(model, &generic.get_base_type_id())?;
-            if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
-                let expanded =
-                    crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
+            if def.kind == TypeDefKind::Alias {
+                let expanded = expand_alias_generic(model, prefix_type);
                 return direct_member_info(model, &expanded, key);
             }
             let bindings: TplBindings = generic
@@ -560,7 +564,7 @@ fn collect_members(
             if let Some(def) = type_def_of(model, decl_id) {
                 // Alias: collect members of the alias target instead of looking for `@field` on the alias
                 // definition itself. The visited set also guards recursive aliases.
-                if def.kind == crate::semantic_db::def::TypeDefKind::Alias {
+                if def.kind == TypeDefKind::Alias {
                     if visited.contains(&def.id) {
                         return;
                     }
@@ -636,10 +640,9 @@ fn collect_members(
         // Generic instance: base type members + argument substitution.
         LuaType::Generic(generic) => {
             if let Some(def) = type_def_of(model, &generic.get_base_type_id())
-                && def.kind == crate::semantic_db::def::TypeDefKind::Alias
+                && def.kind == TypeDefKind::Alias
             {
-                let expanded =
-                    crate::semantic_model::type_eval::expand_alias_generic(model, prefix_type);
+                let expanded = expand_alias_generic(model, prefix_type);
                 collect_members(model, &expanded, None, None, visited, out, filter);
                 return;
             }
@@ -866,8 +869,7 @@ fn expand_table_multi_return_member(
 }
 
 /// Flattens a multi-return type such as `(boolean, any...)` into a concrete slot list.
-fn flatten_table_multi_return(variadic: &crate::VariadicType) -> Vec<LuaType> {
-    use crate::VariadicType;
+fn flatten_table_multi_return(variadic: &VariadicType) -> Vec<LuaType> {
     match variadic {
         VariadicType::Multi(types) => types
             .iter()
@@ -1082,20 +1084,20 @@ fn member_info_of(
     if let LuaType::DocFunction(fun) = &typ
         && !fun.get_generic_params().is_empty()
     {
-        let fun = super::infer::vm::reassign_function_generics_to_func_ids(fun.as_ref().clone());
+        let fun = reassign_function_generics_to_func_ids(fun.as_ref().clone());
         typ = LuaType::DocFunction(Arc::new(fun));
     }
     if let Some(bindings) = bindings {
         typ = unify::substitute(&typ, bindings);
     }
     if let Some(name_bindings) = name_bindings {
-        typ = crate::semantic_model::type_eval::substitute_named_refs(&typ, name_bindings);
+        typ = substitute_named_refs(&typ, name_bindings);
     }
     // After substituting class/generic arguments, member types still need alias expansion and conditional evaluation:
     // `Mock<fun(...)>.ctx.calls`'s field is `MockContextCalls<MockParameters<T>>[]`;
     // without expansion it stays `Alias<...>[]`, so rendering/diagnostics/later access cannot see `any[]`.
-    typ = crate::semantic_model::type_eval::expand_alias_generic(model, &typ);
-    typ = crate::semantic_model::type_eval::eval_conditionals(model, &typ);
+    typ = expand_alias_generic(model, &typ);
+    typ = eval_conditionals(model, &typ);
 
     Some(MemberInfo {
         key: member_key_to_lua(&member.key),
@@ -1170,8 +1172,9 @@ mod tests {
         SemanticDatabase,
     };
 
-    use super::super::SemanticModel;
     use super::*;
+    use crate::VirtualWorkspace;
+    use crate::semantic_model::SemanticModel;
 
     fn model_of(source: &str) -> &'static SemanticModel<'static> {
         let emmyrc = Arc::new(Emmyrc::default());
@@ -1198,7 +1201,7 @@ mod tests {
     #[test]
     fn test_std_member_resolution() {
         use emmylua_parser::{LuaAstNode, LuaIndexExpr};
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def("local x = math.randomseed(os.time())");
         let model = ws.analysis.semantic_model(file_id);
         let chunk = model.chunk().unwrap();
@@ -1229,7 +1232,7 @@ mod tests {
     /// String values can complete members through the string library (`s.sub` / `s:sub`).
     #[test]
     fn test_member_infos_string_library() {
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def("local s = 'abc'");
         let model = ws.analysis.semantic_model(file_id);
         let infos = model.member_infos(&LuaType::String);

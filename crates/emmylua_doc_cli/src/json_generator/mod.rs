@@ -1,4 +1,5 @@
 use crate::OutputDestination;
+use crate::doc_model::DocModel;
 use emmylua_code_analysis::EmmyLuaAnalysis;
 
 mod export;
@@ -8,7 +9,7 @@ pub fn generate_json(
     analysis: &EmmyLuaAnalysis,
     output: OutputDestination,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let model = crate::doc_model::DocModel::build(analysis);
+    let model = DocModel::build(analysis);
 
     let output = match output {
         OutputDestination::File(output) if output.extension() == Some("json".as_ref()) => {

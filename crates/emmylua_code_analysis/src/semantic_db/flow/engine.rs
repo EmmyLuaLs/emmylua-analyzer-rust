@@ -14,7 +14,7 @@ use emmylua_parser::{
     LuaIndexExpr, LuaLocalStat, LuaRepeatStat, LuaVarExpr, LuaWhileStat, UnaryOperator,
 };
 
-use super::super::def::SemanticId;
+use super::comment::bind_comment;
 use super::{FlowEffect, FlowId, FlowNodeKind, LuaClosureId, binder::FlowBinder};
 use super::{
     exprs::is_binary_logical,
@@ -25,6 +25,7 @@ use super::{
         static_literal_truthiness, static_number_value,
     },
 };
+use crate::semantic_db::def::SemanticId;
 
 /// Task: carries the input current and produces one FlowId delivered to the continuation on the stack
 enum Task {
@@ -563,9 +564,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 self.stack.push(Continuation::LocalFuncDone { current });
                 self.spawn_children(LuaAst::LuaLocalFuncStat(local_func_stat), current)
             }
-            LuaAst::LuaComment(comment) => {
-                Step::Done(super::comment::bind_comment(self.binder, comment, current))
-            }
+            LuaAst::LuaComment(comment) => Step::Done(bind_comment(self.binder, comment, current)),
             // exprs
             LuaAst::LuaNameExpr(_)
             | LuaAst::LuaIndexExpr(_)

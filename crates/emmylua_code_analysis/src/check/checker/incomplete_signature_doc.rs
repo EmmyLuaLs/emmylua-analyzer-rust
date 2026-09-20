@@ -6,6 +6,7 @@
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaReturnStat, LuaStat, LuaSyntaxKind};
 
 use crate::DiagnosticCode;
+use crate::LuaType;
 use crate::semantic_db::def::{DeclKind, Signature};
 use crate::semantic_model::SemanticModel;
 
@@ -121,12 +122,10 @@ fn check_signature(
         doc_return_len = doc_return_len.max(*row_len);
     }
     let variadic_overload = docs.return_overloads.iter().any(|(_, syntax)| {
-        matches!(
-            semantic_model.doc_type_lua(*syntax),
-            crate::LuaType::Variadic(_)
-        ) || syntax
-            .to_node_from_root(&root)
-            .is_some_and(|node| node.text().to_string().ends_with("..."))
+        matches!(semantic_model.doc_type_lua(*syntax), LuaType::Variadic(_))
+            || syntax
+                .to_node_from_root(&root)
+                .is_some_and(|node| node.text().to_string().ends_with("..."))
     });
     if variadic_overload {
         return;

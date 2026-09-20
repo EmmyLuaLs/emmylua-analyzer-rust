@@ -13,6 +13,7 @@ use crate::DiagnosticCode;
 use crate::{Emmyrc, SemanticDatabase, SemanticModel};
 
 use super::{Diagnostic, check_source, count_by_code};
+use crate::check::{CheckConfig, check_file};
 
 /// `(file) Foo` defined in another file does not affect `Foo` in the current file.
 fn check_with_other_file(other_source: &str, main_source: &str) -> Vec<Diagnostic> {
@@ -27,8 +28,8 @@ fn check_with_other_file(other_source: &str, main_source: &str) -> Vec<Diagnosti
     db.update_main_root(PathBuf::from("C:/ws"));
 
     let model = SemanticModel::new(&db, main_file);
-    let config = Arc::new(crate::check::CheckConfig::new(&emmyrc));
-    crate::check::check_file(&model, config)
+    let config = Arc::new(CheckConfig::new(&emmyrc));
+    check_file(&model, config)
 }
 
 /// Same-file public + internal same-name type → reported.

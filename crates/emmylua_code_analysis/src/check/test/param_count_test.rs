@@ -2,10 +2,11 @@
 
 use crate::DiagnosticCode;
 use crate::Emmyrc;
+use crate::VirtualWorkspace;
 
-use super::{check_source, check_source_with_emmyrc, count_by_code};
+use super::{Diagnostic, check_source, check_source_with_emmyrc, count_by_code};
 
-fn check_with_codes(source: &str, codes: &[DiagnosticCode]) -> Vec<super::Diagnostic> {
+fn check_with_codes(source: &str, codes: &[DiagnosticCode]) -> Vec<Diagnostic> {
     let mut emmyrc = Emmyrc::default();
     for code in codes {
         emmyrc.diagnostics.enables.push(*code);
@@ -135,7 +136,7 @@ C.name(C, 1)",
 
 #[test]
 fn test_table_insert_overload_accepts_both_forms() {
-    let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
     assert!(ws.has_no_diagnostic(
         DiagnosticCode::RedundantParameter,
         r#"

@@ -3,9 +3,9 @@
 use crate::DiagnosticCode;
 use crate::Emmyrc;
 
-use super::{check_source_with_emmyrc, count_by_code};
+use super::{Diagnostic, check_source_with_emmyrc, count_by_code};
 
-fn check_with_code(source: &str, code: DiagnosticCode) -> Vec<super::Diagnostic> {
+fn check_with_code(source: &str, code: DiagnosticCode) -> Vec<Diagnostic> {
     let mut emmyrc = Emmyrc::default();
     emmyrc.diagnostics.enables.push(code);
     check_source_with_emmyrc(source, emmyrc)

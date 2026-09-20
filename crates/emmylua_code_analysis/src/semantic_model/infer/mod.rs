@@ -26,9 +26,10 @@ pub use vm::infer_doc_func;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxId};
 
-use crate::LuaType;
+use crate::{LuaType, SemanticId, VariadicType};
 
 use super::SemanticModel;
+use super::type_eval::{eval_conditionals, expand_alias_generic};
 
 #[cfg(test)]
 mod legacy_tests;
@@ -89,7 +90,7 @@ pub fn infer_call_with_bindings(
                 let resolved = model.resolve_member(index_expr)?;
                 let member_id = resolved.member_id?;
                 let member_file = match &member_id {
-                    crate::SemanticId::Member(key) => key.file_id,
+                    SemanticId::Member(key) => key.file_id,
                     _ => return None,
                 };
                 let member = model.file_facts_of(member_file)?.member_by_id(&member_id)?;
@@ -125,8 +126,8 @@ pub fn infer_call_with_bindings(
 
     // Substitute the return type.
     let ret = unify::substitute(callee_fun.get_ret(), &bindings);
-    let ret = super::type_eval::expand_alias_generic(model, &ret);
-    let ret = super::type_eval::eval_conditionals(model, &ret);
+    let ret = expand_alias_generic(model, &ret);
+    let ret = eval_conditionals(model, &ret);
     Some((ret, bindings))
 }
 
@@ -165,10 +166,10 @@ pub fn infer_expr_list_types(
         match &expr_type {
             LuaType::Variadic(variadic) => {
                 match variadic.as_ref() {
-                    crate::VariadicType::Base(base) => {
+                    VariadicType::Base(base) => {
                         value_types.push((base.clone(), expr.get_range()));
                     }
-                    crate::VariadicType::Multi(types) => {
+                    VariadicType::Multi(types) => {
                         for typ in types {
                             value_types.push((typ.clone(), expr.get_range()));
                         }

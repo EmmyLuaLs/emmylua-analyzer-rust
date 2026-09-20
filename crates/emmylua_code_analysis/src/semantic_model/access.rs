@@ -1,4 +1,7 @@
 use super::prelude::*;
+use crate::check::checker::generic_constraint_mismatch::resolved_call_signatures;
+use crate::check::checker::param_count::callable_functions;
+use crate::check::checker::param_type_check::callable_candidates_uncached;
 
 impl<'db> SemanticModel<'db> {
     /// Currently configured runtime version (used for `---@version` visibility checks).
@@ -499,7 +502,7 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().callable_functions.get(ty) {
             return cached.clone();
         }
-        let value = crate::check::checker::param_count::callable_functions(self, ty);
+        let value = callable_functions(self, ty);
         self.cache
             .borrow_mut()
             .callable_functions
@@ -566,8 +569,7 @@ impl<'db> SemanticModel<'db> {
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
-        let mut out =
-            crate::check::checker::param_type_check::callable_candidates_uncached(self, callee);
+        let mut out = callable_candidates_uncached(self, callee);
         // The diagnostic path may only project the callee value type; append the
         // full signature candidates (main + `---@overload`) for name callees.
         if let LuaExpr::NameExpr(name_expr) = callee
@@ -596,8 +598,7 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
-        let value =
-            crate::check::checker::param_type_check::callable_candidates_uncached(self, callee);
+        let value = callable_candidates_uncached(self, callee);
         self.cache
             .borrow_mut()
             .callable_candidates
@@ -685,15 +686,14 @@ impl<'db> SemanticModel<'db> {
             return cached.clone();
         }
         let analysis = self.call_site_analysis(call_expr);
-        let signatures =
-            crate::check::checker::generic_constraint_mismatch::resolved_call_signatures(
-                self,
-                call_expr,
-                &analysis.candidates,
-                &analysis.arg_types,
-                analysis.colon_call,
-                &analysis.receiver_ty,
-            );
+        let signatures = resolved_call_signatures(
+            self,
+            call_expr,
+            &analysis.candidates,
+            &analysis.arg_types,
+            analysis.colon_call,
+            &analysis.receiver_ty,
+        );
         self.cache
             .borrow_mut()
             .call_site_signatures

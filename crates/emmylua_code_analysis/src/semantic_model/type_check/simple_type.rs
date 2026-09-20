@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use crate::{LuaType, VariadicType};
+use crate::{LuaType, LuaTypeDeclId, VariadicType};
 
 use super::TypeCheckResult;
 use super::context::TypeCheckContext;
@@ -304,7 +304,7 @@ fn check_base_type_for_ref_compact(
 /// Alias → base type name (walk the alias chain to find a non-alias base name). Since semantic has no origin type, fall back to direct name matching.
 fn base_type_name_of_ref(
     context: &mut TypeCheckContext,
-    id: &crate::LuaTypeDeclId,
+    id: &LuaTypeDeclId,
     _check_guard: TypeCheckGuard,
 ) -> Option<&'static str> {
     if context.is_alias(id) {

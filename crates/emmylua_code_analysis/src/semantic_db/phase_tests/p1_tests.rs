@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use emmylua_parser::VisibilityKind;
 
-use super::super::SemanticDatabase;
-use super::super::def::{ExportKey, OwnerId, TypeScope};
+use crate::semantic_db::SemanticDatabase;
+use crate::semantic_db::def::{ExportKey, OwnerId, TypeScope};
 use crate::{Emmyrc, FileId};
 
 fn setup() -> SemanticDatabase {
