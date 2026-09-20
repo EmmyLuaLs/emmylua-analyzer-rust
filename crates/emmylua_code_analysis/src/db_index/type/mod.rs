@@ -345,48 +345,52 @@ impl LuaTypeIndex {
     ) -> Option<impl Iterator<Item = &'a LuaType> + 'a> {
         self.supers.get(decl_id).map(move |supers| {
             let mut visited = HashSet::new();
+            let mut pending = Vec::new();
             supers.iter().map(|s| &s.value).filter(move |super_type| {
                 visited.clear();
-                !self.is_cyclic_super_edge(decl_id, super_type, &mut visited)
+                pending.clear();
+                !self.is_cyclic_super_edge(decl_id, super_type, &mut pending, &mut visited)
             })
         })
     }
 
-    fn is_cyclic_super_edge(
-        &self,
-        decl_id: &LuaTypeDeclId,
-        super_type: &LuaType,
-        visited: &mut HashSet<LuaTypeDeclId>,
+    fn is_cyclic_super_edge<'a>(
+        &'a self,
+        check_base: &'a LuaTypeDeclId,
+        super_type: &'a LuaType,
+        pending: &mut Vec<&'a LuaType>,
+        visited: &mut HashSet<&'a LuaTypeDeclId>,
     ) -> bool {
-        let Some(super_id) = super_type_base_decl_id(super_type) else {
-            return false;
-        };
+        pending.push(super_type);
+        while let Some(current) = pending.pop() {
+            if push_composite_types(current, pending) {
+                continue;
+            }
 
-        self.super_reaches(super_id, decl_id, visited)
-    }
+            let id = match current {
+                LuaType::Ref(id) | LuaType::Def(id) => id,
+                LuaType::Generic(generic) => generic.get_base_type_id_ref(),
+                _ => continue,
+            };
 
-    fn super_reaches(
-        &self,
-        current_id: &LuaTypeDeclId,
-        target_id: &LuaTypeDeclId,
-        visited: &mut HashSet<LuaTypeDeclId>,
-    ) -> bool {
-        if current_id == target_id {
-            return true;
+            if !visited.insert(id) {
+                continue;
+            }
+
+            if let Some(origin) = self.get_type_decl(id).and_then(|decl| decl.get_alias_ref()) {
+                pending.push(origin);
+                continue;
+            }
+
+            if id == check_base {
+                return true;
+            }
+
+            if let Some(supers) = self.supers.get(id) {
+                pending.extend(supers.iter().map(|s| &s.value));
+            }
         }
-
-        if !visited.insert(current_id.clone()) {
-            return false;
-        }
-
-        let Some(supers) = self.supers.get(current_id) else {
-            return false;
-        };
-
-        supers
-            .iter()
-            .filter_map(|super_type| super_type_base_decl_id(&super_type.value))
-            .any(|super_id| self.super_reaches(super_id, target_id, visited))
+        false
     }
 
     /// Get all direct subclasses of a given type
@@ -526,6 +530,27 @@ impl LuaTypeIndex {
     }
 }
 
+fn push_composite_types<'a>(typ: &'a LuaType, pending: &mut Vec<&'a LuaType>) -> bool {
+    match typ {
+        LuaType::Intersection(intersection) => {
+            pending.extend(intersection.get_types());
+            true
+        }
+        LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Nullable(ty) => {
+                pending.push(ty);
+                true
+            }
+            LuaUnionType::Multi(types) => {
+                pending.extend(types.get_types());
+                true
+            }
+            LuaUnionType::Basic(_) => false,
+        },
+        _ => false,
+    }
+}
+
 pub(crate) fn super_type_base_decl_id(super_type: &LuaType) -> Option<&LuaTypeDeclId> {
     match super_type {
         LuaType::Ref(id) => Some(id),
@@ -586,18 +611,18 @@ impl LuaIndex for LuaTypeIndex {
     }
 }
 
+#[inline]
 pub fn get_real_type<'a>(db: &'a DbIndex, typ: &'a LuaType) -> Option<&'a LuaType> {
     get_real_type_with_depth(db, typ, 0)
 }
 
+#[inline]
 fn get_real_type_with_depth<'a>(
     db: &'a DbIndex,
     typ: &'a LuaType,
     depth: u32,
 ) -> Option<&'a LuaType> {
-    const MAX_RECURSION_DEPTH: u32 = 10;
-
-    if depth >= MAX_RECURSION_DEPTH {
+    if depth >= 32 {
         return Some(typ);
     }
 
