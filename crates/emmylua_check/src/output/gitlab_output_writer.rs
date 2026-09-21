@@ -43,18 +43,30 @@ impl GitlabOutputWriter {
                 if let Some(parent) = path.parent()
                     && !parent.exists()
                 {
-                    std::fs::create_dir_all(parent).unwrap();
+                    std::fs::create_dir_all(parent).unwrap_or_else(|error| {
+                        panic!(
+                            "failed to create GitLab Code Quality report directory {}: {error}",
+                            parent.display()
+                        )
+                    });
                 }
-                Some(File::create(path).unwrap())
+                Some(File::create(&path).unwrap_or_else(|error| {
+                    panic!(
+                        "failed to create GitLab Code Quality report {}: {error}",
+                        path.display()
+                    )
+                }))
             }
         };
 
+        // GitLab requires paths relative to the repository, not the analyzed
+        // workspace (which may be a subdirectory such as `src`).
         let project_root = std::env::var_os("CI_PROJECT_DIR")
             .filter(|path| !path.is_empty())
             .map(PathBuf::from)
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or(workspace);
-        let project_root = project_root.canonicalize().unwrap_or(project_root);
+        let project_root = normalize_path(&project_root);
 
         Self {
             output,
@@ -69,7 +81,14 @@ impl OutputWriter for GitlabOutputWriter {
         let Some(file_path) = db.get_vfs().get_file_path(&file_id) else {
             return;
         };
-        let path = repository_relative_path(&self.project_root, file_path);
+        let Some(path) = repository_relative_path(&self.project_root, file_path) else {
+            eprintln!(
+                "emmylua_check: skipped GitLab Code Quality findings for {} because it is outside the repository root {}",
+                file_path.display(),
+                self.project_root.display()
+            );
+            return;
+        };
 
         for diagnostic in diagnostics {
             self.findings.push(convert_diagnostic(&path, &diagnostic));
@@ -77,11 +96,16 @@ impl OutputWriter for GitlabOutputWriter {
     }
 
     fn finish(&mut self) {
-        let report = serde_json::to_string_pretty(&self.findings).unwrap();
+        let report = serde_json::to_string_pretty(&self.findings)
+            .expect("failed to serialize GitLab Code Quality report");
 
         if let Some(output) = self.output.as_mut() {
-            output.write_all(report.as_bytes()).unwrap();
-            output.write_all(b"\n").unwrap();
+            output
+                .write_all(report.as_bytes())
+                .expect("failed to write GitLab Code Quality report");
+            output
+                .write_all(b"\n")
+                .expect("failed to finish GitLab Code Quality report");
         } else {
             println!("{report}");
         }
@@ -113,6 +137,8 @@ fn convert_diagnostic(path: &str, diagnostic: &Diagnostic) -> GitlabCodeQualityF
 }
 
 fn gitlab_severity(severity: Option<DiagnosticSeverity>) -> &'static str {
+    // GitLab has no direct equivalents for all LSP severities. Keep errors and
+    // warnings distinct while grouping non-actionable information and hints.
     match severity {
         Some(DiagnosticSeverity::ERROR) => "major",
         Some(DiagnosticSeverity::WARNING) => "minor",
@@ -132,16 +158,25 @@ fn fingerprint(check_name: &str, path: &str, begin: u32, description: &str) -> S
     format!("{:x}", hasher.finalize())
 }
 
-fn repository_relative_path(project_root: &std::path::Path, file_path: &std::path::Path) -> String {
-    let project_root = strip_extended_prefix(project_root);
-    let file_path = strip_extended_prefix(file_path);
-    let relative = file_path.strip_prefix(&project_root).unwrap_or(&file_path);
+fn repository_relative_path(
+    project_root: &std::path::Path,
+    file_path: &std::path::Path,
+) -> Option<String> {
+    let project_root = normalize_path(project_root);
+    let file_path = normalize_path(file_path);
+    let relative = file_path.strip_prefix(&project_root).ok()?;
     let normalized = relative.to_string_lossy().replace('\\', "/");
-    normalized
+    let normalized = normalized
         .strip_prefix("./")
         .unwrap_or(&normalized)
         .trim_start_matches('/')
-        .to_string()
+        .to_string();
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+fn normalize_path(path: &std::path::Path) -> PathBuf {
+    let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    strip_extended_prefix(&normalized)
 }
 
 fn strip_extended_prefix(path: &std::path::Path) -> PathBuf {
@@ -252,9 +287,20 @@ mod tests {
         let path = repository_relative_path(
             std::path::Path::new("/build/project"),
             std::path::Path::new("/build/project/src/main.lua"),
-        );
+        )
+        .unwrap();
 
         assert_that!(path, eq("src/main.lua"));
+    }
+
+    #[gtest]
+    fn file_outside_the_repository_root_is_rejected() {
+        let path = repository_relative_path(
+            std::path::Path::new("/build/project"),
+            std::path::Path::new("/build/shared/main.lua"),
+        );
+
+        assert_that!(path, none());
     }
 
     #[gtest]
@@ -263,7 +309,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let output_path = std::env::temp_dir().join(format!("emmylua-check-gitlab-{unique}.json"));
+        let output_path = std::env::temp_dir().join(format!(
+            "emmylua-check-gitlab-{}-{unique}.json",
+            std::process::id()
+        ));
         let mut writer = GitlabOutputWriter::new(
             OutputDestination::File(output_path.clone()),
             std::env::temp_dir(),

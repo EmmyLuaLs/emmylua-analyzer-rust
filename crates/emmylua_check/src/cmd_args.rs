@@ -37,7 +37,7 @@ pub struct CmdArgs {
     )]
     pub output_format: OutputFormat,
 
-    /// Specify output destination (stdout or a file path, used by JSON-based output formats)
+    /// Specify output destination (stdout or a file path, used by json, sarif, and gitlab formats)
     #[cfg_attr(feature = "cli", arg(long, default_value = "stdout"))]
     pub output: OutputDestination,
 

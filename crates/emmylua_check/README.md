@@ -100,7 +100,7 @@ Write diagnostics in the [GitLab Code Quality report format](https://docs.gitlab
 emmylua_check . -f gitlab --output gl-code-quality-report.json
 ```
 
-The report contains repository-relative paths and stable fingerprints so GitLab can track findings between the source and target branches. When available, `CI_PROJECT_DIR` is used as the repository root; otherwise, paths are relative to the current working directory.
+The report contains repository-relative paths and deterministic fingerprints so GitLab can compare findings between the source and target branches. A fingerprint includes the rule, path, start line, and description: identical findings retain their identity, while moving a finding to another line creates a new identity. When available, `CI_PROJECT_DIR` is used as the repository root; otherwise, paths are relative to the current working directory. Diagnostics outside that root are skipped because GitLab cannot associate them with repository files.
 
 ---
 
@@ -178,7 +178,7 @@ Options:
   -c, --config <CONFIG>                Path to configuration file. If not provided, ".emmyrc.json" and ".luarc.json" will be searched in the workspace directory
   -i, --ignore <IGNORE>                Comma-separated list of ignore patterns. Patterns must follow glob syntax
   -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif, github, gitlab]
-      --output <OUTPUT>                Specify output target (stdout or a file path, used by JSON-based output formats) [default: stdout]
+      --output <OUTPUT>                Specify output target (stdout or a file path, used by json, sarif, and gitlab formats) [default: stdout]
       --warnings-as-errors             Treat warnings as errors
       --severity <SEVERITY>            Only output diagnostics at this severity or above [possible values: error, warn, info, hint]
       --verbose                        Verbose output
