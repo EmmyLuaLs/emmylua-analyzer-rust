@@ -658,6 +658,70 @@ fn test_semantic_info_member_use() {
     assert_eq!(info.decl, Some(member));
 }
 
+/// Index member of an instantiated generic class -> projected member type, not the declaration-site `T`.
+#[test]
+fn test_semantic_info_generic_member_use() {
+    let source =
+        "---@class MyTable<T>\n---@field aaa T\nlocal c ---@type MyTable<int>\nlocal y = c.aaa";
+    let env = model_of(source);
+    let model = env.model();
+    let token = token_at(&model, source, "aaa", 1);
+    let info = model
+        .semantic_info(rowan::NodeOrToken::Token(token))
+        .expect("semantic info");
+    assert_eq!(info.typ, LuaType::Integer);
+    assert!(
+        matches!(info.decl, Some(SemanticId::Member(_))),
+        "decl: {:?}",
+        info.decl
+    );
+}
+
+/// Two generic parameters keep their positions: `Pair<int, string>.second` is `string`, not `T`/`U`.
+#[test]
+fn test_semantic_info_generic_member_use_multi_param() {
+    let source = "---@class Pair<T, U>\n---@field first T\n---@field second U\n\
+                  local p ---@type Pair<int, string>\nlocal y = p.second";
+    let env = model_of(source);
+    let model = env.model();
+    let token = token_at(&model, source, "second", 1);
+    let info = model
+        .semantic_info(rowan::NodeOrToken::Token(token))
+        .expect("semantic info");
+    assert_eq!(info.typ, LuaType::String);
+}
+
+/// Generic member projection also covers parameters (`---@param t MyTable<int>`) and calls.
+#[test]
+fn test_semantic_info_generic_member_use_param() {
+    let source = "---@class MyTable<T>\n---@field aaa T\n\
+                  ---@param t MyTable<int>\nlocal function f(t)\n    return t.aaa\nend";
+    let env = model_of(source);
+    let model = env.model();
+    let token = token_at(&model, source, "aaa", 1);
+    let info = model
+        .semantic_info(rowan::NodeOrToken::Token(token))
+        .expect("semantic info");
+    assert_eq!(info.typ, LuaType::Integer);
+}
+
+/// A non-instantiated generic prefix keeps the declaration-site generic parameter (`T`).
+#[test]
+fn test_semantic_info_uninstantiated_generic_member_use() {
+    let source = "---@class MyTable<T>\n---@field aaa T\nlocal c ---@type MyTable\nlocal y = c.aaa";
+    let env = model_of(source);
+    let model = env.model();
+    let token = token_at(&model, source, "aaa", 1);
+    let info = model
+        .semantic_info(rowan::NodeOrToken::Token(token))
+        .expect("semantic info");
+    assert!(
+        matches!(info.typ, LuaType::TplRef(_) | LuaType::Unknown),
+        "unbound generic member type: {:?}",
+        info.typ
+    );
+}
+
 /// `@field` name (inside doc comment) -> Member identity + doc type.
 #[test]
 fn test_semantic_info_doc_field() {

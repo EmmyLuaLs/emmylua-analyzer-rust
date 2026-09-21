@@ -855,4 +855,61 @@ mod tests {
 
         Ok(())
     }
+
+    /// A field of a generic class must be projected through the prefix's type arguments at the use
+    /// site: `@field aaa T` + `MyTable<int>` shows `integer`, not the declaration-site `T`.
+    #[gtest]
+    fn test_hover_generic_field_access_projected() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class MyTable<T>
+                ---@field aaa T
+                ---@field bbb T
+
+                local c ---@type MyTable<int>
+
+                print(c.<??>aaa)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) aaa: integer\n```".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            r#"
+                ---@class MyTable<T>
+                ---@field aaa T
+                ---@field bbb T
+
+                local c ---@type MyTable<int>
+
+                local x = c.<??>bbb
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) bbb: integer\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    /// Generic arguments keep their parameter positions: `Pair<int, string>.second` is `string`.
+    #[gtest]
+    fn test_hover_generic_field_access_projected_multi_param() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Pair<T, U>
+                ---@field first T
+                ---@field second U
+
+                local p ---@type Pair<int, string>
+
+                print(p.<??>second)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) second: string\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }

@@ -53,12 +53,19 @@ pub fn build_semantic_info_hover(
     range: TextRange,
 ) -> Option<Hover> {
     let info = model.semantic_info(token.clone().into())?;
-    let member_call_typ = if matches!(info.decl, Some(SemanticId::Member(_)))
-        && token
+    let member_call_typ = if matches!(info.decl, Some(SemanticId::Member(_))) {
+        let in_call = token
             .parent_ancestors()
-            .any(|node| LuaCallExpr::cast(node).is_some())
-    {
-        member_type_at_token(model, &token)
+            .any(|node| LuaCallExpr::cast(node).is_some());
+        let call_typ = in_call
+            .then(|| member_type_at_token(model, &token))
+            .flatten();
+        call_typ.or_else(|| {
+            // Non-function member of an instantiated generic (`c.aaa` with `local c ---@type MyTable<int>`
+            // and `---@field aaa T`): `info.typ` already carries the prefix projection (`integer`) and must
+            // win over the declaration-site member type (`T`) that `build_member_hover` would otherwise use.
+            member_prefix_is_generic_instance(model, &token).then(|| info.typ.clone())
+        })
     } else {
         None
     };
@@ -533,6 +540,20 @@ fn table_context_type_for_expr(
 
     let ty = model.type_of_expr(syntax_id);
     (!matches!(ty, LuaType::Unknown)).then_some(ty)
+}
+
+/// Whether the member access (`x.foo` / `x:foo`) containing the current token is applied to an
+/// instantiated generic prefix (`local c ---@type MyTable<int>` -> `c.aaa`), in which case the member
+/// type must be projected through the prefix's generic arguments.
+fn member_prefix_is_generic_instance(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> bool {
+    let Some(index_expr) = token.parent_ancestors().find_map(LuaIndexExpr::cast) else {
+        return false;
+    };
+    let Some(prefix) = index_expr.get_prefix_expr() else {
+        return false;
+    };
+    let prefix_ty = model.type_of_expr(prefix.get_syntax_id());
+    matches!(&prefix_ty, LuaType::Generic(generic) if !generic.get_params().is_empty())
 }
 
 /// Generic-projected member type for the member access (`x.foo` / `x:foo`) containing the current token.

@@ -303,8 +303,14 @@ impl<'db> SemanticModel<'db> {
             && let Some(resolved) = self.resolve_member(&index_expr)
             && let Some(member_id) = resolved.member_id
         {
+            // A generic instance prefix (`c.aaa` with `local c ---@type MyTable<int>` and `@field aaa T`)
+            // must report the projected member type (`integer`), not the declaration-site `T`.
+            let typ = self
+                .project_member_type_of_generic_prefix(&index_expr, &member_id)
+                .or_else(|| self.type_of_member(&member_id))
+                .unwrap_or(LuaType::Unknown);
             return Some(SemanticInfo {
-                typ: self.type_of_member(&member_id).unwrap_or(LuaType::Unknown),
+                typ,
                 decl: Some(member_id),
             });
         }
@@ -345,6 +351,32 @@ impl<'db> SemanticModel<'db> {
         }
         let ty = self.type_of_expr(value.get_syntax_id());
         (!matches!(ty, LuaType::Unknown | LuaType::Nil)).then_some(ty)
+    }
+    /// Projects a member declaration type through the index expression's prefix generic arguments:
+    /// `local c ---@type MyTable<int>` + `---@field aaa T` -> `c.aaa: integer`.
+    /// Returns `None` when the prefix is not an instantiated generic (or the member type is unknown),
+    /// so callers keep the declaration-site member type in every other case.
+    fn project_member_type_of_generic_prefix(
+        &self,
+        index_expr: &LuaIndexExpr,
+        member_id: &SemanticId,
+    ) -> Option<LuaType> {
+        let prefix = index_expr.get_prefix_expr()?;
+        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
+        let LuaType::Generic(generic) = &prefix_ty else {
+            return None;
+        };
+        let member_type = self.type_of_member(member_id)?;
+        let names = self
+            .type_def_of(generic.get_base_type_id_ref())
+            .map(|def| {
+                def.generic_params
+                    .iter()
+                    .map(|param| param.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        Some(self.substitute_generic_params_named(&member_type, generic.get_params(), &names))
     }
     /// Whether a syntax node references the given declaration (convenience wrapper, equivalent to `is_reference_to(NodeOrToken::Node)`).
     pub fn is_reference_to_syntax(&self, node: &LuaSyntaxNode, decl: &SemanticId) -> bool {
