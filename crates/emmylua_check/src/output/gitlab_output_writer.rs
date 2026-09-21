@@ -5,7 +5,7 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::cmd_args::OutputDestination;
+use crate::{cmd_args::OutputDestination, init::normalize_local_path};
 
 use super::OutputWriter;
 
@@ -50,9 +50,9 @@ impl GitlabOutputWriter {
             }
         };
 
-        let project_root = std::env::current_dir()
-            .and_then(|path| path.canonicalize())
-            .expect("failed to resolve current working directory");
+        let project_root = normalize_local_path(
+            std::env::current_dir().expect("failed to resolve current working directory"),
+        );
 
         Self {
             output,
@@ -151,25 +151,31 @@ fn repository_relative_path(
     project_root: &std::path::Path,
     file_path: &std::path::Path,
 ) -> Option<String> {
+    let file_path = normalize_local_path(file_path.to_path_buf());
     file_path
         .strip_prefix(project_root)
         .ok()
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .map(|path| {
+            path.components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .filter(|path| !path.is_empty())
 }
 
 #[cfg(test)]
 mod tests {
+    use emmylua_code_analysis::{DbIndex, file_path_to_uri};
     use googletest::prelude::*;
     use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
     use serde_json::json;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::{cmd_args::OutputDestination, output::OutputWriter};
+    use crate::{cmd_args::OutputDestination, init::normalize_local_path, output::OutputWriter};
 
-    use super::{
-        GitlabOutputWriter, convert_diagnostic, fingerprint, gitlab_severity,
-        repository_relative_path,
-    };
+    use super::{GitlabOutputWriter, fingerprint, gitlab_severity, repository_relative_path};
 
     fn diagnostic(
         severity: DiagnosticSeverity,
@@ -187,18 +193,42 @@ mod tests {
         }
     }
 
+    fn report_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "emmylua-check-gitlab-{label}-{}-{unique}.json",
+            std::process::id()
+        ))
+    }
+
     #[gtest]
-    fn diagnostic_is_serialized_with_all_required_gitlab_code_quality_fields() {
+    fn diagnostic_inside_repository_is_written_as_a_complete_gitlab_code_quality_report() {
         let diagnostic = diagnostic(
             DiagnosticSeverity::ERROR,
             "undefined-global",
             9,
             "Undefined global `player`.",
         );
+        let repository = normalize_local_path(std::env::current_dir().unwrap());
+        let file_path = repository.join("src/player.lua");
+        let mut db = DbIndex::new();
+        let file_id = db
+            .get_vfs_mut()
+            .file_id(&file_path_to_uri(&file_path).unwrap());
+        let output_path = report_path("finding");
+        let mut writer = GitlabOutputWriter::new(OutputDestination::File(output_path.clone()));
 
-        let finding = convert_diagnostic("src/player.lua", &diagnostic);
-        let actual = serde_json::to_value(finding).unwrap();
-        let expected = json!({
+        writer.write(&db, file_id, vec![diagnostic]);
+        writer.finish();
+        let actual = serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(&output_path).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_file(output_path).unwrap();
+        let expected = json!([{
             "description": "Undefined global `player`.",
             "check_name": "undefined-global",
             "fingerprint": "4a5dc7adb2d434995ee8f525c4f55608702935a2309c12b397e1c1f84d15326c",
@@ -209,7 +239,7 @@ mod tests {
                     "begin": 10
                 }
             }
-        });
+        }]);
 
         assert_that!(actual, eq(&expected));
     }
@@ -233,7 +263,7 @@ mod tests {
     }
 
     #[gtest]
-    fn fingerprint_is_repeatable_and_distinguishes_findings_at_different_locations() {
+    fn fingerprint_is_repeatable_and_changes_when_rule_path_range_or_description_changes() {
         let diagnostic = diagnostic(
             DiagnosticSeverity::WARNING,
             "unused",
@@ -241,19 +271,31 @@ mod tests {
             "Unused local `name`.",
         );
         let base = fingerprint("unused", "src/main.lua", &diagnostic);
-        let mut moved = diagnostic.clone();
-        moved.range.start.line += 1;
-        moved.range.end.line += 1;
+        let mut changed_range = diagnostic.clone();
+        changed_range.range.start.character += 1;
+        let mut changed_description = diagnostic.clone();
+        changed_description.message.push_str(" Please remove it.");
 
         expect_that!(
             fingerprint("unused", "src/main.lua", &diagnostic),
             eq(&base)
         );
         expect_that!(
+            fingerprint("unused-local", "src/main.lua", &diagnostic),
+            ne(&base)
+        );
+        expect_that!(
             fingerprint("unused", "src/other.lua", &diagnostic),
             ne(&base)
         );
-        expect_that!(fingerprint("unused", "src/main.lua", &moved), ne(&base));
+        expect_that!(
+            fingerprint("unused", "src/main.lua", &changed_range),
+            ne(&base)
+        );
+        expect_that!(
+            fingerprint("unused", "src/main.lua", &changed_description),
+            ne(&base)
+        );
     }
 
     #[gtest]
@@ -278,15 +320,8 @@ mod tests {
     }
 
     #[gtest]
-    fn analysis_without_findings_writes_an_empty_json_array() {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let output_path = std::env::temp_dir().join(format!(
-            "emmylua-check-gitlab-{}-{unique}.json",
-            std::process::id()
-        ));
+    fn writer_without_findings_writes_an_empty_json_array() {
+        let output_path = report_path("empty");
         let mut writer = GitlabOutputWriter::new(OutputDestination::File(output_path.clone()));
 
         writer.finish();
