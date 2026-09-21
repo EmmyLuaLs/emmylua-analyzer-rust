@@ -211,14 +211,15 @@ emmylua_check . --severity warn              # Only show warnings and above
 emmylua_check . -f json --output ./diag.json # Output diagnostics as JSON
 emmylua_check . -f sarif                     # Output diagnostics as SARIF
 emmylua_check . -f github                    # GitHub Actions inline annotations
+emmylua_check . -f gitlab --output gl-code-quality-report.json # GitLab Code Quality
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `-c, --config` | Path to config file (`.emmyrc.json` / `.luarc.json` searched by default) |
 | `-i, --ignore` | Comma-separated glob patterns to ignore |
-| `-f, --output-format` | `text` (default), `json`, `sarif`, `github` |
-| `--output` | Output target (stdout or file) |
+| `-f, --output-format` | `text` (default), `json`, `sarif`, `github`, `gitlab` |
+| `--output` | Output target for `json`, `sarif`, and `gitlab` |
 | `--warnings-as-errors` | Treat warnings as errors |
 | `--severity` | Minimum severity: `error` / `warn` / `info` / `hint` |
 
