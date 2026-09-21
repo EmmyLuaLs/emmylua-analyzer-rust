@@ -44,7 +44,7 @@ pub async fn analysis_query<T, F>(
 ) -> RequestOutcome<T>
 where
     T: Send + Sync + 'static,
-    F: Fn(&EmmyLuaAnalysis) -> Option<T> + Send + Sync,
+    F: FnOnce(&EmmyLuaAnalysis) -> Option<T> + Send + 'static,
 {
     if let Some(token) = &cancel_token {
         request_manager.begin(key, token.clone()).await;
@@ -58,7 +58,7 @@ where
         return RequestOutcome::Cancelled(CancelSource::Client);
     }
 
-    match analysis.query(&compute) {
+    match analysis.query_blocking(compute).await {
         RequestOutcome::Ready(value) => RequestOutcome::Ready(value),
         RequestOutcome::Missing => {
             if let Some(token) = &cancel_token
@@ -83,13 +83,13 @@ pub async fn snapshot_query<T, F>(
 ) -> RequestOutcome<T>
 where
     T: Send + Sync + 'static,
-    F: Fn(&EmmyLuaAnalysis) -> Option<T> + Send + Sync,
+    F: FnOnce(&EmmyLuaAnalysis) -> Option<T> + Send + 'static,
 {
     if cancel_token.is_cancelled() {
         return RequestOutcome::Cancelled(CancelSource::Client);
     }
 
-    match analysis.query(&compute) {
+    match analysis.query_blocking(compute).await {
         RequestOutcome::Ready(value) => RequestOutcome::Ready(value),
         RequestOutcome::Missing => {
             if cancel_token.is_cancelled() {

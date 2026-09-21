@@ -3,7 +3,7 @@ use std::error::Error;
 use log::warn;
 use lsp_server::Notification;
 use lsp_types::{
-    CancelParams, NumberOrString,
+    CancelParams, DidChangeConfigurationParams, NumberOrString,
     notification::{
         Cancel, DidChangeConfiguration, DidChangeTextDocument, DidChangeWatchedFiles,
         DidCloseTextDocument, DidOpenTextDocument, DidRenameFiles, DidSaveTextDocument,
@@ -46,9 +46,10 @@ macro_rules! dispatch_notification {
                 <$async_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$async_notif as LspNotification>::Params>(<$async_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        tokio::spawn(async move {
+                        let _ = tokio::spawn(async move {
                             $async_handler(snapshot, params).await;
-                        });
+                        })
+                        .await;
                     }
                 }
             )*
@@ -63,6 +64,18 @@ pub async fn on_notification_handler(
     notification: Notification,
     server_context: &mut ServerContext,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
+    if notification.method == DidChangeConfiguration::METHOD {
+        if let Ok(params) =
+            notification.extract::<DidChangeConfigurationParams>(DidChangeConfiguration::METHOD)
+        {
+            let snapshot = server_context.snapshot();
+            tokio::spawn(async move {
+                on_did_change_configuration(snapshot, params).await;
+            });
+        }
+        return Ok(());
+    }
+
     dispatch_notification!(notification, server_context, {
         sync: {}
         async: {
@@ -72,7 +85,6 @@ pub async fn on_notification_handler(
             DidCloseTextDocument => on_did_close_document,
             DidChangeWatchedFiles => on_did_change_watched_files,
             SetTrace => on_set_trace,
-            DidChangeConfiguration => on_did_change_configuration,
             DidRenameFiles => on_did_rename_files_handler,
         }
     });

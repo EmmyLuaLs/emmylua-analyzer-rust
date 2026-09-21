@@ -8,7 +8,7 @@ use std::{
 use emmylua_code_analysis::FileId;
 use log::{debug, info};
 use lsp_types::{Diagnostic, PublishDiagnosticsParams, Uri};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::{AnalysisState, ClientProxy, ProgressTask, StatusBar};
@@ -59,16 +59,18 @@ impl DiagnosticService {
         let client = self.client.clone();
         let diagnostic_tokens = self.diagnostic_tokens.clone();
         let file_id_clone = file_id;
+        let diagnostic_token = cancel_token.clone();
 
         // Spawn a new task to perform diagnostic
         tokio::spawn(async move {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(interval)) => {
-                    let result = analysis.try_with_snapshot(|analysis| {
+                    let result = analysis.run_blocking(move |analysis| {
                         let uri = analysis.get_uri(file_id_clone)?;
-                        let diagnostics = analysis.diagnose_file(file_id_clone, cancel_token)?;
+                        let diagnostics = analysis.diagnose_file(file_id_clone, diagnostic_token)?;
                         Some((uri, diagnostics))
-                    });
+                    })
+                    .await;
                     if let Some((uri, diagnostics)) = result {
                         client.publish_diagnostics(PublishDiagnosticsParams {
                             uri,
@@ -221,11 +223,15 @@ impl DiagnosticService {
             if cancel_token.is_cancelled() {
                 return None;
             }
-            let (uri, diagnostics) = self.analysis.try_with_snapshot(|analysis| {
-                let uri = analysis.get_uri(file_id)?;
-                let diagnostics = analysis.diagnose_file(file_id, cancel_token.clone())?;
-                Some((uri, diagnostics))
-            })?;
+            let token = cancel_token.clone();
+            let (uri, diagnostics) = self
+                .analysis
+                .run_blocking(move |analysis| {
+                    let uri = analysis.get_uri(file_id)?;
+                    let diagnostics = analysis.diagnose_file(file_id, token)?;
+                    Some((uri, diagnostics))
+                })
+                .await?;
             result.push((uri, diagnostics));
         }
 
@@ -284,7 +290,6 @@ async fn run_workspace_batch(
     }
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<(Uri, Vec<Diagnostic>)>>(100);
-    let semaphore = Arc::new(Semaphore::new(64));
     let mut result = Vec::new();
 
     for file_id in file_ids {
@@ -292,14 +297,14 @@ async fn run_workspace_batch(
         let token = cancel_token.clone();
         let client = client.clone();
         let tx = tx.clone();
-        let semaphore = semaphore.clone();
         tokio::spawn(async move {
-            let _permit = semaphore.acquire_owned().await.expect("semaphore closed");
-            let result = analysis.try_with_snapshot(|analysis| {
-                let diagnostics = analysis.diagnose_file(file_id, token)?;
-                let uri = analysis.get_uri(file_id)?;
-                Some((uri, diagnostics))
-            });
+            let result = analysis
+                .run_blocking(move |analysis| {
+                    let diagnostics = analysis.diagnose_file(file_id, token)?;
+                    let uri = analysis.get_uri(file_id)?;
+                    Some((uri, diagnostics))
+                })
+                .await;
             let Some((uri, diagnostics)) = result else {
                 let _ = tx.send(None).await;
                 return;

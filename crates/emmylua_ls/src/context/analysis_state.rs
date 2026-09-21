@@ -4,20 +4,27 @@
 //! read lock; writes take the write lock exclusively. We do not clone the whole
 //! analysis to run queries.
 
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
+use tokio::sync::Semaphore;
 
 use emmylua_code_analysis::EmmyLuaAnalysis;
 
 use crate::context::RequestOutcome;
 
 pub struct AnalysisState {
-    inner: RwLock<EmmyLuaAnalysis>,
+    inner: Arc<RwLock<EmmyLuaAnalysis>>,
+    blocking_permits: Arc<Semaphore>,
 }
 
 impl AnalysisState {
     pub fn new() -> Self {
         Self {
-            inner: RwLock::new(EmmyLuaAnalysis::new()),
+            inner: Arc::new(RwLock::new(EmmyLuaAnalysis::new())),
+            blocking_permits: Arc::new(Semaphore::new(
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+            )),
         }
     }
 
@@ -31,28 +38,64 @@ impl AnalysisState {
         f(&analysis)
     }
 
-    pub fn query<R>(&self, f: impl FnOnce(&EmmyLuaAnalysis) -> Option<R>) -> RequestOutcome<R> {
-        let analysis = self.read();
-        match f(&analysis) {
+    pub async fn run_blocking<R, F>(&self, f: F) -> Option<R>
+    where
+        R: Send + 'static,
+        F: FnOnce(&EmmyLuaAnalysis) -> Option<R> + Send + 'static,
+    {
+        let _permit = self.blocking_permits.clone().acquire_owned().await.ok()?;
+        let inner = self.inner.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let analysis = inner
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            f(&analysis)
+        })
+        .await;
+        match result {
+            Ok(value) => value,
+            Err(err) => {
+                if err.is_panic() {
+                    std::panic::resume_unwind(err.into_panic());
+                }
+                None
+            }
+        }
+    }
+
+    pub async fn query_blocking<R, F>(&self, f: F) -> RequestOutcome<R>
+    where
+        R: Send + 'static,
+        F: FnOnce(&EmmyLuaAnalysis) -> Option<R> + Send + 'static,
+    {
+        match self.run_blocking(f).await {
             Some(value) => RequestOutcome::Ready(value),
             None => RequestOutcome::Missing,
         }
     }
 
     pub async fn update<R>(&self, f: impl FnOnce(&mut EmmyLuaAnalysis) -> R) -> R {
-        let mut analysis = self.write();
-        f(&mut analysis)
+        let _permit = self.blocking_permits.clone().acquire_owned().await.ok();
+        let inner = self.inner.clone();
+        let run = move || {
+            let mut analysis = inner
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            f(&mut analysis)
+        };
+        if tokio::runtime::Handle::try_current()
+            .map(|handle| handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
+            .unwrap_or(false)
+        {
+            tokio::task::block_in_place(run)
+        } else {
+            run()
+        }
     }
 
     fn read(&self) -> RwLockReadGuard<'_, EmmyLuaAnalysis> {
         self.inner
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    fn write(&self) -> RwLockWriteGuard<'_, EmmyLuaAnalysis> {
-        self.inner
-            .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
