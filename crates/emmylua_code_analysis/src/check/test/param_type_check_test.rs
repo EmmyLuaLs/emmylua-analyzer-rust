@@ -1900,4 +1900,102 @@ mod test {
             "#
         ));
     }
+
+    /// Fewer arguments than the variadic slot position: the variadic parameter
+    /// consumes an empty slice instead of panicking on `args[index..]`.
+    #[test]
+    fn test_variadic_slot_beyond_args_no_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param a string
+                ---@param b string
+                ---@param ... number
+                local function f(a, b, ...) end
+                f("x")
+            "#
+        ));
+    }
+
+    /// Same for a generic variadic slot (`...: T...`), which has its own early path.
+    #[test]
+    fn test_generic_variadic_slot_beyond_args_no_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@generic T
+                ---@param a string
+                ---@param ... T...
+                local function f(a, ...) end
+                f("x")
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@generic T
+                ---@param a string
+                ---@param ... T...
+                local function f(a, ...) end
+                f()
+            "#
+        ));
+    }
+
+    /// No arguments at all, so the variadic slot index is past the end of `args`.
+    #[test]
+    fn test_variadic_slot_no_args_no_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param a string
+                ---@param ... number
+                local function f(a, ...) end
+                f()
+            "#
+        ));
+    }
+
+    /// The variadic slot still reports mismatches for the arguments it does receive.
+    #[test]
+    fn test_variadic_slot_still_checks_provided_args() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param a string
+                ---@param b string
+                ---@param ... number
+                local function f(a, b, ...) end
+                f("x", "y", "z")
+            "#
+        ));
+    }
+
+    /// Full default checker pipeline (the path behind `textDocument/diagnostic`) on the
+    /// crashing input: no panic, and the missing named argument is still reported.
+    #[test]
+    fn test_variadic_slot_beyond_args_full_check_pipeline() {
+        let diagnostics = crate::check::test::check_source(
+            r#"
+                ---@param a string
+                ---@param b string
+                ---@param ... number
+                local function f(a, b, ...) end
+                f("x")
+            "#,
+        );
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::MissingParameter)
+                .count(),
+            1,
+            "diagnostics: {:?}",
+            diagnostics
+        );
+    }
 }

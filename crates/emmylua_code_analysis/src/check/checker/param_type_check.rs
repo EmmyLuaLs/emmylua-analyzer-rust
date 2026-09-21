@@ -601,6 +601,12 @@ fn check_arg_pairs(
     for (index, (name, param_ty)) in params.iter().enumerate() {
         let is_vararg_slot = is_variadic && index + 1 == params.len();
         if is_vararg_slot {
+            // A call may pass fewer arguments than the variadic slot position
+            // (`function f(a, b, ...)` called as `f(1)`), in which case the variadic
+            // parameter receives no argument at all. Clamp the slice start instead of
+            // panicking on `args[index..]`.
+            let rest_start = index.min(args.len());
+            let rest_args = &args[rest_start..];
             if let Some(param_ty) = param_ty {
                 let param_ty = unify::substitute(param_ty, bindings);
                 let param_ty = type_eval::expand_alias_generic(semantic_model, &param_ty);
@@ -611,7 +617,7 @@ fn check_arg_pairs(
                         && let LuaType::TplRef(tpl) = base
                         && !bindings.contains_key(&tpl.get_tpl_id())
                     {
-                        let rest_types: Vec<LuaType> = args[index..]
+                        let rest_types: Vec<LuaType> = rest_args
                             .iter()
                             .enumerate()
                             .map(|(offset, _)| {
@@ -619,7 +625,7 @@ fn check_arg_pairs(
                                     semantic_model,
                                     args,
                                     arg_types,
-                                    index + offset,
+                                    rest_start + offset,
                                 );
                                 normalize_arg_for_check(semantic_model, &ty)
                             })
@@ -636,7 +642,7 @@ fn check_arg_pairs(
                         );
                         break;
                     }
-                    for (variadic_index, arg) in args[index..].iter().enumerate() {
+                    for (variadic_index, arg) in rest_args.iter().enumerate() {
                         let Some(slot_ty) = variadic.get_type(variadic_index) else {
                             break;
                         };
@@ -644,7 +650,7 @@ fn check_arg_pairs(
                             semantic_model,
                             args,
                             arg_types,
-                            index + variadic_index,
+                            rest_start + variadic_index,
                         );
                         let arg_ty = normalize_arg_for_check(semantic_model, &arg_ty);
                         let mut slot_ty = slot_ty.clone();
@@ -674,9 +680,9 @@ fn check_arg_pairs(
                         });
                     }
                 } else {
-                    for (offset, arg) in args[index..].iter().enumerate() {
+                    for (offset, arg) in rest_args.iter().enumerate() {
                         let arg_ty =
-                            cached_arg_type(semantic_model, args, arg_types, index + offset);
+                            cached_arg_type(semantic_model, args, arg_types, rest_start + offset);
                         let arg_ty = normalize_arg_for_check(semantic_model, &arg_ty);
                         let param_ty_orig = param_ty.clone();
                         let unified =
