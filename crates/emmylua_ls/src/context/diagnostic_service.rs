@@ -292,33 +292,54 @@ async fn run_workspace_batch(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<(Uri, Vec<Diagnostic>)>>(100);
     let mut result = Vec::new();
 
-    for file_id in file_ids {
+    let queue = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+        file_ids,
+    )));
+    let worker_count = AnalysisState::analysis_parallelism().max(1);
+    for _ in 0..worker_count {
         let analysis = analysis.clone();
         let token = cancel_token.clone();
         let client = client.clone();
         let tx = tx.clone();
+        let queue = queue.clone();
         tokio::spawn(async move {
-            let result = analysis
-                .run_blocking(move |analysis| {
-                    let diagnostics = analysis.diagnose_file(file_id, token)?;
-                    let uri = analysis.get_uri(file_id)?;
-                    Some((uri, diagnostics))
-                })
-                .await;
-            let Some((uri, diagnostics)) = result else {
-                let _ = tx.send(None).await;
-                return;
-            };
-            if publish {
-                client.publish_diagnostics(PublishDiagnosticsParams {
-                    uri: uri.clone(),
-                    diagnostics: diagnostics.clone(),
-                    version: None,
-                });
+            loop {
+                let file_id = {
+                    let mut queue = queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    queue.pop_front()
+                };
+                let Some(file_id) = file_id else {
+                    break;
+                };
+                if token.is_cancelled() {
+                    break;
+                }
+                let file_token = token.clone();
+                let result = analysis
+                    .run_blocking(move |analysis| {
+                        let diagnostics = analysis.diagnose_file(file_id, file_token)?;
+                        let uri = analysis.get_uri(file_id)?;
+                        Some((uri, diagnostics))
+                    })
+                    .await;
+                let Some((uri, diagnostics)) = result else {
+                    let _ = tx.send(None).await;
+                    continue;
+                };
+                if publish {
+                    client.publish_diagnostics(PublishDiagnosticsParams {
+                        uri: uri.clone(),
+                        diagnostics: diagnostics.clone(),
+                        version: None,
+                    });
+                }
+                let _ = tx.send(Some((uri, diagnostics))).await;
             }
-            let _ = tx.send(Some((uri, diagnostics))).await;
         });
     }
+    drop(tx);
 
     let mut count = 0;
     if valid_file_count != 0 {

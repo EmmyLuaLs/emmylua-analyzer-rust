@@ -38,6 +38,13 @@ impl AnalysisState {
         f(&analysis)
     }
 
+    /// Logical parallelism used by the analysis blocking pool.
+    pub fn analysis_parallelism() -> usize {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+    }
+
     pub async fn run_blocking<R, F>(&self, f: F) -> Option<R>
     where
         R: Send + 'static,

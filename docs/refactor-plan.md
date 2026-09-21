@@ -71,3 +71,8 @@
 - cargo check --workspace --all-targets
 - cargo test --workspace
 - 公开 API 不变；query::X / semantic_db 旧路径保持兼容。
+
+### Phase 2（进行中）
+- 已完成：run_workspace_batch 改为固定 N worker（N=analysis_parallelism），共享 VecDeque<FileId>，每文件走 run_blocking；不再每文件 spawn 一个 task。
+- 已完成：AnalysisState::analysis_parallelism() 作为统一并行度入口。
+- 待做：Arc snapshot 读模型；诊断/锁等待指标；取消 Result 化；高并发压测。
