@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[gtest]
-    fn converts_diagnostic_to_gitlab_code_quality_schema() {
+    fn diagnostic_is_serialized_with_all_required_gitlab_code_quality_fields() {
         let diagnostic = diagnostic(
             DiagnosticSeverity::ERROR,
             "undefined-global",
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[gtest]
-    fn maps_lsp_severities_to_supported_gitlab_values() {
+    fn every_lsp_severity_maps_to_a_value_accepted_by_gitlab() {
         expect_that!(
             gitlab_severity(Some(DiagnosticSeverity::ERROR)),
             eq("major")
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[gtest]
-    fn fingerprint_is_stable_and_distinguishes_findings() {
+    fn same_finding_keeps_its_fingerprint_but_path_or_line_changes_it() {
         let base = fingerprint("unused", "src/main.lua", 3, "Unused local `name`.");
 
         expect_that!(
@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[gtest]
-    fn reports_paths_relative_to_the_repository_root() {
+    fn file_under_the_repository_root_is_reported_with_a_relative_path() {
         let path = repository_relative_path(
             std::path::Path::new("/build/project"),
             std::path::Path::new("/build/project/src/main.lua"),
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[gtest]
-    fn writes_an_empty_array_when_there_are_no_findings() {
+    fn analysis_without_findings_writes_an_empty_json_array() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
