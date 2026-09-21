@@ -30,6 +30,7 @@ pub use update_queue::{UpdateEvent, spawn_update_queue};
 pub use workspace_manager::*;
 
 use crate::context::snapshot::ServerContextInner;
+use crate::util::catch_unwind;
 
 pub struct ServerContext {
     cancellations: Arc<Mutex<HashMap<RequestId, CancellationToken>>>,
@@ -101,21 +102,20 @@ impl ServerContext {
         let cancellations = self.cancellations.clone();
 
         tokio::spawn(async move {
-            // Run the handler in a child task: semantic's Cancelled is thrown as a panic,
-            // so capture it here via JoinHandle to avoid interrupting the request task without a reply.
-            let res = tokio::spawn(exec(cancel_token.clone())).await.ok();
+            // Catch panics so every request still gets a response.
+            let res = catch_unwind(exec(cancel_token.clone())).await;
 
             let response = match res {
-                Some(RequestOutcome::Ready(value)) => Response::new_ok(req_id.clone(), value),
-                Some(RequestOutcome::Missing) => {
+                Ok(RequestOutcome::Ready(value)) => Response::new_ok(req_id.clone(), value),
+                Ok(RequestOutcome::Missing) => {
                     Response::new_ok(req_id.clone(), serde_json::Value::Null)
                 }
-                Some(RequestOutcome::Cancelled(_)) => Response::new_err(
+                Ok(RequestOutcome::Cancelled(_)) => Response::new_err(
                     req_id.clone(),
                     ErrorCode::RequestCanceled as i32,
                     "cancel".to_string(),
                 ),
-                None => Response::new_err(
+                Err(_) => Response::new_err(
                     req_id.clone(),
                     ErrorCode::InternalError as i32,
                     "internal error".to_string(),

@@ -48,13 +48,13 @@ pub async fn on_resolve_code_lens_handler(
         .await
         .client_config
         .client_id;
+    let fallback = code_lens.clone();
     let result = context
         .analysis()
-        .with_snapshot(|analysis| {
-            resolve_code_lens(&analysis.db, code_lens.clone(), client_id)
-                .unwrap_or(code_lens.clone())
-        })
-        .unwrap_or_else(|| code_lens.clone());
+        .run_blocking(move |analysis| resolve_code_lens(&analysis.db, code_lens, client_id))
+        .await
+        .unwrap_or(fallback);
+
     RequestOutcome::Ready(result)
 }
 

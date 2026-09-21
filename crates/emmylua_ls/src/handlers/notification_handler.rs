@@ -37,8 +37,8 @@ macro_rules! dispatch_notification {
                 <$sync_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$sync_notif as LspNotification>::Params>(<$sync_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        // Run in a subtask to avoid a semantic Cancelled panic interrupting the main loop.
-                        let _ = tokio::spawn($sync_handler(snapshot, params)).await;
+                        // Catch panics locally so a handler cannot kill the main loop.
+                        let _ = crate::util::catch_unwind($sync_handler(snapshot, params)).await;
                     }
                 }
             )*
@@ -46,10 +46,7 @@ macro_rules! dispatch_notification {
                 <$async_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$async_notif as LspNotification>::Params>(<$async_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        let _ = tokio::spawn(async move {
-                            $async_handler(snapshot, params).await;
-                        })
-                        .await;
+                        let _ = crate::util::catch_unwind($async_handler(snapshot, params)).await;
                     }
                 }
             )*

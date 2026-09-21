@@ -14,12 +14,14 @@ use crate::context::RequestOutcome;
 pub struct AnalysisState {
     inner: Arc<RwLock<EmmyLuaAnalysis>>,
     blocking_permits: Arc<Semaphore>,
+    gate: Arc<tokio::sync::RwLock<()>>,
 }
 
 impl AnalysisState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(EmmyLuaAnalysis::new())),
+            gate: Arc::new(tokio::sync::RwLock::new(())),
             blocking_permits: Arc::new(Semaphore::new(
                 std::thread::available_parallelism()
                     .map(|n| n.get())
@@ -52,10 +54,12 @@ impl AnalysisState {
     {
         let _permit = self.blocking_permits.clone().acquire_owned().await.ok()?;
         let inner = self.inner.clone();
+        let gate = self.gate.clone().read_owned().await;
         let result = tokio::task::spawn_blocking(move || {
             let analysis = inner
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            drop(gate);
             f(&analysis)
         })
         .await;
@@ -82,12 +86,13 @@ impl AnalysisState {
     }
 
     pub async fn update<R>(&self, f: impl FnOnce(&mut EmmyLuaAnalysis) -> R) -> R {
-        let _permit = self.blocking_permits.clone().acquire_owned().await.ok();
         let inner = self.inner.clone();
+        let gate = self.gate.clone().write_owned().await;
         let run = move || {
             let mut analysis = inner
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            drop(gate);
             f(&mut analysis)
         };
         if tokio::runtime::Handle::try_current()
@@ -137,5 +142,15 @@ mod tests {
             Some((decls.len(), decls[0].name.as_str().to_string()))
         });
         assert_eq!(result, Some((1, "x".to_string())));
+    }
+    #[tokio::test]
+    async fn blocking_query_and_update_complete() {
+        let state = Arc::new(AnalysisState::new());
+        let read_state = state.clone();
+        let read = tokio::spawn(async move { read_state.run_blocking(|_| Some(1)).await });
+        let write_state = state.clone();
+        let write = tokio::spawn(async move { write_state.update(|_| 2).await });
+        assert_eq!(read.await.unwrap(), Some(1));
+        assert_eq!(write.await.unwrap(), 2);
     }
 }

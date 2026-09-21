@@ -76,3 +76,11 @@
 - 已完成：run_workspace_batch 改为固定 N worker（N=analysis_parallelism），共享 VecDeque<FileId>，每文件走 run_blocking；不再每文件 spawn 一个 task。
 - 已完成：AnalysisState::analysis_parallelism() 作为统一并行度入口。
 - 待做：Arc snapshot 读模型；诊断/锁等待指标；取消 Result 化；高并发压测。
+- 已完成：AnalysisState 增加读写 gate（tokio::sync::RwLock），写更新优先，长读请求不会无限插队饿死 didChange。
+- 已完成：移除 ServerContext::task 的 nested spawn + JoinHandle 接 panic；新增 util::catch_unwind future，panic 在请求边界转 InternalError。
+- 已完成：notification_handler 不再用 tokio::spawn 做 panic 隔离，改为顺序 catch_unwind；DidChangeConfiguration 仍独立 detached 执行。
+
+### 多线程优化完成度（当前结论）
+- 热点路径已完成 offload：pull 查询、workspace/单文件诊断、update、completion resolve、code lens resolve、通知顺序、请求 panic 边界。
+- 剩余低频同步 snapshot：emmy_auto_require、did_rename_files、少量 emmyrc/文件快速检查；不位于高频编辑/补全路径。
+- 长期项：Arc snapshot 读模型、运行时指标、大 workspace 高并发压测。

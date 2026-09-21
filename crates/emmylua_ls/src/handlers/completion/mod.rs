@@ -110,10 +110,12 @@ pub async fn on_completion_resolve_handler(
         let workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.client_config.client_id
     };
+    let fallback = params.clone();
     let result = context
         .analysis()
-        .with_snapshot(|analysis| completion_resolve(analysis, params.clone(), client_id))
-        .unwrap_or_else(|| params.clone());
+        .run_blocking(move |analysis| Some(completion_resolve(analysis, params, client_id)))
+        .await
+        .unwrap_or(fallback);
     RequestOutcome::Ready(result)
 }
 
