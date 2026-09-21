@@ -37,7 +37,7 @@ pub struct CmdArgs {
     )]
     pub output_format: OutputFormat,
 
-    /// Specify output destination (stdout or a file path, only used when output_format is json)
+    /// Specify output destination (stdout or a file path, used by JSON-based output formats)
     #[cfg_attr(feature = "cli", arg(long, default_value = "stdout"))]
     pub output: OutputDestination,
 
@@ -62,6 +62,8 @@ pub enum OutputFormat {
     Sarif,
     /// GitHub Actions workflow commands (`::error` / `::warning` / `::notice`)
     Github,
+    /// GitLab Code Quality report
+    Gitlab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

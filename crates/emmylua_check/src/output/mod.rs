@@ -1,4 +1,5 @@
 mod github_output_writer;
+mod gitlab_output_writer;
 mod json_output_writer;
 mod sarif_output_writer;
 mod text_output_writer;
@@ -33,6 +34,10 @@ pub async fn output_result(
         }
         OutputFormat::Sarif => Box::new(sarif_output_writer::SarifOutputWriter::new(output)),
         OutputFormat::Github => Box::new(github_output_writer::GithubOutputWriter::new(
+            workspace.clone(),
+        )),
+        OutputFormat::Gitlab => Box::new(gitlab_output_writer::GitlabOutputWriter::new(
+            output,
             workspace.clone(),
         )),
     };
