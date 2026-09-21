@@ -36,37 +36,23 @@ pub struct GitlabOutputWriter {
 }
 
 impl GitlabOutputWriter {
-    pub fn new(output: OutputDestination, workspace: PathBuf) -> Self {
+    pub fn new(output: OutputDestination) -> Self {
         let output = match output {
             OutputDestination::Stdout => None,
             OutputDestination::File(path) => {
                 if let Some(parent) = path.parent()
                     && !parent.exists()
                 {
-                    std::fs::create_dir_all(parent).unwrap_or_else(|error| {
-                        panic!(
-                            "failed to create GitLab Code Quality report directory {}: {error}",
-                            parent.display()
-                        )
-                    });
+                    std::fs::create_dir_all(parent)
+                        .expect("failed to create GitLab Code Quality report directory");
                 }
-                Some(File::create(&path).unwrap_or_else(|error| {
-                    panic!(
-                        "failed to create GitLab Code Quality report {}: {error}",
-                        path.display()
-                    )
-                }))
+                Some(File::create(path).expect("failed to create GitLab Code Quality report"))
             }
         };
 
-        // GitLab requires paths relative to the repository, not the analyzed
-        // workspace (which may be a subdirectory such as `src`).
-        let project_root = std::env::var_os("CI_PROJECT_DIR")
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| std::env::current_dir().ok())
-            .unwrap_or(workspace);
-        let project_root = normalize_path(&project_root);
+        let project_root = std::env::current_dir()
+            .and_then(|path| path.canonicalize())
+            .expect("failed to resolve current working directory");
 
         Self {
             output,
@@ -122,7 +108,7 @@ fn convert_diagnostic(path: &str, diagnostic: &Diagnostic) -> GitlabCodeQualityF
         })
         .unwrap_or_else(|| "emmylua_check".to_string());
     let begin = diagnostic.range.start.line + 1;
-    let fingerprint = fingerprint(&check_name, path, begin, &diagnostic.message);
+    let fingerprint = fingerprint(&check_name, path, diagnostic);
 
     GitlabCodeQualityFinding {
         description: diagnostic.message.clone(),
@@ -146,15 +132,18 @@ fn gitlab_severity(severity: Option<DiagnosticSeverity>) -> &'static str {
     }
 }
 
-fn fingerprint(check_name: &str, path: &str, begin: u32, description: &str) -> String {
+fn fingerprint(check_name: &str, path: &str, diagnostic: &Diagnostic) -> String {
     let mut hasher = Sha256::new();
     hasher.update(check_name.as_bytes());
     hasher.update(b"\0");
     hasher.update(path.as_bytes());
     hasher.update(b"\0");
-    hasher.update(begin.to_string().as_bytes());
+    hasher.update(diagnostic.range.start.line.to_be_bytes());
+    hasher.update(diagnostic.range.start.character.to_be_bytes());
+    hasher.update(diagnostic.range.end.line.to_be_bytes());
+    hasher.update(diagnostic.range.end.character.to_be_bytes());
     hasher.update(b"\0");
-    hasher.update(description.as_bytes());
+    hasher.update(diagnostic.message.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
@@ -162,27 +151,10 @@ fn repository_relative_path(
     project_root: &std::path::Path,
     file_path: &std::path::Path,
 ) -> Option<String> {
-    let project_root = normalize_path(project_root);
-    let file_path = normalize_path(file_path);
-    let relative = file_path.strip_prefix(&project_root).ok()?;
-    let normalized = relative.to_string_lossy().replace('\\', "/");
-    let normalized = normalized
-        .strip_prefix("./")
-        .unwrap_or(&normalized)
-        .trim_start_matches('/')
-        .to_string();
-    (!normalized.is_empty()).then_some(normalized)
-}
-
-fn normalize_path(path: &std::path::Path) -> PathBuf {
-    let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    strip_extended_prefix(&normalized)
-}
-
-fn strip_extended_prefix(path: &std::path::Path) -> PathBuf {
-    let path = path.to_string_lossy();
-    let stripped = path.strip_prefix(r"\\?\").unwrap_or(&path);
-    PathBuf::from(stripped.to_string())
+    file_path
+        .strip_prefix(project_root)
+        .ok()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -229,7 +201,7 @@ mod tests {
         let expected = json!({
             "description": "Undefined global `player`.",
             "check_name": "undefined-global",
-            "fingerprint": "41f77fdf3e86cb1db415c90a64922492236149e9468257d06645d145412a43ce",
+            "fingerprint": "4a5dc7adb2d434995ee8f525c4f55608702935a2309c12b397e1c1f84d15326c",
             "severity": "major",
             "location": {
                 "path": "src/player.lua",
@@ -261,25 +233,27 @@ mod tests {
     }
 
     #[gtest]
-    fn same_finding_keeps_its_fingerprint_but_path_or_line_changes_it() {
-        let base = fingerprint("unused", "src/main.lua", 3, "Unused local `name`.");
+    fn fingerprint_is_repeatable_and_distinguishes_findings_at_different_locations() {
+        let diagnostic = diagnostic(
+            DiagnosticSeverity::WARNING,
+            "unused",
+            2,
+            "Unused local `name`.",
+        );
+        let base = fingerprint("unused", "src/main.lua", &diagnostic);
+        let mut moved = diagnostic.clone();
+        moved.range.start.line += 1;
+        moved.range.end.line += 1;
 
         expect_that!(
-            base.as_str(),
-            eq("7da7e56fb955d3a4b84d6c5fdeb913242a0a8ec057c519dc224e4ba39c05df10")
-        );
-        expect_that!(
-            fingerprint("unused", "src/main.lua", 3, "Unused local `name`."),
+            fingerprint("unused", "src/main.lua", &diagnostic),
             eq(&base)
         );
         expect_that!(
-            fingerprint("unused", "src/other.lua", 3, "Unused local `name`."),
+            fingerprint("unused", "src/other.lua", &diagnostic),
             ne(&base)
         );
-        expect_that!(
-            fingerprint("unused", "src/main.lua", 4, "Unused local `name`."),
-            ne(&base)
-        );
+        expect_that!(fingerprint("unused", "src/main.lua", &moved), ne(&base));
     }
 
     #[gtest]
@@ -313,10 +287,7 @@ mod tests {
             "emmylua-check-gitlab-{}-{unique}.json",
             std::process::id()
         ));
-        let mut writer = GitlabOutputWriter::new(
-            OutputDestination::File(output_path.clone()),
-            std::env::temp_dir(),
-        );
+        let mut writer = GitlabOutputWriter::new(OutputDestination::File(output_path.clone()));
 
         writer.finish();
         let report = std::fs::read_to_string(&output_path).unwrap();

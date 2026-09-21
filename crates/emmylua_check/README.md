@@ -100,7 +100,7 @@ Write diagnostics in the [GitLab Code Quality report format](https://docs.gitlab
 emmylua_check . -f gitlab --output gl-code-quality-report.json
 ```
 
-The report contains repository-relative paths and deterministic fingerprints so GitLab can compare findings between the source and target branches. A fingerprint includes the rule, path, start line, and description: identical findings retain their identity, while moving a finding to another line creates a new identity. When available, `CI_PROJECT_DIR` is used as the repository root; otherwise, paths are relative to the current working directory. Diagnostics outside that root are skipped because GitLab cannot associate them with repository files.
+Run the command from the repository root. Report paths are relative to the current working directory, and diagnostics outside it are skipped because GitLab cannot associate them with repository files. Each fingerprint is derived from the rule, relative path, diagnostic range, and description.
 
 ---
 
