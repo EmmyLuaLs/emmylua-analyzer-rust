@@ -1,7 +1,97 @@
 use crate::common::render_typ;
+use crate::markdown_generator::markdown_types::MemberParam;
 use emmylua_code_analysis::{
     AsyncState, DbIndex, LuaFunctionType, LuaSignatureId, LuaType, RenderLevel, humanize_type,
 };
+
+fn render_param_type(db: &DbIndex, ty: Option<&LuaType>) -> Option<String> {
+    let text = render_typ(db, ty?, RenderLevel::Documentation);
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// A function's parameter and return-value rows.
+pub type FunctionDetails = (Vec<MemberParam>, Vec<MemberParam>);
+
+/// Extracts parameter and return-value rows (with descriptions) for a function
+/// type, mirroring the HTML generator's `function_details_html`.
+///
+/// Returns `None` for non-function types. Rows are only returned when at least
+/// one parameter or return value carries a description, so that empty tables
+/// are not emitted (a `DocFunction` never carries descriptions).
+pub fn function_details_md(db: &DbIndex, typ: &LuaType) -> Option<FunctionDetails> {
+    let (params, returns) = match typ {
+        LuaType::Signature(signature_id) => {
+            let signature = db.get_signature_index().get(signature_id)?;
+            let params = signature
+                .get_type_params()
+                .iter()
+                .enumerate()
+                .map(|(idx, (name, ty))| MemberParam {
+                    name: name.clone(),
+                    type_text: render_param_type(db, ty.as_ref()),
+                    description: signature
+                        .get_param_info_by_id(idx)
+                        .and_then(|info| info.description.clone()),
+                })
+                .collect::<Vec<_>>();
+            let returns = signature
+                .return_docs
+                .iter()
+                .map(|ret| MemberParam {
+                    name: ret.name.clone().unwrap_or_default(),
+                    type_text: Some(render_typ(db, &ret.type_ref, RenderLevel::Documentation)),
+                    description: ret.description.clone(),
+                })
+                .collect::<Vec<_>>();
+            (params, returns)
+        }
+        LuaType::DocFunction(func) => {
+            let params = func
+                .get_params()
+                .iter()
+                .map(|(name, ty)| MemberParam {
+                    name: name.clone(),
+                    type_text: render_param_type(db, ty.as_ref()),
+                    description: None,
+                })
+                .collect::<Vec<_>>();
+            let returns = vec![MemberParam {
+                name: String::new(),
+                type_text: Some(render_typ(db, func.get_ret(), RenderLevel::Documentation)),
+                description: None,
+            }];
+            (params, returns)
+        }
+        _ => return None,
+    };
+
+    let has_description = params.iter().any(|p| p.description.is_some())
+        || returns.iter().any(|r| r.description.is_some());
+    has_description.then_some((params, returns))
+}
+
+/// Renders the `---@overload` signatures of a function type as markdown code
+/// blocks, mirroring the HTML generator's `signature_overloads_html`.
+pub fn function_overloads_md(db: &DbIndex, typ: &LuaType, func_name: &str) -> Vec<String> {
+    let LuaType::Signature(signature_id) = typ else {
+        return Vec::new();
+    };
+    let Some(signature) = db.get_signature_index().get(signature_id) else {
+        return Vec::new();
+    };
+    signature
+        .overloads
+        .iter()
+        .map(|overload| {
+            render_function_type(
+                db,
+                &LuaType::DocFunction(overload.clone()),
+                func_name,
+                false,
+            )
+        })
+        .collect()
+}
 
 pub fn render_const_type(db: &DbIndex, typ: &LuaType) -> String {
     let const_value = humanize_type(db, typ, RenderLevel::Documentation);
@@ -191,33 +281,6 @@ fn render_signature_type(
     }
 
     result.push_str("\n```\n");
-    let param_count = signature.params.len();
-    for i in 0..param_count {
-        let param_info = match signature.get_param_info_by_id(i) {
-            Some(info) => info,
-            None => continue,
-        };
-
-        if let Some(description) = &param_info.description {
-            result.push_str(&format!("@param `{}`", param_info.name));
-            result.push_str(&format!(" - {}", description));
-            result.push_str("\n\n");
-        }
-    }
-    result.push('\n');
-    for ret in rets {
-        if let Some(description) = &ret.description {
-            let name = match ret.name {
-                Some(ref name) => format!("`{}`", name),
-                None => "".to_string(),
-            };
-            result.push_str(&format!("@return {}", name));
-            result.push_str(&format!(" - {}", description));
-            result.push_str("\n\n");
-        }
-    }
-
-    result.push('\n');
 
     Some(result)
 }

@@ -31,6 +31,24 @@
 ---
 {{ method.display }}
 
+{% if method.overloads %}
+**Overloads**
+
+{% for o in method.overloads %}{{ o }}
+{% endfor %}
+{% endif %}
+{% if method.params %}
+**Parameters**
+
+{% for p in method.params %}- **{{ p.name }}**{% if p.type_text %} (*{{ p.type_text }}*){% endif %}{% if p.description %} - {{ p.description }}{% endif %}
+{% endfor %}
+{% endif %}
+{% if method.returns %}
+**Returns**
+
+{% for r in method.returns %}- {% if r.name %}**{{ r.name }}** {% endif %}{% if r.type_text %}(*{{ r.type_text }}*){% endif %}{% if r.description %} - {{ r.description }}{% endif %}
+{% endfor %}
+{% endif %}
 {% if method.property.description %}
 {{ method.property.description }}
 {% endif %}
@@ -57,6 +75,24 @@
 ---
 {{ field.display }}
 
+{% if field.overloads %}
+**Overloads**
+
+{% for o in field.overloads %}{{ o }}
+{% endfor %}
+{% endif %}
+{% if field.params %}
+**Parameters**
+
+{% for p in field.params %}- **{{ p.name }}**{% if p.type_text %} (*{{ p.type_text }}*){% endif %}{% if p.description %} - {{ p.description }}{% endif %}
+{% endfor %}
+{% endif %}
+{% if field.returns %}
+**Returns**
+
+{% for r in field.returns %}- {% if r.name %}**{{ r.name }}** {% endif %}{% if r.type_text %}(*{{ r.type_text }}*){% endif %}{% if r.description %} - {{ r.description }}{% endif %}
+{% endfor %}
+{% endif %}
 {% if field.property.description %}
 {{ field.property.description }}
 {% endif %}
