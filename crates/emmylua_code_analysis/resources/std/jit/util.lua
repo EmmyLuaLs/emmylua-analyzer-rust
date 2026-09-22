@@ -2,12 +2,12 @@
 --- @meta jit.util
 --- @version JIT
 
---- @class Trace
---- @class Proto
+--- @class JIT.Proto
 
 local util = {}
 
 --- @class jit.funcinfo.lua
+--- @field proto JIT.Proto
 local funcinfo = {
     linedefined = 0,
     lastlinedefined = 0,
@@ -22,8 +22,6 @@ local funcinfo = {
     children = false,
     source = "",
     loc = "",
-    ---@type Proto[]
-    proto = {},
 }
 
 --- @class jit.funcinfo.c
@@ -33,23 +31,23 @@ local funcinfo2 = {
     upvalues = 0,
 }
 
---- @param func function
+--- @param func function | JIT.Proto
 --- @param pc?  integer
---- @return jit.funcinfo.c|jit.funcinfo.lua info
+--- @return jit.funcinfo.c | jit.funcinfo.lua info
 function util.funcinfo(func, pc) end
 
---- @param func function
+--- @param func function | JIT.Proto
 --- @param pc   integer
 --- @return integer? ins
 --- @return integer? m
 function util.funcbc(func, pc) end
 
---- @param func function
+--- @param func function | JIT.Proto
 --- @param idx  integer
 --- @return any? k
 function util.funck(func, idx) end
 
---- @param func function
+--- @param func function | JIT.Proto
 --- @param idx  integer
 --- @return string? name
 function util.funcuvname(func, idx) end
@@ -63,11 +61,11 @@ local traceinfo = {
     linktype = "",
 }
 
---- @param tr Trace
+--- @param tr integer
 --- @return jit.traceinfo? info
 function util.traceinfo(tr) end
 
---- @param tr  Trace
+--- @param tr  integer
 --- @param ref integer
 --- @return integer? m
 --- @return integer? ot
@@ -76,7 +74,7 @@ function util.traceinfo(tr) end
 --- @return integer? prev
 function util.traceir(tr, ref) end
 
---- @param tr  Trace
+--- @param tr  integer
 --- @param idx integer
 --- @return any? k
 --- @return integer? t
@@ -85,19 +83,21 @@ function util.tracek(tr, idx) end
 
 --- @class jit.snap: integer[]
 
---- @param tr Trace
---- @param sn integer
+--- @param tr      integer
+--- @param sn      integer
+--- @param getpos? boolean
 --- @return jit.snap? snap
+--- @return integer? pos
 function util.tracesnap(tr, sn) end
 
---- @param tr Trace
+--- @param tr integer
 --- @return string? mcode
 --- @return integer? addr
 --- @return integer? loop
 function util.tracemc(tr) end
 
 --- @overload fun(exitno: integer): integer
---- @param tr     Trace
+--- @param tr     integer
 --- @param exitno integer
 --- @return integer? addr
 function util.traceexitstub(tr, exitno) end
