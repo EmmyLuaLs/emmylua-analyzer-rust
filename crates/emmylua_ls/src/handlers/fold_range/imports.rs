@@ -78,6 +78,11 @@ fn is_require_stat(stat: LuaStat, require_like_func: &[String]) -> Option<bool> 
 
 fn is_require_expr(expr: LuaExpr, require_like_func: &[String]) -> Option<bool> {
     if let LuaExpr::CallExpr(call_expr) = expr {
+        // The parser already marks `require` and `runtime.requireLikeFunction`
+        // calls, including dotted names such as `VFS.Include(...)`.
+        if call_expr.is_require() {
+            return Some(true);
+        }
         let name = call_expr.get_prefix_expr()?;
         if let LuaExpr::NameExpr(name_expr) = name {
             let name = name_expr.get_name_text()?;

@@ -2093,4 +2093,57 @@ Syntax(Chunk)@0..6
             ParserConfig::with_level(LuaLanguageLevel::LuaJIT)
         );
     }
+
+    #[test]
+    fn test_dotted_special_function() {
+        use crate::{LuaCallExpr, LuaSyntaxKind, SpecialFunction};
+        use std::collections::HashMap;
+
+        let mut special_like = HashMap::new();
+        special_like.insert("VFS.Include".to_string(), SpecialFunction::Require);
+        special_like.insert("include".to_string(), SpecialFunction::Require);
+        special_like.insert("a.b.c".to_string(), SpecialFunction::Assert);
+        let config = ParserConfig::new(
+            LuaLanguageLevel::Lua54,
+            None,
+            special_like,
+            Default::default(),
+            true,
+        );
+
+        let code = r#"
+            local m1 = VFS.Include("mod")
+            local m2 = include("mod")
+            local m3 = require("mod")
+            a.b.c(x)
+            local n1 = VFS.Other("mod")
+            local n2 = VFS:Include("mod")
+            local n3 = VFS["Include"]("mod")
+            local n4 = VFS.Include.More("mod")
+            local n5 = VFS.Include
+        "#;
+        let tree = LuaParser::parse(code, config);
+        let kinds: Vec<(String, LuaSyntaxKind)> = tree
+            .get_chunk_node()
+            .descendants::<LuaCallExpr>()
+            .map(|call| {
+                let prefix = call.get_prefix_expr().unwrap().syntax().text().to_string();
+                (prefix, call.syntax().kind().into())
+            })
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec![
+                ("VFS.Include".to_string(), LuaSyntaxKind::RequireCallExpr),
+                ("include".to_string(), LuaSyntaxKind::RequireCallExpr),
+                ("require".to_string(), LuaSyntaxKind::RequireCallExpr),
+                ("a.b.c".to_string(), LuaSyntaxKind::AssertCallExpr),
+                ("VFS.Other".to_string(), LuaSyntaxKind::CallExpr),
+                ("VFS:Include".to_string(), LuaSyntaxKind::CallExpr),
+                ("VFS[\"Include\"]".to_string(), LuaSyntaxKind::CallExpr),
+                ("VFS.Include.More".to_string(), LuaSyntaxKind::CallExpr),
+            ]
+        );
+    }
 }

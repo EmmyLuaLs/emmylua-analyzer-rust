@@ -9,6 +9,8 @@ pub struct ParserConfig<'cache> {
     lexer_config: LexerConfig,
     node_cache: Option<&'cache mut NodeCache>,
     special_like: HashMap<String, SpecialFunction>,
+    /// Whether `special_like` contains a dotted name such as `VFS.Include`.
+    has_dotted_special_function: bool,
     pub enable_emmylua_doc: bool,
 }
 
@@ -20,11 +22,13 @@ impl<'cache> ParserConfig<'cache> {
         ext_features: LuaFeaturesSet,
         enable_emmylua_doc: bool,
     ) -> Self {
+        let has_dotted_special_function = special_like.keys().any(|name| name.contains('.'));
         Self {
             level,
             lexer_config: LexerConfig::new_with_extended_features(level, ext_features),
             node_cache,
             special_like,
+            has_dotted_special_function,
             enable_emmylua_doc,
         }
     }
@@ -43,6 +47,13 @@ impl<'cache> ParserConfig<'cache> {
 
     pub fn node_cache(&mut self) -> Option<&mut NodeCache> {
         self.node_cache.as_deref_mut()
+    }
+
+    /// Returns true when a special function is configured with a dotted name
+    /// (e.g. `VFS.Include`), in which case the parser needs to track dotted
+    /// call paths.
+    pub fn has_dotted_special_function(&self) -> bool {
+        self.has_dotted_special_function
     }
 
     pub fn get_special_function(&self, name: &str) -> SpecialFunction {
@@ -65,6 +76,7 @@ impl<'cache> ParserConfig<'cache> {
             lexer_config: LexerConfig::new(level),
             node_cache: None,
             special_like: HashMap::new(),
+            has_dotted_special_function: false,
             enable_emmylua_doc: true,
         }
     }
@@ -77,6 +89,7 @@ impl Default for ParserConfig<'_> {
             lexer_config: LexerConfig::new(LuaLanguageLevel::Lua55),
             node_cache: None,
             special_like: HashMap::new(),
+            has_dotted_special_function: false,
             enable_emmylua_doc: true,
         }
     }

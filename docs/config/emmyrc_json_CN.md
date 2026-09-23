@@ -358,7 +358,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `version` | `string` | `"LuaLatest"` | Lua 版本：`Lua5.1`、`LuaJIT`、`Lua5.2`、`Lua5.3`、`Lua5.4`、`Lua5.5`、`LuaLatest` |
-| `requireLikeFunction` | `string[]` | `[]` | 视为 require 的函数名 |
+| `requireLikeFunction` | `string[]` | `[]` | 视为 require 的函数名，例如 `include` 或带点的名称 `VFS.Include` |
 | `frameworkVersions` | `string[]` | `[]` | 框架版本标识 |
 | `extensions` | `string[]` | `[]` | 额外识别的 Lua 文件扩展名 |
 | `requirePattern` | `string[]` | `[]` | require 搜索模式，例如 `?.lua`、`?/init.lua` |

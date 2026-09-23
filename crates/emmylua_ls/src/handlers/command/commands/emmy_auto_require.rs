@@ -156,6 +156,11 @@ fn is_require_expr(expr: LuaExpr, require_like_func: &[String], depth: usize) ->
     }
     match expr {
         LuaExpr::CallExpr(call_expr) => {
+            // The parser already marks `require` and `runtime.requireLikeFunction`
+            // calls, including dotted names such as `VFS.Include(...)`.
+            if call_expr.is_require() {
+                return Some(true);
+            }
             let name = call_expr.get_prefix_expr()?;
             match name {
                 LuaExpr::NameExpr(name_expr) => {

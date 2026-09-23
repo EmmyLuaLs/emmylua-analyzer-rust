@@ -358,7 +358,7 @@ All remaining built-in rules default to `warning`:
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | `string` | `"LuaLatest"` | Lua version: `Lua5.1`, `LuaJIT`, `Lua5.2`, `Lua5.3`, `Lua5.4`, `Lua5.5`, `LuaLatest` |
-| `requireLikeFunction` | `string[]` | `[]` | Function names treated like require |
+| `requireLikeFunction` | `string[]` | `[]` | Function names treated like require, e.g. `include` or a dotted name such as `VFS.Include` |
 | `frameworkVersions` | `string[]` | `[]` | Framework version identifiers |
 | `extensions` | `string[]` | `[]` | Additional file extensions treated as Lua |
 | `requirePattern` | `string[]` | `[]` | Module search patterns such as `?.lua` and `?/init.lua` |

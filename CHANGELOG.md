@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **requireLikeFunction**: Dotted names such as `VFS.Include` are now recognized as require-like calls, so their return type is inferred from the required module like `require`.
 - **Flow analysis**: Handle array length guards that compare against smaller lengths.
 - **Member id description**: Fixed an issue with member id description rendering.
 

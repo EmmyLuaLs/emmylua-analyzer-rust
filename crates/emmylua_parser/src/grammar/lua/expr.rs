@@ -597,8 +597,24 @@ fn recover_to_table_boundary(p: &mut LuaParser) {
 }
 
 fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
+    // Dotted path of the expression parsed so far, e.g. `VFS.Include` for
+    // `VFS.Include(...)`. Used to recognize special functions configured with
+    // a dotted name. Reset to `None` as soon as the expression is no longer a
+    // plain chain of `name.name...`.
+    let mut dotted_path: Option<String> = None;
     let mut cm = match p.current_token() {
-        LuaTokenKind::TkName => parse_name_or_special_function(p)?,
+        LuaTokenKind::TkName => {
+            let name = if p.parse_config.has_dotted_special_function() {
+                p.current_token_text().to_string()
+            } else {
+                String::new()
+            };
+            let cm = parse_name_or_special_function(p)?;
+            if cm.kind == LuaSyntaxKind::NameExpr && p.parse_config.has_dotted_special_function() {
+                dotted_path = Some(name);
+            }
+            cm
+        }
         LuaTokenKind::TkLeftParen => {
             let m = p.mark(LuaSyntaxKind::ParenExpr);
             let paren_range = p.current_token_range();
@@ -639,6 +655,15 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
     loop {
         match p.current_token() {
             LuaTokenKind::TkDot | LuaTokenKind::TkLeftBracket => {
+                if p.current_token() == LuaTokenKind::TkDot
+                    && p.peek_next_token() == LuaTokenKind::TkName
+                    && let Some(path) = dotted_path.as_mut()
+                {
+                    path.push('.');
+                    path.push_str(p.peek_next_token_text().unwrap_or_default());
+                } else {
+                    dotted_path = None;
+                }
                 let m = cm.precede(p, LuaSyntaxKind::IndexExpr);
                 if let Err(err) = parse_index_struct(p) {
                     m.complete(p);
@@ -650,6 +675,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                 if p.inside_ternary_branch() && !p.paren_depth_exceeds_ternary_ref() {
                     return Ok(cm);
                 }
+                dotted_path = None;
                 let m = cm.precede(p, LuaSyntaxKind::IndexExpr);
                 if let Err(err) = parse_index_struct(p) {
                     m.complete(p);
@@ -658,6 +684,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                 cm = m.complete(p);
             }
             LuaTokenKind::TkSafeNavigation => {
+                dotted_path = None;
                 if matches!(
                     p.peek_next_token(),
                     LuaTokenKind::TkLeftParen
@@ -686,7 +713,15 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
             | LuaTokenKind::TkLongString
             | LuaTokenKind::TkString
             | LuaTokenKind::TkLeftBrace => {
-                let m = cm.precede(p, LuaSyntaxKind::CallExpr);
+                // A dotted callee such as `VFS.Include(...)` may be configured
+                // as a special function (e.g. via `runtime.requireLikeFunction`).
+                let call_kind = dotted_path
+                    .take()
+                    .filter(|path| path.contains('.'))
+                    .map(|path| special_call_kind(p.parse_config.get_special_function(&path)))
+                    .filter(|kind| *kind != LuaSyntaxKind::None)
+                    .unwrap_or(LuaSyntaxKind::CallExpr);
+                let m = cm.precede(p, call_kind);
                 if let Err(err) = parse_args(p) {
                     m.complete(p);
                     return Err(err);
@@ -700,16 +735,21 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
     }
 }
 
-fn parse_name_or_special_function(p: &mut LuaParser) -> ParseResult {
-    let m = p.mark(LuaSyntaxKind::NameExpr);
-    let special_kind = match p.parse_config.get_special_function(p.current_token_text()) {
+fn special_call_kind(special: SpecialFunction) -> LuaSyntaxKind {
+    match special {
         SpecialFunction::Require => LuaSyntaxKind::RequireCallExpr,
         SpecialFunction::Assert => LuaSyntaxKind::AssertCallExpr,
         SpecialFunction::Error => LuaSyntaxKind::ErrorCallExpr,
         SpecialFunction::Type => LuaSyntaxKind::TypeCallExpr,
         SpecialFunction::Setmetaatable => LuaSyntaxKind::SetmetatableCallExpr,
         _ => LuaSyntaxKind::None,
-    };
+    }
+}
+
+fn parse_name_or_special_function(p: &mut LuaParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::NameExpr);
+    let special_kind =
+        special_call_kind(p.parse_config.get_special_function(p.current_token_text()));
     p.bump();
     let mut cm = m.complete(p);
     if special_kind == LuaSyntaxKind::None {

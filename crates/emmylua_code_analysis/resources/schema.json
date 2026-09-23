@@ -993,7 +993,7 @@
           }
         },
         "requireLikeFunction": {
-          "description": "Functions that like require.",
+          "description": "Functions that like require. Dotted names such as `VFS.Include` are supported.",
           "type": "array",
           "default": [],
           "items": {

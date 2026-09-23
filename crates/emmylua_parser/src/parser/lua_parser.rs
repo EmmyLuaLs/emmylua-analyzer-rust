@@ -186,6 +186,18 @@ impl<'a> LuaParser<'a> {
         }
     }
 
+    pub fn peek_next_token_text(&self) -> Option<&str> {
+        let mut next_index = self.token_index + 1;
+        self.skip_trivia(&mut next_index);
+
+        if next_index >= self.tokens.len() {
+            None
+        } else {
+            let range = &self.tokens[next_index].range;
+            Some(&self.text[range.start_offset..range.end_offset()])
+        }
+    }
+
     pub fn peek_nth_token(&self, n: usize) -> LuaTokenKind {
         let mut index = self.token_index;
         for _ in 0..=n {

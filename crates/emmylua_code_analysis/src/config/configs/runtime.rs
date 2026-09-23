@@ -13,7 +13,7 @@ pub struct EmmyrcRuntime {
     #[serde(default)]
     pub version: EmmyrcLuaVersion,
     #[serde(default)]
-    /// Functions that like require.
+    /// Functions that like require. Dotted names such as `VFS.Include` are supported.
     pub require_like_function: Vec<String>,
     #[serde(default)]
     /// Framework versions.

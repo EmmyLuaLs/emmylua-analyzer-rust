@@ -23,6 +23,7 @@ mod out_of_order;
 mod overload_field;
 mod overload_test;
 mod pcall_test;
+mod require_like_test;
 mod return_overload_flow_test;
 mod return_overload_generic_test;
 mod return_unwrap_test;
