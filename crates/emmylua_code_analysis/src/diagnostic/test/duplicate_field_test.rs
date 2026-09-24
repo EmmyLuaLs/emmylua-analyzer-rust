@@ -185,4 +185,29 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_member_call_in_assign_index() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "1.lua",
+            r#"
+                ---@class D.Mod
+                local m = {}
+
+                function m.key()
+                end
+
+                return m
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::DuplicateSetField,
+            r#"
+            local m = require("1")
+            local t = {}
+            t[m.key()] = true
+        "#
+        ));
+    }
 }
