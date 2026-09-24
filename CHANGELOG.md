@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Flow analysis**: Handle array length guards that compare against smaller lengths.
 - **Member id description**: Fixed an issue with member id description rendering.
+- **duplicate-set-field**: No longer reported for a member call used inside an assignment index, such as `t[m.key()] = true`.
 
 ## [0.25.1] - 2026-08-14
 
