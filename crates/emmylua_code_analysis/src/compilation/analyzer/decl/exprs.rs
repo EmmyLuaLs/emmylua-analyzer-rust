@@ -344,7 +344,10 @@ pub fn analyze_call_expr(analyzer: &mut DeclAnalyzer, expr: LuaCallExpr) -> Opti
         {
             let module_path = string_token.get_value();
             let file_id = analyzer.get_file_id();
-            let module_info = analyzer.db.get_module_index().find_module(&module_path)?;
+            let module_info = analyzer
+                .db
+                .get_module_index()
+                .find_module_from(&module_path, file_id)?;
             let module_file_id = module_info.file_id;
             analyzer
                 .db

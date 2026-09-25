@@ -97,8 +97,11 @@ pub fn add_modules(
                 new_text: filter_text.clone(),
             })
         });
-        if let Some(child_file_id) = child_module_node.file_ids.first() {
-            let child_module_info = db.get_module_index().get_module(*child_file_id)?;
+        if !child_module_node.file_ids.is_empty() {
+            let child_module_info = db
+                .get_module_index()
+                .find_module_from(&filter_text, builder.semantic_model.get_file_id())?;
+            let child_file_id = &child_module_info.file_id;
             let data = if let Some(property_id) = &child_module_info.semantic_id {
                 CompletionData::from_property_owner_id(builder, property_id.clone())
             } else {

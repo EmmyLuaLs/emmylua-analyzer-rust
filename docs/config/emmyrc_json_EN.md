@@ -436,6 +436,18 @@ Supported `special` values: `none`, `require`, `error`, `assert`, `type`, `setme
 }
 ```
 
+When multiple `workspaceRoots` contain the same module path, a lookup prefers
+matches in the calling file's most specific configured root. Root-relative
+imports remain root-relative even when the calling file is in a subdirectory.
+Existing exact/mapped/fuzzy lookup order and library fallback still apply.
+
+For overlapping roots, explicit `moduleMap` names derived from enclosing roots
+are also available as aliases. For example, with roots `./mods`, `./mods/a` and
+`./mods/b`, a map from `^([ab])[.](.*)$` to `package_$1.$2` allows both a local
+`require("helper")` and a qualified `require("package_b.helper")`. Unmapped
+parent-relative names are not added implicitly. Aliases share the original
+file's type/visibility metadata and disappear when the file is removed.
+
 ### strict
 
 | Field | Type | Default | Description |

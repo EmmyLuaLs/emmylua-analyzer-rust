@@ -43,7 +43,7 @@ fn check_require_call_expr(
     let Some(module_info) = semantic_model
         .get_db()
         .get_module_index()
-        .find_module(&module_path)
+        .find_module_from(&module_path, semantic_model.get_file_id())
     else {
         context.add_diagnostic(
             DiagnosticCode::UnresolvedRequire,

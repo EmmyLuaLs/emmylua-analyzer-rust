@@ -224,7 +224,7 @@ fn parse_require_expr_module_info<'a>(
     semantic_model
         .get_db()
         .get_module_index()
-        .find_module(&module_path)
+        .find_module_from(&module_path, semantic_model.get_file_id())
 }
 
 fn is_cross_file_member_from_imported_export_table_const(

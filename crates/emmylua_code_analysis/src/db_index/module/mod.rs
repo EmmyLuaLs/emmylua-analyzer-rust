@@ -26,6 +26,9 @@ pub struct LuaModuleIndex {
     file_module_map: HashMap<FileId, ModuleInfo>,
     module_name_to_file_ids: HashMap<String, Vec<FileId>>,
     workspaces: Vec<Workspace>,
+    // A file can have a short name and explicitly mapped names from enclosing roots.
+    file_module_nodes: HashMap<FileId, Vec<ModuleNodeId>>,
+    file_workspace_roots: HashMap<FileId, PathBuf>,
     id_counter: u32,
     fuzzy_search: bool,
     module_replace_vec: Vec<(Regex, String)>,
@@ -46,6 +49,8 @@ impl LuaModuleIndex {
             file_module_map: HashMap::new(),
             module_name_to_file_ids: HashMap::new(),
             workspaces: Vec::new(),
+            file_module_nodes: HashMap::new(),
+            file_workspace_roots: HashMap::new(),
             id_counter: 1,
             fuzzy_search: false,
             module_replace_vec: Vec::new(),
@@ -111,7 +116,41 @@ impl LuaModuleIndex {
             module_path = self.replace_module_path(&module_path);
         }
 
+        let mut aliases = Vec::new();
+        let mut source_root: Option<PathBuf> = None;
+        for workspace in &self.workspaces {
+            let Ok(relative) = Path::new(path).strip_prefix(&workspace.root) else {
+                continue;
+            };
+            if !workspace.import.includes_path(relative) {
+                continue;
+            }
+            if source_root
+                .as_ref()
+                .is_none_or(|root| workspace.root.components().count() > root.components().count())
+            {
+                source_root = Some(workspace.root.clone());
+            }
+            if let Some(name) = relative
+                .to_str()
+                .and_then(|relative| self.match_pattern(relative))
+            {
+                let name = name.replace(['\\', '/'], ".");
+                let mapped = self.replace_module_path(&name);
+                // Only explicit mappings introduce aliases; ordinary enclosing roots
+                // must not change the existing shortest-root module naming behavior.
+                if mapped != name && mapped != module_path && !aliases.contains(&mapped) {
+                    aliases.push(mapped);
+                }
+            }
+        }
         self.add_module_by_module_path(file_id, module_path, workspace_id);
+        if let Some(root) = source_root {
+            self.file_workspace_roots.insert(file_id, root);
+        }
+        for alias in aliases {
+            self.add_module_node(file_id, &alias);
+        }
         Some(workspace_id)
     }
 
@@ -121,10 +160,45 @@ impl LuaModuleIndex {
         module_path: String,
         workspace_id: WorkspaceId,
     ) -> Option<()> {
+        let source_root = self.file_workspace_roots.get(&file_id).cloned();
         if self.file_module_map.contains_key(&file_id) {
             self.remove(file_id);
         }
+        if let Some(root) = source_root {
+            self.file_workspace_roots.insert(file_id, root);
+        }
 
+        let parent_node_id = self.add_module_node(file_id, &module_path)?;
+        let module_parts: Vec<&str> = module_path.split('.').collect();
+        let module_name = {
+            let name = module_parts.last()?;
+            name.to_string()
+        };
+        let module_info = ModuleInfo {
+            file_id,
+            full_module_name: module_parts.join("."),
+            name: module_name.clone(),
+            module_id: parent_node_id,
+            visible: ModuleVisibility::default(),
+            export_type: None,
+            version_conds: None,
+            workspace_id,
+            semantic_id: None,
+            is_meta: false,
+        };
+
+        self.file_module_map.insert(file_id, module_info);
+        if self.fuzzy_search {
+            self.module_name_to_file_ids
+                .entry(module_name)
+                .or_default()
+                .push(file_id);
+        }
+
+        Some(())
+    }
+
+    fn add_module_node(&mut self, file_id: FileId, module_path: &str) -> Option<ModuleNodeId> {
         let module_parts: Vec<&str> = module_path.split('.').collect();
         if module_parts.is_empty() {
             return None;
@@ -163,33 +237,14 @@ impl LuaModuleIndex {
 
         let node = self.module_nodes.get_mut(&parent_node_id)?;
 
-        node.file_ids.push(file_id);
-        let module_name = {
-            let name = module_parts.last()?;
-            name.to_string()
-        };
-        let module_info = ModuleInfo {
-            file_id,
-            full_module_name: module_parts.join("."),
-            name: module_name.clone(),
-            module_id: parent_node_id,
-            visible: ModuleVisibility::default(),
-            export_type: None,
-            version_conds: None,
-            workspace_id,
-            semantic_id: None,
-            is_meta: false,
-        };
-
-        self.file_module_map.insert(file_id, module_info);
-        if self.fuzzy_search {
-            self.module_name_to_file_ids
-                .entry(module_name)
-                .or_default()
-                .push(file_id);
+        if !node.file_ids.contains(&file_id) {
+            node.file_ids.push(file_id);
         }
-
-        Some(())
+        self.file_module_nodes
+            .entry(file_id)
+            .or_default()
+            .push(parent_node_id);
+        Some(parent_node_id)
     }
 
     pub fn get_module(&self, file_id: FileId) -> Option<&ModuleInfo> {
@@ -217,9 +272,23 @@ impl LuaModuleIndex {
     }
 
     pub fn find_module(&self, module_path: &str) -> Option<&ModuleInfo> {
+        self.find_module_with_root(module_path, None)
+    }
+
+    /// Prefer modules in the caller's most specific workspace root. WorkspaceId
+    /// alone is insufficient: all configured source roots share MAIN.
+    pub fn find_module_from(&self, module_path: &str, file_id: FileId) -> Option<&ModuleInfo> {
+        self.find_module_with_root(module_path, self.file_workspace_roots.get(&file_id))
+    }
+
+    fn find_module_with_root(
+        &self,
+        module_path: &str,
+        source_root: Option<&PathBuf>,
+    ) -> Option<&ModuleInfo> {
         let module_path = module_path.replace(['\\', '/'], ".");
         // require 路径已经和模块索引完全一致时, 优先保留原始命中结果.
-        if let Some(module_info) = self.find_module_by_normalized_path(&module_path) {
+        if let Some(module_info) = self.find_module_by_normalized_path(&module_path, source_root) {
             return Some(module_info);
         }
 
@@ -236,7 +305,8 @@ impl LuaModuleIndex {
         };
 
         if let Some(mapped_module_path) = mapped_module_path.as_deref()
-            && let Some(module_info) = self.find_module_by_normalized_path(mapped_module_path)
+            && let Some(module_info) =
+                self.find_module_by_normalized_path(mapped_module_path, source_root)
         {
             return Some(module_info);
         }
@@ -246,7 +316,8 @@ impl LuaModuleIndex {
             if let Some(mapped_module_path) = mapped_module_path.as_deref() {
                 let mapped_module_parts: Vec<&str> = mapped_module_path.split('.').collect();
                 if let Some(last_name) = mapped_module_parts.last()
-                    && let Some(module_info) = self.fuzzy_find_module(mapped_module_path, last_name)
+                    && let Some(module_info) =
+                        self.fuzzy_find_module(mapped_module_path, last_name, source_root)
                 {
                     return Some(module_info);
                 }
@@ -254,23 +325,31 @@ impl LuaModuleIndex {
 
             let module_parts: Vec<&str> = module_path.split('.').collect();
             if let Some(last_name) = module_parts.last() {
-                return self.fuzzy_find_module(&module_path, last_name);
+                return self.fuzzy_find_module(&module_path, last_name, source_root);
             }
         }
 
         None
     }
 
-    fn find_module_by_normalized_path(&self, module_path: &str) -> Option<&ModuleInfo> {
+    fn find_module_by_normalized_path(
+        &self,
+        module_path: &str,
+        source_root: Option<&PathBuf>,
+    ) -> Option<&ModuleInfo> {
         let module_parts: Vec<&str> = module_path.split('.').collect();
         if module_parts.is_empty() {
             return None;
         }
 
-        self.exact_find_module(&module_parts)
+        self.exact_find_module(&module_parts, source_root)
     }
 
-    fn exact_find_module(&self, module_parts: &Vec<&str>) -> Option<&ModuleInfo> {
+    fn exact_find_module(
+        &self,
+        module_parts: &Vec<&str>,
+        source_root: Option<&PathBuf>,
+    ) -> Option<&ModuleInfo> {
         let mut parent_node_id = self.module_root_id;
         for part in module_parts {
             let parent_node = self.module_nodes.get(&parent_node_id)?;
@@ -282,20 +361,19 @@ impl LuaModuleIndex {
         }
 
         let node = self.module_nodes.get(&parent_node_id)?;
-        let prefer_non_hidden = node.file_ids.len() > 1;
-        let mut first_module = None;
-        for file_id in &node.file_ids {
-            let module_info = self.file_module_map.get(file_id)?;
-            if first_module.is_none() {
-                first_module = Some(module_info);
-            }
+        node.file_ids
+            .iter()
+            .filter_map(|id| self.file_module_map.get(id))
+            .min_by_key(|info| {
+                (
+                    self.root_preference(info.file_id, source_root),
+                    info.visible.is_hidden(),
+                )
+            })
+    }
 
-            if !prefer_non_hidden || !module_info.visible.is_hidden() {
-                return Some(module_info);
-            }
-        }
-
-        first_module
+    fn root_preference(&self, file_id: FileId, source_root: Option<&PathBuf>) -> bool {
+        source_root.is_some() && self.file_workspace_roots.get(&file_id) != source_root
     }
 
     /// Find a module by suffix when exact lookup fails.
@@ -303,7 +381,12 @@ impl LuaModuleIndex {
     /// Candidates must either exactly equal `module_path` or end with `.{module_path}`.
     /// Among matches, prefer the one with the fewest leading path segments before the suffix,
     /// then use lexicographic `full_module_name` ordering as a stable tie-break.
-    fn fuzzy_find_module(&self, module_path: &str, last_name: &str) -> Option<&ModuleInfo> {
+    fn fuzzy_find_module(
+        &self,
+        module_path: &str,
+        last_name: &str,
+        source_root: Option<&PathBuf>,
+    ) -> Option<&ModuleInfo> {
         let file_ids = self.module_name_to_file_ids.get(last_name)?;
         let suffix_with_boundary = format!(".{}", module_path);
         file_ids
@@ -327,8 +410,9 @@ impl LuaModuleIndex {
                 Some((leading_segment_count, module_info))
             })
             .min_by(|(left_count, left_info), (right_count, right_info)| {
-                left_count
-                    .cmp(right_count)
+                self.root_preference(left_info.file_id, source_root)
+                    .cmp(&self.root_preference(right_info.file_id, source_root))
+                    .then_with(|| left_count.cmp(right_count))
                     .then_with(|| left_info.full_module_name.cmp(&right_info.full_module_name))
             })
             .map(|(_, module_info)| module_info)
@@ -598,78 +682,39 @@ impl LuaModuleIndex {
 
 impl LuaIndex for LuaModuleIndex {
     fn remove(&mut self, file_id: FileId) {
-        let (mut parent_id, mut child_id) =
-            if let Some(module_info) = self.file_module_map.remove(&file_id) {
-                let module_id = module_info.module_id;
-                let node = match self.module_nodes.get_mut(&module_id) {
-                    Some(node) => node,
-                    None => return,
-                };
+        self.file_module_map.remove(&file_id);
+        self.file_workspace_roots.remove(&file_id);
+        for module_id in self.file_module_nodes.remove(&file_id).unwrap_or_default() {
+            if let Some(node) = self.module_nodes.get_mut(&module_id) {
                 node.file_ids.retain(|id| *id != file_id);
-                if node.file_ids.is_empty() && node.children.is_empty() {
-                    (node.parent, Some(module_id))
-                } else {
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            };
-
-        if parent_id.is_none() || child_id.is_none() {
-            return;
-        }
-
-        while let Some(id) = parent_id {
-            let child_module_id = match child_id {
-                Some(id) => id,
-                None => break,
-            };
-            let node = match self.module_nodes.get_mut(&id) {
-                Some(node) => node,
-                None => break,
-            };
-            node.children
-                .retain(|_, node_child_idid| *node_child_idid != child_module_id);
-
-            if id == self.module_root_id {
-                return;
             }
-
-            if node.file_ids.is_empty() && node.children.is_empty() {
-                child_id = Some(id);
-                parent_id = node.parent;
-                self.module_nodes.remove(&id);
-            } else {
-                break;
-            }
-        }
-
-        if !self.module_name_to_file_ids.is_empty() {
-            let mut module_name = String::new();
-            for (name, file_ids) in &self.module_name_to_file_ids {
-                if file_ids.contains(&file_id) {
-                    module_name = name.clone();
+            let mut current = module_id;
+            while current != self.module_root_id {
+                let Some(node) = self.module_nodes.get(&current) else {
+                    break;
+                };
+                if !node.file_ids.is_empty() || !node.children.is_empty() {
                     break;
                 }
-            }
-
-            if !module_name.is_empty() {
-                let file_ids = match self.module_name_to_file_ids.get_mut(&module_name) {
-                    Some(ids) => ids,
-                    None => return,
-                };
-
-                file_ids.retain(|id| *id != file_id);
-                if file_ids.is_empty() {
-                    self.module_name_to_file_ids.remove(&module_name);
+                let Some(parent) = node.parent else { break };
+                self.module_nodes.remove(&current);
+                if let Some(node) = self.module_nodes.get_mut(&parent) {
+                    node.children.retain(|_, id| *id != current);
                 }
+                current = parent;
             }
         }
+        self.module_name_to_file_ids.retain(|_, ids| {
+            ids.retain(|id| *id != file_id);
+            !ids.is_empty()
+        });
     }
 
     fn clear(&mut self) {
         self.module_nodes.clear();
         self.file_module_map.clear();
+        self.file_module_nodes.clear();
+        self.file_workspace_roots.clear();
         self.module_name_to_file_ids.clear();
 
         let root_node = ModuleNode::default();
