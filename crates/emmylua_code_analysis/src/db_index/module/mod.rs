@@ -697,6 +697,7 @@ impl LuaModuleIndex {
 
         None
     }
+
     /// Remove canonical and alias entries while preserving the file's source root
     /// for an explicit module-name replacement. Full file removal also clears it.
     fn remove_module_entries(&mut self, file_id: FileId) {
