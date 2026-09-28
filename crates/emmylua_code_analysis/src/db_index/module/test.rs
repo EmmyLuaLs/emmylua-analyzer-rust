@@ -73,6 +73,41 @@ mod tests {
     }
 
     #[test]
+    fn test_overlapping_roots_apply_module_mapping_once() {
+        for reverse in [false, true] {
+            for relative in ["helper.lua", "helper/init.lua"] {
+                let mut m = create_module();
+                let mut roots = vec!["/project", "/project/a"];
+                if reverse {
+                    roots.reverse();
+                }
+                for root in roots {
+                    m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+                }
+                // A second rewrite would add another prefix, making it observable.
+                m.set_module_replace_patterns(vec![("^(.*)$".into(), "mapped.$1".into())]);
+                let path = format!("/project/a/{relative}");
+                assert_eq!(m.match_pattern(relative).as_deref(), Some("helper"));
+                assert_eq!(m.extract_module_path(&path).unwrap().0, "helper");
+                let file = FileId { id: 1 };
+                m.add_module_by_path(file, &path);
+                assert_eq!(
+                    m.get_module(file).unwrap().full_module_name,
+                    "mapped.helper"
+                );
+                for name in ["mapped.helper", "mapped.a.helper"] {
+                    assert_eq!(m.find_module_node(name).unwrap().file_ids, vec![file]);
+                    assert_eq!(m.find_module(name).unwrap().file_id, file);
+                    assert!(m.find_module_node(&format!("mapped.{name}")).is_none());
+                }
+                assert_eq!(m.find_module("helper").unwrap().file_id, file);
+                assert_eq!(m.find_module("a.helper").unwrap().file_id, file);
+                assert_eq!(m.file_module_nodes[&file].len(), 2);
+            }
+        }
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(

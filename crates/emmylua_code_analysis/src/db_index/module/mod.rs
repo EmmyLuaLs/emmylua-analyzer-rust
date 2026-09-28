@@ -493,6 +493,7 @@ impl LuaModuleIndex {
         matched_module_path
     }
 
+    /// Apply the configured rewrite rules in order, once per rule.
     fn replace_module_path(&self, module_path: &str) -> String {
         let mut module_path = module_path.to_owned();
         for (key, value) in &self.module_replace_vec {
@@ -504,6 +505,8 @@ impl LuaModuleIndex {
         module_path
     }
 
+    /// Extract a module name using runtime path patterns, without applying moduleMap.
+    /// Callers normalize separators and apply the rewrite rules separately.
     pub fn match_pattern(&self, path: &str) -> Option<String> {
         for pattern in &self.module_patterns {
             if let Some(captures) = pattern.captures(path)
