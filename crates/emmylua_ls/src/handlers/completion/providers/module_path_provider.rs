@@ -89,7 +89,10 @@ pub fn add_modules(
     let mut module_completions = Vec::new();
     let module_info = db.get_module_index().find_module_node(&module_path)?;
     for (name, module_id) in &module_info.children {
-        let child_module_node = db.get_module_index().get_module_node(module_id)?;
+        let Some(child_module_node) = db.get_module_index().get_module_node(module_id) else {
+            continue;
+        };
+        // Replace the typed suffix with the child's complete name before resolving.
         let filter_text = format!("{}{}", prefix, name);
         let text_edit = text_edit_range.map(|text_edit_range| {
             CompletionTextEdit::Edit(TextEdit {
@@ -98,9 +101,12 @@ pub fn add_modules(
             })
         });
         if !child_module_node.file_ids.is_empty() {
-            let child_module_info = db
+            let Some(child_module_info) = db
                 .get_module_index()
-                .find_module_from(&filter_text, builder.semantic_model.get_file_id())?;
+                .find_module_from(&filter_text, builder.semantic_model.get_file_id())
+            else {
+                continue;
+            };
             let child_file_id = &child_module_info.file_id;
             let data = if let Some(property_id) = &child_module_info.semantic_id {
                 CompletionData::from_property_owner_id(builder, property_id.clone())
@@ -109,7 +115,9 @@ pub fn add_modules(
             };
 
             if child_module_info.is_visible(&version_number) {
-                let uri = db.get_vfs().get_uri(child_file_id)?;
+                let Some(uri) = db.get_vfs().get_uri(child_file_id) else {
+                    continue;
+                };
                 let completion_item = CompletionItem {
                     label: name.clone(),
                     kind: Some(lsp_types::CompletionItemKind::FILE),
