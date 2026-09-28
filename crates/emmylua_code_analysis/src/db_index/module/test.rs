@@ -179,6 +179,58 @@ mod tests {
     }
 
     #[test]
+    fn test_callers_without_registered_roots_use_global_lookup() {
+        let mut m = create_module();
+        m.fuzzy_search = true;
+        for root in ["/a", "/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![
+            ("^alias$".into(), "exact".into()),
+            ("^alias_helper$".into(), "helper".into()),
+        ]);
+        let exact = FileId { id: 1 };
+        let local_fuzzy = FileId { id: 3 };
+        let global_fuzzy = FileId { id: 4 };
+        m.add_module_by_path(exact, "/a/exact.lua");
+        m.add_module_by_path(FileId { id: 2 }, "/b/exact.lua");
+        m.add_module_by_path(local_fuzzy, "/a/deep/lib/helper.lua");
+        m.add_module_by_path(global_fuzzy, "/b/lib/helper.lua");
+        assert_eq!(
+            m.find_module_from("helper", exact).unwrap().file_id,
+            local_fuzzy
+        );
+
+        let unknown = FileId { id: 10 };
+        let explicit = FileId { id: 11 };
+        let outside = FileId { id: 12 };
+        let removed = FileId { id: 13 };
+        m.add_module_by_module_path(explicit, "std_caller".into(), WorkspaceId::STD);
+        assert!(
+            m.add_module_by_path(outside, "/outside/control.lua")
+                .is_none()
+        );
+        m.add_module_by_path(removed, "/a/control.lua");
+        m.remove(removed);
+        for caller in [unknown, explicit, outside, removed] {
+            assert!(!m.file_workspace_roots.contains_key(&caller));
+            for (query, expected) in [
+                ("exact", Some(exact)),
+                ("alias", Some(exact)),
+                ("helper", Some(global_fuzzy)),
+                ("alias_helper", Some(global_fuzzy)),
+                ("missing", None),
+            ] {
+                assert_eq!(m.find_module(query).map(|info| info.file_id), expected);
+                assert_eq!(
+                    m.find_module_from(query, caller).map(|info| info.file_id),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(
