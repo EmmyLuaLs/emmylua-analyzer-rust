@@ -358,6 +358,8 @@ impl LuaModuleIndex {
         }
 
         let node = self.module_nodes.get(&parent_node_id)?;
+        // Skip stale file IDs rather than discarding the remaining candidates.
+        // min_by_key retains the first candidate when root and visibility tie.
         node.file_ids
             .iter()
             .filter_map(|id| self.file_module_map.get(id))

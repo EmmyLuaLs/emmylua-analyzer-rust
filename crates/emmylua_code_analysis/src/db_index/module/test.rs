@@ -136,6 +136,28 @@ mod tests {
     }
 
     #[test]
+    fn test_exact_lookup_skips_stale_ids_and_preserves_visibility_ties() {
+        let mut m = create_module();
+        let stale = FileId { id: 1 };
+        let hidden = FileId { id: 2 };
+        let first_visible = FileId { id: 3 };
+        let second_visible = FileId { id: 4 };
+        for file in [stale, hidden, first_visible, second_visible] {
+            m.add_module_by_module_path(file, "helper".into(), WorkspaceId::MAIN);
+        }
+        // Simulate an inconsistent tree whose first file has lost its metadata.
+        m.file_module_map.remove(&stale);
+        m.set_module_visibility(hidden, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, first_visible);
+        m.set_module_visibility(first_visible, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, second_visible);
+        m.set_module_visibility(second_visible, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, hidden);
+        m.file_module_map.clear();
+        assert!(m.find_module("helper").is_none());
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(
