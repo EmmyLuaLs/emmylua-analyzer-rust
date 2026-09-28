@@ -19,6 +19,26 @@ mod tests {
     }
 
     #[test]
+    fn test_repeated_module_node_registration_is_removed_once() {
+        let mut m = create_module();
+        let file = FileId { id: 1 };
+        let sibling = FileId { id: 2 };
+        m.add_module_by_module_path(file, "shared.helper".into(), WorkspaceId::MAIN);
+        m.add_module_by_module_path(sibling, "shared.helper".into(), WorkspaceId::MAIN);
+        let node = m.add_module_node(file, "shared.helper").unwrap();
+        m.add_module_node(file, "shared.helper");
+        assert_eq!(m.file_module_nodes[&file], vec![node]);
+        assert_eq!(
+            m.get_module_node(&node).unwrap().file_ids,
+            vec![file, sibling]
+        );
+        m.remove(file);
+        assert_eq!(m.find_module("shared.helper").unwrap().file_id, sibling);
+        m.remove(sibling);
+        assert!(m.find_module_node("shared").is_none());
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(

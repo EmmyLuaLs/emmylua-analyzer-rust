@@ -240,10 +240,10 @@ impl LuaModuleIndex {
         if !node.file_ids.contains(&file_id) {
             node.file_ids.push(file_id);
         }
-        self.file_module_nodes
-            .entry(file_id)
-            .or_default()
-            .push(parent_node_id);
+        let nodes = self.file_module_nodes.entry(file_id).or_default();
+        if !nodes.contains(&parent_node_id) {
+            nodes.push(parent_node_id);
+        }
         Some(parent_node_id)
     }
 
