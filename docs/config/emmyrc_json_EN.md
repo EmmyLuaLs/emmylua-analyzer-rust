@@ -441,6 +441,16 @@ matches in the calling file's most specific configured root. Root-relative
 imports remain root-relative even when the calling file is in a subdirectory.
 Existing exact/mapped/fuzzy lookup order and library fallback still apply.
 
+Only containing roots whose import filters accept the file participate in source
+root selection. These roots are nested: the root with the most path components
+is the most specific. Equal-depth matches represent the same root path; the first
+is retained without changing the resolution scope. Unrelated sibling roots
+cannot both contain the same file.
+
+Callers without a registered source root use the existing global lookup order.
+The context-free `find_module` API also retains that order; caller-root preference
+is applied by `find_module_from` when the caller has a registered root.
+
 For overlapping roots, explicit `moduleMap` names derived from enclosing roots
 are also available as aliases. For example, with roots `./mods`, `./mods/a` and
 `./mods/b`, a map from `^([ab])[.](.*)$` to `package_$1.$2` allows both a local
