@@ -125,6 +125,9 @@ impl LuaModuleIndex {
             if !workspace.import.includes_path(relative) {
                 continue;
             }
+            // Every candidate is a component-wise prefix of this file's path, so
+            // matching roots are nested, never siblings. More components means
+            // more specific; equal depths denote the same path and keep the first.
             if source_root
                 .as_ref()
                 .is_none_or(|root| workspace.root.components().count() > root.components().count())

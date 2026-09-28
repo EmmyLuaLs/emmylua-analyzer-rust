@@ -108,6 +108,34 @@ mod tests {
     }
 
     #[test]
+    fn test_source_root_selection_is_independent_of_workspace_order() {
+        for roots in [
+            ["/project/a", "/project/b", "/project"],
+            ["/project", "/project/b", "/project/a"],
+        ] {
+            let mut m = create_module();
+            for root in roots {
+                m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+            }
+            // The same root can have distinct import filters, but its path is
+            // still the same resolution scope when both filters accept a file.
+            m.add_workspace_root_with_import(
+                Path::new("/project/a").into(),
+                crate::WorkspaceImport::Package("lib".into()),
+                WorkspaceId::LIBRARY_START,
+            );
+            let a = FileId { id: 1 };
+            let b = FileId { id: 2 };
+            m.add_module_by_path(b, "/project/b/lib/helper.lua");
+            m.add_module_by_path(a, "/project/a/lib/helper.lua");
+            assert_eq!(m.file_workspace_roots[&a], Path::new("/project/a"));
+            assert_eq!(m.file_workspace_roots[&b], Path::new("/project/b"));
+            assert_eq!(m.find_module_from("lib.helper", a).unwrap().file_id, a);
+            assert_eq!(m.find_module_from("lib.helper", b).unwrap().file_id, b);
+        }
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(
