@@ -279,13 +279,18 @@ impl LuaModuleIndex {
     /// alone is insufficient: all configured source roots share MAIN.
     /// If the caller has no registered root, use the same lookup as `find_module`.
     pub fn find_module_from(&self, module_path: &str, file_id: FileId) -> Option<&ModuleInfo> {
-        self.find_module_with_root(module_path, self.file_workspace_roots.get(&file_id))
+        self.find_module_with_root(
+            module_path,
+            self.file_workspace_roots
+                .get(&file_id)
+                .map(PathBuf::as_path),
+        )
     }
 
     fn find_module_with_root(
         &self,
         module_path: &str,
-        source_root: Option<&PathBuf>,
+        source_root: Option<&Path>,
     ) -> Option<&ModuleInfo> {
         let module_path = module_path.replace(['\\', '/'], ".");
         // require 路径已经和模块索引完全一致时, 优先保留原始命中结果.
@@ -336,7 +341,7 @@ impl LuaModuleIndex {
     fn find_module_by_normalized_path(
         &self,
         module_path: &str,
-        source_root: Option<&PathBuf>,
+        source_root: Option<&Path>,
     ) -> Option<&ModuleInfo> {
         let module_parts: Vec<&str> = module_path.split('.').collect();
         if module_parts.is_empty() {
@@ -349,7 +354,7 @@ impl LuaModuleIndex {
     fn exact_find_module(
         &self,
         module_parts: &Vec<&str>,
-        source_root: Option<&PathBuf>,
+        source_root: Option<&Path>,
     ) -> Option<&ModuleInfo> {
         let mut parent_node_id = self.module_root_id;
         for part in module_parts {
@@ -377,8 +382,13 @@ impl LuaModuleIndex {
 
     /// Sort key: false prefers the caller's root; true ranks other roots later.
     /// With no caller root all candidates receive false, preserving global order.
-    fn root_preference(&self, file_id: FileId, source_root: Option<&PathBuf>) -> bool {
-        source_root.is_some() && self.file_workspace_roots.get(&file_id) != source_root
+    fn root_preference(&self, file_id: FileId, source_root: Option<&Path>) -> bool {
+        source_root.is_some()
+            && self
+                .file_workspace_roots
+                .get(&file_id)
+                .map(PathBuf::as_path)
+                != source_root
     }
 
     /// Find a module by suffix when exact lookup fails.
@@ -391,7 +401,7 @@ impl LuaModuleIndex {
         &self,
         module_path: &str,
         last_name: &str,
-        source_root: Option<&PathBuf>,
+        source_root: Option<&Path>,
     ) -> Option<&ModuleInfo> {
         let file_ids = self.module_name_to_file_ids.get(last_name)?;
         let suffix_with_boundary = format!(".{}", module_path);
