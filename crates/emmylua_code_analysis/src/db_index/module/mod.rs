@@ -163,13 +163,7 @@ impl LuaModuleIndex {
         module_path: String,
         workspace_id: WorkspaceId,
     ) -> Option<()> {
-        let source_root = self.file_workspace_roots.get(&file_id).cloned();
-        if self.file_module_map.contains_key(&file_id) {
-            self.remove(file_id);
-        }
-        if let Some(root) = source_root {
-            self.file_workspace_roots.insert(file_id, root);
-        }
+        self.remove_module_entries(file_id);
 
         let parent_node_id = self.add_module_node(file_id, &module_path)?;
         let module_parts: Vec<&str> = module_path.split('.').collect();
@@ -684,10 +678,9 @@ impl LuaModuleIndex {
 
         None
     }
-}
-
-impl LuaIndex for LuaModuleIndex {
-    fn remove(&mut self, file_id: FileId) {
+    /// Remove canonical and alias entries while preserving the file's source root
+    /// for an explicit module-name replacement. Full file removal also clears it.
+    fn remove_module_entries(&mut self, file_id: FileId) {
         if let Some(info) = self.file_module_map.remove(&file_id) {
             // Only canonical names enter the fuzzy index; aliases live in the tree.
             if let hashbrown::hash_map::Entry::Occupied(mut entry) =
@@ -699,7 +692,6 @@ impl LuaIndex for LuaModuleIndex {
                 }
             }
         }
-        self.file_workspace_roots.remove(&file_id);
         for module_id in self.file_module_nodes.remove(&file_id).unwrap_or_default() {
             if let Some(node) = self.module_nodes.get_mut(&module_id) {
                 node.file_ids.retain(|id| *id != file_id);
@@ -720,6 +712,13 @@ impl LuaIndex for LuaModuleIndex {
                 current = parent;
             }
         }
+    }
+}
+
+impl LuaIndex for LuaModuleIndex {
+    fn remove(&mut self, file_id: FileId) {
+        self.remove_module_entries(file_id);
+        self.file_workspace_roots.remove(&file_id);
     }
 
     fn clear(&mut self) {

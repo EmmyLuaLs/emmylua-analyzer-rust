@@ -743,5 +743,16 @@ mod tests {
             m.find_module_from("helper", caller).unwrap().file_id,
             helper
         );
+        assert!(m.find_module_node("control").is_none());
+        m.remove(caller);
+        assert!(!m.file_workspace_roots.contains_key(&caller));
+        assert!(m.find_module_node("explicit_control").is_none());
+        // Reusing the file ID through the explicit-name API must not restore its
+        // previous root: it now gets the context-free first candidate.
+        m.add_module_by_module_path(caller, "new_control".into(), WorkspaceId::MAIN);
+        assert_eq!(
+            m.find_module_from("helper", caller).unwrap().file_id,
+            FileId { id: 3 }
+        );
     }
 }
