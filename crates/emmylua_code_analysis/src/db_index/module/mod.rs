@@ -371,6 +371,8 @@ impl LuaModuleIndex {
             })
     }
 
+    /// Sort key: false prefers the caller's root; true ranks other roots later.
+    /// With no caller root all candidates receive false, preserving global order.
     fn root_preference(&self, file_id: FileId, source_root: Option<&PathBuf>) -> bool {
         source_root.is_some() && self.file_workspace_roots.get(&file_id) != source_root
     }
@@ -378,8 +380,9 @@ impl LuaModuleIndex {
     /// Find a module by suffix when exact lookup fails.
     ///
     /// Candidates must either exactly equal `module_path` or end with `.{module_path}`.
-    /// Among matches, prefer the one with the fewest leading path segments before the suffix,
-    /// then use lexicographic `full_module_name` ordering as a stable tie-break.
+    /// Among matches, prefer the caller's root, then the fewest leading path segments
+    /// before the suffix, then lexicographic `full_module_name` ordering. These keys
+    /// form a transitive lexicographic order; without a caller root the first key ties.
     fn fuzzy_find_module(
         &self,
         module_path: &str,
