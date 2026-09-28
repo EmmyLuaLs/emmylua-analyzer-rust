@@ -136,6 +136,42 @@ mod tests {
     }
 
     #[test]
+    fn test_hidden_local_module_shadows_visible_module_in_another_root() {
+        for reverse in [false, true] {
+            let mut m = create_module();
+            for root in ["/a", "/b"] {
+                m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+            }
+            let caller = FileId { id: 1 };
+            let hidden_local = FileId { id: 2 };
+            let visible_remote = FileId { id: 3 };
+            m.add_module_by_path(caller, "/a/control.lua");
+            let mut helpers = vec![
+                (hidden_local, "/a/helper.lua"),
+                (visible_remote, "/b/helper.lua"),
+            ];
+            if reverse {
+                helpers.reverse();
+            }
+            for (file, path) in helpers {
+                m.add_module_by_path(file, path);
+            }
+            m.set_module_visibility(hidden_local, ModuleVisibility::Hide);
+            let local_match = m.find_module_from("helper", caller).unwrap();
+            assert_eq!(local_match.file_id, hidden_local);
+            assert!(local_match.visible.is_hidden());
+            assert_eq!(m.find_module("helper").unwrap().file_id, visible_remote);
+
+            // Another root becomes a fallback only after the local match is gone.
+            m.remove(hidden_local);
+            assert_eq!(
+                m.find_module_from("helper", caller).unwrap().file_id,
+                visible_remote
+            );
+        }
+    }
+
+    #[test]
     fn test_exact_lookup_skips_stale_ids_and_preserves_visibility_ties() {
         let mut m = create_module();
         let stale = FileId { id: 1 };

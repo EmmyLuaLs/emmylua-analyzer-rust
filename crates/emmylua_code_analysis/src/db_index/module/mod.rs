@@ -277,6 +277,8 @@ impl LuaModuleIndex {
 
     /// Prefer modules in the caller's most specific workspace root. WorkspaceId
     /// alone is insufficient: all configured source roots share MAIN.
+    /// Root preference precedes visibility: a hidden local match shadows a visible
+    /// match in another root. Completion omits that hidden match without falling back.
     /// If the caller has no registered root, use the same lookup as `find_module`.
     pub fn find_module_from(&self, module_path: &str, file_id: FileId) -> Option<&ModuleInfo> {
         self.find_module_with_root(
