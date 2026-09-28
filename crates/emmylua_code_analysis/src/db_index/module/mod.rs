@@ -682,7 +682,17 @@ impl LuaModuleIndex {
 
 impl LuaIndex for LuaModuleIndex {
     fn remove(&mut self, file_id: FileId) {
-        self.file_module_map.remove(&file_id);
+        if let Some(info) = self.file_module_map.remove(&file_id) {
+            // Only canonical names enter the fuzzy index; aliases live in the tree.
+            if let hashbrown::hash_map::Entry::Occupied(mut entry) =
+                self.module_name_to_file_ids.entry(info.name)
+            {
+                entry.get_mut().retain(|id| *id != file_id);
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
+            }
+        }
         self.file_workspace_roots.remove(&file_id);
         for module_id in self.file_module_nodes.remove(&file_id).unwrap_or_default() {
             if let Some(node) = self.module_nodes.get_mut(&module_id) {
@@ -704,10 +714,6 @@ impl LuaIndex for LuaModuleIndex {
                 current = parent;
             }
         }
-        self.module_name_to_file_ids.retain(|_, ids| {
-            ids.retain(|id| *id != file_id);
-            !ids.is_empty()
-        });
     }
 
     fn clear(&mut self) {

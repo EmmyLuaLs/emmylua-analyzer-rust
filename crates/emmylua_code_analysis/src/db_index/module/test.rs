@@ -39,6 +39,40 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_and_rename_preserve_shared_fuzzy_name_bucket() {
+        let mut m = create_module();
+        m.fuzzy_search = true;
+        for root in ["/project", "/project/a", "/project/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![("^([ab])[.](.*)$".into(), "package_$1.$2".into())]);
+        let a = FileId { id: 1 };
+        let b = FileId { id: 2 };
+        let other = FileId { id: 3 };
+        m.add_module_by_path(a, "/project/a/lib/helper.lua");
+        m.add_module_by_path(b, "/project/b/lib/helper.lua");
+        m.add_module_by_path(other, "/project/a/lib/other.lua");
+        assert_eq!(m.module_name_to_file_ids["helper"], vec![a, b]);
+
+        m.add_module_by_path(a, "/project/a/lib/renamed.lua");
+        assert_eq!(m.module_name_to_file_ids["helper"], vec![b]);
+        assert_eq!(m.find_module("helper").unwrap().file_id, b);
+        assert!(m.find_module_node("package_a.lib.helper").is_none());
+        assert_eq!(m.find_module("package_a.lib.renamed").unwrap().file_id, a);
+
+        m.remove(b);
+        m.remove(b);
+        assert!(!m.module_name_to_file_ids.contains_key("helper"));
+        assert!(m.find_module("helper").is_none());
+        assert!(m.find_module_node("package_b").is_none());
+        assert_eq!(m.module_name_to_file_ids["other"], vec![other]);
+        assert_eq!(m.find_module("other").unwrap().file_id, other);
+        m.remove(a);
+        assert!(!m.module_name_to_file_ids.contains_key("renamed"));
+        assert_eq!(m.module_name_to_file_ids.len(), 1);
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(
