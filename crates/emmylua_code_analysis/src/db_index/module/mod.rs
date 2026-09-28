@@ -28,6 +28,8 @@ pub struct LuaModuleIndex {
     workspaces: Vec<Workspace>,
     // A file can have a short name and explicitly mapped names from enclosing roots.
     file_module_nodes: HashMap<FileId, Vec<ModuleNodeId>>,
+    // Most specific containing root that accepts the file's path. Explicit module
+    // renaming preserves it; removal clears it. Unregistered callers use global lookup.
     file_workspace_roots: HashMap<FileId, PathBuf>,
     id_counter: u32,
     fuzzy_search: bool,
@@ -268,12 +270,14 @@ impl LuaModuleIndex {
         }
     }
 
+    /// Resolve without a caller-root preference, retaining the global lookup order.
     pub fn find_module(&self, module_path: &str) -> Option<&ModuleInfo> {
         self.find_module_with_root(module_path, None)
     }
 
     /// Prefer modules in the caller's most specific workspace root. WorkspaceId
     /// alone is insufficient: all configured source roots share MAIN.
+    /// If the caller has no registered root, use the same lookup as `find_module`.
     pub fn find_module_from(&self, module_path: &str, file_id: FileId) -> Option<&ModuleInfo> {
         self.find_module_with_root(module_path, self.file_workspace_roots.get(&file_id))
     }
