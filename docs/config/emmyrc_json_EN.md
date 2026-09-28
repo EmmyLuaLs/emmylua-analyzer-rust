@@ -448,8 +448,6 @@ is retained without changing the resolution scope. Unrelated sibling roots
 cannot both contain the same file.
 
 Callers without a registered source root use the existing global lookup order.
-The context-free `find_module` API also retains that order; caller-root preference
-is applied by `find_module_from` when the caller has a registered root.
 
 For overlapping roots, explicit `moduleMap` names derived from enclosing roots
 are also available as aliases. For example, with roots `./mods`, `./mods/a` and
