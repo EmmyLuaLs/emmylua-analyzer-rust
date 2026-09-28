@@ -158,6 +158,27 @@ mod tests {
     }
 
     #[test]
+    fn test_enclosing_roots_can_map_to_the_same_alias() {
+        let mut m = create_module();
+        for root in ["/project", "/project/a", "/project/a/nested"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![("^(a[.])?nested[.](.*)$".into(), "shared.$2".into())]);
+        let file = FileId { id: 1 };
+        m.add_module_by_path(file, "/project/a/nested/helper.lua");
+        assert_eq!(m.get_module(file).unwrap().full_module_name, "helper");
+        assert_eq!(m.file_module_nodes[&file].len(), 2);
+        assert_eq!(
+            m.find_module_node("shared.helper").unwrap().file_ids,
+            vec![file]
+        );
+        assert_eq!(m.find_module("shared.helper").unwrap().file_id, file);
+        m.remove(file);
+        assert!(m.find_module_node("shared").is_none());
+        assert!(m.find_module_node("helper").is_none());
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(

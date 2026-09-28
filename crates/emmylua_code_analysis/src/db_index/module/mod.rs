@@ -118,7 +118,7 @@ impl LuaModuleIndex {
             module_path = self.replace_module_path(&module_path);
         }
 
-        let mut aliases = Vec::new();
+        let mut aliases = HashSet::new();
         let mut source_root: Option<PathBuf> = None;
         for workspace in &self.workspaces {
             let Ok(relative) = Path::new(path).strip_prefix(&workspace.root) else {
@@ -144,8 +144,8 @@ impl LuaModuleIndex {
                 let mapped = self.replace_module_path(&name);
                 // Only explicit mappings introduce aliases; ordinary enclosing roots
                 // must not change the existing shortest-root module naming behavior.
-                if mapped != name && mapped != module_path && !aliases.contains(&mapped) {
-                    aliases.push(mapped);
+                if mapped != name && mapped != module_path {
+                    aliases.insert(mapped);
                 }
             }
         }
