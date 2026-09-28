@@ -691,7 +691,7 @@ fn resolve_require_target_file_id(
     let module_info = semantic_model
         .get_db()
         .get_module_index()
-        .find_module(&module_path)?;
+        .find_module_from(&module_path, semantic_model.get_file_id())?;
     Some(module_info.file_id)
 }
 

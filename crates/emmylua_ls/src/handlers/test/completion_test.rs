@@ -36,6 +36,69 @@ mod tests {
     }
 
     #[gtest]
+    fn test_require_completion_skips_module_without_uri() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file("lib/helper.lua", "return {}");
+        ws.analysis
+            .compilation
+            .get_db_mut()
+            .get_module_index_mut()
+            .add_module_by_module_path(
+                emmylua_code_analysis::FileId { id: 1000000 },
+                "lib.missing".into(),
+                emmylua_code_analysis::WorkspaceId::MAIN,
+            );
+        let items = get_completion_items(
+            &mut ws,
+            r#"require("lib.<??>")"#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        assert!(items.iter().any(|item| item.label == "helper"));
+        assert!(!items.iter().any(|item| item.label == "missing"));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_require_completion_resolves_full_candidates_in_callers_root() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut config = ws.get_emmyrc();
+        config.workspace.module_map = vec![emmylua_code_analysis::EmmyrcWorkspaceModuleMap {
+            pattern: "^([ab])[.](.*)$".into(),
+            replace: "package_$1.$2".into(),
+        }];
+        ws.update_emmyrc(config);
+        let base = ws.virtual_url_generator.base.clone();
+        for root in ["a", "b"] {
+            ws.analysis.add_main_workspace(base.join(root));
+        }
+        // Index the other root first so selecting the first file would be wrong.
+        ws.def_file("b/lib/helper.lua", "return {}");
+        ws.def_file("a/lib/helper.lua", "return {}");
+        let expected_uri = ws
+            .virtual_url_generator
+            .new_uri("a/lib/helper.lua")
+            .to_string();
+        ws.virtual_url_generator.base = base.join("a");
+        for prefix in ["lib.he", "lib/he", r"lib\he", "package_a.lib.he"] {
+            let items = get_completion_items(
+                &mut ws,
+                &format!(r#"require("{}<??>")"#, prefix.replace('\\', "\\\\")),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            let item = items
+                .iter()
+                .find(|item| item.label == "helper")
+                .unwrap_or_else(|| panic!("missing helper for {prefix}: {items:?}"));
+            assert_eq!(item.detail.as_deref(), Some(expected_uri.as_str()));
+            assert_eq!(
+                item.filter_text.as_deref(),
+                Some(format!("{}helper", &prefix[..prefix.len() - 2]).as_str())
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
 

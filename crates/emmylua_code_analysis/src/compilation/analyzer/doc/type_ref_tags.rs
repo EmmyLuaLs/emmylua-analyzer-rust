@@ -399,11 +399,12 @@ pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> O
 }
 
 pub fn analyze_module(analyzer: &mut DocAnalyzer, tag: LuaDocTagModule) -> Option<()> {
+    let file_id = analyzer.file_id;
     let module_path = tag.get_string_token()?.get_value();
     let module_info = analyzer
         .get_db()
         .get_module_index()
-        .find_module(&module_path)?;
+        .find_module_from(&module_path, file_id)?;
     let module_file_id = module_info.file_id;
     let owner_id = get_owner_id_or_report(analyzer, &tag)?;
     let module_ref = LuaType::ModuleRef(module_file_id);

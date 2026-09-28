@@ -19,6 +19,254 @@ mod tests {
     }
 
     #[test]
+    fn test_repeated_module_node_registration_is_removed_once() {
+        let mut m = create_module();
+        let file = FileId { id: 1 };
+        let sibling = FileId { id: 2 };
+        m.add_module_by_module_path(file, "shared.helper".into(), WorkspaceId::MAIN);
+        m.add_module_by_module_path(sibling, "shared.helper".into(), WorkspaceId::MAIN);
+        let node = m.add_module_node(file, "shared.helper").unwrap();
+        m.add_module_node(file, "shared.helper");
+        assert_eq!(m.file_module_nodes[&file], vec![node]);
+        assert_eq!(
+            m.get_module_node(&node).unwrap().file_ids,
+            vec![file, sibling]
+        );
+        m.remove(file);
+        assert_eq!(m.find_module("shared.helper").unwrap().file_id, sibling);
+        m.remove(sibling);
+        assert!(m.find_module_node("shared").is_none());
+    }
+
+    #[test]
+    fn test_remove_and_rename_preserve_shared_fuzzy_name_bucket() {
+        let mut m = create_module();
+        m.fuzzy_search = true;
+        for root in ["/project", "/project/a", "/project/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![("^([ab])[.](.*)$".into(), "package_$1.$2".into())]);
+        let a = FileId { id: 1 };
+        let b = FileId { id: 2 };
+        let other = FileId { id: 3 };
+        m.add_module_by_path(a, "/project/a/lib/helper.lua");
+        m.add_module_by_path(b, "/project/b/lib/helper.lua");
+        m.add_module_by_path(other, "/project/a/lib/other.lua");
+        assert_eq!(m.module_name_to_file_ids["helper"], vec![a, b]);
+
+        m.add_module_by_path(a, "/project/a/lib/renamed.lua");
+        assert_eq!(m.module_name_to_file_ids["helper"], vec![b]);
+        assert_eq!(m.find_module("helper").unwrap().file_id, b);
+        assert!(m.find_module_node("package_a.lib.helper").is_none());
+        assert_eq!(m.find_module("package_a.lib.renamed").unwrap().file_id, a);
+
+        m.remove(b);
+        m.remove(b);
+        assert!(!m.module_name_to_file_ids.contains_key("helper"));
+        assert!(m.find_module("helper").is_none());
+        assert!(m.find_module_node("package_b").is_none());
+        assert_eq!(m.module_name_to_file_ids["other"], vec![other]);
+        assert_eq!(m.find_module("other").unwrap().file_id, other);
+        m.remove(a);
+        assert!(!m.module_name_to_file_ids.contains_key("renamed"));
+        assert_eq!(m.module_name_to_file_ids.len(), 1);
+    }
+
+    #[test]
+    fn test_overlapping_roots_apply_module_mapping_once() {
+        for reverse in [false, true] {
+            for relative in ["helper.lua", "helper/init.lua"] {
+                let mut m = create_module();
+                let mut roots = vec!["/project", "/project/a"];
+                if reverse {
+                    roots.reverse();
+                }
+                for root in roots {
+                    m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+                }
+                // A second rewrite would add another prefix, making it observable.
+                m.set_module_replace_patterns(vec![("^(.*)$".into(), "mapped.$1".into())]);
+                let path = format!("/project/a/{relative}");
+                assert_eq!(m.match_pattern(relative).as_deref(), Some("helper"));
+                assert_eq!(m.extract_module_path(&path).unwrap().0, "helper");
+                let file = FileId { id: 1 };
+                m.add_module_by_path(file, &path);
+                assert_eq!(
+                    m.get_module(file).unwrap().full_module_name,
+                    "mapped.helper"
+                );
+                for name in ["mapped.helper", "mapped.a.helper"] {
+                    assert_eq!(m.find_module_node(name).unwrap().file_ids, vec![file]);
+                    assert_eq!(m.find_module(name).unwrap().file_id, file);
+                    assert!(m.find_module_node(&format!("mapped.{name}")).is_none());
+                }
+                assert_eq!(m.find_module("helper").unwrap().file_id, file);
+                assert_eq!(m.find_module("a.helper").unwrap().file_id, file);
+                assert_eq!(m.file_module_nodes[&file].len(), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn test_source_root_selection_is_independent_of_workspace_order() {
+        for roots in [
+            ["/project/a", "/project/b", "/project"],
+            ["/project", "/project/b", "/project/a"],
+        ] {
+            let mut m = create_module();
+            for root in roots {
+                m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+            }
+            // The same root can have distinct import filters, but its path is
+            // still the same resolution scope when both filters accept a file.
+            m.add_workspace_root_with_import(
+                Path::new("/project/a").into(),
+                crate::WorkspaceImport::Package("lib".into()),
+                WorkspaceId::LIBRARY_START,
+            );
+            let a = FileId { id: 1 };
+            let b = FileId { id: 2 };
+            m.add_module_by_path(b, "/project/b/lib/helper.lua");
+            m.add_module_by_path(a, "/project/a/lib/helper.lua");
+            assert_eq!(m.file_workspace_roots[&a], Path::new("/project/a"));
+            assert_eq!(m.file_workspace_roots[&b], Path::new("/project/b"));
+            assert_eq!(m.find_module_from("lib.helper", a).unwrap().file_id, a);
+            assert_eq!(m.find_module_from("lib.helper", b).unwrap().file_id, b);
+        }
+    }
+
+    #[test]
+    fn test_hidden_local_module_shadows_visible_module_in_another_root() {
+        for reverse in [false, true] {
+            let mut m = create_module();
+            for root in ["/a", "/b"] {
+                m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+            }
+            let caller = FileId { id: 1 };
+            let hidden_local = FileId { id: 2 };
+            let visible_remote = FileId { id: 3 };
+            m.add_module_by_path(caller, "/a/control.lua");
+            let mut helpers = vec![
+                (hidden_local, "/a/helper.lua"),
+                (visible_remote, "/b/helper.lua"),
+            ];
+            if reverse {
+                helpers.reverse();
+            }
+            for (file, path) in helpers {
+                m.add_module_by_path(file, path);
+            }
+            m.set_module_visibility(hidden_local, ModuleVisibility::Hide);
+            let local_match = m.find_module_from("helper", caller).unwrap();
+            assert_eq!(local_match.file_id, hidden_local);
+            assert!(local_match.visible.is_hidden());
+            assert_eq!(m.find_module("helper").unwrap().file_id, visible_remote);
+
+            // Another root becomes a fallback only after the local match is gone.
+            m.remove(hidden_local);
+            assert_eq!(
+                m.find_module_from("helper", caller).unwrap().file_id,
+                visible_remote
+            );
+        }
+    }
+
+    #[test]
+    fn test_exact_lookup_skips_stale_ids_and_preserves_visibility_ties() {
+        let mut m = create_module();
+        let stale = FileId { id: 1 };
+        let hidden = FileId { id: 2 };
+        let first_visible = FileId { id: 3 };
+        let second_visible = FileId { id: 4 };
+        for file in [stale, hidden, first_visible, second_visible] {
+            m.add_module_by_module_path(file, "helper".into(), WorkspaceId::MAIN);
+        }
+        // Simulate an inconsistent tree whose first file has lost its metadata.
+        m.file_module_map.remove(&stale);
+        m.set_module_visibility(hidden, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, first_visible);
+        m.set_module_visibility(first_visible, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, second_visible);
+        m.set_module_visibility(second_visible, ModuleVisibility::Hide);
+        assert_eq!(m.find_module("helper").unwrap().file_id, hidden);
+        m.file_module_map.clear();
+        assert!(m.find_module("helper").is_none());
+    }
+
+    #[test]
+    fn test_enclosing_roots_can_map_to_the_same_alias() {
+        let mut m = create_module();
+        for root in ["/project", "/project/a", "/project/a/nested"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![("^(a[.])?nested[.](.*)$".into(), "shared.$2".into())]);
+        let file = FileId { id: 1 };
+        m.add_module_by_path(file, "/project/a/nested/helper.lua");
+        assert_eq!(m.get_module(file).unwrap().full_module_name, "helper");
+        assert_eq!(m.file_module_nodes[&file].len(), 2);
+        assert_eq!(
+            m.find_module_node("shared.helper").unwrap().file_ids,
+            vec![file]
+        );
+        assert_eq!(m.find_module("shared.helper").unwrap().file_id, file);
+        m.remove(file);
+        assert!(m.find_module_node("shared").is_none());
+        assert!(m.find_module_node("helper").is_none());
+    }
+
+    #[test]
+    fn test_callers_without_registered_roots_use_global_lookup() {
+        let mut m = create_module();
+        m.fuzzy_search = true;
+        for root in ["/a", "/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![
+            ("^alias$".into(), "exact".into()),
+            ("^alias_helper$".into(), "helper".into()),
+        ]);
+        let exact = FileId { id: 1 };
+        let local_fuzzy = FileId { id: 3 };
+        let global_fuzzy = FileId { id: 4 };
+        m.add_module_by_path(exact, "/a/exact.lua");
+        m.add_module_by_path(FileId { id: 2 }, "/b/exact.lua");
+        m.add_module_by_path(local_fuzzy, "/a/deep/lib/helper.lua");
+        m.add_module_by_path(global_fuzzy, "/b/lib/helper.lua");
+        assert_eq!(
+            m.find_module_from("helper", exact).unwrap().file_id,
+            local_fuzzy
+        );
+
+        let unknown = FileId { id: 10 };
+        let explicit = FileId { id: 11 };
+        let outside = FileId { id: 12 };
+        let removed = FileId { id: 13 };
+        m.add_module_by_module_path(explicit, "std_caller".into(), WorkspaceId::STD);
+        assert!(
+            m.add_module_by_path(outside, "/outside/control.lua")
+                .is_none()
+        );
+        m.add_module_by_path(removed, "/a/control.lua");
+        m.remove(removed);
+        for caller in [unknown, explicit, outside, removed] {
+            assert!(!m.file_workspace_roots.contains_key(&caller));
+            for (query, expected) in [
+                ("exact", Some(exact)),
+                ("alias", Some(exact)),
+                ("helper", Some(global_fuzzy)),
+                ("alias_helper", Some(global_fuzzy)),
+                ("missing", None),
+            ] {
+                assert_eq!(m.find_module(query).map(|info| info.file_id), expected);
+                assert_eq!(
+                    m.find_module_from(query, caller).map(|info| info.file_id),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_basic() {
         let mut m = create_module();
         m.add_workspace_root(
@@ -499,5 +747,143 @@ mod tests {
         let module_info = m.find_module("test").unwrap();
         assert_eq!(module_info.file_id, visible_file_id);
         assert_eq!(module_info.visible, ModuleVisibility::Default);
+    }
+    #[test]
+    fn test_require_prefers_callers_root_in_either_index_order() {
+        for reverse in [false, true] {
+            let mut m = create_module();
+            // Both source roots have the same MAIN id and the same directory name.
+            for root in ["/project", "/one/mod", "/two/mod"] {
+                m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+            }
+            let caller_a = FileId { id: 1 };
+            let caller_b = FileId { id: 2 };
+            m.add_module_by_path(caller_a, "/one/mod/scripts/control.lua");
+            m.add_module_by_path(caller_b, "/two/mod/scripts/control.lua");
+            let mut helpers = vec![
+                (FileId { id: 3 }, "/one/mod/helper.lua"),
+                (FileId { id: 4 }, "/two/mod/helper.lua"),
+            ];
+            if reverse {
+                helpers.reverse();
+            }
+            for (id, path) in helpers {
+                m.add_module_by_path(id, path);
+            }
+            assert_eq!(
+                m.find_module_from("helper", caller_a).unwrap().file_id,
+                FileId { id: 3 }
+            );
+            assert_eq!(
+                m.find_module_from("helper", caller_b).unwrap().file_id,
+                FileId { id: 4 }
+            );
+            // The root is the configured source root, not the caller's scripts directory.
+            assert!(m.find_module_from("scripts.helper", caller_a).is_none());
+        }
+    }
+
+    #[test]
+    fn test_mapped_aliases_survive_overlapping_roots_and_are_removed() {
+        let mut m = create_module();
+        m.add_workspace_root(Path::new("/project").into(), WorkspaceId::MAIN);
+        for root in ["/project/a", "/project/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        m.set_module_replace_patterns(vec![("^([ab])[.](.*)$".into(), "package_$1.$2".into())]);
+        let a = FileId { id: 1 };
+        let b = FileId { id: 2 };
+        m.add_module_by_path(a, "/project/a/helper.lua");
+        m.add_module_by_path(b, "/project/b/helper.lua");
+        assert_eq!(m.get_module(a).unwrap().full_module_name, "helper");
+        assert_eq!(m.find_module_from("helper", a).unwrap().file_id, a);
+        assert_eq!(
+            m.find_module_from("package_b/helper", a).unwrap().file_id,
+            b
+        );
+        assert_eq!(
+            m.find_module_node("package_b.helper").unwrap().file_ids,
+            vec![b]
+        );
+        assert_eq!(m.find_module("a.helper").unwrap().file_id, a);
+        m.add_module_by_path(b, "/project/b/renamed.lua");
+        assert!(m.find_module("package_b.helper").is_none());
+        assert_eq!(
+            m.find_module_from("package_b.renamed", a).unwrap().file_id,
+            b
+        );
+        m.remove(b);
+        assert!(m.find_module_node("package_b").is_none());
+        assert!(m.find_module("renamed").is_none());
+        assert_eq!(m.find_module("helper").unwrap().file_id, a);
+        m.clear();
+        assert!(m.find_module("package_a.helper").is_none());
+        assert!(m.file_workspace_roots.is_empty());
+        assert!(m.file_module_nodes.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_require_prefers_local_root_and_retains_library_fallback() {
+        let mut m = create_module();
+        m.fuzzy_search = true;
+        for root in ["/a", "/b"] {
+            m.add_workspace_root(Path::new(root).into(), WorkspaceId::MAIN);
+        }
+        let a = FileId { id: 1 };
+        let b = FileId { id: 2 };
+        m.add_module_by_path(a, "/a/control.lua");
+        m.add_module_by_path(b, "/b/control.lua");
+        m.add_module_by_path(FileId { id: 3 }, "/a/lib/helper.lua");
+        m.add_module_by_path(FileId { id: 4 }, "/b/lib/helper.lua");
+        assert_eq!(
+            m.find_module_from("helper", a).unwrap().file_id,
+            FileId { id: 3 }
+        );
+        assert_eq!(
+            m.find_module_from("helper", b).unwrap().file_id,
+            FileId { id: 4 }
+        );
+        m.add_workspace_root(Path::new("/library").into(), WorkspaceId::LIBRARY_START);
+        m.add_module_by_path(FileId { id: 5 }, "/library/shared.lua");
+        assert_eq!(
+            m.find_module_from("shared", a).unwrap().file_id,
+            FileId { id: 5 }
+        );
+        m.remove(FileId { id: 3 });
+        m.remove(FileId { id: 4 });
+        assert!(m.find_module_from("helper", a).is_none());
+        assert!(!m.module_name_to_file_ids.contains_key("helper"));
+    }
+
+    #[test]
+    fn test_nested_root_prefers_nearest_workspace_and_explicit_module_keeps_scope() {
+        let mut m = create_module();
+        m.add_workspace_root(Path::new("/project").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(Path::new("/project/nested").into(), WorkspaceId::MAIN);
+        let caller = FileId { id: 1 };
+        let helper = FileId { id: 2 };
+        m.add_module_by_path(FileId { id: 3 }, "/project/helper.lua");
+        m.add_module_by_path(caller, "/project/nested/control.lua");
+        m.add_module_by_path(helper, "/project/nested/helper.lua");
+        assert_eq!(
+            m.find_module_from("helper", caller).unwrap().file_id,
+            helper
+        );
+        m.add_module_by_module_path(caller, "explicit_control".into(), WorkspaceId::MAIN);
+        assert_eq!(
+            m.find_module_from("helper", caller).unwrap().file_id,
+            helper
+        );
+        assert!(m.find_module_node("control").is_none());
+        m.remove(caller);
+        assert!(!m.file_workspace_roots.contains_key(&caller));
+        assert!(m.find_module_node("explicit_control").is_none());
+        // Reusing the file ID through the explicit-name API must not restore its
+        // previous root: it now gets the context-free first candidate.
+        m.add_module_by_module_path(caller, "new_control".into(), WorkspaceId::MAIN);
+        assert_eq!(
+            m.find_module_from("helper", caller).unwrap().file_id,
+            FileId { id: 3 }
+        );
     }
 }

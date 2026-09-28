@@ -85,7 +85,7 @@ fn try_build_module_link(
 ) -> Option<()> {
     let module_path = token.get_value();
     let module_index = db.get_module_index();
-    let founded_module = module_index.find_module(&module_path)?;
+    let founded_module = module_index.find_module_from(&module_path, document.get_file_id())?;
     let file_id = founded_module.file_id;
     let vfs = db.get_vfs();
     let uri = vfs.get_uri(&file_id)?;

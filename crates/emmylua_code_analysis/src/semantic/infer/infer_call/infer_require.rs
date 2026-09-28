@@ -27,7 +27,7 @@ pub(in crate::semantic) fn infer_require_call(
 
     let module_info = db
         .get_module_index()
-        .find_module(&module_path)
+        .find_module_from(&module_path, cache.get_file_id())
         .ok_or(InferFailReason::None)?;
     match &module_info.export_type {
         Some(ty) => match ty {

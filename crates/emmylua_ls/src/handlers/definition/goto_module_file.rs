@@ -14,7 +14,8 @@ pub fn goto_module_file(
 
     let module_path = string_token.get_value();
     let module_index = semantic_model.get_db().get_module_index();
-    let founded_module = module_index.find_module(&module_path)?;
+    let founded_module =
+        module_index.find_module_from(&module_path, semantic_model.get_file_id())?;
     let file_id = founded_module.file_id;
     let document = semantic_model.get_document_by_file_id(file_id)?;
     let uri = document.get_uri();

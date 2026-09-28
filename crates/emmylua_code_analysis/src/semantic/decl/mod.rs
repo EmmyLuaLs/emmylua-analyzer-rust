@@ -142,5 +142,5 @@ pub fn parse_require_module_info<'a>(
     semantic_model
         .get_db()
         .get_module_index()
-        .find_module(&module_path)
+        .find_module_from(&module_path, decl.get_file_id())
 }

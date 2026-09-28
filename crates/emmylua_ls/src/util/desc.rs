@@ -143,7 +143,7 @@ pub fn resolve_ref(
                 result.extend(found_refs);
             }
         }
-        if let Some(found) = db.get_module_index().find_module(&name) {
+        if let Some(found) = db.get_module_index().find_module_from(&name, file_id) {
             let scopes = vec![SemanticInfo {
                 typ: found.export_type.clone().unwrap_or(LuaType::Nil),
                 semantic_decl: found.semantic_id.clone(),
