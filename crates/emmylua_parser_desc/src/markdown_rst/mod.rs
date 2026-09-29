@@ -273,16 +273,12 @@ impl MarkdownRstParser {
         // 1) Line
         // (1) Line
 
-        let line;
-        let next_line;
-        if start + 1 < lines.len() {
+        let (line, next_line) = if start + 1 < lines.len() {
             let [got_line, got_next_line] = lines.get_disjoint_mut([start, start + 1]).unwrap();
-            line = got_line;
-            next_line = Some(got_next_line);
+            (got_line, Some(got_next_line))
         } else {
-            line = &mut lines[start];
-            next_line = None;
-        }
+            (&mut lines[start], None)
+        };
 
         let bt = BacktrackPoint::new(self, line);
         let scope_start = line.current_range().start_offset;
