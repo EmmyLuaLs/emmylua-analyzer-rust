@@ -347,6 +347,10 @@ impl LuaTypeIndex {
             let mut visited = HashSet::new();
             let mut pending = Vec::new();
             supers.iter().map(|s| &s.value).filter(move |super_type| {
+                // 不允许继承 union 类型, 因为无法确定继承的具体分支
+                if matches!(super_type, LuaType::Union(_) | LuaType::MultiLineUnion(_)) {
+                    return false;
+                }
                 visited.clear();
                 pending.clear();
                 !self.is_cyclic_super_edge(decl_id, super_type, &mut pending, &mut visited)
