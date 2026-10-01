@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate::MemberAccess;
 use crate::check::checker::generic_constraint_mismatch::resolved_call_signatures;
 use crate::check::checker::param_count::callable_functions;
 use crate::check::checker::param_type_check::callable_candidates_uncached;
@@ -444,6 +445,17 @@ impl<'db> SemanticModel<'db> {
         owner: SemanticId,
         name: SmolStr,
     ) -> ResolvedMember {
+        let member_id = member_id.map(|id| {
+            if let Some(file) = file_id
+                && let Some(facts) = self.file_facts_of(file)
+                && let Some(member) = facts.member_by_id(&id)
+                && member.access == MemberAccess::Write
+                && let Some(read) = facts.members_with_access(member, MemberAccess::Read).next()
+            {
+                return read.id.clone();
+            }
+            id
+        });
         let mut member_type = None;
         let mut visibility = None;
         let mut is_method = false;
@@ -742,6 +754,9 @@ impl<'db> SemanticModel<'db> {
         });
         signatures
     }
+    /// Resolve an index expression to its declaration and read view.
+    /// Paired directional fields use the getter identity even on an assignment target.
+    /// Use [`Self::directional_index`] or [`Self::assignment_target_type`] for setter types.
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
         let syntax = index_expr.get_syntax_id();
         let file_id = self.view.file_id();

@@ -801,7 +801,11 @@ impl<'db> SemanticModel<'db> {
             _ => return None,
         };
 
-        let infos = member::member_infos_with_key_all(self, &owner_ty, &key);
+        let infos = if let Some((_, writes)) = self.directional_member_views(&owner_ty, &key) {
+            writes
+        } else {
+            member::member_infos_with_key_all(self, &owner_ty, &key)
+        };
         let mut out = Vec::new();
         for info in &infos {
             let typ = match &info.typ {

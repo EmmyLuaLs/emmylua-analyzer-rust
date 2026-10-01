@@ -456,6 +456,11 @@ pub(crate) fn type_of_expr_at_node(
             if let Some(ty) = array::last_element_type(model, index_expr, offset) {
                 return apply_casts(ty, All);
             }
+            if let Some((read, _)) = model.directional_index(index_expr)
+                && let Some(typ) = directional_read_at(model, index_expr, &read, offset)
+            {
+                return apply_casts(typ, All);
+            }
             if let Some(resolved) = model.resolve_member(index_expr)
                 && let Some(member_id) = resolved.member_id.clone().or_else(|| {
                     let prefix = index_expr.get_prefix_expr()?;
@@ -5117,11 +5122,24 @@ fn filter_type_by_member_discriminant(
                 continue;
             }
         }
-        let matched = model
+        let can_match_branch = model
             .member_type(&component, key)
-            .map(|member_ty| types_may_overlap(member_ty, literal.clone()))
-            .unwrap_or(false);
-        if matched == keep_matching {
+            .map(|member_ty| {
+                if keep_matching {
+                    return types_may_overlap(member_ty, literal.clone());
+                }
+                // A union-valued member can satisfy either branch. Exclude a
+                // receiver only when every member value matches the literal.
+                match member_ty {
+                    LuaType::Union(union) => union
+                        .into_vec()
+                        .iter()
+                        .any(|ty| !type_is_removed_by(ty, literal)),
+                    other => !type_is_removed_by(&other, literal),
+                }
+            })
+            .unwrap_or(!keep_matching);
+        if can_match_branch {
             kept.push(component);
         }
     }
@@ -5714,6 +5732,112 @@ fn type_is_broader(broad: &LuaType, narrow: &LuaType) -> bool {
             | (LuaType::Function, LuaType::DocFunction(_))
             | (LuaType::Function, LuaType::Signature(_))
     )
+}
+
+/// Bound the total backward traversal across all paths of one directional read.
+const DIRECTIONAL_READ_FLOW_BUDGET: usize = 512;
+
+/// Directional assignments invalidate earlier guards but never substitute the
+/// write value for the property's read contract. At the traversal limit, retain
+/// observed path modifiers over the declared getter instead of dropping results.
+fn directional_read_at(
+    model: &SemanticModel,
+    index: &emmylua_parser::LuaIndexExpr,
+    read: &super::member::MemberInfo,
+    offset: TextSize,
+) -> Option<LuaType> {
+    let member = read.id.as_ref()?;
+    let owner = model.resolve_member(index)?.owner;
+    let tree = model.flow_tree()?;
+    let root = model.chunk()?;
+    let start = tree.get_flow_id_at(offset)?;
+    let mut pending = vec![(start, PathState::default(), HashSet::new())];
+    let mut results = Vec::new();
+    let mut budget = DIRECTIONAL_READ_FLOW_BUDGET;
+    while let Some((mut current, mut path, mut seen)) = pending.pop() {
+        loop {
+            if budget == 0 {
+                // Preserve completed results and modifiers already seen on every
+                // unfinished path; default only the unseen prefix to the getter.
+                results.push(finalize(model, read.typ.clone(), &path));
+                results.extend(
+                    pending
+                        .into_iter()
+                        .map(|(_, path, _)| finalize(model, read.typ.clone(), &path)),
+                );
+                return Some(LuaType::from_vec(results));
+            }
+            if !seen.insert(current) {
+                results.push(finalize(model, read.typ.clone(), &path));
+                break;
+            }
+            budget -= 1;
+            let node = tree.get_flow_node(current)?;
+            match &node.kind {
+                FlowNodeKind::Assignment(ptr) => {
+                    let assignment = ptr.to_node(&root)?;
+                    if assignment.get_range().end() <= offset
+                        && (assignment.get_var_and_expr_list().0.iter().any(|var| {
+                            let emmylua_parser::LuaVarExpr::IndexExpr(target) = var else {
+                                return false;
+                            };
+                            member_key_from_index_expr(model, target).as_ref() == Some(&read.key)
+                                && model
+                                    .resolve_member(target)
+                                    .is_some_and(|resolved| resolved.owner == owner)
+                        }) || member_write_match(
+                            model,
+                            tree,
+                            current,
+                            member,
+                            Some(index),
+                            None,
+                        ) != MemberWrite::Unrelated)
+                    {
+                        results.push(finalize(model, read.typ.clone(), &path));
+                        break;
+                    }
+                }
+                FlowNodeKind::TrueCondition(cond) | FlowNodeKind::FalseCondition(cond) => {
+                    // Match receiver paths, including stable aliases, before narrowing.
+                    let expr = cond.to_node(&root)?;
+                    let relevant = std::iter::once(expr.syntax().clone())
+                        .chain(expr.syntax().descendants())
+                        .filter_map(emmylua_parser::LuaIndexExpr::cast)
+                        .any(|other| member_access_matches(model, member, Some(index), &other));
+                    if relevant
+                        && let Some(narrowing) = narrow_member_condition(
+                            model,
+                            member,
+                            Some(index),
+                            cond,
+                            matches!(node.kind, FlowNodeKind::TrueCondition(_)),
+                        )
+                    {
+                        path.narrowings.push(narrowing);
+                    }
+                }
+                FlowNodeKind::TagCast(ptr) => collect_member_cast(model, member, ptr, &mut path),
+                // Inline assertions apply to their expression, not unrelated member flow.
+                FlowNodeKind::AsCast(_) => {}
+                _ => {}
+            }
+            match &node.antecedent {
+                Some(FlowAntecedent::Single(next)) => current = *next,
+                Some(FlowAntecedent::Multiple(id)) => {
+                    for next in tree.get_multi_antecedents(*id)? {
+                        pending.push((*next, path.clone_path(), seen.clone()));
+                    }
+                    break;
+                }
+                None => {
+                    results.push(finalize(model, read.typ.clone(), &path));
+                    break;
+                }
+            }
+        }
+    }
+    Some(LuaType::from_vec(results))
 }
 
 /// Test-only counters for the flow fast paths and fallback trace work.

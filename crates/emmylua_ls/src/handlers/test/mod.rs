@@ -10,3 +10,5 @@ mod references_test;
 mod rename_test;
 mod semantic_token_test;
 mod signature_helper_test;
+
+mod asymmetric_fields_test;

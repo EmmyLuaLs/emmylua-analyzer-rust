@@ -16,7 +16,7 @@ use crate::semantic_model::SemanticModel;
 use crate::semantic_model::render::humanize_type;
 use crate::semantic_model::type_eval::expand_alias_branches;
 use crate::semantic_model::type_eval::expand_alias_head;
-use crate::{LuaMemberKey, LuaType};
+use crate::{LuaMemberKey, LuaType, MemberAccess};
 
 use super::{CheckContext, Checker};
 
@@ -78,6 +78,23 @@ impl Checker for DuplicateFieldChecker {
                         |ty| format!("[{}]", humanize_type(semantic_model, &ty)),
                     );
                     if dupes.len() <= 1 {
+                        continue;
+                    }
+                    // Getter and setter declarations form independent overload sets.
+                    if is_type_def
+                        && dupes
+                            .iter()
+                            .all(|member| member.access != MemberAccess::ReadWrite)
+                        && [MemberAccess::Read, MemberAccess::Write]
+                            .into_iter()
+                            .all(|access| {
+                                let mut direction =
+                                    dupes.iter().filter(|member| member.access == access);
+                                direction.clone().count() <= 1
+                                    || direction
+                                        .all(|member| is_function_like(semantic_model, member))
+                            })
+                    {
                         continue;
                     }
                     let all_function = dupes

@@ -169,6 +169,26 @@ fn normalize_description(text: &str) -> String {
         .to_string()
 }
 
+/// Return the description immediately preceding a field in its own comment block.
+pub(super) fn preceding_field_description(
+    model: &SemanticModel<'_>,
+    member: &SemanticId,
+) -> Option<String> {
+    let SemanticId::Member(key) = member else {
+        return None;
+    };
+    let tree = model.syntax_tree_of(key.file_id)?;
+    let root = tree.get_red_root();
+    let token = root.token_at_offset(key.key_range.start()).right_biased()?;
+    let field = token.parent_ancestors().find_map(LuaDocTagField::cast)?;
+    let description = field
+        .get_descriptions()
+        .into_iter()
+        .find(|description| description.get_range().end() <= field.get_range().start())?;
+    let text = normalize_description(&description.get_description_text());
+    (!text.is_empty()).then_some(text)
+}
+
 /// Clean up `@field` descriptions: strip the common `#` prefix.
 fn clean_field_description(text: &str) -> String {
     normalize_description(text)
