@@ -18,8 +18,8 @@ use rowan::{TextRange, TextSize, WalkEvent};
 use smol_str::SmolStr;
 
 use crate::DiagnosticCode;
-use crate::FileId;
 use crate::semantic_db::def::SignatureReturnCast;
+use crate::{FileId, MemberAccess};
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
@@ -257,6 +257,25 @@ impl FileFacts {
             .into_iter()
             .flat_map(|indices| indices.iter())
             .filter_map(move |&index| self.members.get(index))
+    }
+
+    /// Same-owner, same-key declarations with the requested read/write access.
+    pub(crate) fn members_with_access<'a>(
+        &'a self,
+        member: &'a Member,
+        access: MemberAccess,
+    ) -> impl Iterator<Item = &'a Member> {
+        let indices = match &member.key {
+            LuaMemberKey::Name(name) => self
+                .members_by_owner_name
+                .get(&(member.owner.clone(), name.clone())),
+            _ => self.members_by_owner.get(&member.owner),
+        };
+        indices
+            .into_iter()
+            .flat_map(|indices| indices.iter())
+            .filter_map(move |&index| self.members.get(index))
+            .filter(move |other| other.key == member.key && other.access == access)
     }
 
     /// Type operator overloads (by owner + operator name).
@@ -1537,6 +1556,40 @@ impl FactsBuilder {
         let Some(key) = field_tag.get_field_key() else {
             return;
         };
+        let mut access = MemberAccess::ReadWrite;
+        if let Some(flags) = field_tag.get_type_flag() {
+            for flag in flags.get_attrib_tokens() {
+                let direction = match flag.get_name_text() {
+                    "read" => MemberAccess::Read,
+                    "write" => MemberAccess::Write,
+                    _ => continue,
+                };
+                if access != MemberAccess::ReadWrite {
+                    self.annotation_errors.push(AnnotationError {
+                        range: flag.get_range(),
+                        message: if access == direction {
+                            format!("Duplicate ({}) field modifier", flag.get_name_text()).into()
+                        } else {
+                            "A field may specify only one of (read) or (write)".into()
+                        },
+                    });
+                    // Retain the first direction so uses of this field do not
+                    // produce cascading undefined-field diagnostics.
+                    break;
+                }
+                access = direction;
+            }
+        }
+        if access != MemberAccess::ReadWrite && matches!(key, LuaDocFieldKey::Type(_)) {
+            self.annotation_errors.push(AnnotationError {
+                range: field_tag.get_range(),
+                message:
+                    "Directional fields require a named, string-literal, or integer-literal key"
+                        .into(),
+            });
+            // Recover as an ordinary index signature after reporting the modifier.
+            access = MemberAccess::ReadWrite;
+        }
         // Integer keys in `@field [1]` are encoded as `LuaMemberKey::Integer` (matching index expression keys).
         let member_key = match &key {
             LuaDocFieldKey::Type(_) => LuaMemberKey::None,
@@ -1554,6 +1607,7 @@ impl FactsBuilder {
             member_key,
             type_def_id,
         );
+        member.access = access;
         member.index_key_syntax = match &key {
             LuaDocFieldKey::Type(ty) => Some(ty.get_syntax_id()),
             _ => None,

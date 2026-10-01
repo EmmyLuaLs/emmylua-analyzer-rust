@@ -29,7 +29,7 @@ pub use decl::{Decl, DeclKind};
 pub use generic_param::DocGenericParam;
 pub use identity::{ChangedKeys, DependencyKey, ExportKey, FileDependencies, OwnerId};
 pub use lua_type::*;
-pub use member::{Member, MemberRef};
+pub use member::{Member, MemberAccess, MemberRef};
 pub use member_key::LuaMemberKey;
 pub use module_export::ModuleExport;
 pub use module_info::{ModuleInfo, ModuleNode, ModuleNodeId};
