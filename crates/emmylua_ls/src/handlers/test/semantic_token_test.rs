@@ -154,7 +154,14 @@ m.foo()
     }
 
     #[cfg(feature = "slow-tests")]
-    // M4 retirement: require alias namespace / return overload / mapped type highlighting depends on the old DbIndex semantic token stack; see migration notes §M4.
+    // Not an "old stack" issue: semantic tokens do not converge on the repeated-prefix guard
+    // chain. Measured in release, `n` guard blocks: n=4 -> 0.7ms, n=8 -> 12.5ms,
+    // n=12 -> 136ms, n=16 -> 2.3s (roughly 10x per +4 blocks); the n=600 payload never
+    // terminates. The exponential factor is the *second* index expression inside one guard
+    // condition list: `if V[k] then V[k][k2] = ... end` (one index) stays linear (~1.2ms at
+    // n=16), while `if V[k] and V[k][k2] then ...` explodes. See
+    // `semantic_model/flow.rs::trace_member`, which walks the flow antecedent path per member
+    // read without memoizing (flow_id, member).
     #[ignore]
     #[gtest]
     fn test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain() -> Result<()> {

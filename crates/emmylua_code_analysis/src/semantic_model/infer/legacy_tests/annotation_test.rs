@@ -20,11 +20,12 @@ mod test {
 
     // workaround for table
     #[test]
-    #[ignore = "Test is ignored for now"]
     fn test_issue_234() {
+        use crate::LuaType;
+
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.def(
+        let gg_file = ws.def(
             r#"
         GG = {} --- @type table
 
@@ -37,10 +38,18 @@ mod test {
         );
 
         let ty = ws.expr_ty("GG.fun");
+        // Assert the structural identity instead of a hardcoded `FileId` literal:
+        // that literal breaks whenever the bundled std-lib file count changes.
+        let LuaType::Signature(signature_id) = ty else {
+            panic!("expected the `GG.fun` signature, got {ty:?}");
+        };
         assert_eq!(
-            format!("{:?}", ty),
-            "Signature(LuaSignatureId { file_id: FileId { id: 26 }, position: 76 })"
+            signature_id.get_file_id(),
+            gg_file,
+            "`GG.fun` must resolve to the closure declared in the same file"
         );
+        // Byte offset of `function GG.fun() end` in the snippet above (kept at 8-space indent).
+        assert_eq!(u32::from(signature_id.get_position()), 76);
     }
 
     #[test]

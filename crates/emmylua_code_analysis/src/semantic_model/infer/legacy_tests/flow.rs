@@ -56,10 +56,12 @@ mod test {
     }
 
     #[test]
-    #[ignore = "M0: flow 语义未完整迁移"]
     fn test_issue_140_1() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
+        // The `---@type (Object| T)?` annotation wins over the `---@class T` binding, so the
+        // declaration is really `Object|T|nil`. The truthy guard only removes `nil`:
+        // classes are tables and always truthy, so `Object` must stay.
         ws.def(
             r#"
         ---@class Object
@@ -76,7 +78,22 @@ mod test {
 
         let ty = ws.expr_ty("A");
         let type_desc = ws.humanize_type(ty);
-        assert_eq!(type_desc, "T");
+        assert_eq!(type_desc, "(Object|T)");
+
+        // Same declaration read without the truthy guard: the annotation's nil is still there,
+        // which is what the guard above removed.
+        ws.def(
+            r#"
+        ---@class Object
+
+        ---@class T
+        local inject2class ---@type (Object| T)?
+        B = inject2class
+        "#,
+        );
+
+        let unguarded = ws.expr_ty("B");
+        assert_eq!(ws.humanize_type(unguarded), "(Object|T)?");
     }
 
     #[test]
@@ -2825,10 +2842,9 @@ n = n + 1
     }
 
     #[test]
-    #[ignore = "M0: flow 语义未完整迁移"]
     fn test_type_narrow() {
         let mut ws = VirtualWorkspace::new();
-        ws.def(
+        let file_id = ws.def(
             r#"
             ---@generic T: table
             ---@param obj T | function
@@ -2841,7 +2857,14 @@ n = n + 1
             "#,
         );
 
-        let typ = ws.expr_ty("A");
+        // The declaration type must be asserted in its own file: reading the global from a
+        // consumer file intentionally degrades a generic parameter to `unknown`
+        // (`sanitize_global_generic_decl`, pinned by
+        // `generic_test::test_local_generics_in_global_scope`), so `ws.expr_ty("A")`
+        // cannot observe the narrowed `T`.
+        let model = ws.analysis.semantic_model(file_id);
+        let decl = model.global_decl("A").expect("global A must be declared");
+        let typ = model.type_of_decl(&decl).expect("A must have a type");
         assert_eq!(ws.humanize_type(typ), "T");
     }
 

@@ -1,0 +1,151 @@
+---@meta
+-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
+--
+-- Licensed under the Apache License, Version 2.0 (the "License"); you may not
+-- use this file except in compliance with the License. You may obtain a copy of
+-- the License at
+--
+-- http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+-- License for the specific language governing permissions and limitations under
+-- the License.
+
+--- @class tablelib
+table = {}
+
+--- 给定一个列表，其中所有元素都是字符串或数字，返回字符串
+--- `list[i]..sep..list[i+1] ... sep..list[j]`。
+---
+--- `sep` 的默认值为空字符串，`i` 的默认值为 1，`j` 的默认值为 `#list`。
+--- 如果 `i` 大于 `j`，则返回空字符串。
+--- @param list table
+--- @param sep? string
+--- @param i?   integer
+--- @param j?   integer
+--- @return string
+--- @nodiscard
+function table.concat(list, sep, i, j) end
+
+--- 在 `list` 的位置 `pos` 处插入元素 `value`，并将
+--- `list[pos]`、`list[pos+1]`、`···`、`list[#list]` 这些元素向后移动。
+---
+--- `pos` 的默认值为 `#list+1`，因此调用 `table.insert(t, x)` 会把 `x` 插入到列表 `t` 的末尾。
+--- @overload fun(list: table, value: any)
+--- @param list  table
+--- @param pos   integer
+--- @param value any
+function table.insert(list, pos, value) end
+
+--- @version >5.3
+--- 将元素从表 `a1` 移动到表 `a2`，等价于进行如下的多重赋值：
+--- `a2[t]`, `···` = `a1[f]`, `···`, `a1[e]`。
+---
+--- `a2` 的默认值为 `a1`。目标区间可以与源区间重叠。要移动的元素数量必须能放入 Lua 整数。
+---
+--- 返回目标表 `a2`。
+--- @overload fun(a1: table, f: integer, e: integer, t: integer): table
+--- @param a1 table
+--- @param f  integer
+--- @param e  integer
+--- @param t  integer
+--- @param a2 table
+--- @return table
+function table.move(a1, f, e, t, a2) end
+
+--- @version 5.1, JIT
+--- 返回给定表的最大正整数索引；如果表没有正整数索引，则返回 0。
+--- @param table table
+--- @return integer
+--- @nodiscard
+function table.maxn(table) end
+
+--- 移除 `list` 中位置 `pos` 处的元素，并返回被移除元素的值。
+---
+--- 当 `pos` 是 1 到 `#list` 之间的整数时，它会将 `list[pos+1]`、`list[pos+2]`、`···`、
+--- `list[#list]` 向前移动，并清除 `list[#list]`；当 `#list` 为 0 时，`pos` 也可以为 0，
+--- 或者 `#list + 1`；这些情况下，函数会清除 `list[pos]`。
+---
+--- `pos` 的默认值为 `#list`，因此调用 `table.remove(l)` 会移除列表 `l` 的最后一个元素。
+--- @generic V
+--- @param list table<integer, V> | V[]
+--- @param pos? integer
+--- @return V
+function table.remove(list, pos) end
+
+--- 在表内从 `list[1]` 到 `list[#list]` 之间，按指定顺序 *原地* 排序列表元素。
+---
+--- 如果提供了 `comp`，它必须是一个接收两个列表元素并返回布尔值的函数：当第一个元素在最终排序中应位于第二个元素之前时返回 true
+--- （因此，排序后 `i < j` 蕴含 `not comp(list[j], list[i])`）。如果不提供 `comp`，则使用标准 Lua 运算符 `<`。
+---
+--- 注意：`comp` 必须在列表元素上定义一个严格偏序（即非对称且传递）；否则可能无法得到有效排序。
+---
+--- 排序算法不稳定：在给定顺序下被认为相等的元素，其相对位置可能在排序后发生变化。
+--- @generic V
+--- @param list  V[]
+--- @param comp? fun(a: V, b: V): boolean
+function table.sort(list, comp) end
+
+--- @version >5.2, JIT
+--- 返回给定列表中的元素。该函数等价于：
+--- `return list[i], list[i+1], ···, list[j]`。
+---
+--- 默认情况下，`i` 为 1，`j` 为 `#list`。
+--- @generic const T, const Start: integer, const End: integer
+--- @param i?   Start
+--- @param j?   End
+--- @param list T
+--- @return std.Unpack<T, Start, End>
+function table.unpack(list, i, j) end
+
+--- @version >5.2, JIT
+--- 返回一个新表，将所有参数依次存入键 `1`、`2` 等，并设置字段 `"n"` 为参数总数。
+--- @generic T
+--- @param ... T...
+--- @return [T...]&{ n: integer }
+--- @nodiscard
+function table.pack(...) end
+
+--- @version 5.1, JIT
+--- 对表的所有元素执行给定函数 `f`。对每个元素，`f` 会以索引与对应值作为参数被调用。
+--- 如果 `f` 返回非 nil 值，则中断循环，并将该值作为 `foreach` 的最终返回值。
+--- @generic T
+--- @param list     any
+--- @param callback fun(key: string, value: any): T | nil
+--- @return T?
+--- @deprecated
+function table.foreach(list, callback) end
+
+--- @version 5.1, JIT
+--- 对表的数值索引执行给定函数 `f`。对每个索引，`f` 会以索引与对应值作为参数被调用。
+--- 索引会按顺序访问，从 1 到 n，其中 n 为表的大小。
+--- 如果 `f` 返回非 nil 值，则中断循环，并将该值作为 `foreachi` 的结果返回。
+--- @generic T
+--- @param list     any
+--- @param callback fun(key: string, value: any): T | nil
+--- @return T?
+--- @deprecated
+function table.foreachi(list, callback) end
+
+--- @version 5.1, JIT
+--- 返回表中的元素数量。该函数等价于 `#list`。
+--- @generic T
+--- @param list T[]
+--- @return integer
+--- @nodiscard
+--- @deprecated
+function table.getn(list) end
+
+--- 创建一个新的空表，并预分配内存。当你事先知道表会包含多少元素时，这种预分配可能有助于提升性能并节省内存。
+---
+--- 参数 `nseq` 用于提示该表作为序列会包含多少元素；可选参数 `nrec` 用于提示该表还会包含多少其他元素，默认值为 0。
+--- @version >5.5
+--- @param nseq  integer
+--- @param nrec? integer
+--- @return table
+--- @nodiscard
+function table.create(nseq, nrec) end
+
+return table

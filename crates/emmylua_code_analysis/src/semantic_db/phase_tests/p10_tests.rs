@@ -320,7 +320,6 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
 }
 
 #[test]
-#[ignore = "Test is ignored for now"]
 fn p10_apply_file_change_and_batch_api() {
     let mut db = setup();
     let fid = FileId::new(1);
