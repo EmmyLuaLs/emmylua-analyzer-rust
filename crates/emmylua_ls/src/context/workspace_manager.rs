@@ -1,74 +1,72 @@
 #[cfg(all(test, feature = "slow-tests"))]
 mod tests;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, Ordering};
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use super::{ClientProxy, FileDiagnostic};
+use super::workspace_state::{OpenFilesSnapshot, WorkspaceState};
+use super::{AnalysisState, ClientProxy, DiagnosticService};
 use crate::context::ServerContextSnapshot;
 use crate::context::lsp_features::LspFeatures;
 use crate::handlers::{ClientConfig, init_analysis, register_files_watch};
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, Emmyrc, WorkspaceFileMatcher, WorkspaceFolder, load_configs,
-    read_file_with_encoding, uri_to_file_path,
+    Emmyrc, WorkspaceFolder, load_configs, read_file_with_encoding, uri_to_file_path,
 };
 use lsp_types::Uri;
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::sync::CancellationToken;
 
 pub struct WorkspaceManager {
-    analysis: Arc<RwLock<EmmyLuaAnalysis>>,
     client: Arc<ClientProxy>,
     config_reload_token: Arc<PendingTask>,
-    reindex_token: Arc<PendingTask>,
     reload_lock: Arc<AsyncMutex<()>>,
     reload_generation: Arc<AtomicU64>,
-    file_diagnostic: Arc<FileDiagnostic>,
+    file_diagnostic: Arc<DiagnosticService>,
     lsp_features: Arc<LspFeatures>,
-    pub client_config: ClientConfig,
-    pub workspace_folders: Vec<WorkspaceFolder>,
-    pub watcher: Option<notify::RecommendedWatcher>,
-    open_file_texts: HashMap<Uri, String>,
-    open_file_state_version: u64,
-    pub match_file_pattern: WorkspaceFileMatcher,
+    pub state: WorkspaceState,
     workspace_diagnostic_level: Arc<AtomicU8>,
     workspace_version: Arc<AtomicI64>,
 }
 
 impl WorkspaceManager {
     pub fn new(
-        analysis: Arc<RwLock<EmmyLuaAnalysis>>,
         client: Arc<ClientProxy>,
-        file_diagnostic: Arc<FileDiagnostic>,
+        file_diagnostic: Arc<DiagnosticService>,
         lsp_features: Arc<LspFeatures>,
     ) -> Self {
         Self {
-            analysis,
             client,
             config_reload_token: Arc::new(PendingTask::default()),
-            reindex_token: Arc::new(PendingTask::default()),
             reload_lock: Arc::new(AsyncMutex::new(())),
             reload_generation: Arc::new(AtomicU64::new(0)),
             file_diagnostic,
             lsp_features,
-            client_config: ClientConfig::default(),
-            workspace_folders: Vec::new(),
-            watcher: None,
-            open_file_texts: HashMap::new(),
-            open_file_state_version: 0,
-            match_file_pattern: WorkspaceFileMatcher::default(),
+            state: WorkspaceState::new(ClientConfig::default()),
             workspace_diagnostic_level: Arc::new(AtomicU8::new(
                 WorkspaceDiagnosticLevel::Fast.to_u8(),
             )),
             workspace_version: Arc::new(AtomicI64::new(0)),
         }
     }
+}
 
+impl Deref for WorkspaceManager {
+    type Target = WorkspaceState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl DerefMut for WorkspaceManager {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
+}
+
+impl WorkspaceManager {
     pub fn get_workspace_diagnostic_level(&self) -> WorkspaceDiagnosticLevel {
         let value = self.workspace_diagnostic_level.load(Ordering::Acquire);
         WorkspaceDiagnosticLevel::from_u8(value)
@@ -86,40 +84,11 @@ impl WorkspaceManager {
         self.workspace_version.load(Ordering::Acquire)
     }
 
-    pub fn update_match_state(&mut self, emmyrc: &Emmyrc) {
-        self.match_file_pattern = WorkspaceFileMatcher::new(&self.workspace_folders, emmyrc);
-    }
-
-    pub fn sync_open_file(&mut self, uri: Uri, text: String) {
-        self.open_file_texts.insert(uri, text);
-        self.open_file_state_version = self.open_file_state_version.wrapping_add(1);
-    }
-
-    pub fn close_open_file(&mut self, uri: &Uri) {
-        self.open_file_texts.remove(uri);
-        self.open_file_state_version = self.open_file_state_version.wrapping_add(1);
-    }
-
-    pub fn is_open_file(&self, uri: &Uri) -> bool {
-        self.open_file_texts.contains_key(uri)
-    }
-
-    pub fn workspace_open_files(&self) -> Vec<(Uri, String)> {
-        self.open_file_texts
-            .iter()
-            .filter(|(uri, _)| self.is_workspace_file(uri))
-            .map(|(uri, text)| (uri.clone(), text.clone()))
-            .collect()
-    }
-
-    fn workspace_open_files_snapshot(&self) -> OpenFilesSnapshot {
-        OpenFilesSnapshot {
-            version: self.open_file_state_version,
-            files: self.workspace_open_files(),
-        }
-    }
-
-    pub fn add_update_emmyrc_task(&self, context: ServerContextSnapshot, config_path: PathBuf) {
+    pub async fn add_update_emmyrc_task(
+        &self,
+        context: ServerContextSnapshot,
+        config_path: PathBuf,
+    ) {
         let Some(config_root) = self.config_root() else {
             return;
         };
@@ -128,7 +97,7 @@ impl WorkspaceManager {
         }
 
         let (cancel_token, cancelled_existing) =
-            self.config_reload_token.replace(CONFIG_RELOAD_DELAY);
+            self.config_reload_token.replace(CONFIG_RELOAD_DELAY).await;
         if cancelled_existing {
             log::debug!("cancel pending config reload: {:?}", config_path);
         }
@@ -140,13 +109,13 @@ impl WorkspaceManager {
         tokio::spawn(async move {
             cancel_token.wait().await;
             if cancel_token.is_cancelled() {
-                config_reload_token.clear(&cancel_token);
+                config_reload_token.clear(&cancel_token).await;
                 return;
             }
 
             let emmyrc = load_emmy_config(Some(config_root), client_config);
             spawn_workspace_reload_task(reload_task_handles, context, workspace_folders, emmyrc);
-            config_reload_token.clear(&cancel_token);
+            config_reload_token.clear(&cancel_token).await;
         });
     }
 
@@ -160,70 +129,45 @@ impl WorkspaceManager {
         );
     }
 
-    pub fn extend_reindex_delay(&self) {
-        if let Some(token) = self.reindex_token.current() {
-            token.set_resleep();
-        }
-    }
+    // pub async fn reindex_workspace(&self, delay: Duration) {
+    //     log::info!("reindex workspace with delay: {:?}", delay);
+    //     let (cancel_token, cancelled_existing) = self.reindex_token.replace(delay).await;
+    //     if cancelled_existing {
+    //         log::info!("cancel reindex workspace");
+    //     }
 
-    pub fn reindex_workspace(&self, delay: Duration) {
-        log::info!("reindex workspace with delay: {:?}", delay);
-        let (cancel_token, cancelled_existing) = self.reindex_token.replace(delay);
-        if cancelled_existing {
-            log::info!("cancel reindex workspace");
-        }
+    //     let analysis = self.analysis.clone();
+    //     let client = self.client.clone();
+    //     let file_diagnostic = self.file_diagnostic.clone();
+    //     let lsp_features = self.lsp_features.clone();
+    //     let reindex_token = self.reindex_token.clone();
+    //     let workspace_diagnostic_level = self.workspace_diagnostic_level.clone();
+    //     tokio::spawn(async move {
+    //         cancel_token.wait().await;
+    //         if cancel_token.is_cancelled() {
+    //             reindex_token.clear(&cancel_token).await;
+    //             return;
+    //         }
 
-        let analysis = self.analysis.clone();
-        let client = self.client.clone();
-        let file_diagnostic = self.file_diagnostic.clone();
-        let lsp_features = self.lsp_features.clone();
-        let reindex_token = self.reindex_token.clone();
-        let workspace_diagnostic_level = self.workspace_diagnostic_level.clone();
-        tokio::spawn(async move {
-            cancel_token.wait().await;
-            if cancel_token.is_cancelled() {
-                reindex_token.clear(&cancel_token);
-                return;
-            }
+    //         // Perform reindex as a single serialized analysis update.
+    //         analysis
+    //             .update(|analysis| {
+    //                 // Clean up nonexistent files before reindexing.
+    //                 analysis.cleanup_nonexistent_files();
+    //                 analysis.reindex();
+    //             })
+    //             .await;
 
-            // Perform reindex with minimal lock holding time
-            {
-                let mut analysis = analysis.write().await;
-                // 在重新索引之前清理不存在的文件
-                analysis.cleanup_nonexistent_files();
-                analysis.reindex();
-                // Release lock immediately after reindex
-                drop(analysis);
-            }
-
-            refresh_workspace_diagnostics(
-                file_diagnostic,
-                lsp_features,
-                client,
-                workspace_diagnostic_level,
-            )
-            .await;
-            reindex_token.clear(&cancel_token);
-        });
-    }
-
-    pub fn is_workspace_file(&self, uri: &Uri) -> bool {
-        if self.workspace_folders.is_empty() {
-            return true;
-        }
-
-        let Some(file_path) = uri_to_file_path(uri) else {
-            return true;
-        };
-
-        self.match_file_pattern.is_match(&file_path)
-    }
-
-    fn config_root(&self) -> Option<PathBuf> {
-        self.workspace_folders
-            .first()
-            .map(|workspace| workspace.root.clone())
-    }
+    //         refresh_workspace_diagnostics(
+    //             file_diagnostic,
+    //             lsp_features,
+    //             client,
+    //             workspace_diagnostic_level,
+    //         )
+    //         .await;
+    //         reindex_token.clear(&cancel_token).await;
+    //     });
+    // }
 
     fn reload_task_handles(&self) -> ReloadTaskHandles {
         ReloadTaskHandles {
@@ -329,22 +273,14 @@ impl DebounceToken {
     fn is_cancelled(&self) -> bool {
         self.cancel_token.is_cancelled()
     }
-
-    fn set_resleep(&self) {
-        self.need_re_sleep.store(true, Ordering::Release);
-    }
 }
 
 #[derive(Debug, Default)]
-struct PendingTask(Mutex<Option<Arc<DebounceToken>>>);
+struct PendingTask(AsyncMutex<Option<Arc<DebounceToken>>>);
 
 impl PendingTask {
-    fn current(&self) -> Option<Arc<DebounceToken>> {
-        self.0.lock().expect("update token mutex poisoned").clone()
-    }
-
-    fn replace(&self, delay: Duration) -> (Arc<DebounceToken>, bool) {
-        let mut current = self.0.lock().expect("update token mutex poisoned");
+    async fn replace(&self, delay: Duration) -> (Arc<DebounceToken>, bool) {
+        let mut current = self.0.lock().await;
         let had_existing_token = current.is_some();
         if let Some(token) = current.as_ref() {
             token.cancel();
@@ -355,8 +291,8 @@ impl PendingTask {
         (next, had_existing_token)
     }
 
-    fn clear(&self, finished_token: &Arc<DebounceToken>) {
-        let mut current = self.0.lock().expect("update token mutex poisoned");
+    async fn clear(&self, finished_token: &Arc<DebounceToken>) {
+        let mut current = self.0.lock().await;
         if current
             .as_ref()
             .is_some_and(|token| Arc::ptr_eq(token, finished_token))
@@ -367,7 +303,7 @@ impl PendingTask {
 }
 
 async fn refresh_workspace_diagnostics(
-    file_diagnostic: Arc<FileDiagnostic>,
+    file_diagnostic: Arc<DiagnosticService>,
     lsp_features: Arc<LspFeatures>,
     client: Arc<ClientProxy>,
     workspace_diagnostic_level: Arc<AtomicU8>,
@@ -387,7 +323,7 @@ async fn refresh_workspace_diagnostics(
 #[derive(Clone)]
 struct ReloadTaskHandles {
     client: Arc<ClientProxy>,
-    file_diagnostic: Arc<FileDiagnostic>,
+    file_diagnostic: Arc<DiagnosticService>,
     lsp_features: Arc<LspFeatures>,
     reload_lock: Arc<AsyncMutex<()>>,
     reload_generation: Arc<AtomicU64>,
@@ -428,14 +364,16 @@ async fn apply_workspace_reload(
     emmyrc: Arc<Emmyrc>,
 ) {
     let open_files = {
-        let mut workspace_manager = context.workspace_manager().write().await;
+        let mut workspace_manager = context.workspace_manager().lock().await;
         workspace_manager.update_match_state(emmyrc.as_ref());
         workspace_manager.workspace_open_files_snapshot()
     };
 
     {
-        let mut analysis = context.analysis().write().await;
-        analysis.clear_non_std_workspaces();
+        context
+            .analysis()
+            .update(|analysis| analysis.clear_non_std_workspaces())
+            .await;
     }
 
     init_analysis(
@@ -459,7 +397,7 @@ async fn sync_reloaded_open_files(
 ) {
     loop {
         let snapshot_update = {
-            let workspace_manager = context.workspace_manager().read().await;
+            let workspace_manager = context.workspace_manager().lock().await;
             let next_snapshot = workspace_manager.workspace_open_files_snapshot();
             if next_snapshot.version == applied_snapshot.version {
                 None
@@ -511,7 +449,7 @@ async fn sync_reloaded_open_files(
 }
 
 async fn apply_open_file_sync(
-    analysis: &RwLock<EmmyLuaAnalysis>,
+    analysis: &AnalysisState,
     current_open_files: Vec<(Uri, String)>,
     removed_actions: Vec<OpenFileSyncAction>,
 ) -> Vec<Uri> {
@@ -519,8 +457,9 @@ async fn apply_open_file_sync(
         return Vec::new();
     }
 
-    let mut analysis = analysis.write().await;
-    let encoding = analysis.get_emmyrc().workspace.encoding.clone();
+    let encoding = analysis
+        .with_snapshot(|analysis| analysis.get_emmyrc().workspace.encoding.clone())
+        .unwrap_or_default();
     let mut updates = current_open_files
         .into_iter()
         .map(|(uri, text)| (uri, Some(text)))
@@ -533,20 +472,25 @@ async fn apply_open_file_sync(
                 if let Some(text) = read_file_with_encoding(&path, &encoding) {
                     updates.push((uri, Some(text)));
                 } else {
-                    analysis.remove_file_by_uri(&uri);
                     removed_uris.push(uri);
                 }
             }
             OpenFileSyncAction::Remove(uri) => {
-                analysis.remove_file_by_uri(&uri);
                 removed_uris.push(uri);
             }
         }
     }
 
-    if !updates.is_empty() {
-        analysis.update_files_by_uri(updates);
-    }
+    analysis
+        .update(|analysis| {
+            for uri in &removed_uris {
+                analysis.remove_file_by_uri(uri);
+            }
+            if !updates.is_empty() {
+                analysis.update_files_by_uri(updates);
+            }
+        })
+        .await;
 
     removed_uris
 }
@@ -571,12 +515,6 @@ impl WorkspaceDiagnosticLevel {
     pub fn to_u8(self) -> u8 {
         self as u8
     }
-}
-
-#[derive(Debug, Clone, Default)]
-struct OpenFilesSnapshot {
-    version: u64,
-    files: Vec<(Uri, String)>,
 }
 
 #[derive(Debug, Clone)]

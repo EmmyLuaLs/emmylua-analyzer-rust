@@ -4,7 +4,7 @@ use emmylua_parser::{
 };
 
 use crate::{
-    config::LuaFormatConfig,
+    config::{LuaFormatConfig, SpacingConfig},
     formatter::{
         FormatContext,
         model::{FormatPlan, TokenSpacingExpected},
@@ -48,7 +48,7 @@ fn test_spacing_assign_defaults_to_single_spaces() {
 #[test]
 fn test_spacing_uses_call_paren_config() {
     let config = LuaFormatConfig {
-        spacing: crate::config::SpacingConfig {
+        spacing: SpacingConfig {
             space_before_call_paren: true,
             ..Default::default()
         },
@@ -78,7 +78,7 @@ fn test_spacing_uses_call_paren_config() {
 #[test]
 fn test_spacing_respects_paren_expr_inner_space() {
     let config = LuaFormatConfig {
-        spacing: crate::config::SpacingConfig {
+        spacing: SpacingConfig {
             space_inside_parens: true,
             ..Default::default()
         },
@@ -108,7 +108,7 @@ fn test_spacing_respects_paren_expr_inner_space() {
 #[test]
 fn test_spacing_respects_math_operator_config() {
     let config = LuaFormatConfig {
-        spacing: crate::config::SpacingConfig {
+        spacing: SpacingConfig {
             space_around_math_operator: false,
             ..Default::default()
         },

@@ -41,7 +41,7 @@ pub(crate) fn append_trailing_comment_suffix(
         return;
     };
 
-    let content_width = crate::ir::ir_flat_width(docs);
+    let content_width = ir::ir_flat_width(docs);
     let padding = if ctx.config.comments.line_comment_min_column == 0 {
         ctx.config.comments.line_comment_min_spaces_before.max(1)
     } else {

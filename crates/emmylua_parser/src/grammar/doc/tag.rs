@@ -507,7 +507,7 @@ fn parse_tag_cast(p: &mut LuaDocParser) -> DocParseResult {
         }
     }
 
-    // 切换回正常状态
+    // Switch back to the normal state.
     parse_op_type(p)?;
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
@@ -523,14 +523,14 @@ fn parse_cast_expr(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::NameExpr);
     p.bump();
     let mut cm = m.complete(p);
-    // 处理多级字段访问
+    // Handle multi-level field access.
     while p.current_token() == LuaTokenKind::TkDot {
         let index_m = cm.precede(p, LuaSyntaxKind::IndexExpr);
         p.bump();
         if p.current_token() == LuaTokenKind::TkName {
             p.bump();
         } else {
-            // 找不到也不报错
+            // Missing name is not an error.
         }
         cm = index_m.complete(p);
     }
@@ -718,10 +718,10 @@ pub fn parse_tag_attribute_use(p: &mut LuaDocParser, allow_description: bool) ->
         p.bump(); // consume comma
     }
 
-    // 期望结束符号 ']'
+    // Expect the closing ']'.
     expect_token(p, LuaTokenKind::TkRightBracket)?;
 
-    // 属性使用解析完成后, 重置状态
+    // After parsing the attribute usage, reset the state.
     if allow_description {
         p.set_lexer_state(LuaDocLexerState::Description);
         parse_description(p);
@@ -736,10 +736,10 @@ pub fn parse_tag_attribute_use(p: &mut LuaDocParser, allow_description: bool) ->
 fn parse_doc_attribute_use(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttributeUse);
 
-    // attribute 被视为类型
+    // Attribute names are parsed as types.
     parse_type(p)?;
 
-    // 解析参数列表, 允许没有参数的特性在使用时省略括号
+    // Parse argument list; attributes without arguments may omit parens.
     if p.current_token() == LuaTokenKind::TkLeftParen {
         parse_attribute_arg_list(p)?;
     }
@@ -747,12 +747,12 @@ fn parse_doc_attribute_use(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// 解析属性参数列表
+// Parse an attribute argument list.
 fn parse_attribute_arg_list(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttributeCallArgList);
     p.bump(); // consume '('
 
-    // 解析参数值列表
+    // Parse a list of argument values.
     if p.current_token() != LuaTokenKind::TkRightParen {
         loop {
             if p.current_token() == LuaTokenKind::TkEof {
@@ -773,11 +773,11 @@ fn parse_attribute_arg_list(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// 解析单个属性参数
+// Parse a single attribute argument.
 fn parse_attribute_arg(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::LiteralExpr);
 
-    // TODO: 添加具名参数支持(name: value)
+    // TODO: Support named arguments (name: value).
     match p.current_token() {
         LuaTokenKind::TkInt
         | LuaTokenKind::TkFloat

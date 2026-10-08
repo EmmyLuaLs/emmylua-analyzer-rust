@@ -1,6 +1,7 @@
 use similar::{ChangeTag, InlineChange, TextDiff, udiff::UnifiedHunkHeader};
 
 use super::color::Colorizer;
+use super::git_blob_hash;
 
 /// Options for [`render_unified_diff`].
 #[derive(Debug, Clone)]
@@ -54,8 +55,8 @@ pub fn render_unified_diff(
             out.push('\n');
             // Hash the LF-normalized content so the blob hashes match what git
             // stores (git normalizes CRLF to LF before hashing with autocrlf).
-            let old_hash = super::git_blob_hash(original.as_bytes());
-            let new_hash = super::git_blob_hash(formatted.as_bytes());
+            let old_hash = git_blob_hash(original.as_bytes());
+            let new_hash = git_blob_hash(formatted.as_bytes());
             out.push_str(&color.meta(&format!("index {old_hash}..{new_hash} 100644")));
             out.push('\n');
             out.push_str(&color.file_old(&format!("--- a/{path}")));

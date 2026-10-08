@@ -1,3 +1,5 @@
+//! `---@` comment tag completion (including a completion template for missing `@param` tags).
+
 use crate::handlers::completion::{completion_builder::CompletionBuilder, data::DOC_TAGS};
 use crate::meta_text::meta_doc_tag;
 use emmylua_parser::{
@@ -15,7 +17,10 @@ impl CompletionProvider for DocTagProvider {
     }
 
     fn supports(&self, builder: &CompletionBuilder) -> bool {
-        supports_provider(builder)
+        matches!(
+            builder.trigger_token.kind().into(),
+            LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
+        )
     }
 
     fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
@@ -27,24 +32,17 @@ impl CompletionProvider for DocTagProvider {
     }
 }
 
-fn supports_provider(builder: &CompletionBuilder) -> bool {
-    matches!(
-        builder.trigger_token.kind().into(),
-        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
-    )
-}
-
 fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
     let trigger_token_kind: LuaTokenKind = builder.trigger_token.kind().into();
-    if !supports_provider(builder) {
+    if !DocTagProvider.supports(builder) {
         return None;
     }
 
-    let emmyrc = builder.semantic_model.get_emmyrc_arc();
+    let emmyrc = builder.get_emmyrc_arc();
     let known_other_tags = emmyrc.doc.known_tags.iter().map(|tag| tag.as_str());
 
     for (sorted_index, tag) in DOC_TAGS.iter().copied().chain(known_other_tags).enumerate() {
@@ -87,38 +85,27 @@ fn add_tag_param_return_completion(
     let closure = match comment_owner {
         LuaAst::LuaAssignStat(stat) => {
             let (_, expr_list) = stat.get_var_and_expr_list();
-            let mut result_closure = None;
-            for value_expr in expr_list {
-                if let LuaExpr::ClosureExpr(closure) = value_expr {
-                    result_closure = Some(closure.clone());
-                    break;
-                }
-            }
-
-            result_closure
+            expr_list
+                .into_iter()
+                .find_map(|value_expr| match value_expr {
+                    LuaExpr::ClosureExpr(closure) => Some(closure),
+                    _ => None,
+                })
         }
         LuaAst::LuaLocalFuncStat(f) => f.get_closure(),
         LuaAst::LuaFuncStat(f) => f.get_closure(),
         LuaAst::LuaLocalStat(local_stat) => {
-            let mut result_closure = None;
-            let expr_list = local_stat.get_value_exprs();
-            for value_expr in expr_list {
-                if let LuaExpr::ClosureExpr(closure) = value_expr {
-                    result_closure = Some(closure.clone());
-                    break;
-                }
-            }
-
-            result_closure
+            local_stat
+                .get_value_exprs()
+                .find_map(|value_expr| match value_expr {
+                    LuaExpr::ClosureExpr(closure) => Some(closure),
+                    _ => None,
+                })
         }
-        LuaAst::LuaTableField(field) => {
-            let value_expr = field.get_value_expr()?;
-            if let LuaExpr::ClosureExpr(closure) = value_expr {
-                Some(closure)
-            } else {
-                None
-            }
-        }
+        LuaAst::LuaTableField(field) => match field.get_value_expr()? {
+            LuaExpr::ClosureExpr(closure) => Some(closure),
+            _ => None,
+        },
         _ => return None,
     }?;
 
@@ -133,16 +120,16 @@ fn add_tag_param_return_completion(
     }
 
     for doc_tag in comment.get_doc_tags() {
-        if let LuaDocTag::Param(param_tag) = doc_tag {
-            if let Some(param_name) = param_tag.get_name_token() {
-                let name_text = param_name.get_text();
-                for param_order in param_orders.iter_mut() {
-                    if let Some(name) = param_order {
-                        if name == name_text {
-                            *param_order = None;
-                            break;
-                        }
-                    }
+        if let LuaDocTag::Param(param_tag) = doc_tag
+            && let Some(param_name) = param_tag.get_name_token()
+        {
+            let name_text = param_name.get_text();
+            for param_order in param_orders.iter_mut() {
+                if let Some(name) = param_order
+                    && name == name_text
+                {
+                    *param_order = None;
+                    break;
                 }
             }
         }
@@ -187,6 +174,5 @@ fn add_tag_param_return_completion(
         ..Default::default()
     };
 
-    builder.add_completion_item(completion_item);
-    Some(())
+    builder.add_completion_item(completion_item)
 }

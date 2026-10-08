@@ -4,7 +4,9 @@ mod tests {
 
     use crate::{
         assert_format, assert_format_with_config,
-        config::{LayoutConfig, LuaFormatConfig, OutputConfig},
+        config::{
+            AlignConfig, IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig, OutputConfig,
+        },
     };
 
     #[test]
@@ -1913,7 +1915,7 @@ end
         use emmylua_parser::LuaLanguageLevel;
 
         let config = LuaFormatConfig {
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -2027,11 +2029,11 @@ end
         use emmylua_parser::LuaLanguageLevel;
 
         let config = LuaFormatConfig {
-            indent: crate::config::IndentConfig {
-                kind: crate::config::IndentKind::Space,
+            indent: IndentConfig {
+                kind: IndentKind::Space,
                 width: 2,
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },

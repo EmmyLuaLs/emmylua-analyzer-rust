@@ -3,7 +3,8 @@ mod test;
 use crate::lang::{CodeBlockLang, process_code};
 use crate::markdown_rst::{eat_rst_flag_body, process_inline_code};
 use crate::util::{
-    BacktrackPoint, ResultContainer, desc_to_lines, is_blank, is_code_directive, is_punct, is_ws,
+    BacktrackPoint, ResultContainer, desc_to_lines, is_blank, is_code_directive, is_lua_role,
+    is_punct, is_ws,
 };
 use crate::{CodeBlockHighlightKind, DescItem, DescItemKind, LuaDescParser};
 use emmylua_parser::{LexerState, Reader, SourceRange};
@@ -1441,7 +1442,7 @@ impl MarkdownParser {
         let is_lua_ref = role_text.starts_with("lua:")
             || (self.primary_domain.as_deref() == Some("lua")
                 && !role_text.contains(":")
-                && crate::util::is_lua_role(role_text));
+                && is_lua_role(role_text));
 
         self.emit(&mut reader, DescItemKind::Arg);
 
@@ -1665,17 +1666,13 @@ impl MarkdownParser {
                     let is_right_flanking =
                         !left_is_ws && (!left_is_punct || (right_is_ws || right_is_punct));
 
-                    let can_start_highlight;
-                    let can_end_highlight;
-                    if ch == '*' {
-                        can_start_highlight = is_left_flanking;
-                        can_end_highlight = is_right_flanking;
+                    
+                    
+                    let (can_start_highlight, can_end_highlight) = if ch == '*' {
+                        (is_left_flanking, is_right_flanking)
                     } else {
-                        can_start_highlight =
-                            is_left_flanking && (!is_right_flanking || left_is_punct);
-                        can_end_highlight =
-                            is_right_flanking && (!is_left_flanking || right_is_punct);
-                    }
+                        (is_left_flanking && (!is_right_flanking || left_is_punct), is_right_flanking && (!is_left_flanking || right_is_punct))
+                    };
 
                     if can_start_highlight && can_end_highlight {
                         if self.has_highlight(ch, n_chars) {

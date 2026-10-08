@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use emmylua_code_analysis::{DbIndex, Emmyrc, LuaDocument, file_path_to_uri};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, SemanticDatabase, file_path_to_uri};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaLiteralExpr, LuaStringToken,
     LuaSyntaxNode,
@@ -8,7 +8,7 @@ use emmylua_parser::{
 use lsp_types::DocumentLink;
 
 pub fn build_links(
-    db: &DbIndex,
+    db: &SemanticDatabase,
     root: LuaSyntaxNode,
     document: &LuaDocument,
     emmyrc: &Emmyrc,
@@ -27,7 +27,7 @@ pub fn build_links(
 }
 
 fn try_build_file_link(
-    db: &DbIndex,
+    db: &SemanticDatabase,
     token: LuaStringToken,
     document: &LuaDocument,
     result: &mut Vec<DocumentLink>,
@@ -78,17 +78,14 @@ fn try_build_file_link(
 }
 
 fn try_build_module_link(
-    db: &DbIndex,
+    db: &SemanticDatabase,
     token: LuaStringToken,
     document: &LuaDocument,
     result: &mut Vec<DocumentLink>,
 ) -> Option<()> {
     let module_path = token.get_value();
-    let module_index = db.get_module_index();
-    let founded_module = module_index.find_module(&module_path)?;
-    let file_id = founded_module.file_id;
-    let vfs = db.get_vfs();
-    let uri = vfs.get_uri(&file_id)?;
+    let file_id = db.module_file_of(&module_path)?;
+    let uri = db.file_uri(file_id)?;
     let range = token.get_range();
     let lsp_range = document.to_lsp_range(range)?;
     let document_link = DocumentLink {

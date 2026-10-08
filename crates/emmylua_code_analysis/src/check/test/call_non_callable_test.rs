@@ -1,0 +1,221 @@
+#[cfg(test)]
+mod test {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use lsp_types::NumberOrString;
+    use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn test_call_non_callable() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local i = 1
+                i()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local s = "hi"
+                s()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local b = true
+                b()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@type thread
+                local t
+                t()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local function f() end
+                f()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@type function
+                local f
+                f()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@type function|integer
+                local f
+                f()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local f ---@type { field: string } & fun()
+                f()
+            "#
+        ));
+
+        // nil is covered by need-check-nil instead of call-non-callable
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@type function|nil
+                local f
+                f()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                (1)()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ("hi")()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                (true)()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                (function() end)()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local i --- @type integer|fun():string
+                _ = i()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@class Callable
+                ---@operator call: string
+                ---@type Callable
+                local c
+                c()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local c = {}
+                c()
+            "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@class NonCallable
+                ---@type NonCallable
+                local c = {}
+                c()
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                ---@type any
+                local c
+                c()
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_call_non_callable_fallback_from_initializer() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_check(DiagnosticCode::CallNonCallable);
+        let file_id = ws.def("local i = 1\n i()\n");
+
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::CallNonCallable.get_name().to_string(),
+        ));
+        assert!(diagnostics.iter().any(|diag| diag.code == code));
+    }
+
+    #[test]
+    fn test_no_call_non_callable_on_undefined_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            local a --- @type NotDefined
+            a()
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_no_call_non_callable_on_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@alias FunAlias function
+            local a --- @type FunAlias
+            a()
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_no_call_non_callable_for_generic_function_param_in_a_lua() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            --- @generic F: function
+            --- @param fn F
+            --- @return F
+            function once(fn)
+              return function(...)
+                return fn(...)
+              end
+            end
+            "#,
+        ));
+    }
+}

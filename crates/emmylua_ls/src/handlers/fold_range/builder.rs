@@ -14,8 +14,8 @@ pub struct FoldingRangeBuilder<'a> {
     client_id: ClientId,
 }
 
-impl FoldingRangeBuilder<'_> {
-    pub fn new<'a>(
+impl<'a> FoldingRangeBuilder<'a> {
+    pub fn new(
         document: &'a LuaDocument<'a>,
         root: LuaChunk,
         client_id: ClientId,
@@ -33,7 +33,7 @@ impl FoldingRangeBuilder<'_> {
         &self.root
     }
 
-    pub fn get_document(&'_ self) -> &'_ LuaDocument<'_> {
+    pub fn get_document(&'_ self) -> &'_ LuaDocument<'a> {
         self.document
     }
 
@@ -117,7 +117,7 @@ impl FoldingRangeBuilder<'_> {
         }
 
         match self.client_id {
-            // Intellij 支持范围折叠
+            // Intellij supports range folding.
             ClientId::Intellij => {
                 let start_col = start_col + 1;
                 let range = lsp_types::Range {

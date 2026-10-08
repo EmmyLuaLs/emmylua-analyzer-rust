@@ -297,7 +297,7 @@ impl LuaDocLexer<'_> {
             }
             '@' => {
                 reader.bump();
-                // 需要检查是否在使用 Attribute 语法
+                // Check whether the Attribute syntax is in use.
                 if reader.current_char() == '[' {
                     reader.bump();
                     LuaTokenKind::TkDocAttributeUse

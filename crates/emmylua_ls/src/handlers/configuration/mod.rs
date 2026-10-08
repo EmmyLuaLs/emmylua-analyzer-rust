@@ -13,7 +13,7 @@ pub async fn on_did_change_configuration(
 
     // Check initialization status and get client config
     let (client_id, supports_config_request) = {
-        let workspace_manager = context.workspace_manager().read().await;
+        let workspace_manager = context.workspace_manager().lock().await;
         let client_id = workspace_manager.client_config.client_id;
         let supports_config_request = context.lsp_features().supports_config_request();
         (client_id, supports_config_request)
@@ -30,7 +30,7 @@ pub async fn on_did_change_configuration(
 
     // Update config and reload - acquire write lock only when necessary
     {
-        let mut workspace_manager = context.workspace_manager().write().await;
+        let mut workspace_manager = context.workspace_manager().lock().await;
         if workspace_manager.client_config == new_client_config {
             log::info!("skip workspace reload; client config unchanged");
             return Some(());
@@ -66,6 +66,7 @@ mod tests {
     use emmylua_code_analysis::WorkspaceFolder;
     use lsp_server::{Connection, Message};
     use lsp_types::{DidChangeWatchedFilesClientCapabilities, WorkspaceClientCapabilities};
+    use std::sync::Arc;
 
     static TEST_WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -118,10 +119,10 @@ mod tests {
         fs::create_dir_all(&workspace_root).unwrap();
 
         let (server, client) = Connection::memory();
-        let context = ServerContext::new(server, dynamic_watch_capabilities());
+        let context = ServerContext::new(Arc::new(server), dynamic_watch_capabilities());
         let snapshot = context.snapshot();
         {
-            let mut workspace_manager = snapshot.workspace_manager().write().await;
+            let mut workspace_manager = snapshot.workspace_manager().lock().await;
             workspace_manager.workspace_folders =
                 vec![WorkspaceFolder::new(workspace_root.clone(), false)];
             workspace_manager.client_config = ClientConfig {

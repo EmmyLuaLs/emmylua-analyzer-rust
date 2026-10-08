@@ -317,7 +317,7 @@ fn parse_object_or_mapped_type(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-/// 判断是否为 mapped type
+/// Returns whether this is a mapped type.
 fn is_mapped_type(p: &LuaDocParser) -> bool {
     let mut lexer = p.lexer.clone();
 

@@ -17,14 +17,14 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 pub struct ClientProxy {
-    conn: Connection,
+    conn: Arc<Connection>,
     id_counter: AtomicI32,
     response_manager: Arc<Mutex<HashMap<RequestId, oneshot::Sender<Response>>>>,
 }
 
 #[allow(unused)]
 impl ClientProxy {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Arc<Connection>) -> Self {
         Self {
             conn,
             id_counter: AtomicI32::new(0),
@@ -32,8 +32,18 @@ impl ClientProxy {
         }
     }
 
+    /// Unified outgoing message entry point.
+    pub fn send_message(&self, message: Message) {
+        let _ = self.conn.sender.send(message);
+    }
+
+    /// Send a Response to the client.
+    pub fn send_response(&self, response: Response) {
+        self.send_message(Message::Response(response));
+    }
+
     pub fn send_notification(&self, method: &str, params: impl serde::Serialize) {
-        let _ = self.conn.sender.send(Message::Notification(Notification {
+        self.send_message(Message::Notification(Notification {
             method: method.to_string(),
             params: serde_json::to_value(params).unwrap(),
         }));
@@ -51,7 +61,7 @@ impl ClientProxy {
             .lock()
             .await
             .insert(id.clone(), sender);
-        let _ = self.conn.sender.send(Message::Request(lsp_server::Request {
+        self.send_message(Message::Request(lsp_server::Request {
             id: id.clone(),
             method: method.to_string(),
             params: serde_json::to_value(params).unwrap(),
@@ -65,7 +75,7 @@ impl ClientProxy {
     }
 
     fn send_request_no_wait(&self, id: RequestId, method: &str, params: impl serde::Serialize) {
-        let _ = self.conn.sender.send(Message::Request(lsp_server::Request {
+        self.send_message(Message::Request(lsp_server::Request {
             id,
             method: method.to_string(),
             params: serde_json::to_value(params).unwrap(),

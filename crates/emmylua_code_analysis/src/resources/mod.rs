@@ -14,14 +14,14 @@ pub fn load_resource_std(
     create_resources_dir: Option<String>,
     is_jit: bool,
 ) -> (PathBuf, Vec<LuaFileInfo>) {
-    // 指定了输出的资源目录, 目前只有 lsp 会指定
+    // Resource output dir specified; currently only the LSP sets it.
     if let Some(create_resources_dir) = create_resources_dir {
         let resource_path = if create_resources_dir.is_empty() {
             get_best_resources_dir()
         } else {
             PathBuf::from(&create_resources_dir)
         };
-        // 此时会存在 i18n, 我们需要根据当前语言环境切换到对应语言的 std 目录
+        // i18n resources exist; switch to the std dir for the current locale.
         let std_dir = get_std_dir(&resource_path);
         let result = load_resource_from_file_system(&resource_path);
         if let Some(mut files) = result {
@@ -31,7 +31,7 @@ pub fn load_resource_std(
             return (std_dir, files);
         }
     }
-    // 没有指定资源目录, 那么直接使用默认的资源目录, 此时不会存在 i18n
+    // No resource dir specified; use the default dir, which has no i18n.
     let resoucres_dir = get_best_resources_dir();
     let std_dir = resoucres_dir.join("std");
     let files = load_resource_from_include_dir();
@@ -78,7 +78,7 @@ fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
 }
 
 fn load_resource_from_file_system(resources_dir: &Path) -> Option<Vec<LuaFileInfo>> {
-    // lsp i18n 的资源在更早之前的 crates\emmylua_ls\src\handlers\initialized\std_i18n.rs 中写入到文件系统
+    // LSP i18n resources were written to the filesystem earlier in crates\emmylua_ls\src\handlers\initialized\std_i18n.rs.
     if check_need_dump_to_file_system() {
         log::info!("Creating resources dir: {:?}", resources_dir);
         let files = load_resource_from_include_dir();
@@ -177,7 +177,7 @@ fn walk_resource_dir(dir: &Dir, files: &mut Vec<LuaFileInfo>) {
     }
 }
 
-// 优先使用当前语言环境的 std-{locale} 目录, 否则回退到默认的 std 目录
+// Prefer the std-{locale} directory for the current locale; fall back to the default std dir.
 fn get_std_dir(resources_dir: &Path) -> PathBuf {
     let locale = get_locale_code(&rust_i18n::locale());
     if locale != "en" {

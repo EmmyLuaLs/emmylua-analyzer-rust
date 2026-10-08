@@ -6,7 +6,7 @@ use rowan::{TextRange, TextSize};
 
 use super::{FileId, file_path_to_uri};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LuaDocument<'a> {
     file_id: FileId,
     path: &'a PathBuf,
@@ -37,8 +37,12 @@ impl<'a> LuaDocument<'a> {
         self.path.file_name()?.to_str().map(|s| s.to_string())
     }
 
-    pub fn get_uri(&self) -> Uri {
-        file_path_to_uri(self.path).expect("path is always absolute")
+    pub fn get_uri(&self) -> Option<Uri> {
+        file_path_to_uri(self.path)
+    }
+
+    pub fn get_path(&self) -> PathBuf {
+        self.path.clone()
     }
 
     pub fn get_file_path(&self) -> &PathBuf {
@@ -108,7 +112,7 @@ impl<'a> LuaDocument<'a> {
 
     pub fn to_lsp_location(&self, range: TextRange) -> Option<lsp_types::Location> {
         Some(lsp_types::Location {
-            uri: self.get_uri(),
+            uri: self.get_uri()?,
             range: self.to_lsp_range(range)?,
         })
     }
@@ -167,7 +171,7 @@ mod tests {
 
         assert_eq!(document.get_file_id(), id);
         assert_eq!(document.get_file_name(), Some("test.lua".to_string()));
-        assert_eq!(document.get_uri(), uri);
+        assert_eq!(document.get_uri().unwrap(), uri);
         assert_eq!(*document.get_file_path(), vg.new_path("test.lua"));
         assert!(document.get_line_count() > 0, "Document should have lines");
     }
@@ -240,7 +244,7 @@ mod tests {
             document.get_file_name(),
             Some("filename_test.lua".to_string())
         );
-        assert_eq!(document.get_uri(), uri);
+        assert_eq!(document.get_uri().unwrap(), uri);
     }
 
     #[test]

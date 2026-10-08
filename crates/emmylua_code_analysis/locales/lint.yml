@@ -287,3 +287,31 @@ Cannot use `...` outside a vararg function.:
   en: "Missing comment for function `%{name}`."
   zh_CN: "函数 `%{name}` 缺少注解。"
   zh_HK: "函式 `%{name}` 缺少註解。"
+"`%{name}` is deprecated":
+  en: "`%{name}` is deprecated"
+  zh_CN: "`%{name}` 已弃用"
+  zh_HK: "`%{name}` 已棄用"
+"Cannot resolve module `%{module}`.":
+  en: "Cannot resolve module `%{module}`."
+  zh_CN: "无法解析模块 `%{module}`。"
+  zh_HK: "無法解析模組 `%{module}`。"
+"goto label '%{name}' not found":
+  en: "goto label '%{name}' not found"
+  zh_CN: "找不到标签 '%{name}'"
+  zh_HK: "找不到標籤 '%{name}'"
+"expected at least %{num} parameters but found %{found_num}":
+  en: "expected at least %{num} parameters but found %{found_num}"
+  zh_CN: "期望至少 %{num} 个参数，但找到 %{found_num} 个"
+  zh_HK: "期望至少 %{num} 個參數，但找到 %{found_num} 個"
+"Field `%{field}` cannot be injected into the target type.":
+  en: "Field `%{field}` cannot be injected into the target type."
+  zh_CN: "字段 `%{field}` 不能注入目标类型。"
+  zh_HK: "欄位 `%{field}` 不能注入目標類型。"
+"Missing required fields in type `%{typ}`: %{fields}":
+  en: "Missing required fields in type `%{typ}`: %{fields}"
+  zh_CN: "类型 `%{typ}` 缺少必要字段：%{fields}"
+  zh_HK: "類型 `%{typ}` 缺少必要字段：%{fields}"
+"the string template type `%{name}` does not match any type declaration":
+  en: "the string template type `%{name}` does not match any type declaration"
+  zh_CN: "字符串模板类型 `%{name}` 与任何类型声明不匹配"
+  zh_HK: "字串模板類型 `%{name}` 與任何類型聲明不匹配"

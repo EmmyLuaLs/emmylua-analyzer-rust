@@ -15,7 +15,7 @@ pub async fn get_client_config_default(
 ) -> Option<()> {
     let workspace_folders = context
         .workspace_manager()
-        .read()
+        .lock()
         .await
         .workspace_folders
         .clone();

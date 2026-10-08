@@ -82,7 +82,7 @@ impl<'a> SqlLexer<'a> {
     }
 
     pub fn next_token(&mut self) -> SqlTokenData {
-        // 如果在多行注释状态中，继续处理注释
+        // If in a multi-line comment state, continue scanning the comment.
         if self.state == LexerState::LongComment(0) {
             return self.scan_block_comment_continue();
         }
@@ -214,7 +214,7 @@ impl<'a> SqlLexer<'a> {
             self.reader.bump();
         }
 
-        // 如果到达文件末尾而没有找到结束标记，设置状态为多行注释
+        // If the end of file is reached without a closing marker, set the state to a multi-line comment.
         self.state = LexerState::LongComment(0);
         SqlTokenData::new(SqlTokenKind::TkBlockComment, self.reader.current_range())
     }
@@ -235,7 +235,7 @@ impl<'a> SqlLexer<'a> {
             self.reader.bump();
         }
 
-        // 仍然在多行注释中
+        // Still inside a multi-line comment.
         SqlTokenData::new(SqlTokenKind::TkBlockComment, self.reader.current_range())
     }
 

@@ -2942,7 +2942,7 @@ Syntax(Chunk)@0..49
 
     #[test]
     fn test_infer_keyword() {
-        // 只有在 extends 后的 infer 才能被视为关键词
+        // Only infer after extends is treated as a keyword.
         {
             let code = r#"
         ---@alias Foo infer

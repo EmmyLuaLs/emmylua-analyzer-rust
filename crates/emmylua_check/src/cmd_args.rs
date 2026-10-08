@@ -52,6 +52,10 @@ pub struct CmdArgs {
     /// Verbose output
     #[cfg_attr(feature = "cli", arg(long))]
     pub verbose: bool,
+
+    /// Collect per-checker timing statistics and print a summary after the run.
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub profile: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,13 +1,11 @@
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
-use emmylua_code_analysis::EmmyLuaAnalysis;
-
-use crate::context::lsp_features::LspFeatures;
+use crate::context::{UpdateEvent, lsp_features::LspFeatures};
 
 use super::{
-    client::ClientProxy, file_diagnostic::FileDiagnostic, status_bar::StatusBar,
-    workspace_manager::WorkspaceManager,
+    AnalysisState, RequestManager, client::ClientProxy, diagnostic_service::DiagnosticService,
+    status_bar::StatusBar, workspace_manager::WorkspaceManager,
 };
 
 #[derive(Clone)]
@@ -20,7 +18,7 @@ impl ServerContextSnapshot {
         Self { inner }
     }
 
-    pub fn analysis(&self) -> &RwLock<EmmyLuaAnalysis> {
+    pub fn analysis(&self) -> &AnalysisState {
         &self.inner.analysis
     }
 
@@ -28,11 +26,11 @@ impl ServerContextSnapshot {
         &self.inner.client
     }
 
-    pub fn file_diagnostic(&self) -> &FileDiagnostic {
+    pub fn file_diagnostic(&self) -> &DiagnosticService {
         &self.inner.file_diagnostic
     }
 
-    pub fn workspace_manager(&self) -> &RwLock<WorkspaceManager> {
+    pub fn workspace_manager(&self) -> &Mutex<WorkspaceManager> {
         &self.inner.workspace_manager
     }
 
@@ -43,13 +41,23 @@ impl ServerContextSnapshot {
     pub fn lsp_features(&self) -> &LspFeatures {
         &self.inner.lsp_features
     }
+
+    pub fn request_manager(&self) -> &RequestManager {
+        &self.inner.request_manager
+    }
+
+    pub fn update_tx(&self) -> &tokio::sync::mpsc::UnboundedSender<UpdateEvent> {
+        &self.inner.update_tx
+    }
 }
 
 pub struct ServerContextInner {
-    pub analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+    pub analysis: Arc<AnalysisState>,
     pub client: Arc<ClientProxy>,
-    pub file_diagnostic: Arc<FileDiagnostic>,
-    pub workspace_manager: Arc<RwLock<WorkspaceManager>>,
+    pub file_diagnostic: Arc<DiagnosticService>,
+    pub workspace_manager: Arc<Mutex<WorkspaceManager>>,
     pub status_bar: Arc<StatusBar>,
     pub lsp_features: Arc<LspFeatures>,
+    pub request_manager: Arc<RequestManager>,
+    pub update_tx: tokio::sync::mpsc::UnboundedSender<UpdateEvent>,
 }

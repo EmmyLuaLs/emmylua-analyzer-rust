@@ -425,16 +425,16 @@ fn parse_table_expr(p: &mut LuaParser) -> ParseResult {
 
         // Try to recover: look for possible closing brace
         let mut found_brace = false;
-        let mut brace_count = 1; // 我们已经在表中
+        let mut brace_count = 1; // we are already inside the table
         let mut lookahead_count = 0;
-        const MAX_LOOKAHEAD: usize = 50; // 限制向前查看的token数量
+        const MAX_LOOKAHEAD: usize = 50; // limit the number of tokens to look ahead
 
         while p.current_token() != LuaTokenKind::TkEof && lookahead_count < MAX_LOOKAHEAD {
             match p.current_token() {
                 LuaTokenKind::TkRightBrace => {
                     brace_count -= 1;
                     if brace_count == 0 {
-                        p.bump(); // 消费闭合括号
+                        p.bump(); // consume the closing brace
                         found_brace = true;
                         break;
                     }
@@ -444,7 +444,7 @@ fn parse_table_expr(p: &mut LuaParser) -> ParseResult {
                     brace_count += 1;
                     p.bump();
                 }
-                // 如果遇到看起来像是表外部的token，停止寻找
+                // stop looking if we see a token that looks like it is outside the table
                 LuaTokenKind::TkEnd
                 | LuaTokenKind::TkElse
                 | LuaTokenKind::TkElseIf
@@ -461,7 +461,7 @@ fn parse_table_expr(p: &mut LuaParser) -> ParseResult {
         }
 
         if !found_brace {
-            // 如果没有找到闭合括号，在当前位置创建一个错误标记
+            // if no closing brace was found, create an error marker at the current position
             p.push_error(LuaParseError::syntax_error_from(
                 &t!("table constructor was not properly closed"),
                 p.current_token_range(),
@@ -477,7 +477,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
 
     match p.current_token() {
         LuaTokenKind::TkLeftBracket => {
-            // [expr] = expr 形式
+            // [expr] = expr form
             m.set_kind(p, LuaSyntaxKind::TableFieldAssign);
             p.bump(); // consume '['
 
@@ -488,7 +488,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
                         &t!("expected expression inside table index brackets"),
                         p.current_token_range(),
                     ));
-                    // 恢复到边界
+                    // recover to the boundary
                     while !matches!(
                         p.current_token(),
                         LuaTokenKind::TkRightBracket
@@ -532,7 +532,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
             }
         }
         LuaTokenKind::TkName => {
-            // 可能是 name = expr 或者只是 expr
+            // could be name = expr or just expr
             if p.peek_next_token() == LuaTokenKind::TkAssign {
                 m.set_kind(p, LuaSyntaxKind::TableFieldAssign);
                 p.bump(); // consume name
@@ -547,7 +547,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
                     }
                 }
             } else {
-                // 作为表达式解析
+                // parse it as an expression
                 match parse_expr(p) {
                     Ok(_) => {}
                     Err(_) => {
@@ -559,7 +559,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
                 }
             }
         }
-        // 表示表实际上已经结束的token
+        // tokens that mean the table has actually ended
         LuaTokenKind::TkEof | LuaTokenKind::TkLocal => {
             p.push_error(LuaParseError::syntax_error_from(
                 &t!("unexpected end of table field"),
@@ -567,7 +567,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
             ));
         }
         _ => {
-            // 尝试解析为普通表达式
+            // try to parse as a regular expression
             match parse_expr(p) {
                 Ok(_) => {}
                 Err(_) => {
@@ -584,7 +584,7 @@ fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
 }
 
 fn recover_to_table_boundary(p: &mut LuaParser) {
-    // 跳过直到找到表边界或字段分隔符
+    // skip until a table boundary or field separator is found
     while !matches!(
         p.current_token(),
         LuaTokenKind::TkComma

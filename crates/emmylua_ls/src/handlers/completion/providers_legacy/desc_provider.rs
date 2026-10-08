@@ -1,0 +1,202 @@
+use crate::handlers::completion::add_completions::CompletionTriggerStatus;
+use crate::handlers::completion::completion_builder::CompletionBuilder;
+use crate::handlers::completion::providers::doc_type_provider::complete_types_by_prefix;
+use crate::handlers::completion::providers::env_provider::add_global_env;
+use crate::handlers::completion::providers::member_provider::add_completions_for_members;
+use crate::handlers::completion::providers::module_path_provider::add_modules;
+use crate::util::{find_comment_scope, find_ref_at, resolve_ref};
+use emmylua_code_analysis::{LuaType, WorkspaceId};
+use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
+use emmylua_parser_desc::{LuaDescRefPathItem, parse_ref_target};
+use rowan::TextRange;
+use std::collections::HashSet;
+
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct DescProvider;
+
+impl CompletionProvider for DescProvider {
+    fn name(&self) -> &'static str {
+        "doc_description"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
+    detect_path(builder).is_some()
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
+    if builder.is_cancelled() {
+        return None;
+    }
+
+    let path = detect_path(builder)?;
+
+    if path.is_empty() {
+        add_global_completions(builder);
+    } else {
+        add_by_prefix(builder, &path);
+    }
+
+    Some(())
+}
+
+fn detect_path(builder: &CompletionBuilder) -> Option<Vec<(LuaDescRefPathItem, TextRange)>> {
+    let semantic_model = &builder.semantic_model;
+    let document = semantic_model.get_document();
+
+    if let Some(description) = builder
+        .trigger_token
+        .parent()
+        .and_then(LuaDocDescription::cast)
+    {
+        // Quickly scan the line before actually parsing comment.
+        let line = document.get_line(builder.position_offset)?;
+        let line_range = document.get_line_range(line)?;
+        let line_text = &document.get_text()
+            [line_range.intersect(TextRange::up_to(builder.position_offset))?];
+
+        if !line_text.contains('`') {
+            return None;
+        }
+
+        find_ref_at(
+            semantic_model
+                .get_module()
+                .map(|m| m.workspace_id)
+                .unwrap_or(WorkspaceId::MAIN),
+            semantic_model.get_emmyrc(),
+            document.get_text(),
+            description,
+            builder.position_offset,
+        )
+    } else if builder.trigger_token.kind() == LuaTokenKind::TkDocSeeContent.into() {
+        parse_ref_target(
+            document.get_text(),
+            builder.trigger_token.text_range(),
+            builder.position_offset,
+        )
+    } else {
+        None
+    }
+}
+
+fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
+    let mut seen_types = HashSet::new();
+
+    // Children in scope.
+    if let Some(scope) = find_comment_scope(
+        builder.semantic_model.get_db(),
+        builder.semantic_model.get_file_id(),
+        &builder.trigger_token,
+    ) && let Some(member_info_map) = builder
+        .semantic_model
+        .get_member_info_map(&LuaType::Ref(scope))
+    {
+        seen_types.extend(member_info_map.values().flat_map(|members| {
+            members.iter().filter_map(|member| match &member.typ {
+                LuaType::Def(type_id) => Some(type_id.clone()),
+                _ => None,
+            })
+        }));
+        add_completions_for_members(builder, &member_info_map, CompletionTriggerStatus::Dot);
+    }
+
+    // Types in namespaces.
+    complete_types_by_prefix(builder, "", Some(&seen_types), None);
+
+    // Types in current module.
+    if let Some(module) = builder.semantic_model.get_module()
+        && let Some(member_info_map) = builder
+            .semantic_model
+            .get_member_info_map(module.export_type.as_ref().unwrap_or(&LuaType::Nil))
+    {
+        seen_types.extend(member_info_map.values().flat_map(|members| {
+            members.iter().filter_map(|member| match &member.typ {
+                LuaType::Def(type_id) => Some(type_id.clone()),
+                _ => None,
+            })
+        }));
+        add_completions_for_members(builder, &member_info_map, CompletionTriggerStatus::Dot);
+    }
+
+    // Globals.
+    add_global_env(builder, &mut HashSet::new(), "");
+
+    // Modules.
+    add_modules(builder, "", None);
+
+    Some(())
+}
+
+fn add_by_prefix(
+    builder: &mut CompletionBuilder,
+    mut path: &[(LuaDescRefPathItem, TextRange)],
+) -> Option<()> {
+    let mut seen_types = HashSet::new();
+
+    while let Some(last) = path.last() {
+        if TextRange::up_to(last.1.end()).contains_inclusive(builder.position_offset) {
+            path = &path[..path.len() - 1];
+        } else {
+            break;
+        }
+    }
+
+    if path.is_empty() {
+        add_global_completions(builder);
+        return Some(());
+    }
+
+    // 1. Type members.
+    let parent_semantic_infos = resolve_ref(
+        builder.semantic_model.get_db(),
+        builder.semantic_model.get_file_id(),
+        path,
+        &builder.trigger_token,
+    );
+    for semantic_info in parent_semantic_infos {
+        if let Some(member_info_map) = builder
+            .semantic_model
+            .get_member_info_map(&semantic_info.typ)
+        {
+            seen_types.extend(member_info_map.values().flat_map(|members| {
+                members.iter().filter_map(|member| match &member.typ {
+                    LuaType::Def(type_id) => Some(type_id.clone()),
+                    _ => None,
+                })
+            }));
+            add_completions_for_members(builder, &member_info_map, CompletionTriggerStatus::Dot);
+        }
+    }
+
+    // 2. Sub-modules and namespaces.
+    's: {
+        let Some(name_parts) = path
+            .iter()
+            .map(|(item, _)| item.get_name())
+            .collect::<Option<Vec<_>>>()
+        else {
+            break 's;
+        };
+        let prefix = name_parts.join(".") + ".";
+
+        // Modules.
+        add_modules(builder, &prefix, None);
+        complete_types_by_prefix(builder, &prefix, Some(&seen_types), None);
+    }
+
+    None
+}

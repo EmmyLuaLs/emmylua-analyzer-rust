@@ -1,6 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::{SourceText, assert_format, config::LuaFormatConfig, reformat_lua_code};
+    use crate::{
+        SourceText, assert_format,
+        config::{LayoutConfig, LuaFormatConfig},
+        reformat_lua_code,
+    };
     use emmylua_parser::LuaLanguageLevel;
 
     // ========== shebang ==========
@@ -86,14 +90,14 @@ end
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -170,14 +174,14 @@ end
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -204,14 +208,14 @@ local cc = 3 -- comment c
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -231,7 +235,7 @@ Second pass:
     #[test]
     fn test_idempotency_method_chain() {
         let config = LuaFormatConfig {
-            layout: crate::config::LayoutConfig {
+            layout: LayoutConfig {
                 max_line_width: 40,
                 ..Default::default()
             },
@@ -240,14 +244,14 @@ Second pass:
         let input = r#"local x = obj:method1():method2():method3()
 "#;
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -267,7 +271,7 @@ Second pass:
     #[test]
     fn test_idempotency_nested_call_with_multiline_table_arg() {
         let config = LuaFormatConfig {
-            layout: crate::config::LayoutConfig {
+            layout: LayoutConfig {
                 max_line_width: 80,
                 ..Default::default()
             },
@@ -278,14 +282,14 @@ Second pass:
 end
 "#;
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -348,14 +352,14 @@ local c = 3
 local a   =   1
 "#;
 
-        let first = crate::reformat_lua_code(
+        let first = reformat_lua_code(
             &SourceText {
                 text: input,
                 level: LuaLanguageLevel::default(),
             },
             &config,
         );
-        let second = crate::reformat_lua_code(
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),

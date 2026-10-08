@@ -148,7 +148,7 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
         IntegerRepr::Normal
     };
 
-    // 检查是否有无符号后缀并去除后缀
+    // Check for an unsigned suffix and strip it.
     let mut is_luajit_unsigned = false;
     let mut suffix_count = 0;
     for c in text.chars().rev() {
@@ -164,7 +164,7 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
 
     let text = &text[..text.len() - suffix_count];
 
-    // 首先尝试解析为有符号整数
+    // First try to parse as a signed integer.
     let signed_value = match repr {
         IntegerRepr::Hex => {
             let text = &text[2..];
@@ -180,12 +180,12 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
     match signed_value {
         Ok(value) => Ok(NumberResult::Int(value)),
         Err(e) => {
-            // 按照Lua的行为：如果整数溢出，尝试解析为浮点数
+            // Follow Lua behavior: on integer overflow, try parsing as a float.
             if matches!(
                 *e.kind(),
                 std::num::IntErrorKind::NegOverflow | std::num::IntErrorKind::PosOverflow
             ) {
-                // 如果是luajit无符号整数，尝试解析为u64
+                // For a LuaJIT unsigned integer, try parsing as u64.
                 if is_luajit_unsigned {
                     let unsigned_value = match repr {
                         IntegerRepr::Hex => {
@@ -203,8 +203,8 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
                         return Ok(NumberResult::Uint(value));
                     }
                 } else {
-                    // Lua 5.4行为：对于十六进制/二进制整数溢出，解析为u64然后reinterpret为i64
-                    // 例如：0xFFFFFFFFFFFFFFFF = -1
+                    // Lua 5.4 behavior: for hex/binary integer overflow, parse as u64 then reinterpret as i64
+                    // Example: 0xFFFFFFFFFFFFFFFF = -1
                     if matches!(repr, IntegerRepr::Hex | IntegerRepr::Bin) {
                         let unsigned_value = match repr {
                             IntegerRepr::Hex => {
@@ -219,11 +219,11 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
                         };
 
                         if let Ok(value) = unsigned_value {
-                            // Reinterpret u64 as i64 (补码转换)
+                            // Reinterpret u64 as i64 (two's-complement conversion).
                             return Ok(NumberResult::Int(value as i64));
                         } else {
-                            // 超过64位，转换为浮点数
-                            // 例如：0x13121110090807060504030201
+                            // More than 64 bits: convert to a float.
+                            // Example: 0x13121110090807060504030201
                             let hex_str = match repr {
                                 IntegerRepr::Hex => &text[2..],
                                 IntegerRepr::Bin => &text[2..],
