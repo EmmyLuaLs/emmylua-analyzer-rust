@@ -107,7 +107,7 @@ For most projects, no extra setup is required beyond opening the workspace. Add 
 <details>
 <summary><b>Emacs</b></summary>
 lsp-mode example:
-	
+
 ```elisp
 (defun lsp-clients-emmylua-ls-test ()
   "Test the emmyLua_ls binaries."
