@@ -10,7 +10,7 @@ mod tests {
         let mut result = Vec::new();
         let mut line = 0;
         let mut col = 0;
-        for chunk in data.chunks_exact(5) {
+        for chunk in data.as_chunks::<5>().0 {
             let delta_line = chunk[0];
             let delta_start = chunk[1];
             let length = chunk[2];
@@ -27,6 +27,7 @@ mod tests {
         }
         result
     }
+
     #[gtest]
     fn test_require_alias_prefix_is_namespace_in_index_expr() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

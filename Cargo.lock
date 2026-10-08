@@ -454,6 +454,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
+name = "edit_version"
+version = "0.1.0"
+dependencies = [
+ "toml_edit 0.22.27",
+]
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -475,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_check"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -495,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_code_analysis"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
@@ -537,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_doc_cli"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "clap",
  "emmy_lsp_types",
@@ -558,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_formatter"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "clap",
  "emmylua_parser",
@@ -577,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_ls"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "chrono",
  "clap",
@@ -610,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.29.1"
+version = "0.30.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -619,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.29.1"
+version = "0.30.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
@@ -1828,6 +1835,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "schema_json_gen"
+version = "0.1.0"
+dependencies = [
+ "emmy_lsp_types",
+ "emmylua_code_analysis",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "schema_to_emmylua"
 version = "0.2.0"
 dependencies = [
@@ -2084,6 +2102,16 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "std_i18n"
+version = "0.1.0"
+dependencies = [
+ "emmylua_parser",
+ "serde",
+ "serde_yaml_ng",
+ "walkdir",
+]
 
 [[package]]
 name = "strsim"

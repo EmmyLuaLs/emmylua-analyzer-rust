@@ -20,5 +20,6 @@ extend-exclude = [
   "shell_lexer.rs",
   "sql_lexer.rs",
   "util.lua",
-  "test.rs"
+  "test.rs",
+  "*test.rs"
 ]
