@@ -20,6 +20,7 @@ struct TestWorkspace {
     root: PathBuf,
 }
 
+#[allow(dead_code)]
 impl TestWorkspace {
     fn new() -> Self {
         let unique = SystemTime::now()
@@ -110,6 +111,7 @@ fn collect_watch_registration_methods(client: &Connection, expected: usize) -> V
     methods
 }
 
+#[allow(dead_code)]
 fn recv_publish_diagnostics_for_uri(
     client: &Connection,
     uri: &Uri,
@@ -136,6 +138,7 @@ fn recv_publish_diagnostics_for_uri(
     None
 }
 
+#[allow(dead_code)]
 async fn file_text(snapshot: &ServerContextSnapshot, uri: &Uri) -> Option<String> {
     snapshot.analysis().try_with_snapshot(|analysis| {
         let file_id = analysis.get_file_id(uri)?;

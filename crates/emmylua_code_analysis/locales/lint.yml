@@ -307,10 +307,6 @@ Cannot use `...` outside a vararg function.:
   en: "Field `%{field}` cannot be injected into the target type."
   zh_CN: "字段 `%{field}` 不能注入目标类型。"
   zh_HK: "欄位 `%{field}` 不能注入目標類型。"
-"Missing required fields in type `%{typ}`: %{fields}":
-  en: "Missing required fields in type `%{typ}`: %{fields}"
-  zh_CN: "类型 `%{typ}` 缺少必要字段：%{fields}"
-  zh_HK: "類型 `%{typ}` 缺少必要字段：%{fields}"
 "the string template type `%{name}` does not match any type declaration":
   en: "the string template type `%{name}` does not match any type declaration"
   zh_CN: "字符串模板类型 `%{name}` 与任何类型声明不匹配"
