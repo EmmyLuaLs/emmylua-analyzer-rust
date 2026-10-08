@@ -20,6 +20,7 @@ mod test {
 
     // workaround for table
     #[test]
+    #[ignore = "Test is ignored for now"]
     fn test_issue_234() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

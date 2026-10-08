@@ -1,6 +1,6 @@
 use super::*;
 use crate::context::{ServerContext, ServerContextSnapshot};
-use emmylua_code_analysis::{Emmyrc, file_path_to_uri};
+use emmylua_code_analysis::Emmyrc;
 use lsp_server::{Connection, Message};
 use lsp_types::{
     ClientCapabilities, DidChangeWatchedFilesClientCapabilities, PublishDiagnosticsParams,
