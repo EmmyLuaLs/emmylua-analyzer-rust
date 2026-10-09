@@ -171,6 +171,33 @@ impl<'db> SemanticModel<'db> {
         self.view.analysis()
     }
 
+    /// Look up a memoized declaration-trace state (see [`cache::TraceStateKey`]).
+    pub(crate) fn trace_state_cache_get(
+        &self,
+        key: &cache::TraceStateKey,
+    ) -> Option<cache::CacheEntry<Option<LuaType>>> {
+        self.cache.borrow().trace_state.get(key).cloned()
+    }
+
+    /// Mark a declaration-trace state as being computed.
+    pub(crate) fn trace_state_cache_mark_in_progress(&self, key: cache::TraceStateKey) {
+        self.cache
+            .borrow_mut()
+            .trace_state
+            .insert(key, cache::CacheEntry::InProgress);
+    }
+
+    /// Store a finished declaration-trace state.
+    pub(crate) fn trace_state_cache_store(
+        &self,
+        key: cache::TraceStateKey,
+        result: Option<LuaType>,
+    ) {
+        self.cache
+            .borrow_mut()
+            .trace_state
+            .insert(key, cache::CacheEntry::Ready(result));
+    }
     pub(crate) fn is_closure_return_in_progress(&self, closure_syntax: LuaSyntaxId) -> bool {
         self.closure_return_in_progress
             .borrow()

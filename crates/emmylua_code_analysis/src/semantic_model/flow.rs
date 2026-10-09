@@ -29,6 +29,7 @@ use crate::{
 };
 
 use super::SemanticModel;
+use super::cache;
 use super::member::find_self_return_cast_member;
 use crate::semantic_model::infer::infer_call_with_bindings;
 use crate::semantic_model::infer::unify::substitute;
@@ -1111,6 +1112,8 @@ struct PathState {
     casts: Vec<CastOp>,
 }
 
+impl PathState {}
+
 /// Checks from an antecedent toward the declaration whether a narrowing node already exists.
 /// Used for `self` return_cast: only allow it if the receiver was first narrowed by another condition/`@cast`.
 /// Uses an explicit work stack; Multiple requires all branches to satisfy the condition.
@@ -1232,10 +1235,51 @@ fn trace_decl(
     tree: &FlowTree,
     flow_id: FlowId,
     options: TraceOptions,
+    mode: TraceMode,
+    visited: &mut HashSet<FlowId>,
+    path: &mut PathState,
+) -> Option<LuaType> {
+    // On a loop-free graph every route to a flow node crosses the same guards, so
+    // a state's value depends on the node and the options alone — never on the
+    // route. That makes the state cacheable, which matters because a nested
+    // conditional chain otherwise re-derives the same states along exponentially
+    // many routes. Graphs with loops keep the uncached path (see the type note on
+    // `cache::TraceStateKey`).
+    if tree.has_complex_control() {
+        return trace_decl_uncached(model, decl, tree, flow_id, options, mode, visited, path);
+    }
+    let key = cache::TraceStateKey {
+        decl: decl.clone(),
+        flow_id: flow_id.0,
+        guards: options.guards,
+        casts: options.casts,
+        assignments: options.assignments,
+        merge_branch: matches!(mode, TraceMode::MergeBranch),
+    };
+    match model.trace_state_cache_get(&key) {
+        Some(cache::CacheEntry::Ready(cached)) => return cached,
+        // Not expected on a loop-free graph; treat defensively as a miss so the
+        // result is always computed rather than silently dropped.
+        Some(cache::CacheEntry::InProgress) | None => {}
+    }
+    model.trace_state_cache_mark_in_progress(key.clone());
+    let result = trace_decl_uncached(model, decl, tree, flow_id, options, mode, visited, path);
+    model.trace_state_cache_store(key, result.clone());
+    result
+}
+
+fn trace_decl_uncached(
+    model: &SemanticModel,
+    decl: &SemanticId,
+    tree: &FlowTree,
+    flow_id: FlowId,
+    options: TraceOptions,
     mut mode: TraceMode,
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
+    #[cfg(test)]
+    flow_metrics::TRACE_DECL_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let root_mode = mode;
     let mut current = flow_id;
     let mut frames: Vec<DeclAssignmentFrame> = Vec::new();
@@ -5036,12 +5080,23 @@ pub(crate) mod flow_metrics {
     pub(crate) static FAST_DECL_HITS: AtomicU64 = AtomicU64::new(0);
     pub(crate) static FAST_MEMBER_HITS: AtomicU64 = AtomicU64::new(0);
     pub(crate) static FAST_TARGET_HITS: AtomicU64 = AtomicU64::new(0);
+    /// Entries into the uncached declaration walk. A chain of N guards that repeat
+    /// one nested index expression in a condition list used to enter this ~2^N
+    /// times, so the counter detects a return to that blow-up without hanging the
+    /// test run on the wall clock.
+    pub(crate) static TRACE_DECL_ENTRIES: AtomicU64 = AtomicU64::new(0);
 
     pub(crate) fn reset() {
         TRACE_STEPS.store(0, Ordering::Relaxed);
         FAST_DECL_HITS.store(0, Ordering::Relaxed);
         FAST_MEMBER_HITS.store(0, Ordering::Relaxed);
         FAST_TARGET_HITS.store(0, Ordering::Relaxed);
+        TRACE_DECL_ENTRIES.store(0, Ordering::Relaxed);
+    }
+
+    /// Number of uncached declaration-walk entries since the last [`reset`].
+    pub(crate) fn trace_decl_entries() -> u64 {
+        TRACE_DECL_ENTRIES.load(Ordering::Relaxed)
     }
 
     pub(crate) fn trace_steps() -> u64 {

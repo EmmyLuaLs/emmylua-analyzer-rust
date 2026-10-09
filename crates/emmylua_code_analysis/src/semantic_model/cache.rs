@@ -25,6 +25,22 @@ pub(crate) enum CacheEntry<T> {
     Ready(T),
 }
 
+/// Memo key for one declaration-trace state: `(declaration, flow node, options, mode)`.
+///
+/// The incoming path is deliberately absent. It is safe to omit only for flow
+/// graphs without loops, where every route to a flow node crosses the same
+/// guards, so the path is a function of the node. [`super::flow`] consults this
+/// memo only in that case and recomputes otherwise.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct TraceStateKey {
+    pub(crate) decl: SemanticId,
+    pub(crate) flow_id: u32,
+    pub(crate) guards: bool,
+    pub(crate) casts: bool,
+    pub(crate) assignments: bool,
+    pub(crate) merge_branch: bool,
+}
+
 #[derive(Default)]
 pub(crate) struct SemanticLocalCache {
     pub(crate) expr_type: HashMap<(FileId, LuaSyntaxId), CacheEntry<LuaType>>,
@@ -36,6 +52,9 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) resolve_owner_set: HashMap<SemanticId, Vec<SemanticId>>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
+    /// Memoized declaration-trace states for loop-free flow graphs. See
+    /// [`TraceStateKey`] for why the path may be omitted from the key.
+    pub(crate) trace_state: HashMap<TraceStateKey, CacheEntry<Option<LuaType>>>,
     /// Fast negative/positive cache for `---@return_cast` lookup by call syntax.
     /// Most calls do not have `return_cast`, so caching the `None` result avoids
     /// repeatedly resolving callees and scanning signatures for the same call.
