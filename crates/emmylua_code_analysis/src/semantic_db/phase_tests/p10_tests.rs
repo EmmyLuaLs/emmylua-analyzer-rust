@@ -20,16 +20,61 @@ use crate::{
     Emmyrc, FileId, LuaType, SemanticDatabase, VirtualWorkspace, WorkspaceFolder, WorkspaceId,
 };
 
+/// Base directory for this file's workspace roots, absolute on every platform.
+///
+/// These tests previously used `C:/ws` / `C:/lib`. That is absolute on Windows but
+/// *relative* on Unix, which breaks them in two ways: `file_path_to_uri` (via
+/// `Url::from_file_path`) yields no URI, and `best_workspace_root` classifies files
+/// with `Path::strip_prefix` against the root, so a relative root no longer
+/// contains the file paths and workspace lookups return `None`.
+fn p10_base() -> PathBuf {
+    std::env::temp_dir().join("emmylua_p10")
+}
+
+/// Main workspace root (`<base>/ws`), registered by `setup()`.
+pub(crate) fn p10_workspace_root() -> PathBuf {
+    p10_base().join("ws")
+}
+
+/// A library workspace root (`<base>/lib`), a sibling of the main root.
+///
+/// Deliberately a sibling rather than a parent: `best_workspace_root` prefers the
+/// root with the shortest relative path, so nesting the main root under the library
+/// root would change which workspace a main file resolves to.
+fn p10_library_root() -> PathBuf {
+    p10_base().join("lib")
+}
+
+/// Path string for a file under `root`, using `/` on every platform.
+fn p10_path(root: &std::path::Path, relative: &str) -> PathBuf {
+    root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+
+/// A main-workspace file path, e.g. `p10_main_file("a.lua")`.
+fn p10_main_file(relative: &str) -> PathBuf {
+    p10_path(&p10_workspace_root(), relative)
+}
+
+/// A library-workspace file path, e.g. `p10_lib_file("a.lua")`.
+fn p10_lib_file(relative: &str) -> PathBuf {
+    p10_path(&p10_library_root(), relative)
+}
+
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
     db.update_config(Arc::new(Emmyrc::default()));
-    db.add_main_workspace(PathBuf::from("C:/ws"));
+    db.add_main_workspace(p10_workspace_root());
     db
 }
 
-fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
+fn set_test_file(
+    db: &mut SemanticDatabase,
+    file_id: u32,
+    path: &std::path::Path,
+    source: &str,
+) -> FileId {
     let fid = FileId::new(file_id);
-    db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
+    db.set_file(fid, Some(path.to_path_buf()), source.to_string());
     fid
 }
 
@@ -54,10 +99,10 @@ fn p10_workspace_id_caches_follow_root_changes() {
     // File exists before its library root is registered. The full rebuild that
     // follows `add_library_workspace` must rebuild facts/modules with the new
     // root rather than reusing stale FileCache workspace assignments.
-    let fid = set_test_file(&mut db, 1, "C:/lib/mod.lua", "return {}");
+    let fid = set_test_file(&mut db, 1, &p10_lib_file("mod.lua"), "return {}");
     assert_eq!(db.workspace_id_of(fid), None);
 
-    db.add_library_workspace(&WorkspaceFolder::new(PathBuf::from("C:/lib"), true));
+    db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
     assert_eq!(db.all_workspace_ids().len(), 3);
     assert_eq!(db.workspace_lookup_order()[0], WorkspaceId::MAIN);
     assert!(db.workspace_lookup_order()[1].is_library());
@@ -70,14 +115,19 @@ fn p10_workspace_id_caches_follow_root_changes() {
     );
 
     // File -> workspace is cached on FileCache and refreshed after a path change.
-    set_test_file(&mut db, 1, "C:/ws/mod.lua", "return {}");
+    set_test_file(&mut db, 1, &p10_main_file("mod.lua"), "return {}");
     assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
 }
 
 #[test]
 fn p10_type_buckets_share_arc_and_invalidate_on_write() {
     let mut db = setup();
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "---@class A\nlocal A = {}");
+    set_test_file(
+        &mut db,
+        1,
+        &p10_main_file("a.lua"),
+        "---@class A\nlocal A = {}",
+    );
 
     let index = workspace_type_index_for(&db, WorkspaceId::MAIN);
     let first = index.find_all(TypeScope::Global, "A");
@@ -92,7 +142,12 @@ fn p10_type_buckets_share_arc_and_invalidate_on_write() {
     assert!(Arc::ptr_eq(&first, &queried));
 
     // Incremental write invalidates A and caches the new B bucket.
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "---@class B\nlocal B = {}");
+    set_test_file(
+        &mut db,
+        1,
+        &p10_main_file("a.lua"),
+        "---@class B\nlocal B = {}",
+    );
     let index = workspace_type_index_for(&db, WorkspaceId::MAIN);
     assert!(index.find_all(TypeScope::Global, "A").is_empty());
 
@@ -105,9 +160,19 @@ fn p10_type_buckets_share_arc_and_invalidate_on_write() {
 #[test]
 fn p10_global_type_aggregate_merges_workspaces_without_duplicates() {
     let mut db = setup();
-    db.add_library_workspace(&WorkspaceFolder::new(PathBuf::from("C:/lib"), true));
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "---@class A\nlocal A = {}");
-    set_test_file(&mut db, 2, "C:/lib/a.lua", "---@class A\nlocal A = {}");
+    db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
+    set_test_file(
+        &mut db,
+        1,
+        &p10_main_file("a.lua"),
+        "---@class A\nlocal A = {}",
+    );
+    set_test_file(
+        &mut db,
+        2,
+        &p10_lib_file("a.lua"),
+        "---@class A\nlocal A = {}",
+    );
 
     let defs = query::type_defs_in_scope(&db, TypeScope::Global, "A".into());
     let defs_again = query::type_defs_in_scope(&db, TypeScope::Global, "A".into());
@@ -122,7 +187,12 @@ fn p10_global_type_aggregate_merges_workspaces_without_duplicates() {
     );
 
     // The aggregate is refreshed for changed names on an incremental write.
-    set_test_file(&mut db, 2, "C:/lib/a.lua", "---@class B\nlocal B = {}");
+    set_test_file(
+        &mut db,
+        2,
+        &p10_lib_file("a.lua"),
+        "---@class B\nlocal B = {}",
+    );
     let a_defs = query::type_defs_in_scope(&db, TypeScope::Global, "A".into());
     assert_eq!(a_defs.len(), 1);
     assert_eq!(a_defs[0].file_id, FileId::new(1));
@@ -146,9 +216,9 @@ fn p10_global_type_aggregate_merges_workspaces_without_duplicates() {
 #[test]
 fn p10_member_aggregate_is_cached_across_workspaces() {
     let mut db = setup();
-    db.add_library_workspace(&WorkspaceFolder::new(PathBuf::from("C:/lib"), true));
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "M.x = 1");
-    set_test_file(&mut db, 2, "C:/lib/a.lua", "M.y = 2");
+    db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
+    set_test_file(&mut db, 1, &p10_main_file("a.lua"), "M.x = 1");
+    set_test_file(&mut db, 2, &p10_lib_file("a.lua"), "M.y = 2");
 
     let owner = SemanticId::name(SmolStr::new("M"));
     let first = query::members_of_owner(&db, owner.clone());
@@ -175,7 +245,7 @@ fn p10_member_aggregate_is_cached_across_workspaces() {
     assert_eq!(named_first[0].name.as_str(), "y");
 
     // Replacing the library contribution refreshes the touched owner/name keys.
-    set_test_file(&mut db, 2, "C:/lib/a.lua", "M.z = 3");
+    set_test_file(&mut db, 2, &p10_lib_file("a.lua"), "M.z = 3");
     let updated = query::members_of_owner(&db, owner.clone());
     let updated_again = query::members_of_owner(&db, owner.clone());
     assert!(Arc::ptr_eq(&updated, &updated_again));
@@ -201,7 +271,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/c.lua",
+        &p10_main_file("c.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -258,7 +328,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/c.lua",
+        &p10_main_file("c.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -296,7 +366,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/c.lua",
+        &p10_main_file("c.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -325,10 +395,11 @@ fn p10_apply_file_change_and_batch_api() {
     let fid = FileId::new(1);
     let summary = db.apply_file_change(FileChange::set_file(
         fid,
-        Some(PathBuf::from("C:/ws/a.lua")),
+        Some(p10_main_file("a.lua")),
         "local a = 1".to_string(),
     ));
     assert_eq!(summary.updated, 1);
+
     assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
 
     let uri = db.file_uri(fid).expect("uri");

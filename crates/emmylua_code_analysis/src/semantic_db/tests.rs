@@ -23,9 +23,54 @@ fn setup() -> SemanticDatabase {
     db
 }
 
+/// Register a file at `path`, resolved under [`portable_test_root`].
+///
+/// Callers pass a bare file name (`"a.lua"`). Resolving it here makes every fixture
+/// path absolute by construction, which matters because two path-keyed layers
+/// reject relative input: `file_path_to_uri` (via `Url::from_file_path`) and
+/// `best_workspace_root` (via `Path::strip_prefix`). Windows-style literals like
+/// `C:/ws/a.lua` are absolute on Windows only, so using them made URI- and
+/// workspace-dependent tests pass there and fail elsewhere.
 fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
     let fid = FileId::new(file_id);
-    db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
+    db.set_file(
+        fid,
+        Some(portable_test_file_in_root(path)),
+        source.to_string(),
+    );
+    fid
+}
+
+/// An absolute path that exists on any platform.
+///
+/// Tests must not use Windows-style literals such as `C:/ws/a.lua`: that string is
+/// absolute on Windows but *relative* on Unix, and `file_path_to_uri` (which goes
+/// through `Url::from_file_path`) rejects relative paths. The resulting `None` URI
+/// is stored as a file without a URI, so URI-dependent assertions failed on CI
+/// while passing on Windows.
+pub(crate) fn portable_test_path(name: &str) -> PathBuf {
+    std::env::temp_dir().join(name)
+}
+
+/// The main workspace root the phase tests register, absolute on every platform.
+///
+/// Beyond the URI problem above, `best_workspace_root` decides ownership with
+/// `Path::strip_prefix` against each registered root. A relative `C:/ws` root
+/// therefore stops containing the test files on Unix and workspace lookups return
+/// `None`, even though the identical code passes on Windows.
+pub(crate) fn portable_test_root() -> PathBuf {
+    std::env::temp_dir().join("emmylua_phase_ws")
+}
+
+/// [`set_test_file`] but with a platform-independent absolute path.
+fn set_test_file_portable(
+    db: &mut SemanticDatabase,
+    file_id: u32,
+    name: &str,
+    source: &str,
+) -> FileId {
+    let fid = FileId::new(file_id);
+    db.set_file(fid, Some(portable_test_path(name)), source.to_string());
     fid
 }
 
@@ -52,7 +97,7 @@ fn assert_primitive(shell: &TypeShell, p: PrimitiveType) {
 #[test]
 fn test_file_facts_extracts_decls_and_scopes() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1\nlocal b = 2");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = 1\nlocal b = 2");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     assert_eq!(facts.decls.len(), 2);
@@ -65,14 +110,14 @@ fn test_file_facts_extracts_decls_and_scopes() {
 #[test]
 fn test_file_facts_cache_invalidates_on_text_and_metadata_update() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = 1");
     assert_eq!(db.analysis().file_facts(fid).expect("facts").decls.len(), 1);
 
     // Pure text update reuses the VFS state but must still invalidate per-file facts.
     set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local a = 1
 local b = 2",
     );
@@ -84,7 +129,7 @@ local b = 2",
     assert!(facts.decls.iter().any(|decl| decl.name == "b"));
 
     // Path/metadata update publishes a new VFS state and also replaces the facts cell.
-    set_test_file(&mut db, 1, "C:/ws/b.lua", "local c = 3");
+    set_test_file(&mut db, 1, "b.lua", "local c = 3");
     let facts = db
         .analysis()
         .file_facts(fid)
@@ -96,7 +141,7 @@ local b = 2",
 #[test]
 fn test_decl_type_from_literal_initializer() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -109,7 +154,7 @@ fn test_decl_type_from_literal_initializer() {
 #[test]
 fn test_decl_type_name_resolution_chain() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1\nlocal y = x");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local x = 1\nlocal y = x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
@@ -123,7 +168,7 @@ fn test_decl_type_name_resolution_chain() {
 fn test_decl_type_self_reference_cycle_fixpoint() {
     let mut db = setup();
     // `local a = a or 1`: a's type depends on itself → triggers semantic's native fixpoint.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = a or 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = a or 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -136,12 +181,7 @@ fn test_decl_type_self_reference_cycle_fixpoint() {
 #[test]
 fn test_decl_type_forward_reference_chain() {
     let mut db = setup();
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local a = b or 1\nlocal b = a or 2",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = b or 1\nlocal b = a or 2");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -159,7 +199,7 @@ fn test_decl_type_forward_reference_chain() {
 #[test]
 fn test_decl_type_param_and_function() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function foo(x)\nend");
+    let fid = set_test_file(&mut db, 1, "a.lua", "function foo(x)\nend");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     assert!(
@@ -180,8 +220,8 @@ fn test_decl_type_param_and_function() {
 fn test_resolve_type_def_public_cross_file() {
     let mut db = setup();
     // Default (no visibility) → Public → Global("Foo").
-    set_test_file(&mut db, 1, "C:/ws/def.lua", "---@class Foo\nlocal Foo = {}");
-    set_test_file(&mut db, 2, "C:/ws/other.lua", "local Bar = 1");
+    set_test_file(&mut db, 1, "def.lua", "---@class Foo\nlocal Foo = {}");
+    set_test_file(&mut db, 2, "other.lua", "local Bar = 1");
 
     let def = db
         .analysis()
@@ -210,11 +250,11 @@ fn test_workspace_type_index_invalidates_after_text_update() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/def.lua",
+        "def.lua",
         "---@class Foo
 local Foo = {}",
     );
-    set_test_file(&mut db, 2, "C:/ws/other.lua", "local x = 1");
+    set_test_file(&mut db, 2, "other.lua", "local x = 1");
 
     assert!(
         db.analysis()
@@ -224,7 +264,7 @@ local Foo = {}",
     );
 
     // Pure text update removes the class; the plain workspace index must refresh.
-    set_test_file(&mut db, 1, "C:/ws/def.lua", "local x = 1");
+    set_test_file(&mut db, 1, "def.lua", "local x = 1");
     assert!(
         db.analysis()
             .resolve_type_def(FileId::new(2), "Foo")
@@ -240,10 +280,10 @@ fn test_resolve_type_def_private_same_file_only() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class (private) Foo\nlocal Foo = {}",
     );
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "local use = Foo");
+    set_test_file(&mut db, 2, "b.lua", "local use = Foo");
 
     // Resolves from the same file; not from other files (scope isolation).
     let in_file = db
@@ -265,15 +305,10 @@ fn test_resolve_type_def_prefers_same_file_private_over_global() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class (private) Foo\nlocal Foo = {}",
     );
-    set_test_file(
-        &mut db,
-        2,
-        "C:/ws/defs.lua",
-        "---@class Foo\nlocal Foo = {}",
-    );
+    set_test_file(&mut db, 2, "defs.lua", "---@class Foo\nlocal Foo = {}");
 
     let in_a = db
         .analysis()
@@ -297,10 +332,10 @@ fn test_resolve_type_def_namespace_qualified() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/pkg.lua",
+        "pkg.lua",
         "---@namespace pkg\n---@class Foo\nlocal Foo = {}",
     );
-    set_test_file(&mut db, 2, "C:/ws/use.lua", "local x = pkg.Foo");
+    set_test_file(&mut db, 2, "use.lua", "local x = pkg.Foo");
 
     // In a namespace file, the bare name resolves through the qualified name to Global("pkg.Foo").
     let def = db
@@ -321,7 +356,7 @@ fn test_resolve_type_def_namespace_qualified() {
 #[test]
 fn test_find_decl_by_offset_and_range() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local alpha = 1\nlocal beta = 2");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local alpha = 1\nlocal beta = 2");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let alpha = decl_local(&facts, "alpha");
@@ -351,20 +386,20 @@ fn test_find_decl_by_offset_and_range() {
 #[test]
 fn test_syntax_tree_and_parse_errors() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = 1");
 
     assert!(db.analysis().syntax_tree(fid).is_some());
     assert!(db.analysis().chunk(fid).is_some());
     assert!(db.analysis().parse_errors(fid).is_none());
 
-    let bad = set_test_file(&mut db, 2, "C:/ws/bad.lua", "local = =");
+    let bad = set_test_file(&mut db, 2, "bad.lua", "local = =");
     assert!(db.analysis().parse_errors(bad).is_some());
 }
 
 #[test]
 fn test_decl_type_doc_annotation() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type string\nlocal a");
+    let fid = set_test_file(&mut db, 1, "a.lua", "---@type string\nlocal a");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -378,7 +413,7 @@ fn test_decl_type_doc_annotation() {
 fn test_decl_type_doc_annotation_wins_over_initializer() {
     let mut db = setup();
     // `---@type` takes precedence over the initializer.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type string\nlocal a = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "---@type string\nlocal a = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -391,12 +426,7 @@ fn test_decl_type_doc_annotation_wins_over_initializer() {
 #[test]
 fn test_decl_type_doc_annotation_union() {
     let mut db = setup();
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "---@type number | string\nlocal a",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "---@type number | string\nlocal a");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -416,7 +446,7 @@ fn test_decl_type_doc_annotation_named_type() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Foo\nlocal Foo = {}\n---@type Foo\nlocal a",
     );
     let fid = FileId::new(1);
@@ -433,7 +463,7 @@ fn test_decl_type_lua_projection() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@type string\nlocal a = 1\n---@class Bar\nlocal Bar = {}\n---@type Bar\nlocal b",
     );
 
@@ -457,7 +487,7 @@ fn test_member_extraction_and_keys() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local T = { foo = 1 }\nT.bar = 'x'\nfunction T:method() end",
     );
 
@@ -488,7 +518,7 @@ fn test_member_type() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local T = { foo = 1 }\nfunction T.bar() end\nT.baz = 'x'",
     );
 
@@ -520,12 +550,7 @@ fn test_member_type() {
 fn test_member_type_via_name_reference() {
     let mut db = setup();
     // Member value references a local → goes through decl_type.
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local x = 1\nlocal T = {}\nT.a = x",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local x = 1\nlocal T = {}\nT.a = x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
@@ -543,7 +568,7 @@ fn test_member_type_via_name_reference() {
 #[test]
 fn test_member_global_root() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "M.x = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "M.x = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     assert!(facts.members.iter().any(|m| {
@@ -555,12 +580,7 @@ fn test_member_global_root() {
 fn test_member_chain_resolution() {
     let mut db = setup();
     // T.a = T.b; T.b = 1 → a resolves to Number through the IndexExpr member chain.
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local T = {}\nT.a = T.b\nT.b = 1",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local T = {}\nT.a = T.b\nT.b = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
@@ -579,14 +599,9 @@ fn test_member_chain_resolution() {
 fn test_member_phase2_cross_file_resolution() {
     let mut db = setup();
     // File B: global M + M.x.
-    set_test_file(
-        &mut db,
-        2,
-        "C:/ws/b.lua",
-        "M = {}\nM.x = 1\nfunction M.f() end",
-    );
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 1\nfunction M.f() end");
     // File A: M.x reference (reading does not create members; only verifies phase 2 linking).
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
     let _ = db.analysis().file_facts(fid).expect("facts");
 
     // Phase 2: Name("M") links to file B's global M.
@@ -624,9 +639,9 @@ fn test_member_phase2_cross_file_resolution() {
 fn test_member_phase2_name_chain_resolution() {
     let mut db = setup();
     // File B: M = {}; M.N = {}; M.N.z = 1.
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.N = {}\nM.N.z = 1");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.N = {}\nM.N.z = 1");
     // File A: reads M.N.z.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local v = M.N.z");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local v = M.N.z");
 
     // Name("M.N") → global M → member N (file B).
     let owner = db
@@ -656,12 +671,7 @@ fn test_member_phase2_name_chain_resolution() {
 fn test_member_cycle_converges() {
     let mut db = setup();
     // Real member cycle: T.a = T.b; T.b = T.a → semantic cycle_fn converges (Unknown, no panic).
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local T = {}\nT.a = T.b\nT.b = T.a",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local T = {}\nT.a = T.b\nT.b = T.a");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a_local = facts
@@ -689,7 +699,7 @@ fn test_expr_logic_and_comparison() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local a = true and 'x'\nlocal b = 1 < 2\nlocal c = 'a' .. 'b'",
     );
 
@@ -723,9 +733,9 @@ fn test_expr_logic_and_comparison() {
 fn test_phase2_cross_file_member_in_expr_type() {
     let mut db = setup();
     // File B: member x = 1 of global M.
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 1");
     // File A: local y = M.x — cross-file member reference.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
@@ -738,13 +748,13 @@ fn test_phase2_cross_file_member_in_expr_type() {
 #[test]
 fn test_phase2_invalidation_on_other_file_change() {
     let mut db = setup();
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     // Editing B: M.x type changes → A's y type must invalidate and update (workspace-keyed).
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 's'");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 's'");
     assert_primitive(
         &db.analysis().decl_type(fid, y).expect("y type"),
         PrimitiveType::String,
@@ -758,10 +768,10 @@ fn test_member_keys_of_owner_merges_field_and_runtime() {
     set_test_file(
         &mut db,
         2,
-        "C:/ws/b.lua",
+        "b.lua",
         "---@class M\n---@field f number\nM.x = 1",
     );
-    let _fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local v = M");
+    let _fid = set_test_file(&mut db, 1, "a.lua", "local v = M");
 
     // Completion scenario: the `M.` prefix at the cursor resolves to Name("M") (unresolved global name).
     let name_owner = SemanticId::name(SmolStr::new("M"));
@@ -791,7 +801,7 @@ fn test_doc_generic_param_binding() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@generic T\n---@param x T\nfunction id(x)\nend",
     );
 
@@ -815,7 +825,7 @@ fn test_doc_fun_type_structured() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@type fun(a: number): string\nlocal f",
     );
 
@@ -840,9 +850,9 @@ fn test_doc_fun_type_structured() {
 fn test_doc_named_type_resolves_cross_file() {
     let mut db = setup();
     // B: class Foo.
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "---@class Foo\nlocal Foo = {}");
+    set_test_file(&mut db, 2, "b.lua", "---@class Foo\nlocal Foo = {}");
     // A: ---@type Foo.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@type Foo\nlocal a");
+    let fid = set_test_file(&mut db, 1, "a.lua", "---@type Foo\nlocal a");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -861,11 +871,11 @@ fn test_cross_file_global_name_fallback() {
     set_test_file(
         &mut db,
         2,
-        "C:/ws/b.lua",
+        "b.lua",
         "M = {}\nM.x = 1\n---@class C\nlocal C = {}",
     );
     // A: local y = M (M is in B); local c = C (pure type name).
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M\nlocal c = C");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M\nlocal c = C");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     // Global M falls back → decl_type(its declaration) = table literal (synthesized Table type).
@@ -890,14 +900,9 @@ fn test_cross_file_global_name_fallback() {
 fn test_require_module_resolution() {
     let mut db = setup();
     // B: module exports M (member x = 1).
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1\nreturn M");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 1\nreturn M");
     // A: require('b') → Named("M"); m.x → cross-file member.
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local m = require('b')\nlocal v = m.x",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local m = require('b')\nlocal v = m.x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "m");
@@ -924,9 +929,9 @@ fn test_require_module_resolution() {
 fn test_require_module_subdir_suffix() {
     let mut db = setup();
     // B: subdirectory module returns number.
-    set_test_file(&mut db, 2, "C:/ws/sub/mod.lua", "return 42");
+    set_test_file(&mut db, 2, "sub/mod.lua", "return 42");
     // A: require('sub.mod') suffix match → Number.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('sub.mod')");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local n = require('sub.mod')");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
@@ -940,8 +945,8 @@ fn test_require_module_subdir_suffix() {
 fn test_invalidation_granularity_cross_file_decl_reexecutes() {
     let mut db = setup();
     // A: local y = M.x (cross-file) → should depend on workspace and re-execute after editing B.
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
+    set_test_file(&mut db, 2, "b.lua", "M = {}\nM.x = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
@@ -954,7 +959,7 @@ fn test_invalidation_granularity_cross_file_decl_reexecutes() {
     set_test_file(
         &mut db,
         2,
-        "C:/ws/b.lua",
+        "b.lua",
         "M = {}
 M.x = 's'",
     );
@@ -970,15 +975,15 @@ M.x = 's'",
 #[test]
 fn test_file_exports_identity_memo() {
     let mut db = setup();
-    let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "M = {}\nM.x = 1");
-    let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}");
+    let fid1 = set_test_file(&mut db, 1, "a.lua", "M = {}\nM.x = 1");
+    let fid2 = set_test_file(&mut db, 2, "b.lua", "N = {}");
 
     let exports1 = db.analysis().file_exports(fid1).expect("exports1");
     assert_eq!(exports1.file_id, fid1);
     assert!(exports1.globals.iter().any(|g| g.name == "M"));
     assert!(exports1.members.iter().any(|m| m.key.to_path() == "x"));
 
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "N = {}\nN.y = 2");
+    set_test_file(&mut db, 2, "b.lua", "N = {}\nN.y = 2");
     let edited = db.analysis().file_exports(fid2).expect("exports2");
     assert!(edited.members.iter().any(|m| m.key.to_path() == "y"));
 }
@@ -986,18 +991,8 @@ fn test_file_exports_identity_memo() {
 #[test]
 fn test_module_and_deprecated_file_cache() {
     let mut db = setup();
-    let fid1 = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "---@deprecated\nOld = 1\nreturn {}",
-    );
-    let fid2 = set_test_file(
-        &mut db,
-        2,
-        "C:/ws/b.lua",
-        "---@deprecated\nNew = 1\nreturn {}",
-    );
+    let fid1 = set_test_file(&mut db, 1, "a.lua", "---@deprecated\nOld = 1\nreturn {}");
+    let fid2 = set_test_file(&mut db, 2, "b.lua", "---@deprecated\nNew = 1\nreturn {}");
 
     assert_eq!(
         db.file_module_entry_of(fid1)
@@ -1014,7 +1009,7 @@ fn test_module_and_deprecated_file_cache() {
             .is_some_and(|data| data.names.iter().any(|name| name == "Old"))
     );
 
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "return {}");
+    set_test_file(&mut db, 2, "b.lua", "return {}");
     assert!(
         db.file_deprecated_of(fid2)
             .is_some_and(|data| data.names.is_empty())
@@ -1026,10 +1021,10 @@ fn test_semantic_model_file_exports_and_signature_api() {
     let fid_impl = set_test_file(
         &mut db,
         1,
-        "C:/ws/impl.lua",
+        "impl.lua",
         "---@param x integer\n---@return string\nfunction f(x) end\nM = {}\nM.v = 1",
     );
-    let fid_use = set_test_file(&mut db, 2, "C:/ws/use.lua", "local n = 1");
+    let fid_use = set_test_file(&mut db, 2, "use.lua", "local n = 1");
 
     let model = SemanticModel::new(&db, fid_use);
     let exports = model.file_exports(fid_impl).expect("exports");
@@ -1057,8 +1052,8 @@ fn test_semantic_model_file_exports_and_signature_api() {
 fn test_require_module_init_lua() {
     let mut db = setup();
     // init.lua → module name uses the parent directory.
-    set_test_file(&mut db, 2, "C:/ws/pkg/init.lua", "return 7");
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('pkg')");
+    set_test_file(&mut db, 2, "pkg/init.lua", "return 7");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local n = require('pkg')");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
@@ -1079,8 +1074,8 @@ fn test_require_module_map_rewrite() {
     }];
     db.update_config(Arc::new(emmyrc));
     // File is under src/, require("@/mod") → "src/mod" → "src.mod" → match.
-    set_test_file(&mut db, 2, "C:/ws/src/mod.lua", "return 9");
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local n = require('@/mod')");
+    set_test_file(&mut db, 2, "src/mod.lua", "return 9");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local n = require('@/mod')");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
@@ -1094,11 +1089,11 @@ fn test_require_module_map_rewrite() {
 fn test_require_fuzzy_suffix_prefers_exact() {
     let mut db = setup();
     // The subdirectory b.lua module name is "sub.b": require("b") fuzzy-matches it by suffix.
-    set_test_file(&mut db, 2, "C:/ws/sub/b.lua", "return 1");
+    set_test_file(&mut db, 2, "sub/b.lua", "return 1");
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local n = require('b')\nlocal m = require('sub.b')",
     );
 
@@ -1124,10 +1119,10 @@ fn test_dual_identity_type_and_runtime_members() {
     set_test_file(
         &mut db,
         2,
-        "C:/ws/b.lua",
+        "b.lua",
         "---@class M\n---@field f number\nlocal M = {}\nM.x = 1",
     );
-    let _fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local v = M");
+    let _fid = set_test_file(&mut db, 1, "a.lua", "local v = M");
 
     // Name("M"): union of type (@field f) and runtime value (local M's member x).
     let name_owner = SemanticId::name(SmolStr::new("M"));
@@ -1155,7 +1150,7 @@ fn test_dual_identity_type_and_runtime_members() {
     );
 
     // Member type: `M.x` in A reads B's runtime x = 1 → Number.
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local y = M.x");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
@@ -1168,14 +1163,9 @@ fn test_dual_identity_type_and_runtime_members() {
 fn test_anonymous_table_module_member() {
     let mut db = setup();
     // B: module returns anonymous table `{ x = 1 }`.
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "return { x = 1 }");
+    set_test_file(&mut db, 2, "b.lua", "return { x = 1 }");
     // A: require('b').x → member of the anonymous table's synthesized owner.
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local m = require('b')\nlocal v = m.x",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local m = require('b')\nlocal v = m.x");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "m");
@@ -1199,7 +1189,7 @@ fn test_anonymous_table_function_return_member() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local f = function() return { a = 's' } end\nlocal r = f()\nlocal s = r.a",
     );
 
@@ -1230,7 +1220,7 @@ fn test_generic_instantiation_member_substitution() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Box<T>\n\
          ---@field value T\n\
          local Box = {}\n\
@@ -1254,14 +1244,14 @@ fn test_generic_instantiation_cross_file_and_function() {
     set_test_file(
         &mut db,
         2,
-        "C:/ws/b.lua",
+        "b.lua",
         "---@class Box<T>\n---@field value T\n---@field get fun(): T\nlocal Box = {}",
     );
     // A: Box<string> → value: string; get() also returns string.
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@type Box<string>\nlocal b\nlocal v = b.value\nlocal r = b.get()",
     );
 
@@ -1284,7 +1274,7 @@ fn test_flow_tree_builds_cfg() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local x = 1\n\
          if type(x) == 'string' then\n\
            x = 2\n\
@@ -1467,12 +1457,7 @@ fn test_lua_syntax_id_disambiguates_nested_same_start() {
     let mut db = setup();
     // Value expression is the outer `(x + 1) * 2`: the inner `(x + 1)` shares the starting `(` with the outer.
     // Position alone is not unique; LuaSyntaxId (kind+range) is required to locate the outer expression precisely.
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local x = 1\nlocal a = (x + 1) * 2",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local x = 1\nlocal a = (x + 1) * 2");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -1486,12 +1471,7 @@ fn test_lua_syntax_id_disambiguates_nested_same_start() {
 fn test_name_uses_and_decl_references() {
     let mut db = setup();
     // Declarations are not NameExpr (naturally excluded); a appears 3 times (write target + value + argument).
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "local a = 1\na = a + 1\nprint(a)",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "local a = 1\na = a + 1\nprint(a)");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let a = decl_local(&facts, "a");
@@ -1505,7 +1485,7 @@ fn test_name_uses_and_decl_references() {
 #[test]
 fn test_resolve_name_from_use() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "local x = 1\nlocal y = x + 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "local x = 1\nlocal y = x + 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let x = decl_local(&facts, "x");
@@ -1546,7 +1526,7 @@ fn test_decl_references_respects_shadowing() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local x = 1\nlocal function f()\n  local x = 2\n  return x\nend\nx = x",
     );
 
@@ -1574,7 +1554,7 @@ fn test_resolve_name_same_scope_shadowing_prefers_latest() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local x = 123
 local x = 456
 print(x)",
@@ -1612,7 +1592,7 @@ fn test_call_returns_function_return_type() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "local f = function() return 1 end\nlocal x = f()",
     );
 
@@ -1627,12 +1607,7 @@ fn test_call_returns_function_return_type() {
 #[test]
 fn test_signature_doc_return() {
     let mut db = setup();
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/a.lua",
-        "---@return string\nfunction foo() end",
-    );
+    let fid = set_test_file(&mut db, 1, "a.lua", "---@return string\nfunction foo() end");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
@@ -1650,7 +1625,7 @@ fn test_signature_mutual_recursion_converges() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "function foo() return bar() end\nfunction bar() return foo() end",
     );
 
@@ -1672,7 +1647,7 @@ fn test_signature_mutual_recursion_converges() {
 #[test]
 fn test_func_params_not_duplicated() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function f(x)\nend");
+    let fid = set_test_file(&mut db, 1, "a.lua", "function f(x)\nend");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let param_count = facts
@@ -1689,7 +1664,7 @@ fn test_signature_doc_param_type() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@param x string\nfunction f(x)\nend",
     );
 
@@ -1704,13 +1679,13 @@ fn test_signature_doc_param_type() {
 #[test]
 fn test_named_vararg_signature_is_variadic() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "function f(...args) end");
+    let fid = set_test_file(&mut db, 1, "a.lua", "function f(...args) end");
     let facts = db.analysis().file_facts(fid).expect("facts");
     let sig = facts.signatures.first().expect("signature");
     assert!(sig.is_variadic, "named vararg `...args` 应标记为可变参数");
     assert_eq!(sig.param_names, vec!["args"]);
 
-    let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "function g(...) end");
+    let fid2 = set_test_file(&mut db, 2, "b.lua", "function g(...) end");
     let facts2 = db.analysis().file_facts(fid2).expect("facts");
     let sig2 = facts2.signatures.first().expect("signature");
     assert!(sig2.is_variadic, "`...` 仍应标记为可变参数");
@@ -1723,7 +1698,7 @@ fn test_class_field_members() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Foo\n---@field bar string\n---@field count number\nlocal Foo = {}",
     );
 
@@ -1753,7 +1728,7 @@ fn test_type_def_generic_params() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Box<T: Base, U = string>\nlocal Box = {}\n---@alias Pair<T, U>\nlocal Pair = 1",
     );
 
@@ -1777,7 +1752,7 @@ fn test_doc_deprecated_on_class_and_field() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@deprecated\n\
          ---@class OldThing\n\
          ---@deprecated\n\
@@ -1803,7 +1778,7 @@ fn test_signature_doc_generic_and_flags() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@generic T\n\
          ---@deprecated\n\
          ---@async\n\
@@ -1834,7 +1809,7 @@ fn test_signature_doc_return_overload() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@return number count\n---@return string name\nfunction f()\nend",
     );
 
@@ -1862,7 +1837,7 @@ fn test_signature_doc_return_overload_unnamed() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@return_overload false, string\nfunction f()\nend",
     );
 
@@ -1884,7 +1859,7 @@ fn test_class_field_inheritance() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Foo\n---@field bar string\nlocal Foo = {}\n---@class Bar : Foo\nlocal Bar = {}",
     );
 
@@ -1901,7 +1876,7 @@ fn test_member_access_resolves_class_field() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@class Foo\n---@field bar string\nlocal Foo = {}\n---@type Foo\nlocal x = {}\nlocal y = x.bar",
     );
 
@@ -1916,12 +1891,7 @@ fn test_member_access_resolves_class_field() {
 #[test]
 fn test_module_export_decl() {
     let mut db = setup();
-    let fid = set_test_file(
-        &mut db,
-        1,
-        "C:/ws/mod.lua",
-        "local M = {}\nM.x = 1\nreturn M",
-    );
+    let fid = set_test_file(&mut db, 1, "mod.lua", "local M = {}\nM.x = 1\nreturn M");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let m = decl_local(&facts, "M");
@@ -1949,7 +1919,7 @@ fn test_module_export_decl() {
 #[test]
 fn test_module_export_expr_and_none() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/mod.lua", "return { a = 1 }");
+    let fid = set_test_file(&mut db, 1, "mod.lua", "return { a = 1 }");
     assert!(matches!(
         db.analysis().module_export(fid).expect("export"),
         ModuleExport::Expr { .. }
@@ -1961,7 +1931,7 @@ fn test_module_export_expr_and_none() {
         shell
     );
 
-    let no_ret = set_test_file(&mut db, 2, "C:/ws/no.lua", "local x = 1");
+    let no_ret = set_test_file(&mut db, 2, "no.lua", "local x = 1");
     assert!(matches!(
         db.analysis().module_export(no_ret).expect("export"),
         ModuleExport::None
@@ -1971,7 +1941,7 @@ fn test_module_export_expr_and_none() {
 #[test]
 fn test_global_assignment_extracts_decl() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "foo = 1");
+    let fid = set_test_file(&mut db, 1, "a.lua", "foo = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let foo = decl_local(&facts, "foo");
@@ -1987,7 +1957,7 @@ fn test_constructor_attribute_collected_on_following_param() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        "a.lua",
         "---@generic T\n---@[constructor(\"__init\", \"Base\", false, \"doc\")]\n---@param class `T`\n---@return T\nfunction meta(class)\nend",
     );
 
@@ -2032,20 +2002,43 @@ fn test_remote_uri_stable_mapping() {
 #[test]
 fn test_multi_workspace_roots_and_module_index() {
     let mut db = setup();
-    let std_root = PathBuf::from("C:/std");
-    let main_root = PathBuf::from("C:/ws");
-    let lib1_root = PathBuf::from("C:/libs/lib1");
-    let lib2_root = PathBuf::from("C:/libs/lib2");
+    // Absolute on every platform: `best_workspace_root` matches files to roots with
+    // `Path::strip_prefix`, so a relative `C:/…` root contains none of them off
+    // Windows and every workspace lookup below would return `None`.
+    let std_root = portable_test_path("emmylua_ws_std");
+    let main_root = portable_test_path("emmylua_ws_main");
+    let lib1_root = portable_test_path("emmylua_ws_lib1");
+    let lib2_root = portable_test_path("emmylua_ws_lib2");
 
     db.add_std_workspace(std_root.clone());
     db.add_main_workspace(main_root.clone());
     db.add_library_workspace(&WorkspaceFolder::new(lib1_root.clone(), true));
     db.add_library_workspace(&WorkspaceFolder::new(lib2_root.clone(), true));
 
-    let std_fid = set_test_file(&mut db, 1, "C:/std/string.lua", "return {}");
-    let main_fid = set_test_file(&mut db, 2, "C:/ws/main.lua", "return {}");
-    let lib1_fid = set_test_file(&mut db, 3, "C:/libs/lib1/mod.lua", "return {}");
-    let lib2_fid = set_test_file(&mut db, 4, "C:/libs/lib2/other.lua", "return {}");
+    let std_fid = set_test_file(
+        &mut db,
+        1,
+        &std_root.join("string.lua").to_string_lossy(),
+        "return {}",
+    );
+    let main_fid = set_test_file(
+        &mut db,
+        2,
+        &main_root.join("main.lua").to_string_lossy(),
+        "return {}",
+    );
+    let lib1_fid = set_test_file(
+        &mut db,
+        3,
+        &lib1_root.join("mod.lua").to_string_lossy(),
+        "return {}",
+    );
+    let lib2_fid = set_test_file(
+        &mut db,
+        4,
+        &lib2_root.join("other.lua").to_string_lossy(),
+        "return {}",
+    );
 
     assert_eq!(db.workspace_id_of(std_fid), Some(WorkspaceId::STD));
     assert_eq!(db.workspace_id_of(main_fid), Some(WorkspaceId::MAIN));
@@ -2082,8 +2075,8 @@ fn test_multi_workspace_roots_and_module_index() {
 #[test]
 fn test_module_info_version_and_export_type() {
     let mut db = setup();
-    db.add_main_workspace(PathBuf::from("C:/ws"));
-    let fid = set_test_file(&mut db, 1, "C:/ws/mod.lua", "---@version 5.1\nreturn 42");
+    db.add_main_workspace(portable_test_root());
+    let fid = set_test_file(&mut db, 1, "mod.lua", "---@version 5.1\nreturn 42");
 
     let info = db.module_info_of(fid).expect("module info");
     assert!(
@@ -2099,20 +2092,82 @@ fn test_module_info_version_and_export_type() {
 #[test]
 fn test_vfs_file_ids_sorted_and_lookup_uses_snapshot() {
     let mut db = setup();
-    let fid2 = set_test_file(&mut db, 2, "C:/ws/b.lua", "local b = 1");
-    let fid1 = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    let fid2 = set_test_file_portable(&mut db, 2, "emmylua_ws_b.lua", "local b = 1");
+    let fid1 = set_test_file_portable(&mut db, 1, "emmylua_ws_a.lua", "local a = 1");
     assert_eq!(db.file_ids(), vec![fid1, fid2]);
     assert_eq!(
-        db.lookup_file_id(&file_path_to_uri(&PathBuf::from("C:/ws/b.lua")).unwrap()),
+        db.lookup_file_id(&file_path_to_uri(&portable_test_path("emmylua_ws_b.lua")).unwrap()),
         Some(fid2)
     );
+}
+
+/// A file directly under [`portable_test_root`].
+pub(crate) fn portable_test_file_in_root(relative: &str) -> PathBuf {
+    portable_test_root().join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+
+/// A non-absolute path must not be used as a test fixture path.
+///
+/// `C:/ws/a.lua` is absolute on Windows but relative elsewhere, and both of the
+/// path-keyed layers below reject relative input:
+///
+/// - `file_path_to_uri` goes through `Url::from_file_path`, which returns `None`;
+/// - `best_workspace_root` classifies ownership with `Path::strip_prefix` against
+///   the registered roots, which never matches.
+///
+/// Pinning that behaviour here makes the failure mode that used to appear only on
+/// CI — files stored without a URI, workspace lookups returning `None` — visible
+/// from any platform instead of hiding behind a Windows-only pass.
+#[test]
+fn test_relative_fixture_paths_are_rejected_by_uri_and_workspace_lookup() {
+    let mut db = setup();
+    db.add_main_workspace(portable_test_root());
+
+    // A bare file name is relative everywhere, so both path-keyed layers reject it
+    // on every platform: no URI can be derived, and no root is seen to contain it.
+    let bare = PathBuf::from("a.lua");
+    let fid_bare = FileId::new(1);
+    db.set_file(fid_bare, Some(bare.clone()), "local a = 1".to_string());
+    assert_eq!(file_path_to_uri(&bare), None);
+    assert_eq!(db.file_uri(fid_bare), None);
+    assert_eq!(db.workspace_id_of(fid_bare), None);
+
+    // `C:/ws/a.lua` differs by platform, which is what made these fixtures pass on
+    // Windows and fail off it: on Windows it is absolute and converts to a URI; on
+    // Unix it is relative and does not. (It is outside the registered root either
+    // way, so it belongs to no workspace on both.)
+    let drive_letter_literal = format!("{}:/ws/a.lua", 'C');
+    let drive_relative = PathBuf::from(&drive_letter_literal);
+    let fid_drive = FileId::new(2);
+    db.set_file(
+        fid_drive,
+        Some(drive_relative.clone()),
+        "local a = 1".to_string(),
+    );
+    assert_eq!(db.file_path(fid_drive).as_ref(), Some(&drive_relative));
+    assert_eq!(db.file_uri(fid_drive), file_path_to_uri(&drive_relative));
+    assert_eq!(
+        file_path_to_uri(&drive_relative).is_some(),
+        drive_relative.is_absolute(),
+        "URI conversion succeeds exactly when the literal is absolute"
+    );
+
+    // Recorded under an absolute root, the same content resolves in both layers.
+    let fid_abs = FileId::new(3);
+    db.set_file(
+        fid_abs,
+        Some(portable_test_file_in_root("a.lua")),
+        "local a = 1".to_string(),
+    );
+    assert!(db.file_uri(fid_abs).is_some());
+    assert_eq!(db.workspace_id_of(fid_abs), Some(WorkspaceId::MAIN));
 }
 
 #[test]
 fn test_parallel_for_each_file_runs_on_shared_snapshots() {
     let mut db = setup();
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "local b = 2");
+    set_test_file(&mut db, 1, "a.lua", "local a = 1");
+    set_test_file(&mut db, 2, "b.lua", "local b = 2");
 
     let visited = std::sync::atomic::AtomicUsize::new(0);
     db.parallel_for_each_file(|_file_id, model| {

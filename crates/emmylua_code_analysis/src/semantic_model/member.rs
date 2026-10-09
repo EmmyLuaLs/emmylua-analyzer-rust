@@ -502,20 +502,33 @@ pub fn find_self_return_cast_member(model: &SemanticModel, name: &str) -> Option
     None
 }
 
-/// Test-only counters guarding the keyed member query against accidentally
+/// Test-only counter guarding the keyed member query against accidentally
 /// falling back to full-owner enumeration.
+///
+/// Thread-local, and test-only. The harness runs tests in parallel, so a
+/// process-global counter lets unrelated tests inflate the value between a
+/// `reset()` and the assertion, which made the `p4_5` guards fail intermittently
+/// (~2 failing runs in 4 with `cargo test -p emmylua_code_analysis --lib`). Test
+/// instrumentation has no business in shipped code, so this never reaches a
+/// production build.
 #[cfg(test)]
 pub(crate) mod query_metrics {
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::cell::Cell;
 
-    pub(crate) static FULL_OWNER_MEMBER_SCANS: AtomicU32 = AtomicU32::new(0);
+    thread_local! {
+        static FULL_OWNER_MEMBER_SCANS: Cell<u32> = const { Cell::new(0) };
+    }
+
+    pub(crate) fn record_full_owner_member_scan() {
+        FULL_OWNER_MEMBER_SCANS.with(|count| count.set(count.get() + 1));
+    }
 
     pub(crate) fn reset() {
-        FULL_OWNER_MEMBER_SCANS.store(0, Ordering::Relaxed);
+        FULL_OWNER_MEMBER_SCANS.with(|count| count.set(0));
     }
 
     pub(crate) fn full_owner_member_scans() -> u32 {
-        FULL_OWNER_MEMBER_SCANS.load(Ordering::Relaxed)
+        FULL_OWNER_MEMBER_SCANS.with(Cell::get)
     }
 }
 
@@ -536,8 +549,7 @@ fn owner_member_refs(
             .collect(),
         _ => {
             #[cfg(test)]
-            query_metrics::FULL_OWNER_MEMBER_SCANS
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            query_metrics::record_full_owner_member_scan();
             model.members_of_owner(owner).iter().cloned().collect()
         }
     }

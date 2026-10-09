@@ -60,10 +60,7 @@ fn check_scope(
     }
 
     #[cfg(test)]
-    scope_metrics::CLONED_LOCAL_ENTRIES.fetch_add(
-        parent_locals.len() as u64,
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    scope_metrics::record_cloned_local_entries(parent_locals.len() as u64);
     let mut current_locals = parent_locals.clone();
     check_decls(
         context,
@@ -142,17 +139,28 @@ fn enclosing_closure_of_param(
 }
 
 /// Test-only counter for the parent-locals copy cost.
+///
+/// Thread-local, and test-only: the harness runs tests in parallel, so a
+/// process-global counter lets unrelated tests inflate the value between a
+/// `reset()` and the assertion. Test instrumentation never reaches a production
+/// build.
 #[cfg(test)]
 pub(crate) mod scope_metrics {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::cell::Cell;
 
-    pub(crate) static CLONED_LOCAL_ENTRIES: AtomicU64 = AtomicU64::new(0);
+    thread_local! {
+        static CLONED_LOCAL_ENTRIES: Cell<u64> = const { Cell::new(0) };
+    }
+
+    pub(crate) fn record_cloned_local_entries(count: u64) {
+        CLONED_LOCAL_ENTRIES.with(|total| total.set(total.get() + count));
+    }
 
     pub(crate) fn reset() {
-        CLONED_LOCAL_ENTRIES.store(0, Ordering::Relaxed);
+        CLONED_LOCAL_ENTRIES.with(|total| total.set(0));
     }
 
     pub(crate) fn cloned_local_entries() -> u64 {
-        CLONED_LOCAL_ENTRIES.load(Ordering::Relaxed)
+        CLONED_LOCAL_ENTRIES.with(Cell::get)
     }
 }

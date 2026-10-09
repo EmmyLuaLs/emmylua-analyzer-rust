@@ -102,7 +102,7 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
         && !tree.has_flow_event_between(decl_start, offset, true)
     {
         #[cfg(test)]
-        flow_metrics::FAST_DECL_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        flow_metrics::record_fast_decl_hit();
         return fallback();
     }
     let mut visited = HashSet::new();
@@ -175,7 +175,7 @@ pub fn type_of_decl_assign_target_at(
     // `t.x = value` hot path becomes O(1) instead of an O(offset) CFG walk.
     if !tree.has_tag_cast() {
         #[cfg(test)]
-        flow_metrics::FAST_TARGET_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        flow_metrics::record_fast_target_hit();
         return fallback();
     }
     let Some(flow_id) = tree.get_flow_id_at(offset) else {
@@ -312,7 +312,7 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
                 trace_member(model, member, &tree, assign_flow, &mut visited, &mut path)
             {
                 #[cfg(test)]
-                flow_metrics::FAST_MEMBER_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                flow_metrics::record_fast_member_hit();
                 return ty;
             }
         } else if latest.is_none() && !tree.has_condition() && !tree.has_tag_cast() {
@@ -1279,13 +1279,13 @@ fn trace_decl_uncached(
     path: &mut PathState,
 ) -> Option<LuaType> {
     #[cfg(test)]
-    flow_metrics::TRACE_DECL_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    flow_metrics::record_trace_decl_entry();
     let root_mode = mode;
     let mut current = flow_id;
     let mut frames: Vec<DeclAssignmentFrame> = Vec::new();
     loop {
         #[cfg(test)]
-        flow_metrics::TRACE_STEPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        flow_metrics::record_trace_step();
         if !visited.insert(current) {
             return None;
         }
@@ -1571,7 +1571,7 @@ fn trace_member(
     let mut current = flow_id;
     loop {
         #[cfg(test)]
-        flow_metrics::TRACE_STEPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        flow_metrics::record_trace_step();
         if !visited.insert(current) {
             return None;
         }
@@ -5072,48 +5072,96 @@ fn type_is_broader(broad: &LuaType, narrow: &LuaType) -> bool {
 }
 
 /// Test-only counters for the flow fast paths and fallback trace work.
+///
+/// Thread-local, and test-only. The harness runs tests in parallel, so
+/// process-global counters let unrelated tests inflate the values between a
+/// `reset()` and the assertion — that made the `p4_5` guards fail intermittently
+/// while the rest of the suite passed. Test instrumentation has no business in
+/// shipped code, so none of this reaches a production build.
 #[cfg(test)]
 pub(crate) mod flow_metrics {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::cell::Cell;
 
-    pub(crate) static TRACE_STEPS: AtomicU64 = AtomicU64::new(0);
-    pub(crate) static FAST_DECL_HITS: AtomicU64 = AtomicU64::new(0);
-    pub(crate) static FAST_MEMBER_HITS: AtomicU64 = AtomicU64::new(0);
-    pub(crate) static FAST_TARGET_HITS: AtomicU64 = AtomicU64::new(0);
+    thread_local! {
+        static COUNTERS: Cell<FlowCounters> = const { Cell::new(FlowCounters::ZERO) };
+    }
+
+    #[derive(Clone, Copy)]
+    struct FlowCounters {
+        trace_steps: u64,
+        fast_decl_hits: u64,
+        fast_member_hits: u64,
+        fast_target_hits: u64,
+        trace_decl_entries: u64,
+    }
+
+    impl FlowCounters {
+        const ZERO: Self = Self {
+            trace_steps: 0,
+            fast_decl_hits: 0,
+            fast_member_hits: 0,
+            fast_target_hits: 0,
+            trace_decl_entries: 0,
+        };
+    }
+
+    fn bump(update: impl Fn(&mut FlowCounters)) {
+        COUNTERS.with(|counters| {
+            let mut current = counters.get();
+            update(&mut current);
+            counters.set(current);
+        });
+    }
+
+    pub(crate) fn record_trace_step() {
+        bump(|c| c.trace_steps += 1);
+    }
+
+    pub(crate) fn record_fast_decl_hit() {
+        bump(|c| c.fast_decl_hits += 1);
+    }
+
+    pub(crate) fn record_fast_member_hit() {
+        bump(|c| c.fast_member_hits += 1);
+    }
+
+    pub(crate) fn record_fast_target_hit() {
+        bump(|c| c.fast_target_hits += 1);
+    }
+
     /// Entries into the uncached declaration walk. A chain of N guards that repeat
-    /// one nested index expression in a condition list used to enter this ~2^N
+    /// one nested index expression in a condition list used to enter it ~2^N
     /// times, so the counter detects a return to that blow-up without hanging the
     /// test run on the wall clock.
-    pub(crate) static TRACE_DECL_ENTRIES: AtomicU64 = AtomicU64::new(0);
+    pub(crate) fn record_trace_decl_entry() {
+        bump(|c| c.trace_decl_entries += 1);
+    }
 
     pub(crate) fn reset() {
-        TRACE_STEPS.store(0, Ordering::Relaxed);
-        FAST_DECL_HITS.store(0, Ordering::Relaxed);
-        FAST_MEMBER_HITS.store(0, Ordering::Relaxed);
-        FAST_TARGET_HITS.store(0, Ordering::Relaxed);
-        TRACE_DECL_ENTRIES.store(0, Ordering::Relaxed);
+        COUNTERS.with(|counters| counters.set(FlowCounters::ZERO));
     }
 
     /// Number of uncached declaration-walk entries since the last [`reset`].
     pub(crate) fn trace_decl_entries() -> u64 {
-        TRACE_DECL_ENTRIES.load(Ordering::Relaxed)
+        COUNTERS.with(|c| c.get().trace_decl_entries)
     }
 
     pub(crate) fn trace_steps() -> u64 {
-        TRACE_STEPS.load(Ordering::Relaxed)
+        COUNTERS.with(|c| c.get().trace_steps)
     }
 
     pub(crate) fn fast_path_hits() -> u64 {
-        FAST_DECL_HITS.load(Ordering::Relaxed)
-            + FAST_MEMBER_HITS.load(Ordering::Relaxed)
-            + FAST_TARGET_HITS.load(Ordering::Relaxed)
+        COUNTERS.with(|c| {
+            let c = c.get();
+            c.fast_decl_hits + c.fast_member_hits + c.fast_target_hits
+        })
     }
 
     pub(crate) fn fast_decl_hits() -> u64 {
-        FAST_DECL_HITS.load(Ordering::Relaxed)
+        COUNTERS.with(|c| c.get().fast_decl_hits)
     }
 
     pub(crate) fn fast_member_hits() -> u64 {
-        FAST_MEMBER_HITS.load(Ordering::Relaxed)
+        COUNTERS.with(|c| c.get().fast_member_hits)
     }
 }

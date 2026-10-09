@@ -12,13 +12,32 @@ use crate::{Emmyrc, FileId, LuaType, SemanticId, SemanticModel, WorkspaceId};
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
     db.update_config(Arc::new(Emmyrc::default()));
-    db.add_main_workspace(PathBuf::from("C:/ws"));
+    db.add_main_workspace(test_root());
     db
 }
 
-fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
+/// The main workspace root for these tests, absolute on every platform.
+///
+/// `C:/ws` is absolute on Windows but *relative* on Unix. Since
+/// `best_workspace_root` classifies files with `Path::strip_prefix` against the
+/// registered roots, a relative root stops containing the test files there and
+/// workspace lookups return `None`, so these tests only passed on Windows.
+fn test_root() -> PathBuf {
+    crate::semantic_db::tests::portable_test_root()
+}
+
+/// Path for a file under [`test_root`], e.g. `&test_file("a.lua")`.
+fn test_file(relative: &str) -> PathBuf {
+    test_root().join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+fn set_test_file(
+    db: &mut SemanticDatabase,
+    file_id: u32,
+    path: &std::path::Path,
+    source: &str,
+) -> FileId {
     let fid = FileId::new(file_id);
-    db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
+    db.set_file(fid, Some(path.to_path_buf()), source.to_string());
     fid
 }
 
@@ -39,10 +58,10 @@ fn is_integer_like(ty: &LuaType) -> bool {
 #[test]
 fn p4_new_file_does_not_full_rebuild() {
     let mut db = setup();
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = 1");
+    set_test_file(&mut db, 1, &test_file("a.lua"), "local a = 1");
     db.rebuild_metrics.reset();
 
-    let fid = set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
+    let fid = set_test_file(&mut db, 2, &test_file("b.lua"), "M = {}\nM.x = 1");
 
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);
@@ -57,8 +76,8 @@ fn p4_new_file_does_not_full_rebuild() {
 #[test]
 fn p4_remove_file_does_not_full_rebuild() {
     let mut db = setup();
-    let fid_a = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = M.x");
-    let fid_b = set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
+    let fid_a = set_test_file(&mut db, 1, &test_file("a.lua"), "local a = M.x");
+    let fid_b = set_test_file(&mut db, 2, &test_file("b.lua"), "M = {}\nM.x = 1");
     assert!(is_integer_like(&local_type(&db, fid_a, "a")));
 
     db.rebuild_metrics.reset();
@@ -74,11 +93,11 @@ fn p4_remove_file_does_not_full_rebuild() {
 #[test]
 fn p4_new_file_refreshes_dependent_references() {
     let mut db = setup();
-    let fid_a = set_test_file(&mut db, 1, "C:/ws/a.lua", "local a = M.x");
+    let fid_a = set_test_file(&mut db, 1, &test_file("a.lua"), "local a = M.x");
     assert_eq!(local_type(&db, fid_a, "a"), LuaType::Unknown);
 
     db.rebuild_metrics.reset();
-    set_test_file(&mut db, 2, "C:/ws/b.lua", "M = {}\nM.x = 1");
+    set_test_file(&mut db, 2, &test_file("b.lua"), "M = {}\nM.x = 1");
 
     assert!(
         is_integer_like(&local_type(&db, fid_a, "a")),
@@ -91,11 +110,11 @@ fn p4_new_file_refreshes_dependent_references() {
 #[test]
 fn p4_path_change_does_not_full_rebuild() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/old.lua", "return {}");
+    let fid = set_test_file(&mut db, 1, &test_file("old.lua"), "return {}");
     assert_eq!(db.analysis().module_file_of("old"), Some(fid));
 
     db.rebuild_metrics.reset();
-    set_test_file(&mut db, 1, "C:/ws/new.lua", "return {}");
+    set_test_file(&mut db, 1, &test_file("new.lua"), "return {}");
 
     assert_eq!(db.rebuild_metrics.full_rebuilds(), 0);
     assert_eq!(db.rebuild_metrics.workspace_index_rebuilds(), 0);

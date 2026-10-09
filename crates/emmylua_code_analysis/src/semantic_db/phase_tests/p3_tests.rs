@@ -18,33 +18,57 @@ use crate::{Emmyrc, FileId, WorkspaceId};
 fn setup() -> SemanticDatabase {
     let mut db = SemanticDatabase::new();
     db.update_config(Arc::new(Emmyrc::default()));
-    db.add_main_workspace(PathBuf::from("C:/ws"));
+    db.add_main_workspace(test_root());
     db
 }
 
-fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
+/// The main workspace root for these tests, absolute on every platform.
+///
+/// `C:/ws` is absolute on Windows but *relative* on Unix. Since
+/// `best_workspace_root` classifies files with `Path::strip_prefix` against the
+/// registered roots, a relative root stops containing the test files there and
+/// workspace lookups return `None`, so these tests only passed on Windows.
+fn test_root() -> PathBuf {
+    crate::semantic_db::tests::portable_test_root()
+}
+
+/// Path for a file under [`test_root`], e.g. `&test_file("a.lua")`.
+fn test_file(relative: &str) -> PathBuf {
+    test_root().join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+fn set_test_file(
+    db: &mut SemanticDatabase,
+    file_id: u32,
+    path: &std::path::Path,
+    source: &str,
+) -> FileId {
     let fid = FileId::new(file_id);
-    db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
+    db.set_file(fid, Some(path.to_path_buf()), source.to_string());
     fid
 }
 
 #[test]
 fn p3_type_index_remove_add_matches_full_rebuild() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/a.lua", "---@class A\nlocal A = {}");
+    let fid = set_test_file(&mut db, 1, &test_file("a.lua"), "---@class A\nlocal A = {}");
 
     let mut incremental = workspace_type_index_for(&db, WorkspaceId::MAIN).clone();
     let a_defs = incremental.find_all(TypeScope::Global, "A");
     assert_eq!(a_defs.len(), 1);
     assert_eq!(a_defs[0].name.as_str(), "A");
 
-    set_test_file(&mut db, 1, "C:/ws/a.lua", "---@class B\nlocal B = {}");
+    set_test_file(&mut db, 1, &test_file("a.lua"), "---@class B\nlocal B = {}");
     let new_exports = db.file_exports_of(fid);
     incremental.remove_file(fid);
     incremental.add_file(WorkspaceId::MAIN, fid, new_exports);
 
     let mut fresh = setup();
-    set_test_file(&mut fresh, 1, "C:/ws/a.lua", "---@class B\nlocal B = {}");
+    set_test_file(
+        &mut fresh,
+        1,
+        &test_file("a.lua"),
+        "---@class B\nlocal B = {}",
+    );
     let full = workspace_type_index_for(&fresh, WorkspaceId::MAIN);
 
     assert!(incremental.find_all(TypeScope::Global, "A").is_empty());
@@ -67,7 +91,7 @@ fn p3_member_index_remove_add_preserves_overloads() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/c.lua",
+        &test_file("c.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -102,7 +126,7 @@ fn p3_member_index_remove_add_preserves_overloads() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/c.lua",
+        &test_file("c.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -137,7 +161,7 @@ fn p3_reference_index_remove_add_matches_full_rebuild() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/ref.lua",
+        &test_file("ref.lua"),
         "M = {}\nM.y = 1\nlocal x = M.y",
     );
     let ws = WorkspaceId::MAIN;
@@ -146,7 +170,7 @@ fn p3_reference_index_remove_add_matches_full_rebuild() {
     set_test_file(
         &mut db,
         1,
-        "C:/ws/ref.lua",
+        &test_file("ref.lua"),
         "M = {}\nM.y = 2\nlocal x = M.y\nlocal z = M.y",
     );
     let references = Arc::clone(&db.file_cache(fid).expect("cache").references);
@@ -157,7 +181,7 @@ fn p3_reference_index_remove_add_matches_full_rebuild() {
     set_test_file(
         &mut fresh,
         1,
-        "C:/ws/ref.lua",
+        &test_file("ref.lua"),
         "M = {}\nM.y = 2\nlocal x = M.y\nlocal z = M.y",
     );
     let full = workspace_reference_index_for(&fresh, ws);
@@ -170,8 +194,8 @@ fn p3_reference_index_remove_add_matches_full_rebuild() {
 #[test]
 fn p3_module_index_apply_file_change_is_workspace_local() {
     let mut db = setup();
-    let fid1 = set_test_file(&mut db, 1, "C:/ws/mod.lua", "return {}");
-    let fid2 = set_test_file(&mut db, 2, "C:/ws/other.lua", "return {}");
+    let fid1 = set_test_file(&mut db, 1, &test_file("mod.lua"), "return {}");
+    let fid2 = set_test_file(&mut db, 2, &test_file("other.lua"), "return {}");
     let mut index = workspace_module_index_for(&db, WorkspaceId::MAIN).clone();
 
     let entry = build_module_entry(&db, fid2).expect("module entry");

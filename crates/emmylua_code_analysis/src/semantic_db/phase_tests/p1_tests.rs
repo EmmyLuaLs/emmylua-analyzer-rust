@@ -23,9 +23,28 @@ fn setup() -> SemanticDatabase {
     db
 }
 
-fn set_test_file(db: &mut SemanticDatabase, file_id: u32, path: &str, source: &str) -> FileId {
+/// The main workspace root for these tests, absolute on every platform.
+///
+/// `C:/ws` is absolute on Windows but *relative* on Unix. Since
+/// `best_workspace_root` classifies files with `Path::strip_prefix` against the
+/// registered roots, a relative root stops containing the test files there and
+/// workspace lookups return `None`, so these tests only passed on Windows.
+fn test_root() -> PathBuf {
+    crate::semantic_db::tests::portable_test_root()
+}
+
+/// Path for a file under [`test_root`], e.g. `&test_file("a.lua")`.
+fn test_file(relative: &str) -> PathBuf {
+    test_root().join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+fn set_test_file(
+    db: &mut SemanticDatabase,
+    file_id: u32,
+    path: &std::path::Path,
+    source: &str,
+) -> FileId {
     let fid = FileId::new(file_id);
-    db.set_file(fid, Some(PathBuf::from(path)), source.to_string());
+    db.set_file(fid, Some(path.to_path_buf()), source.to_string());
     fid
 }
 
@@ -35,7 +54,7 @@ fn p1_member_contribution_carries_canonical_owner_and_flags() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/a.lua",
+        &test_file("a.lua"),
         r#"
         ---@class C
         local C = {}
@@ -120,7 +139,7 @@ fn p1_member_contribution_preserves_overloads_and_export_key() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/overload.lua",
+        &test_file("overload.lua"),
         r#"
         ---@class C
         ---@field f fun(a: string): string
@@ -163,11 +182,11 @@ fn p1_member_contribution_preserves_overloads_and_export_key() {
 #[test]
 fn p1_surface_eq_ignores_member_value_syntax_changes() {
     let mut db = setup();
-    let fid = set_test_file(&mut db, 1, "C:/ws/surface.lua", "M = {}\nM.x = 1\n");
+    let fid = set_test_file(&mut db, 1, &test_file("surface.lua"), "M = {}\nM.x = 1\n");
     let before = db.file_exports_of(fid).clone();
 
     // Same member identity, different initializer text/range.
-    set_test_file(&mut db, 1, "C:/ws/surface.lua", "M = {}\nM.x = 100\n");
+    set_test_file(&mut db, 1, &test_file("surface.lua"), "M = {}\nM.x = 100\n");
     let after = db.file_exports_of(fid);
 
     assert!(
@@ -182,7 +201,7 @@ fn p1_file_cache_stores_contribution_as_arc() {
     let fid = set_test_file(
         &mut db,
         1,
-        "C:/ws/shared.lua",
+        &test_file("shared.lua"),
         "---@class C\nlocal C = {}\nM = {}\nM.x = 1\nreturn M\n",
     );
 

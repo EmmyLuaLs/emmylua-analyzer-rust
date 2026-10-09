@@ -140,6 +140,19 @@ fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
     model.type_of_decl(&decl.id).expect("declaration type")
 }
 
+/// The main workspace root for this file's tests, absolute on every platform.
+///
+/// `C:/ws` is absolute on Windows but *relative* on Unix, and
+/// `best_workspace_root` classifies files with `Path::strip_prefix` against the
+/// registered roots — so a relative root stops containing the test files there.
+fn test_root() -> PathBuf {
+    crate::semantic_db::tests::portable_test_root()
+}
+
+/// Path for a file under [`test_root`], e.g. `test_file("c.lua")`.
+fn test_file(relative: &str) -> PathBuf {
+    test_root().join(relative.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
 #[test]
 fn p5b_resolve_owner_ids_is_deterministic() {
     let mut db = SemanticDatabase::new();
@@ -147,7 +160,7 @@ fn p5b_resolve_owner_ids_is_deterministic() {
     let fid = FileId::new(1);
     db.set_file(
         fid,
-        Some(PathBuf::from("C:/ws/c.lua")),
+        Some(test_file("c.lua")),
         r#"
         ---@class C
         local C = {}
@@ -207,19 +220,15 @@ fn p5b_deep_alias_member_chain() {
 fn p5b_main_workspace_wins_over_library_module_name() {
     let mut db = SemanticDatabase::new();
     db.update_config(Arc::new(Emmyrc::default()));
-    db.add_main_workspace(PathBuf::from("C:/ws"));
-    db.add_library_workspace(&WorkspaceFolder::new(PathBuf::from("C:/libs/lib"), true));
+    db.add_main_workspace(test_root());
+    db.add_library_workspace(&WorkspaceFolder::new(test_root().join("lib"), true));
 
     let main_id = FileId::new(1);
-    db.set_file(
-        main_id,
-        Some(PathBuf::from("C:/ws/mod.lua")),
-        "return {}".to_string(),
-    );
+    db.set_file(main_id, Some(test_file("mod.lua")), "return {}".to_string());
     let lib_id = FileId::new(2);
     db.set_file(
         lib_id,
-        Some(PathBuf::from("C:/libs/lib/mod.lua")),
+        Some(test_root().join("lib").join("mod.lua")),
         "return {}".to_string(),
     );
 

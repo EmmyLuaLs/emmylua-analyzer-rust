@@ -11,7 +11,18 @@
 //! The ignored tests intentionally fail today; do not delete them just to make CI
 //! green. They are the acceptance criteria for phases 4 and 6.
 
+use std::path::PathBuf;
+
 use crate::{FileId, LuaType, VirtualWorkspace};
+
+/// An absolute root path on every platform.
+///
+/// `C:/…` is absolute on Windows but *relative* on Unix, where `file_path_to_uri`
+/// (via `Url::from_file_path`) then yields no URI, so a workspace root expressed
+/// that way does not behave the same way off Windows.
+fn test_root(name: &str) -> PathBuf {
+    std::env::temp_dir().join(name)
+}
 
 fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
     let model = ws.analysis.semantic_model(file_id);
@@ -292,7 +303,7 @@ fn p0_rebuild_metrics_are_incremented_by_full_rebuild() {
     ws.analysis.db.rebuild_metrics.reset();
     ws.analysis
         .db
-        .update_main_root(std::path::PathBuf::from("C:/p0-metrics"));
+        .update_main_root(test_root("emmylua_p0_metrics"));
 
     let metrics = &ws.analysis.db.rebuild_metrics;
     assert!(metrics.full_rebuilds() > 0, "full rebuild must be recorded");
