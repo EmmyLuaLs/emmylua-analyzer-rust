@@ -101,11 +101,8 @@ pub async fn process_did_change_watched_files(
         })
         .await;
     if lsp_features.supports_pull_diagnostic() {
-        if (removed_file || !file_ids.is_empty()) && lsp_features.supports_refresh_diagnostic() {
-            context
-                .file_diagnostic()
-                .schedule_diagnostic_refresh(interval)
-                .await;
+        if removed_file || !file_ids.is_empty() {
+            context.schedule_diagnostic_refresh(interval).await;
         }
     } else {
         context

@@ -53,6 +53,7 @@ optional = true
 
 [dev-dependencies]
 googletest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 
 
 [[bin]]

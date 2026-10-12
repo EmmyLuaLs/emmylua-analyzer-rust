@@ -95,6 +95,14 @@ impl ServerMessageProcessor {
     ) -> Result<bool, Box<dyn Error + Sync + Send>> {
         match msg {
             Message::Request(req) => {
+                if req.method == "shutdown" {
+                    // Stop refreshes before acknowledging shutdown and waiting for exit.
+                    server_context
+                        .snapshot()
+                        .file_diagnostic()
+                        .shutdown_diagnostic_refresh()
+                        .await;
+                }
                 if connection.handle_shutdown(&req).await? {
                     server_context.close().await;
                     return Ok(true); // Shutdown requested

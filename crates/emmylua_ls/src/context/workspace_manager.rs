@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8, AtomicU64, Ordering};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use super::workspace_state::{OpenFilesSnapshot, WorkspaceState};
-use super::{AnalysisState, ClientProxy, DiagnosticService};
+use super::{AnalysisState, DiagnosticService};
 use crate::context::ServerContextSnapshot;
 use crate::context::lsp_features::LspFeatures;
 use crate::handlers::{ClientConfig, init_analysis, register_files_watch};
@@ -19,7 +19,6 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::sync::CancellationToken;
 
 pub struct WorkspaceManager {
-    client: Arc<ClientProxy>,
     config_reload_token: Arc<PendingTask>,
     reload_lock: Arc<AsyncMutex<()>>,
     reload_generation: Arc<AtomicU64>,
@@ -31,13 +30,8 @@ pub struct WorkspaceManager {
 }
 
 impl WorkspaceManager {
-    pub fn new(
-        client: Arc<ClientProxy>,
-        file_diagnostic: Arc<DiagnosticService>,
-        lsp_features: Arc<LspFeatures>,
-    ) -> Self {
+    pub fn new(file_diagnostic: Arc<DiagnosticService>, lsp_features: Arc<LspFeatures>) -> Self {
         Self {
-            client,
             config_reload_token: Arc::new(PendingTask::default()),
             reload_lock: Arc::new(AsyncMutex::new(())),
             reload_generation: Arc::new(AtomicU64::new(0)),
@@ -137,7 +131,6 @@ impl WorkspaceManager {
     //     }
 
     //     let analysis = self.analysis.clone();
-    //     let client = self.client.clone();
     //     let file_diagnostic = self.file_diagnostic.clone();
     //     let lsp_features = self.lsp_features.clone();
     //     let reindex_token = self.reindex_token.clone();
@@ -161,7 +154,6 @@ impl WorkspaceManager {
     //         refresh_workspace_diagnostics(
     //             file_diagnostic,
     //             lsp_features,
-    //             client,
     //             workspace_diagnostic_level,
     //         )
     //         .await;
@@ -171,7 +163,6 @@ impl WorkspaceManager {
 
     fn reload_task_handles(&self) -> ReloadTaskHandles {
         ReloadTaskHandles {
-            client: self.client.clone(),
             file_diagnostic: self.file_diagnostic.clone(),
             lsp_features: self.lsp_features.clone(),
             reload_lock: self.reload_lock.clone(),
@@ -305,14 +296,15 @@ impl PendingTask {
 async fn refresh_workspace_diagnostics(
     file_diagnostic: Arc<DiagnosticService>,
     lsp_features: Arc<LspFeatures>,
-    client: Arc<ClientProxy>,
     workspace_diagnostic_level: Arc<AtomicU8>,
 ) {
     file_diagnostic.cancel_workspace_diagnostic().await;
     workspace_diagnostic_level.store(WorkspaceDiagnosticLevel::Fast.to_u8(), Ordering::Release);
 
     if lsp_features.supports_workspace_diagnostic() {
-        client.refresh_workspace_diagnostics();
+        if lsp_features.supports_refresh_diagnostic() {
+            file_diagnostic.schedule_diagnostic_refresh(0).await;
+        }
     } else {
         file_diagnostic
             .add_workspace_diagnostic_task(500, true)
@@ -322,7 +314,6 @@ async fn refresh_workspace_diagnostics(
 
 #[derive(Clone)]
 struct ReloadTaskHandles {
-    client: Arc<ClientProxy>,
     file_diagnostic: Arc<DiagnosticService>,
     lsp_features: Arc<LspFeatures>,
     reload_lock: Arc<AsyncMutex<()>>,
@@ -351,7 +342,6 @@ fn spawn_workspace_reload_task(
         refresh_workspace_diagnostics(
             handles.file_diagnostic,
             handles.lsp_features,
-            handles.client,
             handles.workspace_diagnostic_level,
         )
         .await;

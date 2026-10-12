@@ -1,7 +1,7 @@
 use emmylua_code_analysis::{Emmyrc, uri_to_file_path};
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams,
+    DidSaveTextDocumentParams, Uri,
 };
 use std::sync::Arc;
 
@@ -64,11 +64,8 @@ pub async fn process_did_open_text_document(
     let supports_pull = context.lsp_features().supports_pull_diagnostic();
 
     // Schedule diagnostic task without holding any locks
-    if supports_pull && context.lsp_features().supports_refresh_diagnostic() && file_id.is_some() {
-        context
-            .file_diagnostic()
-            .schedule_diagnostic_refresh(interval)
-            .await;
+    if file_id.is_some() {
+        context.schedule_diagnostic_refresh(interval).await;
     }
     if !supports_pull {
         if let Some(file_id) = file_id {
@@ -172,11 +169,8 @@ pub async fn process_did_change_text_document(
 
     let supports_pull = context.lsp_features().supports_pull_diagnostic();
     // Schedule diagnostic task
-    if supports_pull && context.lsp_features().supports_refresh_diagnostic() && file_id.is_some() {
-        context
-            .file_diagnostic()
-            .schedule_diagnostic_refresh(interval)
-            .await;
+    if file_id.is_some() {
+        context.schedule_diagnostic_refresh(interval).await;
     }
     if !supports_pull {
         if let Some(file_id) = file_id {
@@ -206,22 +200,11 @@ pub async fn process_did_close_document(
     let mut workspace = context.workspace_manager().lock().await;
     workspace.close_open_file(&params.text_document.uri);
     drop(workspace);
-    let lsp_features = context.lsp_features();
-
     // If the closed file no longer exists, remove it.
     if let Some(file_path) = uri_to_file_path(uri)
         && !file_path.exists()
     {
-        context
-            .analysis()
-            .update(|analysis| analysis.remove_file_by_uri(uri))
-            .await;
-
-        if !lsp_features.supports_pull_diagnostic() {
-            context
-                .file_diagnostic()
-                .clear_push_file_diagnostics(uri.clone());
-        }
+        remove_closed_document(&context, uri).await;
 
         return Some(());
     }
@@ -235,17 +218,34 @@ pub async fn process_did_close_document(
         })
         .unwrap_or(false);
     if !file_exists {
-        context
-            .analysis()
-            .update(|analysis| analysis.remove_file_by_uri(uri))
-            .await;
-
-        if !lsp_features.supports_pull_diagnostic() {
-            context
-                .file_diagnostic()
-                .clear_push_file_diagnostics(uri.clone());
-        }
+        remove_closed_document(&context, uri).await;
     }
 
     Some(())
+}
+
+/// Closing a deleted document can remove declarations used by other files.
+async fn remove_closed_document(context: &ServerContextSnapshot, uri: &Uri) {
+    let (removed, interval) = context
+        .analysis()
+        .update(|analysis| {
+            let removed = analysis.get_file_id(uri).is_some();
+            analysis.remove_file_by_uri(uri);
+            (
+                removed,
+                analysis
+                    .get_emmyrc()
+                    .diagnostics
+                    .diagnostic_interval
+                    .unwrap_or(500),
+            )
+        })
+        .await;
+    if !context.lsp_features().supports_pull_diagnostic() {
+        context
+            .file_diagnostic()
+            .clear_push_file_diagnostics(uri.clone());
+    } else if removed {
+        context.schedule_diagnostic_refresh(interval).await;
+    }
 }

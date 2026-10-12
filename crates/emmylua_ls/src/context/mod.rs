@@ -53,7 +53,6 @@ impl ServerContext {
             client.clone(),
         ));
         let workspace_manager = Arc::new(Mutex::new(WorkspaceManager::new(
-            client.clone(),
             file_diagnostic.clone(),
             lsp_features.clone(),
         )));
@@ -136,6 +135,10 @@ impl ServerContext {
     }
 
     pub async fn close(&self) {
+        self.inner
+            .file_diagnostic
+            .shutdown_diagnostic_refresh()
+            .await;
         let mut workspace_manager = self.inner.workspace_manager.lock().await;
         workspace_manager.watcher = None;
     }

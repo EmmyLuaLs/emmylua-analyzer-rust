@@ -18,7 +18,8 @@ pub struct DiagnosticService {
     client: Arc<ClientProxy>,
     status_bar: Arc<StatusBar>,
     diagnostic_tokens: Arc<Mutex<HashMap<FileId, CancellationToken>>>,
-    refresh_token: Mutex<Option<CancellationToken>>,
+    refresh_token: Arc<Mutex<Option<CancellationToken>>>,
+    refresh_shutdown: CancellationToken,
     workspace_diagnostic_token: Arc<Mutex<Option<CancellationToken>>>,
     workspace_run_lock: Arc<Mutex<()>>,
     workspace_diagnostic_done: AtomicBool,
@@ -35,7 +36,8 @@ impl DiagnosticService {
             analysis,
             client,
             diagnostic_tokens: Arc::new(Mutex::new(HashMap::new())),
-            refresh_token: Mutex::new(None),
+            refresh_token: Arc::new(Mutex::new(None)),
+            refresh_shutdown: CancellationToken::new(),
             workspace_diagnostic_token: Arc::new(Mutex::new(None)),
             workspace_run_lock: Arc::new(Mutex::new(())),
             workspace_diagnostic_done: AtomicBool::new(false),
@@ -45,23 +47,49 @@ impl DiagnosticService {
     }
 
     /// Coalesce cross-file invalidations after analysis has incorporated an edit.
+    /// `interval` is in milliseconds; zero requests a refresh without a debounce delay.
     pub async fn schedule_diagnostic_refresh(&self, interval: u64) {
         let mut pending = self.refresh_token.lock().await;
+        if self.refresh_shutdown.is_cancelled() {
+            return;
+        }
         if let Some(token) = pending.take() {
             token.cancel();
         }
         let token = CancellationToken::new();
         *pending = Some(token.clone());
-        let client = self.client.clone();
+        drop(pending);
+        let client = Arc::downgrade(&self.client);
+        let pending = self.refresh_token.clone();
+        let shutdown = self.refresh_shutdown.clone();
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(interval);
         tokio::spawn(async move {
             tokio::select! {
                 biased;
+                _ = shutdown.cancelled() => {},
                 _ = token.cancelled() => {},
-                _ = tokio::time::sleep(Duration::from_millis(interval)) => {
-                    client.refresh_workspace_diagnostics();
+                _ = tokio::time::sleep_until(deadline) => {
+                    // Serialize the final send with replacement and shutdown, so no
+                    // refresh can be sent after shutdown_diagnostic_refresh returns.
+                    let mut pending = pending.lock().await;
+                    if !shutdown.is_cancelled() && !token.is_cancelled() {
+                        if let Some(client) = client.upgrade() {
+                            client.refresh_workspace_diagnostics();
+                        }
+                        pending.take();
+                    }
                 }
             }
         });
+    }
+
+    /// Stop pending refreshes and reject scheduling by outstanding update tasks.
+    pub async fn shutdown_diagnostic_refresh(&self) {
+        let mut pending = self.refresh_token.lock().await;
+        self.refresh_shutdown.cancel();
+        if let Some(token) = pending.take() {
+            token.cancel();
+        }
     }
 
     pub async fn add_diagnostic_task(&self, file_id: FileId, interval: u64) {
@@ -410,52 +438,103 @@ async fn run_workspace_batch(
 
 impl Drop for DiagnosticService {
     fn drop(&mut self) {
-        if let Some(token) = self.refresh_token.get_mut().take() {
-            token.cancel();
-        }
+        self.refresh_shutdown.cancel();
     }
 }
 
 #[cfg(test)]
 mod refresh_tests {
     use super::*;
+    use crate::context::ServerContext;
     use lsp_server::{Connection, Message};
 
-    fn diagnostic() -> (DiagnosticService, Connection) {
+    fn diagnostic() -> (Arc<DiagnosticService>, Connection) {
         let (server, client_connection) = Connection::memory();
         let client = Arc::new(ClientProxy::new(Arc::new(server)));
         let status = Arc::new(StatusBar::new(client.clone(), false));
         (
-            DiagnosticService::new(Arc::new(AnalysisState::new()), status, client),
+            Arc::new(DiagnosticService::new(
+                Arc::new(AnalysisState::new()),
+                status,
+                client,
+            )),
             client_connection,
         )
     }
 
-    #[tokio::test]
-    async fn refresh_coalesces_and_is_scoped_to_its_client() {
-        let (first, client) = diagnostic();
-        let (_second, other_client) = diagnostic();
-        for _ in 0..10 {
-            first.schedule_diagnostic_refresh(30).await;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+    async fn advance(milliseconds: u64) {
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(milliseconds)).await;
+        tokio::task::yield_now().await;
+    }
+
+    fn expect_refresh(client: &Connection) {
         let Message::Request(request) = client.receiver.try_recv().unwrap() else {
             panic!("expected request")
         };
         assert_eq!(request.method, "workspace/diagnostic/refresh");
         assert!(client.receiver.try_recv().is_err());
-        assert!(other_client.receiver.try_recv().is_err());
-        first.schedule_diagnostic_refresh(0).await;
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        assert!(client.receiver.try_recv().is_ok());
     }
 
-    #[tokio::test]
-    async fn dropping_diagnostics_cancels_pending_refresh() {
+    #[tokio::test(start_paused = true)]
+    async fn refresh_coalesces_and_is_scoped_to_its_client() {
+        let (first, client) = diagnostic();
+        let (_second, other_client) = diagnostic();
+        for _ in 0..10 {
+            first.schedule_diagnostic_refresh(1000).await;
+        }
+        advance(999).await;
+        assert!(client.receiver.try_recv().is_err());
+        advance(1).await;
+        expect_refresh(&client);
+        assert!(other_client.receiver.try_recv().is_err());
+        assert!(first.refresh_token.lock().await.is_none());
+        first.schedule_diagnostic_refresh(0).await;
+        advance(0).await;
+        expect_refresh(&client);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_later_edit_restarts_the_debounce_interval() {
         let (diagnostic, client) = diagnostic();
-        diagnostic.schedule_diagnostic_refresh(30).await;
+        diagnostic.schedule_diagnostic_refresh(1000).await;
+        advance(900).await;
+        diagnostic.schedule_diagnostic_refresh(1000).await;
+        advance(100).await;
+        assert!(client.receiver.try_recv().is_err());
+        advance(900).await;
+        expect_refresh(&client);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dropping_diagnostics_cancels_without_retaining_the_client() {
+        let (diagnostic, client) = diagnostic();
+        let weak_client = Arc::downgrade(&diagnostic.client);
+        let references = Arc::strong_count(&diagnostic.client);
+        diagnostic.schedule_diagnostic_refresh(1000).await;
+        assert_eq!(Arc::strong_count(&diagnostic.client), references);
         drop(diagnostic);
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(weak_client.upgrade().is_none());
+        advance(1000).await;
+        assert!(client.receiver.try_recv().is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn closing_context_stops_refreshes_while_snapshots_remain_alive() {
+        let (server, client) = Connection::memory();
+        let context = ServerContext::new(Arc::new(server), Default::default());
+        let snapshot = context.snapshot();
+        snapshot
+            .file_diagnostic()
+            .schedule_diagnostic_refresh(1000)
+            .await;
+        context.close().await;
+        // An already queued update must not restart refreshes during shutdown.
+        snapshot
+            .file_diagnostic()
+            .schedule_diagnostic_refresh(0)
+            .await;
+        advance(1000).await;
         assert!(client.receiver.try_recv().is_err());
     }
 }
