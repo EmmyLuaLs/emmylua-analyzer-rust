@@ -1247,3 +1247,58 @@ fn enum_runtime_cross_file_values_are_not_runtime_tables() {
         );
     }
 }
+
+#[googletest::gtest]
+fn enum_runtime_same_file_local_members() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    for name in ["LocalEnum", "Alias"] {
+        let mut ws = VirtualWorkspace::new();
+        let declaration =
+            format!("---@enum LocalEnum\nlocal {name} = {{READY = 1, STOPPED = -2}}\n");
+        assert_that!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::UndefinedField,
+                &format!(
+                    "{declaration} local a = {name}.READY\nif {name}['STOPPED'] then return a end"
+                )
+            ),
+            eq(true),
+            "{name}"
+        );
+        assert_that!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::UndefinedField,
+                &format!("{declaration} if {name}['TYPO'] then return end")
+            ),
+            eq(false),
+            "{name}"
+        );
+    }
+}
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_dynamic_and_conditional_keys() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("constants.lua", "---@enum Status\nSTATUS = { READY = 1 }");
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        ---@param key string
+        local function get(key) return STATUS[key] end
+        if STATUS['READY'] then return get('READY') end
+    "#
+        ),
+        eq(true)
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            "if STATUS['TYPO'] then return end"
+        ),
+        eq(false)
+    );
+}
