@@ -1047,6 +1047,7 @@ fn apply_bound_casts(
     let Some(tree) = model.flow_tree() else {
         return base;
     };
+    // FlowTree records both TagCast and AsCast nodes in this flag.
     if !tree.has_tag_cast() {
         return base;
     }
@@ -1124,8 +1125,9 @@ fn apply_bound_casts(
     ty
 }
 
-/// An inline assertion applies to its attached expression. When the parser
-/// attaches a trailing comment to a statement, its target is the last RHS value.
+/// An inline assertion applies to its attached expression. Local/assignment/
+/// return statements target their last value; call statements target their call.
+/// A table-field owner targets its value. Other non-expression owners are ignored.
 fn inline_as_target(as_tag: &LuaDocTagAs) -> Option<LuaExpr> {
     let owner = as_tag.get_parent::<LuaComment>()?.get_owner()?;
     match owner {
@@ -1134,6 +1136,8 @@ fn inline_as_target(as_tag: &LuaDocTagAs) -> Option<LuaExpr> {
         LuaAst::LuaReturnStat(stat) => stat.get_expr_list().last(),
         LuaAst::LuaCallExprStat(stat) => stat.get_call_expr().map(LuaExpr::CallExpr),
         LuaAst::LuaTableField(field) => field.get_value_expr(),
+        // Expression owners are exact targets; blocks/control-flow statements
+        // have no asserted value and intentionally produce None.
         owner => LuaExpr::cast(owner.syntax().clone()),
     }
 }

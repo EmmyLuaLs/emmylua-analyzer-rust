@@ -1,10 +1,12 @@
-use emmylua_parser::{LuaAstNode, LuaExpr};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalName};
 use googletest::prelude::*;
 
 use crate::{DiagnosticCode, FileId, LuaType, VirtualWorkspace};
 
 fn expression_type(ws: &VirtualWorkspace, file: FileId, text: &str) -> LuaType {
     let model = ws.analysis.semantic_model(file);
+    // Parameters/local declarations are LuaParamName/LuaLocalName, not LuaExpr.
+    // Reject repeated expression text rather than selecting a shadowed read.
     let expressions: Vec<_> = model
         .chunk()
         .expect("chunk")
@@ -237,4 +239,81 @@ fn inline_as_return_and_closure_assertions_still_apply() {
     "#,
     );
     assert_that!(expression_type(&ws, file, "fn"), eq(&LuaType::String));
+}
+
+#[gtest]
+fn inline_as_flow_flag_covers_both_assertion_kinds() {
+    for (source, expected) in [
+        ("local value = 1", false),
+        ("local value = 1 --[[@as string]]", true),
+        ("local value = 1\n---@cast value string\nreturn value", true),
+    ] {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(source);
+        let model = ws.analysis.semantic_model(file);
+        assert_that!(
+            model.flow_tree().expect("flow tree").has_tag_cast(),
+            eq(expected),
+            "{source}"
+        );
+    }
+}
+
+#[gtest]
+fn inline_as_ignores_control_flow_statement_owners() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@param input string
+        local function convert(input)
+            do end --[[@as integer]]
+            local unchanged = input
+            return unchanged
+        end
+    "#,
+    );
+    assert_that!(expression_type(&ws, file, "input"), eq(&LuaType::String));
+    assert_that!(
+        expression_type(&ws, file, "unchanged"),
+        eq(&LuaType::String)
+    );
+}
+
+#[gtest]
+fn inline_as_declaration_and_member_flow_queries_keep_assigned_assertions() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        local value = "text" --[[@as integer]]
+        local holder = {}
+        holder.field = "text" --[[@as boolean]]
+        return value, holder.field
+    "#,
+    );
+    let model = ws.analysis.semantic_model(file);
+    let chunk = model.chunk().expect("chunk");
+    let local = chunk
+        .descendants::<LuaLocalName>()
+        .find(|local| {
+            local
+                .get_name_token()
+                .is_some_and(|token| token.get_name_text() == "value")
+        })
+        .expect("value declaration");
+    let decl = model
+        .decl_by_offset(local.get_name_token().expect("name").get_position())
+        .expect("decl");
+    assert_that!(model.type_of_decl(&decl), eq(&Some(LuaType::Integer)));
+    let index = chunk
+        .descendants::<LuaIndexExpr>()
+        .last()
+        .expect("member read");
+    let member = model
+        .resolve_member(&index)
+        .and_then(|info| info.member_id)
+        .expect("member");
+    assert_that!(
+        model.type_of_member_at(&member, index.get_position()),
+        eq(&LuaType::Boolean)
+    );
 }
