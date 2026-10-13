@@ -3,6 +3,9 @@ pub mod flow;
 pub mod infer;
 pub mod member;
 pub mod render;
+pub(crate) mod table_construction;
+pub(crate) mod table_constructor;
+pub(crate) mod table_value;
 pub mod type_check;
 pub mod type_eval;
 

@@ -3492,6 +3492,126 @@ fn member_type_via_owner_method(
     None
 }
 
+/// One outer alternative and the scope needed to inspect its result shell.
+#[derive(Clone)]
+pub(crate) struct TypeShellHead {
+    pub candidate: TypeCandidate,
+    context: ShellContext,
+}
+
+#[derive(Clone)]
+struct ShellContext {
+    file: FileId,
+    arguments: Arc<Vec<(SmolStr, Vec<TypeShellHead>)>>,
+}
+
+/// Inspect outer alternatives without semantic expression or function-body inference.
+pub(crate) fn type_shell_heads(
+    db: &SemanticDatabase,
+    file: FileId,
+    shell: &TypeShell,
+) -> Vec<TypeShellHead> {
+    shell_heads_in(
+        db,
+        &ShellContext {
+            file,
+            arguments: Arc::default(),
+        },
+        shell,
+        &mut Vec::new(),
+    )
+}
+
+/// Inspect a callable's first result in its definition and argument scopes.
+pub(crate) fn type_shell_return_heads(
+    db: &SemanticDatabase,
+    head: &TypeShellHead,
+) -> Vec<TypeShellHead> {
+    let TypeCandidate::Function(function) = &head.candidate else {
+        return Vec::new();
+    };
+    let mut context = head.context.clone();
+    // A function's own generic parameters shadow alias parameters with the same name.
+    context.arguments = Arc::new(
+        context
+            .arguments
+            .iter()
+            .filter(|(name, _)| !function.generic_params.contains(name))
+            .cloned()
+            .collect(),
+    );
+    let result = function.returns_multi.first().unwrap_or(&function.returns);
+    shell_heads_in(db, &context, result, &mut Vec::new())
+}
+
+fn shell_heads_in(
+    db: &SemanticDatabase,
+    context: &ShellContext,
+    shell: &TypeShell,
+    path: &mut Vec<SemanticId>,
+) -> Vec<TypeShellHead> {
+    let shell = shell.first_result();
+    let mut out = Vec::new();
+    if shell.candidates.is_empty() {
+        out.push(TypeShellHead {
+            candidate: TypeCandidate::Recursive,
+            context: context.clone(),
+        });
+    }
+    for candidate in shell.candidates {
+        if let TypeCandidate::Generic(name) = &candidate
+            && let Some((_, heads)) = context.arguments.iter().find(|(param, _)| param == name)
+        {
+            out.extend(heads.iter().cloned());
+            continue;
+        }
+        let (name, args) = match &candidate {
+            TypeCandidate::Named(name) => (name, &[][..]),
+            TypeCandidate::GenericInstance(instance) => (&instance.name, instance.args.as_slice()),
+            _ => {
+                out.push(TypeShellHead {
+                    candidate,
+                    context: context.clone(),
+                });
+                continue;
+            }
+        };
+        let Some((def, alias)) = resolve_type_def(db, context.file, name.clone())
+            .and_then(|def| def.alias_type.map(|alias| (def, alias)))
+        else {
+            out.push(TypeShellHead {
+                candidate,
+                context: context.clone(),
+            });
+            continue;
+        };
+        if path.contains(&def.id) {
+            out.push(TypeShellHead {
+                candidate: TypeCandidate::Recursive,
+                context: context.clone(),
+            });
+            continue;
+        }
+        // Resolve arguments in the caller before entering the alias. Retaining
+        // their contexts avoids rebinding file-local names in the alias's file.
+        let arguments = def
+            .generic_params
+            .iter()
+            .zip(args)
+            .map(|(param, arg)| (param.name.clone(), shell_heads_in(db, context, arg, path)))
+            .collect();
+        let target_context = ShellContext {
+            file: def.file_id,
+            arguments: Arc::new(arguments),
+        };
+        path.push(def.id.clone());
+        let target = lower_doc_type(db, def.file_id, alias, &def.generic_params);
+        out.extend(shell_heads_in(db, &target_context, &target, path));
+        path.pop();
+    }
+    out
+}
+
 /// Generic substitution: replace `Generic(param)` candidates in a shell with argument types (recursing into function types).
 fn substitute_generics(
     shell: &TypeShell,

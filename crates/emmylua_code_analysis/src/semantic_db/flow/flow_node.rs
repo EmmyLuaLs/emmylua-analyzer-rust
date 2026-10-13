@@ -22,6 +22,7 @@ pub enum FlowEffect {
         key: LuaMemberKey,
         member: SemanticId,
         value_syntax: emmylua_parser::LuaSyntaxId,
+        result_slot: usize,
     },
     /// Condition guard: the true/false branch for cond.
     Guard {

@@ -113,7 +113,7 @@ pub struct FileFacts {
     member_by_value_syntax: HashMap<LuaSyntaxId, usize>,
     type_def_by_id: HashMap<SemanticId, usize>,
     members_by_owner: HashMap<SemanticId, Vec<usize>>,
-    members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>>,
+    members_by_owner_key: HashMap<(SemanticId, LuaMemberKey), Vec<usize>>,
     members_by_name: HashMap<SmolStr, Vec<usize>>,
     type_def_by_full_name: HashMap<SmolStr, usize>,
     type_def_by_name: HashMap<SmolStr, usize>,
@@ -235,8 +235,16 @@ impl FileFacts {
         owner: &SemanticId,
         name: &str,
     ) -> impl Iterator<Item = &Member> {
-        self.members_by_owner_name
-            .get(&(owner.clone(), SmolStr::new(name)))
+        self.members_of_owner_with_key(owner, &LuaMemberKey::Name(name.into()))
+    }
+
+    pub fn members_of_owner_with_key<'a>(
+        &'a self,
+        owner: &SemanticId,
+        key: &LuaMemberKey,
+    ) -> impl Iterator<Item = &'a Member> + use<'a> {
+        self.members_by_owner_key
+            .get(&(owner.clone(), key.clone()))
             .into_iter()
             .flat_map(|indices| indices.iter())
             .filter_map(move |&index| self.members.get(index))
@@ -855,7 +863,7 @@ impl FactsBuilder {
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
 
-        // Post-processing 4: index `setmetatable(table, meta)` initializer calls once.
+        // Post-processing 4: index `setmetatable(table, meta)` calls once.
         self.collect_setmetatable_calls(chunk);
 
         let mut name_use_by_start = self
@@ -935,20 +943,21 @@ impl FactsBuilder {
         let mut members_by_owner: HashMap<SemanticId, Vec<usize>> = HashMap::new();
         let mut members_by_name: HashMap<SmolStr, Vec<usize>> = HashMap::new();
         let mut field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize> = HashMap::new();
-        let mut members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>> = HashMap::new();
+        let mut members_by_owner_key: HashMap<(SemanticId, LuaMemberKey), Vec<usize>> =
+            HashMap::new();
         for (index, member) in self.members.iter().enumerate() {
             members_by_owner
                 .entry(member.owner.clone())
+                .or_default()
+                .push(index);
+            members_by_owner_key
+                .entry((member.owner.clone(), member.key.clone()))
                 .or_default()
                 .push(index);
             if let Some(name) = member.key.name() {
                 let name_smol = SmolStr::new(name);
                 members_by_name
                     .entry(name_smol.clone())
-                    .or_default()
-                    .push(index);
-                members_by_owner_name
-                    .entry((member.owner.clone(), name_smol.clone()))
                     .or_default()
                     .push(index);
                 field_member_by_type_name
@@ -1092,7 +1101,7 @@ impl FactsBuilder {
             member_by_value_syntax,
             type_def_by_id,
             members_by_owner,
-            members_by_owner_name,
+            members_by_owner_key,
             members_by_name,
             type_def_by_full_name,
             type_def_by_name,
@@ -2284,25 +2293,12 @@ impl FactsBuilder {
         // assigning by member id's key_range here is not feasible, so it is set at the collection point).
     }
 
-    /// Top-level `return X` → module export target (the last top-level return wins).
-    /// Indexes `setmetatable(table, meta)` calls that initialize a declaration or member.
+    /// Indexes `setmetatable(table, meta)` calls, including arguments and returns.
     ///
     /// Table member lookup otherwise has to scan every declaration to find the
     /// matching `setmetatable` call for a table literal.
     fn collect_setmetatable_calls(&mut self, chunk: &LuaChunk) {
-        let root = chunk.get_root();
-        let values = self
-            .decls
-            .iter()
-            .filter_map(|decl| decl.value_expr_syntax)
-            .chain(self.members.iter().filter_map(|member| member.value_syntax));
-        for value_syntax in values {
-            let Some(node) = value_syntax.to_node_from_root(&root) else {
-                continue;
-            };
-            let Some(call) = LuaCallExpr::cast(node) else {
-                continue;
-            };
+        for call in chunk.descendants::<LuaCallExpr>() {
             let is_setmetatable = match call.get_prefix_expr() {
                 Some(LuaExpr::NameExpr(name_expr)) => {
                     name_expr.get_name_text().as_deref() == Some("setmetatable")
@@ -2445,6 +2441,11 @@ fn member_key_from_index_key(key: LuaIndexKey) -> Option<LuaMemberKey> {
         }
         LuaIndexKey::Integer(num) => match num.get_number_value() {
             NumberResult::Int(i) => Some(LuaMemberKey::Integer(i)),
+            NumberResult::Float(i)
+                if i.fract() == 0.0 && (i64::MIN as f64..i64::MAX as f64).contains(&i) =>
+            {
+                Some(LuaMemberKey::Integer(i as i64))
+            }
             _ => None,
         },
         LuaIndexKey::Idx(idx) => Some(LuaMemberKey::Integer(idx as i64)),

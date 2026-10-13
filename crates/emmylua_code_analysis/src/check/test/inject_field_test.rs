@@ -3,6 +3,1695 @@ mod test {
     use crate::check::test::check_source;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
+    mod generic_tables {
+        use super::*;
+
+        use DiagnosticCode::{AssignTypeMismatch, ParamTypeMismatch};
+
+        fn assert_diagnostics(source: &str, expected: &[DiagnosticCode]) {
+            let diagnostics = check_source(source);
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{source}\n{diagnostics:?}"
+            );
+        }
+
+        fn assert_workspace_diagnostics(
+            ws: &mut VirtualWorkspace,
+            source: &str,
+            expected: &[(DiagnosticCode, u32)],
+        ) {
+            let file = ws.def(source);
+            let diagnostics = ws
+                .analysis
+                .diagnose_file(file, tokio_util::sync::CancellationToken::new())
+                .unwrap();
+            let expected: Vec<_> = expected
+                .iter()
+                .map(|(code, line)| {
+                    (
+                        Some(lsp_types::NumberOrString::String(code.get_name().into())),
+                        *line,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| (d.code.clone(), d.range.start.line))
+                    .collect::<Vec<_>>(),
+                expected,
+                "{source}\n{diagnostics:?}"
+            );
+        }
+
+        #[test]
+        fn test_disabled_field_errors_preserve_type_errors() {
+            use crate::Emmyrc;
+            use crate::check::test::check_source_with_emmyrc;
+
+            for (code, declaration, target, argument) in [
+                (
+                    DiagnosticCode::MissingFields,
+                    "---@param opts {label: string, required: string}",
+                    "{label: string, required: string}",
+                    "{label = 1}",
+                ),
+                (
+                    DiagnosticCode::InjectField,
+                    "---@class Options\n---@field label string\nlocal _Options = {}\n---@param opts Options",
+                    "Options",
+                    "{label = 1, extra = true}",
+                ),
+            ] {
+                let source = format!(
+                    "{declaration}\nlocal function accept(opts) return opts end\naccept({argument})\npcall(accept, {argument})\n---@type {target}\nlocal assignment = {argument}\nreturn assignment"
+                );
+                let mut config = Emmyrc::default();
+                config.diagnostics.disable.push(code);
+                let diagnostics = check_source_with_emmyrc(&source, config);
+                assert_eq!(
+                    diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                    [ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch],
+                    "{source}\n{diagnostics:?}"
+                );
+                assert_diagnostics(
+                    &format!("---@diagnostic disable: {}\n{source}", code.get_name()),
+                    &[ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch],
+                );
+            }
+            assert_diagnostics(
+                r#"
+                ---@diagnostic disable: missing-fields
+                ---@type {label: string}
+                local value = {}
+                return value
+                "#,
+                &[AssignTypeMismatch],
+            );
+            assert_diagnostics(
+                r#"
+                ---@param opts {label: string}
+                ---@overload fun(opts: string)
+                local function accept(opts) return opts end
+                accept({})
+                "#,
+                &[DiagnosticCode::MissingFields],
+            );
+        }
+
+        #[test]
+        fn test_class_index_signatures_use_projected_key_and_value_types() {
+            for (target, valid_key, invalid_key) in [
+                ("Dict<integer, string>", "1", "'extra'"),
+                ("Derived<string>", "1", "'extra'"),
+                ("Dict<NumericKey, string>", "1", "'extra'"),
+                ("ObjectBase<string>", "1", "'extra'"),
+                ("MixedBase<string>", "1", "true"),
+                ("Dict<LabelKey, string>", "'left'", "'extra'"),
+            ] {
+                let source = format!(
+                    r#"
+                    ---@alias NumericKey integer
+                    ---@alias LabelKey 'left'|'right'
+                    ---@class Dict<K, V>
+                    ---@field [K] V
+                    ---@field label? V
+                    local _Dict = {{}}
+                    ---@class Derived<V>: Dict<integer, V>
+                    local _Derived = {{}}
+                    ---@class ObjectBase<V>: {{[integer]: V}}
+                    ---@field label? V
+                    local _ObjectBase = {{}}
+                    ---@class MixedBase<V>: {{[integer]: V, [string]: V}}
+                    local _MixedBase = {{}}
+                    ---@param values {target}
+                    local function accept(values) return values end
+                    accept({{[{valid_key}] = 'ok', label = 'ok'}})
+                    accept({{[{invalid_key}] = 'ok'}})
+                    accept({{[{valid_key}] = true}})
+                    ---@type {target}
+                    local valid = {{[{valid_key}] = 'ok'}}
+                    ---@type {target}
+                    local invalid_key = {{[{invalid_key}] = 'ok'}}
+                    ---@type {target}
+                    local invalid_value = {{[{valid_key}] = true}}
+                    return valid, invalid_key, invalid_value
+                    "#
+                );
+                assert_diagnostics(
+                    &source,
+                    &[
+                        DiagnosticCode::InjectField,
+                        ParamTypeMismatch,
+                        DiagnosticCode::InjectField,
+                        AssignTypeMismatch,
+                    ],
+                );
+            }
+        }
+
+        #[test]
+        fn test_array_assignments_check_keys_and_expanded_results() {
+            assert_diagnostics(
+                r#"
+                ---@return string, integer
+                local function pair() return 'ok', 1 end
+                ---@param values string[]
+                local function accept(values) return values end
+                accept({pair()})
+                accept({name = 'ok'})
+                ---@type string[]
+                local values = {(pair()), pair(), 'last'}
+                values = {[1] = pair()}
+                values = {pair()}
+                values = {name = 'ok'}
+                ---@type string[]
+                local invalid_results = {pair()}
+                ---@type string[]
+                local invalid_key = {name = 'ok'}
+                ---@type {values: string[]}
+                local nested = {values = {pair()}}
+                return values, invalid_results, invalid_key, nested
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    AssignTypeMismatch,
+                    AssignTypeMismatch,
+                    AssignTypeMismatch,
+                    AssignTypeMismatch,
+                    AssignTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_values_keep_referenced_table_types() {
+            assert_diagnostics(
+                r#"
+                local valid = {'ok'}
+                local invalid = {name = 1}
+                local holder = {child = invalid}
+                local function child() return {name = 1} end
+                ---@param items table<integer, table<integer, string>>
+                local function accept(items) return items end
+                accept({valid})
+                accept({invalid})
+                accept({holder.child})
+                accept({child()})
+                ---@type table<integer, table<integer, string>>
+                local assignment = {invalid}
+                return assignment
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    AssignTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_dictionary_references_check_invalid_leaves() {
+            for (alias, target) in [
+                ("Tree table<string, string|Tree>", "Tree"),
+                ("Tree<T> table<string, string|Tree<T[]>>", "Tree<string>"),
+            ] {
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                ws.def_files(vec![
+                    ("a.lua", "return {child = require('b'), label = 1}"),
+                    ("b.lua", "return {child = require('a')}"),
+                ]);
+                assert_workspace_diagnostics(
+                    &mut ws,
+                    &format!(
+                        "---@alias {alias}\n---@param values {target}\nlocal function accept(values) return values end\naccept({{child = require('a')}})\naccept({{child = require('b')}})"
+                    ),
+                    &[(ParamTypeMismatch, 3), (ParamTypeMismatch, 4)],
+                );
+            }
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_dictionary_references_keep_used_generic_arguments() {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            ws.def_files(vec![
+                ("a.lua", "return {child = require('b'), label = 'ok'}"),
+                ("b.lua", "return {child = require('a')}"),
+            ]);
+            assert_workspace_diagnostics(
+                &mut ws,
+                "---@alias Tree<T> table<string, T|Tree<T[]>>\n---@param values Tree<string>\nlocal function accept(values) return values end\naccept({child = require('a')})\naccept({child = require('b')})",
+                &[(ParamTypeMismatch, 3), (ParamTypeMismatch, 4)],
+            );
+        }
+
+        #[test]
+        fn test_record_union_selection_checks_required_fields() {
+            assert_diagnostics(
+                r#"
+                ---@alias Options {left: string}|{right: integer}
+                ---@param opts Options
+                local function accept(opts) return opts end
+                accept({left = 'ok'})
+                accept({right = 1})
+                accept({})
+                ---@type Options
+                local valid = {right = 1}
+                return valid
+                "#,
+                &[DiagnosticCode::MissingFields],
+            );
+            assert_diagnostics(
+                r#"
+                ---@class Record
+                ---@field label string
+                local _Record = {}
+                ---@param opts Record|table<string, integer|string>
+                local function accept(opts) return opts end
+                accept({label = 'ok', extra = 1})
+                "#,
+                &[],
+            );
+        }
+
+        #[test]
+        fn test_nil_values_do_not_create_dictionary_entries() {
+            assert_diagnostics(
+                r#"
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                accept({name = nil})
+                accept({[false] = nil})
+                accept({[1] = nil})
+                accept({name = 'bad'})
+                accept({1})
+                ---@type table<integer, string>
+                local empty = {name = nil}
+                return empty
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_nullable_dictionary_values_check_only_present_entries() {
+            assert_diagnostics(
+                r#"
+                ---@alias MaybeText string?
+
+                ---@class Texts
+                ---@field [string] string
+                local _Texts = {}
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                ---@param values Texts
+                local function named(values) return values end
+                ---@param text MaybeText
+                ---@param invalid integer?
+                local function build(text, invalid)
+                    accept({text})
+                    accept({[1] = text})
+                    named({name = text})
+                    ---@type table<integer, string>
+                    local valid = {text}
+                    accept({name = text})
+                    accept({invalid})
+                    named({name = invalid})
+                    ---@type table<integer, string>
+                    local wrong_key = {name = text}
+                    ---@type table<integer, string>
+                    local wrong_value = {invalid}
+                    return valid, wrong_key, wrong_value
+                end
+                return build
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    AssignTypeMismatch,
+                    AssignTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_dictionaries_ignore_only_unused_arguments() {
+            for (alias, target) in [
+                (
+                    "Tree<T> table<string, string|Tree<T[]>>|boolean",
+                    "Tree<string>",
+                ),
+                (
+                    "Tree<T, U> table<string, T|Tree<T, U[]>>",
+                    "Tree<string, integer>",
+                ),
+            ] {
+                for (leaf, expected) in [
+                    ("'ok'", &[][..]),
+                    (
+                        "1",
+                        &[
+                            (ParamTypeMismatch, 5),
+                            (ParamTypeMismatch, 6),
+                            (AssignTypeMismatch, 8),
+                        ][..],
+                    ),
+                ] {
+                    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                    ws.def_files(vec![
+                        (
+                            "a.lua",
+                            &format!("return {{child = require('b'), label = {leaf}}}"),
+                        ),
+                        ("b.lua", "return {child = require('a')}"),
+                    ]);
+                    assert_workspace_diagnostics(
+                        &mut ws,
+                        &format!(
+                            "---@alias {alias}\nlocal a = require('a')\nlocal b = require('b')\n---@param values {target}\nlocal function accept(values) return values end\naccept({{child = a}})\npcall(accept, {{child = b}})\n---@type {target}\nlocal root = {{child = a}}\nreturn root"
+                        ),
+                        expected,
+                    );
+                }
+            }
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_arguments_keep_indirect_field_dependencies() {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            ws.def_files(vec![
+                ("a.lua", "return {label = 'ok', child = require('b')}"),
+                ("b.lua", "return {label = 1, child = require('a')}"),
+            ]);
+            assert_workspace_diagnostics(
+                &mut ws,
+                "---@alias Tree<T, U, V> {label: T, child?: Tree<U, T, V[]>}\nlocal root = require('a')\n---@param value Tree<string, integer, boolean>\nlocal function accept(value) return value end\naccept(root)\n---@param value Tree<string, string, boolean>\nlocal function reject(value) return value end\nreject(root)",
+                &[(ParamTypeMismatch, 7)],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_constructors_expand_only_the_final_unkeyed_field() {
+            assert_diagnostics(
+                r#"
+                ---@return string, integer
+                local function pair() return 'ok', 1 end
+                ---@return string, string
+                local function texts() return 'one', 'two' end
+                local function nothing() end
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                accept({pair()})
+                accept({(pair())})
+                accept({[1] = pair()})
+                accept({pair(), 'last'})
+                accept({texts()})
+                accept({nothing()})
+                ---@class TextList
+                ---@field [integer] string
+                local _TextList = {}
+                ---@param values TextList
+                local function named(values) return values end
+                named({texts()})
+                named({pair()})
+                ---@param values table<1, string>
+                local function single(values) return values end
+                single({texts()})
+                ---@type table<integer, string>
+                local invalid = {pair()}
+                return invalid
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    AssignTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_constructors_check_repeated_result_values_and_keys() {
+            assert_diagnostics(
+                r#"
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                ---@param values table<1, string>
+                local function single(values) return values end
+                ---@param ... string
+                local function text_values(...)
+                    accept({...})
+                    accept({(...), 'last'})
+                    single({...})
+                end
+                ---@param ... string|integer
+                local function mixed_values(...)
+                    accept({...})
+                end
+                text_values('ok')
+                mixed_values('ok', 1)
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_constructors_check_all_return_alternatives() {
+            assert_diagnostics(
+                r#"
+                ---@param flag boolean
+                local function alternatives(flag)
+                    if flag then return 'one', 'two', 3 end
+                    return 'one', 'two'
+                end
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                accept({alternatives(true)})
+                accept({(alternatives(true))})
+                local function prefixed(flag) return 'prefix', alternatives(flag) end
+                accept({prefixed(true)})
+                accept({(prefixed(true))})
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_call_field_errors_use_one_bound_candidate() {
+            let valid = r#"
+                ---@param opts {left: string}
+                ---@overload fun(opts: {right: integer})
+                local function accept(opts) return opts end
+                accept({left = 'ok'})
+                accept({right = 1})
+
+                local receiver = {}
+                ---@param opts {child: {label: string}}
+                function receiver:accept(opts) return self, opts end
+                receiver.accept({}, {child = {label = 'ok'}})
+                receiver:accept({child = {label = 'ok'}})
+            "#;
+            assert_diagnostics(valid, &[]);
+            let mut ws = VirtualWorkspace::new();
+            assert!(ws.has_no_diagnostic(DiagnosticCode::MissingFields, valid));
+            let invalid = r#"
+                local receiver = {}
+                ---@param opts {child: {label: string}}
+                function receiver:accept(opts) return self, opts end
+                receiver.accept(receiver, {child = {}})
+                receiver:accept({child = {}})
+
+                ---@generic T
+                ---@param opts {child: T}
+                local function accept(opts) return opts end
+                accept--[[@<{label: string}>]]({child = {label = 'ok'}})
+                accept--[[@<{label: string}>]]({child = {}})
+
+                ---@param ... {label: string}
+                local function many(...) return ... end
+                many({label = 'ok'}, {})
+                pcall(many, {label = 'ok'}, {})
+                "#;
+            assert_diagnostics(
+                invalid,
+                &[
+                    DiagnosticCode::MissingFields,
+                    DiagnosticCode::MissingFields,
+                    DiagnosticCode::MissingFields,
+                    DiagnosticCode::MissingFields,
+                    DiagnosticCode::MissingFields,
+                ],
+            );
+            assert!(!ws.has_no_diagnostic(DiagnosticCode::MissingFields, invalid));
+        }
+
+        #[test]
+        fn test_nested_table_arguments_use_receiver_and_generic_bindings() {
+            assert_diagnostics(
+                r#"
+                local receiver = {}
+                ---@param opts {label: string, values?: table<integer, string>}
+                function receiver:accept(opts) return self, opts end
+                receiver.accept(receiver, {label = 'ok', values = {'ok'}})
+                receiver.accept(receiver, {label = {}})
+                receiver.accept(receiver, {label = 'ok', values = {1}})
+                receiver:accept({label = 'ok', values = {1}})
+
+                ---@generic T
+                ---@param opts {values: table<integer, T>}
+                local function accept(opts) return opts end
+                accept--[[@<string>]]({values = {'ok'}})
+                accept--[[@<string>]]({values = {1}})
+
+                ---@generic T
+                ---@param value T
+                ---@param opts {values: table<integer, T>}
+                local function inferred(value, opts) return value, opts end
+                inferred('ok', {values = {'ok'}})
+                inferred('ok', {values = {1}})
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_cross_file_record_parameters_keep_explicit_generics() {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            ws.def_file(
+                "accept.lua",
+                r#"
+                ---@generic T
+                ---@param opts {values: table<integer, T>, [integer]: T}
+                function accept(opts) return opts end
+            "#,
+            );
+            assert_workspace_diagnostics(
+                &mut ws,
+                "accept--[[@<string>]]({values = {'ok'}, 'ok'})\naccept--[[@<string>]]({values = {1}, 'ok'})\naccept--[[@<string>]]({values = {'ok'}, 1})",
+                &[(ParamTypeMismatch, 1), (ParamTypeMismatch, 2)],
+            );
+        }
+
+        #[test]
+        fn test_record_unions_and_overloads_accept_a_complete_alternative() {
+            assert_diagnostics(
+                r#"
+                ---@alias Options {values: table<integer, string>}|{values: table<integer, integer>}
+                ---@param opts Options
+                local function accept(opts) return opts end
+                accept({values = {'ok'}})
+                accept({values = {1}})
+                accept({values = {true}})
+                ---@type Options
+                local valid = {values = {1}}
+                ---@type Options
+                local invalid = {values = {true}}
+
+                ---@param opts {values: table<integer, string>}
+                ---@param mode string
+                ---@overload fun(opts: {values: table<integer, integer>}, mode: integer)
+                local function overloaded(opts, mode) return opts, mode end
+                overloaded({values = {'ok'}}, 'text')
+                overloaded({values = {1}}, 1)
+                overloaded({values = {1}}, 'text')
+                return valid, invalid
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_record_alternatives_check_class_index_values() {
+            assert_diagnostics(
+                r#"
+                ---@class Entry
+                ---@field label string
+                ---@field [integer] 'ok'
+                local _Entry = {}
+                ---@param values table<string, integer>|Entry
+                local function accept(values) return values end
+                accept({label = 'ok', 'ok'})
+                accept({label = 'ok', 1})
+                accept({label = 'ok', 'bad'})
+                ---@type table<string, Entry>
+                local valid = {child = {label = 'ok', 'ok'}}
+                ---@type table<string, Entry>
+                local invalid = {child = {label = 'ok', 1}}
+                return valid, invalid
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_parentheses_preserve_nested_dictionary_literal_checks() {
+            for value in ["{'ok'}", "({'ok'})", "(({'ok'}))"] {
+                assert_diagnostics(
+                    &format!(
+                        "---@type table<string, table<integer, string>>\nlocal value = {{child = {value}}}\nreturn value"
+                    ),
+                    &[],
+                );
+            }
+            for value in ["{1}", "({1})", "(({1}))"] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                    ---@type table<string, table<integer, string>>
+                    local value = {{child = {value}}}
+                    ---@param values table<string, table<integer, string>>
+                    local function accept(values) return values end
+                    accept({{child = {value}}})
+                    return value
+                    "#
+                    ),
+                    &[ParamTypeMismatch, AssignTypeMismatch],
+                );
+            }
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_scalar_alias_rejects_table_arguments() {
+            for value in ["{}", "{name = 1}"] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                    ---@alias A A|string
+                    ---@param value A
+                    local function accept(value) return value end
+                    accept({value})
+                    "#,
+                    ),
+                    &[ParamTypeMismatch],
+                );
+            }
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_branching_recursive_aliases_do_not_repeat_union_checks() {
+            assert_diagnostics(
+                r#"
+                ---@alias A B|C
+                ---@alias B A|string
+                ---@alias C A|table<integer, string>
+                ---@param value A
+                local function accept(value) return value end
+                accept({'ok'})
+                accept({true})
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_record_aliases_check_the_concrete_alternative() {
+            assert_diagnostics(
+                r#"
+                ---@class Entry
+                ---@field label string
+                ---@alias Record Record|Entry
+                ---@type Record
+                local valid = {label = 'ok'}
+                ---@type Record
+                local invalid = {label = 1}
+                ---@type Record
+                local missing = {}
+                return valid, invalid, missing
+                "#,
+                &[AssignTypeMismatch, DiagnosticCode::MissingFields],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_growing_recursive_aliases_check_other_alternatives() {
+            assert_diagnostics(
+                r#"
+                ---@alias Values<T> Values<T[]>|table<integer, string>
+                ---@alias Key<T> Key<T[]>|integer
+                ---@param values Values<string>
+                ---@param keyed table<Key<string>, string>
+                local function accept(values, keyed) return values, keyed end
+                accept({'ok'}, {[1] = 'ok'})
+                accept({true}, {[1] = 'ok'})
+                accept({'ok'}, {name = 'bad'})
+                accept({name = 'bad'}, {[1] = 'ok'})
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    DiagnosticCode::TypeComplexity,
+                    DiagnosticCode::TypeComplexity,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_resolve_constant_expression_keys() {
+            let source = r#"
+                local key = 'text'
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                accept({[key] = 'ok'})
+                pcall(accept, {[key] = 'ok'})
+                ---@type {text: string}
+                local value = {[key] = 'ok'}
+                value = {[key] = 'updated'}
+                accept(value)
+                return value
+            "#;
+            assert_diagnostics(source, &[]);
+            assert_diagnostics(
+                &format!("---@diagnostic disable: missing-fields\n{source}"),
+                &[],
+            );
+            assert_diagnostics(
+                r#"
+                local key = 'text'
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                accept({[key] = 1})
+                ---@type {text: string}
+                local value = {[key] = 1}
+                return value
+                "#,
+                &[ParamTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_allow_absent_nullable_alias_fields() {
+            assert_diagnostics(
+                r#"
+                ---@alias OptionalText string|nil
+                ---@param opts {text: OptionalText}
+                local function accept(opts) return opts end
+                accept({})
+                pcall(accept, {})
+                ---@type {text: OptionalText}
+                local value = {}
+                value = {}
+                accept({text = 1})
+                ---@type {text: OptionalText}
+                local invalid = {text = 1}
+                ---@type {text: string}
+                local missing = {}
+                return value, invalid, missing
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    AssignTypeMismatch,
+                    DiagnosticCode::MissingFields,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_constructor_keys_use_the_first_call_result() {
+            assert_diagnostics(
+                r#"
+                ---@return 'text', integer
+                local function name() return 'text', 1 end
+                local function index() return 1.0, 'unused' end
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                accept({[name()] = 'ok'})
+                ---@type {text: string}
+                local record = {[name()] = 'ok'}
+                ---@type table<integer, string>
+                local dictionary = {[index()] = 'ok'}
+                ---@type table<integer, string>
+                local invalid = {[index()] = false}
+                return record, dictionary, invalid
+                "#,
+                &[AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_resolve_integral_float_keys() {
+            assert_diagnostics(
+                r#"
+                local key = 1.0
+                ---@class NumericRecord
+                ---@field [1] string
+                ---@type NumericRecord
+                local named = {[key] = 'ok'}
+                ---@type {[1]: string}
+                local record = {[key] = 'ok'}
+                ---@type {[1]: string}
+                local invalid = {[key] = false}
+                return named, record, invalid
+                "#,
+                &[AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_required_record_fields_include_final_call_results() {
+            assert_diagnostics(
+                r#"
+                local function pair() return 'ok', 1 end
+                ---@class Pair
+                ---@field [1] string
+                ---@field [2] integer
+                ---@type Pair
+                local named = {pair()}
+                ---@type {[1]: string, [2]: integer}
+                local record = {pair()}
+                ---@param opts {[1]: string, [2]: integer}
+                local function accept(opts) return opts end
+                accept({pair()})
+                accept({pair(), false})
+                ---@type {[1]: string, [2]: integer}
+                local missing = {(pair())}
+                return named, record, missing
+                "#,
+                &[ParamTypeMismatch, DiagnosticCode::MissingFields],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_ignore_overwritten_nested_values() {
+            for constructor in [
+                "{item = {}, [key] = {required = 'ok'}}",
+                "({item = {}, [key] = ({required = 'ok'})})",
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        "local key = 'item'\n---@param opts {{item: {{required: string}}}}\nlocal function accept(opts) return opts end\naccept({constructor})\npcall(accept, {constructor})\n---@type {{item: {{required: string}}}}\nlocal value = {constructor}\nreturn value"
+                    ),
+                    &[],
+                );
+            }
+        }
+
+        #[test]
+        fn test_record_references_include_fields_added_during_construction() {
+            for target in ["{text: string}", "{text: 'ok'}", "Record"] {
+                for initial in ["{}", "{text = 'initial'}"] {
+                    assert_diagnostics(
+                        &format!(
+                            "---@class Record\n---@field text string\nlocal _Record = {{}}\nlocal value = {initial}\nvalue.text = 'ok'\n---@param opts {target}\nlocal function accept(opts) return opts end\naccept(value)\npcall(accept, value)\n---@type {target}\nlocal copy = value\nreturn copy"
+                        ),
+                        if target == "{text: 'ok'}" {
+                            &[ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch]
+                        } else {
+                            &[]
+                        },
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn test_optional_field_flow_does_not_make_the_record_field_required() {
+            assert_diagnostics(
+                r#"
+                ---@param text string
+                local function text(text) return text end
+                ---@param record {text: string}
+                local function record(record) return record end
+
+                ---@return {text: string}
+                local function run()
+                    ---@type {text?: string}
+                    local value = {}
+                    value.text = 'hello'
+                    text(value.text)
+                    record({text = value.text})
+                    pcall(record, {text = value.text})
+                    ---@type {text: string}
+                    local _complete = {text = value.text}
+                    record(value)
+                    pcall(record, value)
+                    ---@type {text: string}
+                    local _copy = value
+                    return value
+                end
+                return run
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    DiagnosticCode::ReturnTypeMismatch,
+                    AssignTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_inferred_fields_use_stable_types_for_whole_table_checks() {
+            for target in ["{text: 'ok'}", "table<string, 'ok'>"] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@param opts {target}
+                        local function accept(opts) return opts end
+                        ---@param text 'ok'
+                        local function literal(text) return text end
+                        accept({{text = 'ok'}})
+                        local value = {{text = 'ok'}}
+                        literal(value.text)
+                        accept({{text = value.text}})
+                        accept(value)
+                        pcall(accept, value)
+                        ---@type {target}
+                        local before = value
+                        value.text = 'bad'
+                        accept(value)
+                        pcall(accept, value)
+                        ---@type {target}
+                        local after = value
+                        return before, after
+                        "#
+                    ),
+                    &[
+                        ParamTypeMismatch,
+                        ParamTypeMismatch,
+                        ParamTypeMismatch,
+                        ParamTypeMismatch,
+                        AssignTypeMismatch,
+                        AssignTypeMismatch,
+                    ],
+                );
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@param opts {target}
+                        local function accept(opts) return opts end
+                        ---@type {target}
+                        local value = {{text = 'ok'}}
+                        accept(value)
+                        return value
+                        "#
+                    ),
+                    &[],
+                );
+            }
+        }
+
+        #[test]
+        fn test_whole_table_assignment_updates_the_variable_flow_type() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                local value = {text = 'initial'}
+                value = {text = 1}
+                accept(value)
+                return value
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_conditional_construction_preserves_existing_contracts_and_adds_optional_fields() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                ---@param condition boolean
+                local function run(condition)
+                    local value = {text = 'ok'}
+                    accept(value)
+                    if condition then value.text = nil end
+                    accept(value)
+                    return value
+                end
+                return run
+                "#,
+                &[AssignTypeMismatch],
+            );
+            assert_diagnostics(
+                r#"
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                ---@param condition boolean
+                local function run(condition)
+                    local value = {}
+                    if condition then value.text = 'ok' end
+                    accept(value)
+                    return value
+                end
+                return run
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_record_references_use_metatable_members() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                local valid = setmetatable({}, {__index = {text = 'ok'}})
+                accept(valid)
+                pcall(accept, valid)
+                ---@type {text: string}
+                local copy = valid
+                local invalid = setmetatable({}, {__index = {text = 1}})
+                accept(invalid)
+                pcall(accept, invalid)
+                ---@type {text: string}
+                local wrong = invalid
+                return copy, wrong
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_inline_metatables_supply_record_fields() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {text: string}
+                local function accept(opts) return opts end
+                accept(setmetatable({}, {__index = {text = 'ok'}}))
+                pcall(accept, setmetatable({}, {__index = {text = 'ok'}}))
+                ---@type {text: string}
+                local copy = (setmetatable({}, {__index = {text = 'ok'}}))
+                ---@type {item: {text: string}}
+                local nested = {item = setmetatable({}, {__index = {text = 'ok'}})}
+                ---@return {text: string}
+                local function make()
+                    return setmetatable({}, {__index = {text = 'ok'}})
+                end
+                accept(setmetatable({}, {__index = {text = 1}}))
+                ---@type {text: string}
+                local wrong = setmetatable({}, {__index = {text = 1}})
+                return copy, nested, make, wrong
+                "#,
+                &[ParamTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_check_values_before_later_writes() {
+            assert_diagnostics(
+                r#"
+                ---@diagnostic disable: missing-fields
+                ---@type {text: string}
+                local later = {}
+                later.text = 'ok'
+
+                local key = 'text'
+                ---@type {text: string}
+                local overwritten = {text = 'ok', [key] = 1}
+                return later, overwritten
+                "#,
+                &[AssignTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_keep_absent_return_alternatives() {
+            assert_diagnostics(
+                r#"
+                local function pair(full)
+                    if full then return 'ok', 1 end
+                    return 'ok'
+                end
+                ---@param opts {[1]: string, [2]: integer?}
+                local function optional(opts) return opts end
+                ---@param opts {[1]: string, [2]: integer}
+                local function required(opts) return opts end
+                optional({pair(true)})
+                required({pair(true)})
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_absent_fields_require_nullable_intersection_components() {
+            assert_diagnostics(
+                r#"
+                ---@alias OptionalText (string|nil)&(integer|nil)
+                ---@alias RequiredText (string|nil)&integer
+
+                ---@class OptionalRecord
+                ---@field text OptionalText
+
+                ---@type OptionalRecord
+                local named = {}
+                ---@type {text: OptionalText}
+                local record = {}
+                ---@param opts {text: OptionalText}
+                local function accept(opts) return opts end
+                accept({})
+                ---@type {text: RequiredText}
+                local missing = {}
+                return named, record, missing
+                "#,
+                &[DiagnosticCode::MissingFields],
+            );
+        }
+
+        #[test]
+        fn test_record_fields_distinguish_optional_and_required_values() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {label?: string, values?: table<string, string>}
+                local function optional(opts) return opts end
+                ---@type table<string, string>?
+                local values
+                optional({})
+                optional({label = nil, values = nil})
+                optional({values = values})
+                optional({values = {name = 'ok'}})
+                optional({values = {name = 1}})
+
+                ---@param opts {label: string, values: table<string, string>}
+                local function required(opts) return opts end
+                required({label = 'ok', values = {}})
+                required({label = nil, values = {}})
+                required({label = 'ok', values = nil})
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_object_index_signatures_allow_nil_entries() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {values: table<string, string>, [string]: string}
+                local function accept(opts) return opts end
+                accept({values = {}, label = nil})
+                "#,
+                &[],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_records_require_declared_fields() {
+            for (target, valid, missing) in [
+                (
+                    "{label: string, values: table<integer, string>}",
+                    "{label = 'ok', values = {'ok'}}",
+                    "{values = {'ok'}}",
+                ),
+                (
+                    "{child: {label: string}, values: table<integer, string>}",
+                    "{child = {label = 'ok'}, values = {'ok'}}",
+                    "{child = {}, values = {'ok'}}",
+                ),
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@param opts {target}
+                        local function accept(opts) return opts end
+                        accept({valid})
+                        accept({missing})
+                    "#
+                    ),
+                    &[DiagnosticCode::MissingFields],
+                );
+            }
+        }
+
+        #[test]
+        fn test_generic_dictionary_records_preserve_optional_fields() {
+            for alias in [
+                "Options<T> {label: string, values?: table<string, T>}",
+                "Options<T> T extends string and {label: string, values?: table<string, T>} or never",
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@alias {alias}
+                        ---@param opts Options<string>
+                        local function accept(opts) return opts end
+                        accept({{label = 'ok'}})
+                        accept({{label = 'ok', values = {{name = 'ok'}}}})
+                        accept({{values = {{name = 'ok'}}}})
+                        accept({{label = 'ok', values = {{name = 1}}}})
+                    "#
+                    ),
+                    &[DiagnosticCode::MissingFields, ParamTypeMismatch],
+                );
+            }
+        }
+
+        #[test]
+        fn test_dictionary_union_checks_named_records() {
+            assert_diagnostics(
+                r#"
+                ---@class Record
+                ---@field name string
+                local _Record = {}
+
+                ---@param values table<integer, string>|Record
+                local function accept(values) return values end
+                accept({'a'})
+                accept({name = 'a'})
+                accept({name = 1})
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_checks_each_variadic_argument() {
+            assert_diagnostics(
+                r#"
+                ---@param ... table<integer, string>
+                local function accept(...) return ... end
+                accept({'a'}, {'b'})
+                accept({'a'}, {name = 'b'})
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_dictionary_keeps_checking_other_fields() {
+            assert_diagnostics(
+                r#"
+                ---@alias Tree table<string, string|Tree>
+                local root = {}
+                root.child = root
+                ---@param values Tree
+                local function accept(values) return values end
+                accept({child = root, label = 'ok'})
+                accept({child = root, label = 1})
+                accept({child = {label = 'ok'}})
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_values_can_call_generic_functions() {
+            assert_diagnostics(
+                r#"
+                ---@generic T
+                ---@param _seed T
+                ---@param values table<string, T>
+                ---@return table<string, T>
+                local function identity(_seed, values) return values end
+                ---@type table<string, table<string, string>>
+                local valid = {child = identity('ok', {label = 'ok'})}
+                ---@type table<string, table<string, string>>
+                local invalid = {child = identity(1, {label = 1})}
+                return valid, invalid
+                "#,
+                &[AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_calls_use_explicit_and_inferred_generics() {
+            assert_diagnostics(
+                r#"
+                ---@generic T
+                ---@param values table<integer, T>
+                local function explicit(values) return values end
+                explicit--[[@<integer>]]({1})
+                explicit--[[@<integer>]]({'a'})
+
+                ---@generic T
+                ---@param seed T
+                ---@param values table<integer, T>
+                local function inferred(seed, values) return seed, values end
+                inferred(1, {2})
+                inferred(1, {'a'})
+                inferred--[[@<integer>]](1, {2})
+                inferred--[[@<integer>]](1, {'a'})
+
+                ---@generic T
+                ---@param value T
+                ---@param other T
+                local function same(value, other) return value, other end
+                same({}, {})
+                same({}, 1)
+                "#,
+                &[
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                    ParamTypeMismatch,
+                ],
+            );
+        }
+
+        #[test]
+        fn test_generic_class_arguments_preserve_field_constraints() {
+            for (target, valid, invalid) in [
+                ("Box<T>", "{value = 1}", "{value = 1, extra = true}"),
+                ("Box<T>|nil", "{value = 1}", "{value = 1, extra = true}"),
+                ("Dict<T>", "{1}", "{name = 1}"),
+                ("Dict<T>|nil", "{1}", "{name = 1}"),
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@class Box<T>
+                        ---@field value T
+                        local _Box = {{}}
+                        ---@class Dict<T>
+                        ---@field [integer] T
+                        local _Dict = {{}}
+
+                        ---@generic T
+                        ---@param values {target}
+                        local function accept(values) return values end
+                        accept({valid})
+                        accept({invalid})
+                        pcall(accept, {valid})
+                        pcall(accept, {invalid})
+                        "#
+                    ),
+                    &[DiagnosticCode::InjectField, DiagnosticCode::InjectField],
+                );
+            }
+        }
+
+        #[test]
+        fn test_generic_table_overload_requires_the_whole_call_to_match() {
+            assert_diagnostics(
+                r#"
+                ---@param values table<integer, string>
+                ---@param mode string
+                ---@overload fun(values: table<string, integer>, mode: integer)
+                local function accept(values, mode) return values, mode end
+                accept({'a'}, 'a')
+                accept({count = 1}, 1)
+                accept({count = 1}, 'a')
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_generic_table_method_arguments_use_the_declared_parameter() {
+            assert_diagnostics(
+                r#"
+                local receiver = {}
+                ---@param values table<integer, string>
+                function receiver:accept(values) return self, values end
+                receiver:accept({'a'})
+                receiver.accept(receiver, {'a'})
+                receiver.accept(receiver, {name = 'a'})
+                receiver:accept({1})
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_generic_aliases_preserve_table_constraints() {
+            for (alias, target, valid, wrong_value, wrong_key) in [
+                (
+                    "Values<T> table<integer, T>",
+                    "Values<string>",
+                    "{'ok'}",
+                    "{true}",
+                    "{name = 'bad'}",
+                ),
+                (
+                    "Values<T> table<integer, T>",
+                    "table<string, Values<string>>",
+                    "{items = {'a'}}",
+                    "{items = {1}}",
+                    "{items = {name = 'a'}}",
+                ),
+                (
+                    "Identity<T> T",
+                    "Identity<Identity<table<integer, string>>>",
+                    "{'ok'}",
+                    "{true}",
+                    "{name = 'bad'}",
+                ),
+                (
+                    "Values<T> T extends string and table<integer, T> or table<string, T>",
+                    "Values<string>",
+                    "{'ok'}",
+                    "{true}",
+                    "{name = 'bad'}",
+                ),
+                (
+                    "Options<T> {[K in 'values']: table<integer, T>}",
+                    "Options<string>",
+                    "{values = {'ok'}}",
+                    "{values = {true}}",
+                    "{values = {name = 'bad'}}",
+                ),
+                (
+                    "Options<T> {[K in 'values']?: table<integer, T>}",
+                    "Options<string>",
+                    "{}",
+                    "{values = {true}}",
+                    "{values = {name = 'bad'}}",
+                ),
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                    ---@alias {alias}
+                    ---@type {target}
+                    local _valid = {valid}
+                    ---@type {target}
+                    local _wrong_value = {wrong_value}
+                    ---@type {target}
+                    local _wrong_key = {wrong_key}
+                    ---@param values {target}
+                    local function accept(values) return values end
+                    accept({valid})
+                    accept({wrong_value})
+                    accept({wrong_key})
+                "#
+                    ),
+                    &[
+                        ParamTypeMismatch,
+                        ParamTypeMismatch,
+                        AssignTypeMismatch,
+                        AssignTypeMismatch,
+                    ],
+                );
+            }
+        }
+
+        #[test]
+        fn test_table_alternatives_must_accept_the_whole_literal() {
+            for target in [
+                "Values",
+                "table<integer, string>|table<integer, integer>",
+                "table<integer, integer>|table<integer, string>",
+                "table<integer, string>|integer[]",
+                "integer[]|table<integer, string>",
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                        ---@alias Values table<integer, string>|table<integer, integer>
+                        ---@type {target}
+                        local strings = {{'a'}}
+                        ---@type {target}
+                        local numbers = {{1}}
+                        ---@type {target}
+                        local mixed = {{'a', 1}}
+                        ---@param values {target}
+                        local function accept(values) return values end
+                        accept({{'a'}})
+                        accept({{1}})
+                        accept({{'a', 1}})
+                        return strings, numbers, mixed
+                        "#
+                    ),
+                    &[ParamTypeMismatch, AssignTypeMismatch],
+                );
+            }
+            assert_diagnostics(
+                r#"
+                ---@param values table<integer, integer>
+                ---@overload fun(values: table<integer, string>)
+                local function overloaded(values) return values end
+                overloaded({'a'})
+                overloaded({1, 'a'})
+                ---@param values table<integer, table<integer, integer>|table<integer, string>>
+                local function nested(values) return values end
+                nested({{'a'}})
+                nested({{1, 'a'}})
+                "#,
+                &[ParamTypeMismatch, ParamTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_dictionary_constructors_check_keys_and_values() {
+            for (target, valid, invalid) in [
+                ("table<integer, string>", "{}", "{name = 'a'}"),
+                ("table<integer, string>", "{'a'}", "{1}"),
+                ("table<integer, string>", "{nil}", "{[1.5] = 'a'}"),
+                (
+                    "table<integer, string>",
+                    "{[1.0] = 'a', [-1.0] = 'b', [(-2e0)] = 'c'}",
+                    "{[1.5] = 'a'}",
+                ),
+                ("table<integer, string>", "{[-1.0] = 'a'}", "{[-1.5] = 'a'}"),
+                ("table<number, string>", "{[1.5] = 'a'}", "{name = 'a'}"),
+                (
+                    "table<'allowed', string>",
+                    "{allowed = 'a'}",
+                    "{other = 'a'}",
+                ),
+                ("table<1, string>", "{[1.0] = 'a'}", "{[2] = 'a'}"),
+                (
+                    "table<'left'|'right', string>",
+                    "{right = 'a'}",
+                    "{other = 'a'}",
+                ),
+                (
+                    "table<integer, table<integer, string>>",
+                    "{{'a'}}",
+                    "{{name = 'a'}}",
+                ),
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                    ---@param values {target}
+                    local function accept(values) return values end
+                    accept({valid})
+                    accept({invalid})
+                    ---@type {target}
+                    local valid = {valid}
+                    ---@type {target}
+                    local invalid = {invalid}
+                    return valid, invalid
+                "#
+                    ),
+                    &[ParamTypeMismatch, AssignTypeMismatch],
+                );
+            }
+        }
+
+        #[test]
+        fn test_dictionary_literal_keys_require_known_values() {
+            assert_diagnostics(
+                r#"
+                ---@param name string
+                ---@param index integer
+                ---@param known 'left'|'right'
+                local function build(name, index, known)
+                    ---@type table<'left'|'right', string>
+                    local valid = {[known] = 'ok'}
+                    ---@type table<'left'|'right', string>
+                    local invalid_name = {[name] = 'bad'}
+                    ---@type table<1, string>
+                    local invalid_index = {[index] = 'bad'}
+                    return valid, invalid_name, invalid_index
+                end
+                return build
+                "#,
+                &[AssignTypeMismatch, AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        fn test_every_member_of_a_value_union_must_be_assignable() {
+            assert_diagnostics(
+                r#"
+                ---@alias Label 'left'|'right'
+                ---@param label Label
+                ---@param mixed integer|string
+                local function accept(label, mixed)
+                    ---@type table<integer, string>
+                    local valid = {label}
+                    ---@type table<integer, string>
+                    local invalid = {mixed}
+                    return valid, invalid
+                end
+                accept('left', 1)
+            "#,
+                &[AssignTypeMismatch],
+            );
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_recursive_literals_check_deep_leaves() {
+            for (depth, leaf, expected) in [
+                (20, "{label = 'ok'}", &[][..]),
+                (20, "{label = true}", &[ParamTypeMismatch][..]),
+                (120, "{label = 'ok'}", &[][..]),
+                (120, "{label = true}", &[ParamTypeMismatch][..]),
+            ] {
+                let nested = format!("{}{}{}", "{child = ".repeat(depth), leaf, "}".repeat(depth));
+                assert_diagnostics(
+                    &format!(
+                        r#"
+                    ---@alias Tree<T> table<string, string|Tree<T[]>>
+                    ---@param values Tree<string>
+                    local function accept(values) return values end
+                    accept({nested})
+                "#
+                    ),
+                    expected,
+                );
+            }
+        }
+
+        #[test]
+        #[ntest::timeout(10000)]
+        fn test_cyclic_modules_do_not_reopen_tables_or_hide_other_errors() {
+            for (alias, target) in [
+                ("Tree table<string, string|Tree>", "Tree"),
+                ("Tree<T> table<string, string|Tree<T[]>>", "Tree<string>"),
+            ] {
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                ws.def_files(vec![
+                    ("a.lua", "return {child = require('b')}"),
+                    ("b.lua", "return {child = require('a')}"),
+                    ("valid.lua", "return {label = 'ok'}"),
+                    ("invalid.lua", "return false"),
+                ]);
+                assert_workspace_diagnostics(
+                    &mut ws,
+                    &format!(
+                        r#"
+                    ---@alias {alias}
+                    ---@param values {target}
+                    local function accept(values) return values end
+                    local child = require('a')
+                    accept({{child = child, label = 'ok'}})
+                    accept({{child = child, label = 1}})
+                    accept({{child = child, label = 'ok'}})
+                    accept({{child = require('valid')}})
+                    accept({{child = require('invalid')}})
+                "#
+                    ),
+                    &[(ParamTypeMismatch, 6), (ParamTypeMismatch, 9)],
+                );
+            }
+        }
+
+        #[test]
+        fn test_standard_table_declaration_keeps_dictionary_permissions() {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            assert_workspace_diagnostics(
+                &mut ws,
+                r#"
+                ---@param values table<any, any>
+                local function any_keys(values) return values end
+                any_keys({'reset', 'file.txt'})
+                any_keys({command = 'reset', [true] = 1})
+                ---@param values table<integer, string>
+                local function integer_keys(values) return values end
+                integer_keys({'ok'})
+                integer_keys({name = 'bad'})
+                integer_keys({1})
+            "#,
+                &[(ParamTypeMismatch, 8), (ParamTypeMismatch, 9)],
+            );
+        }
+    }
+
     #[test]
     fn test_table_literal_integral_float_keys() {
         let diagnostics = check_source(
@@ -19,6 +1708,9 @@ mod test {
             ---@field [9223372036854774784] integer
             ---@type LargeNumeric
             local large = {[9223372036854774784.0] = 1}
+            ---@param value Numeric
+            local function accept(value) return value end
+            accept({[0.0] = 0, [1e0] = 1})
             return decimal, exponent, large
             "#,
         );
@@ -34,12 +1726,18 @@ mod test {
                 ---@field [{key}]? integer
                 ---@type Numeric
                 local value = {{[{key}.0] = "bad"}}
+                ---@param record Numeric
+                local function accept(record) return record end
+                accept({{[{key}.0] = "bad"}})
                 return value
                 "#,
             ));
             assert_eq!(
                 diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
-                vec![DiagnosticCode::AssignTypeMismatch],
+                vec![
+                    DiagnosticCode::ParamTypeMismatch,
+                    DiagnosticCode::AssignTypeMismatch
+                ],
                 "{key}: {diagnostics:?}"
             );
         }
@@ -504,6 +2202,35 @@ mod test {
 mod dictionary_constructor {
     use crate::{DiagnosticCode, VirtualWorkspace};
     use googletest::prelude::*;
+
+    #[test]
+    fn dictionary_constructor_rejects_wrong_entries_with_standard_library() {
+        for value in ["{name = 'a'}", "{1}"] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let source = format!(
+                r#"
+                ---@type table<integer, string>
+                local result = {value}
+                ---@param values table<integer, string>
+                local function accept(values) return values end
+                accept({value})
+                return result
+            "#
+            );
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                "{value}"
+            );
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, &source),
+                "{value}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::InjectField, &source),
+                "{value}"
+            );
+        }
+    }
 
     #[googletest::gtest]
     fn dictionary_constructor_accepts_keys_with_standard_library() {

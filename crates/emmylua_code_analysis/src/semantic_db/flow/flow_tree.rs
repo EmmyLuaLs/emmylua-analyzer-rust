@@ -92,6 +92,16 @@ impl FlowTree {
                     None => unpositioned_branch = true,
                 }
             }
+            if let Some(position) = flow_node_position(&node.kind) {
+                for effect in node_effects.get(&flow_id).into_iter().flatten() {
+                    if let FlowEffect::AssignMember { member, .. } = effect {
+                        member_assignments
+                            .entry(member.clone())
+                            .or_default()
+                            .push((position, flow_id));
+                    }
+                }
+            }
             match &node.kind {
                 FlowNodeKind::Assignment(assign_ptr) => {
                     let range = assign_ptr.get_syntax_id().get_range();
@@ -102,20 +112,11 @@ impl FlowTree {
                         .map(|v| v.as_slice())
                         .unwrap_or(&[])
                     {
-                        match effect {
-                            FlowEffect::AssignDecl { decl, .. } => {
-                                decl_assignments
-                                    .entry(decl.clone())
-                                    .or_default()
-                                    .push((assign_pos, flow_id));
-                            }
-                            FlowEffect::AssignMember { member, .. } => {
-                                member_assignments
-                                    .entry(member.clone())
-                                    .or_default()
-                                    .push((assign_pos, flow_id));
-                            }
-                            _ => {}
+                        if let FlowEffect::AssignDecl { decl, .. } = effect {
+                            decl_assignments
+                                .entry(decl.clone())
+                                .or_default()
+                                .push((assign_pos, flow_id));
                         }
                     }
                 }

@@ -598,13 +598,27 @@ impl<'db> SemanticModel<'db> {
         per_decl.into_iter().flatten().collect()
     }
 
-    /// Public unified candidates for call rendering (signature help / completion / hover).
+    /// All callable candidates for call checks and rendering, before argument matching.
     ///
     /// Combines the diagnostic candidate path (member `CallableCandidateSet`,
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
-        let mut out = callable_candidates_uncached(self, callee);
+        // An explicit callable contract takes priority over implementation docs.
+        if let LuaExpr::NameExpr(name_expr) = callee
+            && let Some(SemanticId::Decl(key)) = self.resolve_name(name_expr.get_position())
+            && let Some(syntax) = self
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.decl_by_id(&SemanticId::Decl(key.clone())))
+                .and_then(|decl| decl.doc_type_syntax)
+        {
+            let declared = self.doc_type_lua_rich_in(key.file_id, syntax);
+            let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+            if !candidates.is_empty() {
+                return candidates;
+            }
+        }
+        let mut out = self.callable_candidates_cached(callee);
         // The diagnostic path may only project the callee value type; append the
         // full signature candidates (main + `---@overload`) for name callees.
         if let LuaExpr::NameExpr(name_expr) = callee
@@ -665,7 +679,7 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
             };
         };
-        let candidates = self.callable_candidates_cached(&callee);
+        let candidates = self.callable_candidates_for_expr(&callee);
         if candidates.is_empty() {
             return CallSiteAnalysis {
                 candidates,

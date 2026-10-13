@@ -1,5 +1,9 @@
 //! # flow — flow-sensitive type queries (consumes FlowTree)
 //!
+//! Feature contract: `docs/emmylua_code_analysis/flow-typing.md` in the repository root.
+//! Stable declared or inferred types govern writes and whole-table checks;
+//! field flow refines reads without rebuilding the containing table type.
+//!
 //! M0: flow-aware declaration/member type queries:
 //! From the CFG node of the statement at `offset`, backtrack along antecedents;
 //! take the RHS type of the target's most recent assignment, or the declared initial type.
@@ -164,8 +168,15 @@ pub fn type_of_member_at_flow_id(
     };
     let mut visited = HashSet::new();
     let mut path = PathState::default();
-    trace_member(model, member, None, &tree, start, &mut visited, &mut path)
-        .unwrap_or_else(fallback)
+    trace_member(
+        model,
+        MemberQuery::read(member, None, None),
+        &tree,
+        start,
+        &mut visited,
+        &mut path,
+    )
+    .unwrap_or_else(fallback)
 }
 
 /// Target type for assignment checks: apply `---@cast x +T` and exclude this assignment, but **do not apply branch narrowing** —
@@ -299,33 +310,68 @@ fn apply_field_nullable(model: &SemanticModel, member: &SemanticId, ty: LuaType)
 /// Flow-sensitive type of the member at `offset` (member assignment flow + `---@cast t.x +T` widening).
 /// Same as `type_of_decl_at`: exclude this assignment when `offset` lies on `t.x = value`.
 pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: TextSize) -> LuaType {
-    let fallback = || flow_member_value_type(model, member).unwrap_or(LuaType::Unknown);
+    member_read_at(model, MemberQuery::read(member, None, None), offset)
+}
+
+fn member_read_at(model: &SemanticModel, query: MemberQuery<'_>, offset: TextSize) -> LuaType {
+    let member = query.member;
+    let fallback = || query.initial_type(model).unwrap_or(LuaType::Unknown);
     let Some(tree) = model.flow_tree() else {
         return fallback();
     };
     let Some(flow_id) = tree.get_flow_id_at(offset) else {
         return fallback();
     };
-    let start = skip_own_member_assign(member, &tree, flow_id, offset);
+    let start = skip_current_assignment(&tree, flow_id, offset);
     // Start directly at the latest assignment of this member when no flow event
     // (condition/cast/merge) sits between it and the query. This turns repeated
     // `M.x` reads in long straight-line files from O(offset) into O(1).
     if start == flow_id && !tree.has_complex_control() {
-        let latest = tree.latest_member_assignment(member, offset);
+        let mut latest = tree.latest_member_assignment(member, offset);
+        if let Some(index) = query.access
+            && let Some(LuaExpr::NameExpr(name)) = index.get_prefix_expr()
+            && let Some(owner) = model.resolve_name(name.get_position())
+            && let Some(facts) = model.file_facts()
+        {
+            // Runtime assignments to the same field can have different member IDs.
+            let key = member_key_from_index_expr(model, index).unwrap_or(LuaMemberKey::None);
+            for candidate in facts
+                .members_of_owner_with_key(&owner, &key)
+                .chain(facts.members_of_owner_with_key(&owner, &LuaMemberKey::None))
+            {
+                if let Some(assignment) = tree.latest_member_assignment(&candidate.id, offset)
+                    && latest.is_none_or(|latest| assignment.0 > latest.0)
+                {
+                    latest = Some(assignment);
+                }
+            }
+            if tree
+                .latest_decl_assignment(&owner, offset)
+                .is_some_and(|(position, _)| latest.is_none_or(|latest| position > latest.0))
+            {
+                return trace_member(
+                    model,
+                    query,
+                    &tree,
+                    start,
+                    &mut HashSet::new(),
+                    &mut PathState::default(),
+                )
+                .unwrap_or_else(fallback);
+            }
+        }
+        // RHS expressions already bind to the preceding flow node, but the
+        // position index can still find the assignment containing the read.
         if let Some((assign_pos, assign_flow)) = latest
+            && skip_current_assignment(&tree, assign_flow, offset) == assign_flow
+            && assignment_in_same_closure(model, &tree, assign_flow, offset)
             && !tree.has_flow_event_between(assign_pos, offset, false)
         {
             let mut visited = HashSet::new();
             let mut path = PathState::default();
-            if let Some(ty) = trace_member(
-                model,
-                member,
-                None,
-                &tree,
-                assign_flow,
-                &mut visited,
-                &mut path,
-            ) {
+            if let Some(ty) =
+                trace_member(model, query, &tree, assign_flow, &mut visited, &mut path)
+            {
                 #[cfg(test)]
                 flow_metrics::record_fast_member_hit();
                 return ty;
@@ -336,17 +382,44 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
     }
     let mut visited = HashSet::new();
     let mut path = PathState::default();
-    trace_member(model, member, None, &tree, start, &mut visited, &mut path)
-        .unwrap_or_else(fallback)
+    trace_member(model, query, &tree, start, &mut visited, &mut path).unwrap_or_else(fallback)
 }
 
-/// Skip this assignment only when `offset` is inside the `t.x = value` assignment and that node assigns this member.
-pub(crate) fn skip_own_member_assign(
-    member: &SemanticId,
+/// Source order only describes execution order within one function body.
+fn assignment_in_same_closure(
+    model: &SemanticModel,
     tree: &FlowTree,
     flow_id: FlowId,
     offset: TextSize,
-) -> FlowId {
+) -> bool {
+    let Some(node) = tree.get_flow_node(flow_id) else {
+        return false;
+    };
+    let syntax = match &node.kind {
+        FlowNodeKind::Assignment(ptr) => ptr.get_syntax_id(),
+        FlowNodeKind::ImplFunc(ptr) => ptr.get_syntax_id(),
+        _ => return false,
+    };
+    let Some(tree) = model.syntax_tree() else {
+        return false;
+    };
+    let root = tree.get_red_root();
+    let Some(assignment) = syntax.to_node_from_root(&root) else {
+        return false;
+    };
+    let read = root.covering_element(rowan::TextRange::empty(offset));
+    let read = match read {
+        rowan::NodeOrToken::Node(node) => node,
+        rowan::NodeOrToken::Token(token) => match token.parent() {
+            Some(node) => node,
+            None => return false,
+        },
+    };
+    LuaClosureId::from_node(&assignment) == LuaClosureId::from_node(&read)
+}
+
+/// Every RHS reads the state before any target in its assignment is written.
+fn skip_current_assignment(tree: &FlowTree, flow_id: FlowId, offset: TextSize) -> FlowId {
     let Some(node) = tree.get_flow_node(flow_id) else {
         return flow_id;
     };
@@ -356,10 +429,7 @@ pub(crate) fn skip_own_member_assign(
     if !assign_ptr.get_syntax_id().get_range().contains(offset) {
         return flow_id;
     }
-    let has_own = tree.get_flow_effects(flow_id).iter().any(|effect| {
-        matches!(effect, FlowEffect::AssignMember { member: assigned, .. } if assigned == member)
-    });
-    if has_own && let Some(next) = first_antecedent(tree, node.antecedent.as_ref()) {
+    if let Some(next) = first_antecedent(tree, node.antecedent.as_ref()) {
         return next;
     }
     flow_id
@@ -428,14 +498,185 @@ pub fn type_of_member_before_at(
     let mut path = PathState::default();
     walk_member(
         model,
-        member,
-        None,
+        MemberQuery::read(member, None, None),
         &tree,
         node.antecedent.as_ref(),
         &mut visited,
         &mut path,
     )
     .unwrap_or_else(fallback)
+}
+
+/// Refine an already evaluated index value. Both expression queries and VM
+/// calls use this operation; it never infers the enclosing index expression.
+pub(crate) fn index_read_type(
+    model: &SemanticModel,
+    index_expr: &emmylua_parser::LuaIndexExpr,
+    offset: TextSize,
+    base: LuaType,
+    construction: Option<&super::table_construction::Access<'_, '_>>,
+) -> LuaType {
+    let apply_casts = |base, mode| apply_expr_casts_to_node(model, index_expr.syntax(), base, mode);
+    if let Some(ty) = array::last_element_type(model, index_expr, offset) {
+        return apply_casts(ty, All);
+    }
+    let resolved = model.resolve_member(index_expr);
+    let member_id = if let Some(construction) = construction {
+        let source = construction.member_id();
+        if source.is_some() || !construction.has_exact_key() {
+            // Trace the accessed member, not the source expression: a multiple
+            // assignment can supply several fields from the same expression.
+            resolved
+                .as_ref()
+                .and_then(|resolved| resolved.member_id.clone())
+                .or(source)
+        } else {
+            None
+        }
+    } else {
+        resolved
+            .as_ref()
+            .and_then(|resolved| resolved.member_id.clone())
+            .or_else(|| {
+                let prefix = index_expr.get_prefix_expr()?;
+                let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
+                if matches!(prefix_ty, LuaType::Union(_)) {
+                    return None;
+                }
+                let key = member_key_from_index_expr(model, index_expr)?;
+                model
+                    .member_infos_with_key(&prefix_ty, &key)
+                    .into_iter()
+                    .find_map(|info| info.id)
+            })
+    };
+    if let Some(member_id) = member_id {
+        let initial = construction.map(|_| &base);
+        let mut member_ty = if matches!(index_expr.get_prefix_expr(), Some(LuaExpr::NameExpr(_))) {
+            member_read_at(
+                model,
+                MemberQuery::read(&member_id, Some(index_expr), initial),
+                offset,
+            )
+        } else if let Some(flow_tree) = model.flow_tree()
+            && (flow_tree.has_condition() || flow_tree.has_complex_control())
+            && let Some(flow_id) = flow_tree.get_flow_id_at(offset)
+        {
+            trace_member(
+                model,
+                MemberQuery::read(&member_id, Some(index_expr), initial),
+                &flow_tree,
+                skip_current_assignment(&flow_tree, flow_id, offset),
+                &mut HashSet::new(),
+                &mut PathState::default(),
+            )
+            .unwrap_or_else(|| type_of_member_at(model, &member_id, offset))
+        } else {
+            type_of_member_at(model, &member_id, offset)
+        }
+        .get_result_slot_type(0)
+        .unwrap_or(LuaType::Nil);
+        // Old semantics use `LuaType::Signature` to represent the closure member's definition site;
+        // flow-sensitive member values also keep that identity, matching the VM's member access path.
+        if matches!(member_ty, LuaType::Function)
+            && let Some(member_file) = match &member_id {
+                SemanticId::Member(key) => Some(key.file_id),
+                _ => None,
+            }
+            && let Some(facts) = model.file_facts_of(member_file)
+            && let Some(member_def) = facts.member_by_id(&member_id)
+            && let Some(value_syntax) = member_def.value_syntax
+            && let Some(tree) = model.syntax_tree_of(member_file)
+            && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
+            && let Some(closure) = emmylua_parser::LuaClosureExpr::cast(node)
+        {
+            member_ty = LuaType::Signature(LuaSignatureId::from_closure(member_file, &closure));
+        }
+        let resolved_is_runtime = resolved.as_ref().is_some_and(|resolved| {
+            model
+                .file_facts_of(match &member_id {
+                    SemanticId::Member(key) => key.file_id,
+                    _ => model.file_id(),
+                })
+                .is_some_and(|facts| {
+                    facts
+                        .members_of_owner(&resolved.owner)
+                        .any(|m| m.id == member_id)
+                })
+        });
+        // Computed-key fields in table literals (`[key] = 1`) keep literal values in type queries:
+        // when a dynamic index resolves to a table initializer field, return that member type directly (including literals).
+        if resolved_is_runtime
+            && let Some(prefix) = index_expr.get_prefix_expr()
+            && let Some(emmylua_parser::LuaIndexKey::Expr(_)) = index_expr.get_index_key()
+            && let Some(member_file) = match &member_id {
+                SemanticId::Member(key) => Some(key.file_id),
+                _ => None,
+            }
+            && let Some(member_facts) = model.file_facts_of(member_file)
+            && let Some(member_def) = member_facts.member_by_id(&member_id)
+            && model.is_initializer_table_field(&member_id, member_def)
+        {
+            let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
+            if let Some(value_syntax) = member_def.value_syntax {
+                let expr_ty = model.type_of_expr(value_syntax);
+                match expr_ty {
+                    // Dynamic access to a computed key `[key] = 1` can return `integer`;
+                    // named fields still keep `number` through the existing projection.
+                    LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
+                        return apply_casts(LuaType::Integer, All);
+                    }
+                    LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
+                        return apply_casts(expr_ty, All);
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(ty) = model.member_type(&prefix_ty, &member_def.key) {
+                return apply_casts(ty, All);
+            }
+        }
+        // If the prefix was narrowed to a more specific instance/object type on the same flow path,
+        // prefer the member type projected from that type (e.g. after `a = make()`, `a.a` uses the object field).
+        if let Some(key) = member_key_from_index_expr(model, index_expr)
+            && let Some(prefix) = index_expr.get_prefix_expr()
+        {
+            let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
+            let projected = if let LuaType::TableConst(table) = &prefix_ty
+                && let Some(construction) = super::table_construction::of(model, table)
+            {
+                let syntax = (model.file_id() == table.file_id).then(|| index_expr.get_syntax_id());
+                construction
+                    .members(model, syntax, Some(&key))
+                    .into_iter()
+                    .find(|info| info.key == key)
+                    .map(|info| info.typ)
+            } else {
+                model.member_type(&prefix_ty, &key)
+            };
+            if let Some(prefix_member_ty) = projected.map(|ty| {
+                if !member_ty.is_nullable() {
+                    remove_type(ty, &LuaType::Nil)
+                } else {
+                    ty
+                }
+            }) && !matches!(prefix_member_ty, LuaType::Unknown | LuaType::Any)
+                && (member_type_more_specific(model, &prefix_member_ty, &member_ty)
+                    || matches!(&prefix_ty, LuaType::Generic(_)))
+            {
+                return apply_casts(prefix_member_ty, All);
+            }
+        }
+        let member_ty =
+            guarded_index_type(model, index_expr, offset, &member_ty).unwrap_or(member_ty);
+        return apply_casts(member_ty, AsOnly);
+    }
+    // Inside a `#d == n` branch, `d[1]` no longer carries nil when the array length is known.
+    if let Some(known_ty) = array_index_with_known_len(model, index_expr, offset) {
+        return apply_casts(known_ty, All);
+    }
+    let ty = guarded_index_type(model, index_expr, offset, &base).unwrap_or(base);
+    apply_casts(ty, All)
 }
 
 /// Evaluate one flow expression after its operands and prefix are cached.
@@ -452,172 +693,22 @@ pub(crate) fn type_of_expr_at_node(
             }
             apply_casts(model.type_of_expr_node(&expr), AsOnly)
         }
-        LuaExpr::IndexExpr(index_expr) => {
-            if let Some(ty) = array::last_element_type(model, index_expr, offset) {
-                return apply_casts(ty, All);
-            }
-            if let Some(resolved) = model.resolve_member(index_expr)
-                && let Some(member_id) = resolved.member_id.clone().or_else(|| {
-                    let prefix = index_expr.get_prefix_expr()?;
-                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
-                    if matches!(prefix_ty, LuaType::Union(_)) {
-                        return None;
-                    }
-                    let key = member_key_from_index_expr(model, index_expr)?;
-                    model
-                        .member_infos_with_key(&prefix_ty, &key)
-                        .into_iter()
-                        .find_map(|info| info.id)
-                })
-            {
-                let mut member_ty = if let Some(flow_tree) = model.flow_tree()
-                    && (flow_tree.has_condition() || flow_tree.has_complex_control())
-                    && let Some(flow_id) = flow_tree.get_flow_id_at(offset)
-                {
-                    trace_member(
-                        model,
-                        &member_id,
-                        Some(index_expr),
-                        &flow_tree,
-                        skip_own_member_assign(&member_id, &flow_tree, flow_id, offset),
-                        &mut HashSet::new(),
-                        &mut PathState::default(),
-                    )
-                    .unwrap_or_else(|| type_of_member_at(model, &member_id, offset))
-                } else {
-                    type_of_member_at(model, &member_id, offset)
-                }
-                .get_result_slot_type(0)
-                .unwrap_or(LuaType::Nil);
-                // Old semantics use `LuaType::Signature` to represent the closure member's definition site;
-                // flow-sensitive member values also keep that identity, matching the VM's member access path.
-                if matches!(member_ty, LuaType::Function)
-                    && let Some(member_file) = match &member_id {
-                        SemanticId::Member(key) => Some(key.file_id),
-                        _ => None,
-                    }
-                    && let Some(facts) = model.file_facts_of(member_file)
-                    && let Some(member_def) = facts.member_by_id(&member_id)
-                    && let Some(value_syntax) = member_def.value_syntax
-                    && let Some(tree) = model.syntax_tree_of(member_file)
-                    && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
-                    && let Some(closure) = emmylua_parser::LuaClosureExpr::cast(node)
-                {
-                    member_ty =
-                        LuaType::Signature(LuaSignatureId::from_closure(member_file, &closure));
-                }
-                let resolved_is_runtime = model
-                    .file_facts_of(match &member_id {
-                        SemanticId::Member(key) => key.file_id,
-                        _ => model.file_id(),
-                    })
-                    .is_some_and(|facts| {
-                        facts
-                            .members_of_owner(&resolved.owner)
-                            .any(|m| m.id == member_id)
-                    });
-                // Runtime member assignment flow on local variables (including method `self`) takes precedence over class declaration fields;
-                // if `resolve_member` already selected a specific runtime member (chosen by annotation/position among same-name assignments),
-                // don't re-select the first same-name member, avoiding an annotated member falling back to an earlier assignment.
-                // For declared named/generic types (`local bar: foo<{a:string}> = { a = "test" }`),
-                // even when `resolve_member` lands on a table field, use the declared type's member as authoritative.
-                if resolved_is_runtime
-                    && let Some(key) = member_key_from_index_expr(model, index_expr)
-                    && let Some(prefix) = index_expr.get_prefix_expr()
-                    && let LuaExpr::NameExpr(_) = &prefix
-                {
-                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
-                    if matches!(
-                        &prefix_ty,
-                        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_)
-                    ) && let Some(prefix_member_ty) = model.member_type(&prefix_ty, &key)
-                        && !matches!(prefix_member_ty, LuaType::Unknown)
-                    {
-                        let ty = if prefix_member_ty.is_nullable()
-                            && !member_ty.is_nullable()
-                            && member_type_more_specific(model, &member_ty, &prefix_member_ty)
-                        {
-                            remove_type(prefix_member_ty, &LuaType::Nil)
-                        } else {
-                            prefix_member_ty
-                        };
-                        return apply_casts(ty, All);
-                    }
-                }
-                // Computed-key fields in table literals (`[key] = 1`) keep literal values in type queries:
-                // when a dynamic index resolves to a table initializer field, return that member type directly (including literals).
-                if resolved_is_runtime
-                    && let Some(prefix) = index_expr.get_prefix_expr()
-                    && let Some(emmylua_parser::LuaIndexKey::Expr(_)) = index_expr.get_index_key()
-                    && let Some(member_file) = match &member_id {
-                        SemanticId::Member(key) => Some(key.file_id),
-                        _ => None,
-                    }
-                    && let Some(member_facts) = model.file_facts_of(member_file)
-                    && let Some(member_def) = member_facts.member_by_id(&member_id)
-                    && model.is_initializer_table_field(&member_id, member_def)
-                {
-                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
-                    if let Some(value_syntax) = member_def.value_syntax {
-                        let expr_ty = model.type_of_expr(value_syntax);
-                        match expr_ty {
-                            // Dynamic access to a computed key `[key] = 1` can return `integer`;
-                            // named fields still keep `number` through the existing projection.
-                            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-                                return apply_casts(LuaType::Integer, All);
-                            }
-                            LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-                                return apply_casts(expr_ty, All);
-                            }
-                            _ => {}
-                        }
-                    }
-                    if let Some(ty) = model.member_type(&prefix_ty, &member_def.key) {
-                        return apply_casts(ty, All);
-                    }
-                }
-                if let SemanticId::Decl(owner_decl) = &resolved.owner
-                    && let Some(facts) = model.file_facts_of(owner_decl.file_id)
-                {
-                    if !resolved_is_runtime
-                        && let Some(runtime_member) = facts
-                            .members_of_owner(&resolved.owner)
-                            .find(|m| m.key.name() == Some(resolved.name.as_str()))
-                        // Table fields from a declared initializer are not "runtime overrides": `local b: B = { field = 1 }`
-                        // field access is still governed by the class `@field` type, avoiding widening `integer` to `number`.
-                        && !model.is_initializer_table_field(&runtime_member.id, runtime_member)
-                    {
-                        let runtime_ty = type_of_member_at(model, &runtime_member.id, offset);
-                        if !matches!(runtime_ty, LuaType::Unknown) {
-                            return apply_casts(runtime_ty, All);
-                        }
-                    }
-                }
-                // If the prefix was narrowed to a more specific instance/object type on the same flow path,
-                // prefer the member type projected from that type (e.g. after `a = make()`, `a.a` uses the object field).
-                if let Some(key) = member_key_from_index_expr(model, index_expr)
-                    && let Some(prefix) = index_expr.get_prefix_expr()
-                {
-                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
-                    if let Some(prefix_member_ty) = model.member_type(&prefix_ty, &key)
-                        && !matches!(prefix_member_ty, LuaType::Unknown | LuaType::Any)
-                        && (member_type_more_specific(model, &prefix_member_ty, &member_ty)
-                            || matches!(&prefix_ty, LuaType::Generic(_)))
-                    {
-                        return apply_casts(prefix_member_ty, All);
-                    }
-                }
-                let member_ty =
-                    guarded_index_type(model, index_expr, offset, &member_ty).unwrap_or(member_ty);
-                return apply_casts(member_ty, AsOnly);
-            }
-            // Inside a `#d == n` branch, `d[1]` no longer carries nil when the array length is known.
-            if let Some(known_ty) = array_index_with_known_len(model, &index_expr, offset) {
-                return apply_casts(known_ty, All);
-            }
-            let ty = model.type_of_expr_node(&expr);
-            let ty = guarded_index_type(model, index_expr, offset, &ty).unwrap_or(ty);
-            apply_casts(ty, All)
+        LuaExpr::IndexExpr(index) => {
+            // Prefixes are already cached by the iterative flow traversal.
+            let construction = index.get_prefix_expr().and_then(|prefix| {
+                super::table_construction::access_with_types(
+                    model,
+                    index.get_syntax_id(),
+                    &model.type_of_expr_at(prefix.get_syntax_id(), offset),
+                    index
+                        .get_index_key()
+                        .and_then(|key| super::table_constructor::key_type(model, key).ok()),
+                )
+            });
+            let base = construction
+                .as_ref()
+                .map_or_else(|| model.type_of_expr_node(&expr), |access| access.read());
+            index_read_type(model, index, offset, base, construction.as_ref())
         }
         LuaExpr::CallExpr(_) | LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) => {
             apply_casts(model.type_of_expr_node(&expr), All)
@@ -774,7 +865,7 @@ fn guarded_index_type(
     Some(apply_narrowing(model, ty, &narrowing))
 }
 
-/// Match truthiness and direct nil comparisons without treating a non-nil boolean as a guard.
+/// Match truthiness, nil comparisons, and primitive type tests for the same access path.
 fn narrow_index_condition(
     model: &SemanticModel,
     target: &(SemanticId, Vec<LuaMemberKey>),
@@ -787,17 +878,40 @@ fn narrow_index_condition(
         let (left, right) = binary.get_exprs()?;
         let (value, literal, op) =
             literal_comparison(left, right, binary.get_op_token()?.get_op())?;
-        if literal.is_nil()
-            && matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe)
-            && branch_is_true == (op == BinaryOperator::OpNe)
-            && stable_access_path_at(model, &value, access)
-                .or_else(|| index_access_path(model, &value))
-                .as_ref()
-                == Some(target)
-        {
-            return Some(Narrowing::NotNil);
+        if !matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe) {
+            return None;
         }
-        return None;
+        let keep_matching = branch_is_true == (op == BinaryOperator::OpEq);
+        let value = match literal {
+            LuaType::Nil if !keep_matching => value,
+            LuaType::StringConst(name) | LuaType::DocStringConst(name) => {
+                let primitive = primitive_type_from_name(name.as_str())?;
+                if keep_matching == primitive.is_nil() {
+                    return None;
+                }
+                let LuaExpr::CallExpr(call) = value else {
+                    return None;
+                };
+                let LuaExpr::NameExpr(callee) = call.get_prefix_expr()? else {
+                    return None;
+                };
+                if callee.get_name_text().as_deref() != Some("type")
+                    || matches!(
+                        model.resolve_name(callee.get_position()),
+                        Some(SemanticId::Decl(key)) if !model.is_std_file(key.file_id)
+                    )
+                {
+                    return None;
+                }
+                call.get_args_list()?.get_args().next()?
+            }
+            _ => return None,
+        };
+        return (stable_access_path_at(model, &value, access)
+            .or_else(|| index_access_path(model, &value))
+            .as_ref()
+            == Some(target))
+        .then_some(Narrowing::NotNil);
     }
     (branch_is_true
         && stable_access_path_at(model, &cond, access)
@@ -1337,6 +1451,12 @@ fn apply_expr_casts_to_node(
                     }
                     if let Some(doc_type) = as_tag.get_type() {
                         ty = model.doc_type_lua(doc_type.get_syntax_id());
+                        if matches!(ty, LuaType::Table | LuaType::Unknown) {
+                            let rich = model.doc_type_lua_rich(doc_type.get_syntax_id());
+                            if !rich.is_unknown() {
+                                ty = rich;
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -1429,14 +1549,24 @@ fn member_write_match(
         return MemberWrite::Unrelated;
     };
     let key_range = assigned.and_then(SemanticId::member_key_range);
-    let Some(assign) = flow_assign_stat(model, tree, flow_id) else {
+    let vars = match tree.get_flow_node(flow_id).map(|node| &node.kind) {
+        Some(FlowNodeKind::Assignment(_)) => {
+            flow_assign_stat(model, tree, flow_id).map(|assign| assign.get_var_and_expr_list().0)
+        }
+        Some(FlowNodeKind::ImplFunc(ptr)) => model
+            .chunk()
+            .and_then(|chunk| ptr.to_node(&chunk))
+            .map(|stat| stat.get_func_name().into_iter().collect()),
+        _ => None,
+    };
+    let Some(vars) = vars else {
         return MemberWrite::Unrelated;
     };
     let target = LuaExpr::IndexExpr(access.clone());
     let Some(target_path) = index_access_path(model, &target) else {
         return MemberWrite::Unrelated;
     };
-    for var in assign.get_var_and_expr_list().0 {
+    for var in vars {
         let Some(written) = LuaExpr::cast(var.syntax().clone()) else {
             continue;
         };
@@ -1483,7 +1613,7 @@ fn path_write_affects(
 
 /// Expand initializer aliases without inferring types. Each captured member path
 /// must still identify the same object at this occurrence.
-fn stable_access_path(
+pub(super) fn stable_access_path(
     model: &SemanticModel,
     expr: &LuaExpr,
 ) -> Option<(SemanticId, Vec<LuaMemberKey>)> {
@@ -1740,7 +1870,6 @@ fn finish_decl_frames(
             frame.flow_id,
             frame.assign_pos,
             frame.value_syntax,
-            &narrowed_before,
         );
         let value_ty = coerce_table_assign_to_narrowed(
             model,
@@ -1918,7 +2047,6 @@ fn trace_decl_uncached(
                                 current,
                                 assign_pos,
                                 *value_syntax,
-                                &narrowed_before,
                             );
                             let value_ty = coerce_table_assign_to_narrowed(
                                 model,
@@ -2111,16 +2239,96 @@ fn member_annotation_type(model: &SemanticModel, member: &SemanticId) -> Option<
     Some(model.doc_type_lua_in(member_file, syntax, &[]))
 }
 
+/// Read flow and stable writes share access-path matching and cast scope.
+#[derive(Clone, Copy)]
+struct MemberQuery<'a> {
+    member: &'a SemanticId,
+    access: Option<&'a emmylua_parser::LuaIndexExpr>,
+    options: TraceOptions,
+    base: Option<&'a LuaType>,
+}
+
+impl<'a> MemberQuery<'a> {
+    fn read(
+        member: &'a SemanticId,
+        access: Option<&'a emmylua_parser::LuaIndexExpr>,
+        base: Option<&'a LuaType>,
+    ) -> Self {
+        Self {
+            member,
+            access,
+            options: TraceOptions::FLOW_READ,
+            base,
+        }
+    }
+
+    fn initial_type(self, model: &SemanticModel) -> Option<LuaType> {
+        self.base
+            .cloned()
+            .or_else(|| {
+                let index = self.access?;
+                let LuaExpr::NameExpr(name) = index.get_prefix_expr()? else {
+                    return None;
+                };
+                let decl = model.resolve_name(name.get_position())?;
+                let definition = model.file_facts()?.decl_by_id(&decl)?;
+                if definition.doc_type_syntax.is_none()
+                    && !matches!(definition.kind, crate::DeclKind::Param)
+                {
+                    return None;
+                }
+                let ty = model.type_of_decl_assign_target_at(&decl, name.get_position());
+                model.member_type(&ty, &member_key_from_index_expr(model, index)?)
+            })
+            .or_else(|| flow_member_value_type(model, self.member))
+    }
+}
+
+/// Stable field contracts accept named casts, without read guards or assignments.
+pub(super) fn index_assignment_type(
+    model: &SemanticModel,
+    index: &emmylua_parser::LuaIndexExpr,
+    base: LuaType,
+) -> LuaType {
+    let Some(tree) = model.flow_tree().filter(|tree| tree.has_tag_cast()) else {
+        return base;
+    };
+    let Some(start) = tree.get_flow_id_at(index.get_position()) else {
+        return base;
+    };
+    let member = model
+        .resolve_member(index)
+        .and_then(|resolved| resolved.member_id)
+        .unwrap_or_else(|| SemanticId::member(model.file_id(), index.get_range()));
+    let query = MemberQuery {
+        member: &member,
+        access: Some(index),
+        options: TraceOptions::ASSIGN_TARGET,
+        base: Some(&base),
+    };
+    trace_member(
+        model,
+        query,
+        &tree,
+        start,
+        &mut HashSet::new(),
+        &mut PathState::default(),
+    )
+    .unwrap_or(base)
+}
+
 /// Backtrack along the CFG for the member's most recent assignment type.
 fn trace_member(
     model: &SemanticModel,
-    member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    query: MemberQuery<'_>,
     tree: &FlowTree,
     flow_id: FlowId,
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
+    let member = query.member;
+    let access = query.access;
+    let fallback = || query.initial_type(model);
     let mut current = flow_id;
     loop {
         #[cfg(test)]
@@ -2130,67 +2338,99 @@ fn trace_member(
         }
         let node = tree.get_flow_node(current)?;
         match &node.kind {
-            FlowNodeKind::Assignment(_) => {
-                for effect in tree.get_flow_effects(current) {
-                    if let FlowEffect::AssignMember {
-                        member: assigned_member,
-                        value_syntax,
-                        ..
-                    } = effect
+            FlowNodeKind::Assignment(_) | FlowNodeKind::ImplFunc(_) => {
+                if !query.options.assignments {
+                    // Replacing a parent resets casts on its old fields. Writes to
+                    // the field itself leave its explicit assignment contract intact.
+                    if let Some(access) = access
+                        && let Some(target) =
+                            index_access_path(model, &LuaExpr::IndexExpr(access.clone()))
+                        && let Some(assign) = flow_assign_stat(model, tree, current)
+                        && assign.get_var_and_expr_list().0.iter().any(|var| {
+                            LuaExpr::cast(var.syntax().clone())
+                                .and_then(|expr| index_access_path(model, &expr))
+                                .is_some_and(|written| {
+                                    written.1.len() < target.1.len()
+                                        && path_write_affects(&written, &target.0, &target.1)
+                                })
+                        })
                     {
-                        match member_write_match(
-                            model,
-                            tree,
-                            current,
-                            member,
-                            access,
-                            Some(assigned_member),
-                        ) {
-                            MemberWrite::Unrelated => continue,
-                            MemberWrite::Invalidates => {
-                                // Replacing an owner or writing through a dynamic key removes
-                                // earlier guards, but preserves guards after this assignment.
-                                return flow_member_value_type(model, member)
-                                    .map(|ty| finalize(model, ty, path));
+                        return fallback().map(|ty| finalize(model, ty, path));
+                    }
+                } else {
+                    for effect in tree.get_flow_effects(current) {
+                        if let FlowEffect::AssignMember {
+                            member: assigned_member,
+                            value_syntax,
+                            result_slot,
+                            ..
+                        } = effect
+                        {
+                            match member_write_match(
+                                model,
+                                tree,
+                                current,
+                                member,
+                                access,
+                                Some(assigned_member),
+                            ) {
+                                MemberWrite::Unrelated => continue,
+                                MemberWrite::Invalidates => {
+                                    // Replacing an owner or writing through a dynamic key removes
+                                    // earlier guards, but preserves guards after this assignment.
+                                    return fallback().map(|ty| finalize(model, ty, path));
+                                }
+                                MemberWrite::Exact => {}
                             }
-                            MemberWrite::Exact => {}
-                        }
-                        // Member assignment overrides earlier guard narrowing; cast widening is retained.
-                        let assign_path = PathState {
-                            narrowings: Vec::new(),
-                            casts: path.casts.clone(),
-                        };
-                        let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly);
-                        if let Some(annotation) = member_annotation_type(model, member) {
-                            if model.type_check(&value_ty, &annotation) {
-                                value_ty = widen_const_type(value_ty);
-                            } else {
+                            // Member assignment overrides earlier guard narrowing; cast widening is retained.
+                            let assign_path = PathState {
+                                narrowings: Vec::new(),
+                                casts: path.casts.clone(),
+                            };
+                            let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly)
+                                .get_result_slot_type(*result_slot)
+                                .unwrap_or(LuaType::Nil);
+                            if matches!(value_ty, LuaType::Function)
+                                && let Some(closure) = model
+                                    .syntax_tree()
+                                    .and_then(|tree| {
+                                        value_syntax.to_node_from_root(&tree.get_red_root())
+                                    })
+                                    .and_then(emmylua_parser::LuaClosureExpr::cast)
+                            {
+                                value_ty = LuaType::Signature(LuaSignatureId::from_closure(
+                                    model.file_id(),
+                                    &closure,
+                                ));
+                            }
+                            if let Some(annotation) = member_annotation_type(model, member)
+                                && !model.type_check(&value_ty, &annotation)
+                            {
                                 value_ty = annotation;
                             }
+                            return Some(finalize(model, value_ty, &assign_path));
                         }
-                        return Some(finalize(model, value_ty, &assign_path));
+                    }
+                    // A dynamic-key write can lack a member ID and still replace
+                    // the guarded value or one of its owners.
+                    if member_write_match(model, tree, current, member, access, None)
+                        == MemberWrite::Invalidates
+                    {
+                        return fallback().map(|ty| finalize(model, ty, path));
                     }
                 }
-                // A dynamic-key write can lack a member ID and still replace
-                // the guarded value or one of its owners.
-                if member_write_match(model, tree, current, member, access, None)
-                    == MemberWrite::Invalidates
-                {
-                    return flow_member_value_type(model, member)
-                        .map(|ty| finalize(model, ty, path));
-                }
             }
-            FlowNodeKind::TagCast(cast_ptr) => {
-                collect_member_cast(model, member, cast_ptr, path);
+            FlowNodeKind::TagCast(cast_ptr) if query.options.casts => {
+                collect_member_cast(model, member, access, cast_ptr, path);
             }
-            FlowNodeKind::TrueCondition(cond_ptr) => {
+            FlowNodeKind::TrueCondition(cond_ptr) if query.options.guards => {
                 if let Some(narrowing) =
                     narrow_member_condition(model, member, access, cond_ptr, true)
                 {
                     path.narrowings.push(narrowing);
                 }
             }
-            FlowNodeKind::FalseCondition(cond_ptr) => {
+            FlowNodeKind::FalseCondition(cond_ptr) if query.options.guards => {
                 if let Some(narrowing) =
                     narrow_member_condition(model, member, access, cond_ptr, false)
                 {
@@ -2198,14 +2438,14 @@ fn trace_member(
                 }
             }
             FlowNodeKind::Start | FlowNodeKind::Unreachable => {
-                return flow_member_value_type(model, member).map(|ty| finalize(model, ty, path));
+                return fallback().map(|ty| finalize(model, ty, path));
             }
             _ => {}
         }
 
         match &node.antecedent {
             None => {
-                return flow_member_value_type(model, member).map(|ty| finalize(model, ty, path));
+                return fallback().map(|ty| finalize(model, ty, path));
             }
             Some(FlowAntecedent::Single(next)) => {
                 current = *next;
@@ -2216,22 +2456,14 @@ fn trace_member(
                 // jump directly to the common predecessor and continue backtracking, avoiding equal-depth recursion from consecutive ifs.
                 if let Some(branches) = tree.get_multi_antecedents(*multi_id)
                     && let Some(common) = local_merge_common(tree, branches)
-                    && branches.iter().all(|branch| {
-                        member_branch_is_pure(model, tree, member, access, *branch, common)
-                    })
+                    && branches
+                        .iter()
+                        .all(|branch| member_branch_is_pure(model, tree, query, *branch, common))
                 {
                     current = common;
                     continue;
                 }
-                return walk_member(
-                    model,
-                    member,
-                    access,
-                    tree,
-                    node.antecedent.as_ref(),
-                    visited,
-                    path,
-                );
+                return walk_member(model, query, tree, node.antecedent.as_ref(), visited, path);
             }
         }
     }
@@ -2409,6 +2641,7 @@ fn collect_decl_cast(
 fn collect_member_cast(
     model: &SemanticModel,
     member: &SemanticId,
+    access: Option<&emmylua_parser::LuaIndexExpr>,
     cast_ptr: &emmylua_parser::LuaAstPtr<emmylua_parser::LuaDocTagCast>,
     path: &mut PathState,
 ) {
@@ -2421,7 +2654,9 @@ fn collect_member_cast(
     let Some(key_expr) = cast.get_key_expr() else {
         return;
     };
-    let matches = match &key_expr {
+    let matches = access.is_some_and(|access| {
+        same_member_access(model, &key_expr, &LuaExpr::IndexExpr(access.clone()))
+    }) || match &key_expr {
         LuaExpr::IndexExpr(index_expr) => {
             model
                 .resolve_member(index_expr)
@@ -2471,14 +2706,12 @@ fn assigned_value_type(
     flow_id: FlowId,
     assign_pos: TextSize,
     value_syntax: emmylua_parser::LuaSyntaxId,
-    target_ty: &LuaType,
 ) -> LuaType {
     let Some(multi_ref) = tree.get_decl_multi_return_ref_on_flow(decl, assign_pos, flow_id) else {
         return assigned_value_type_with_self_widening(
             model,
             decl,
             value_syntax,
-            target_ty,
             model.type_of_expr_at(value_syntax, assign_pos),
         );
     };
@@ -2496,7 +2729,6 @@ fn assigned_value_type(
             model,
             decl,
             value_syntax,
-            target_ty,
             model.type_of_expr_at(value_syntax, assign_pos),
         );
     };
@@ -2505,7 +2737,6 @@ fn assigned_value_type(
             model,
             decl,
             value_syntax,
-            target_ty,
             model.type_of_expr(value_syntax),
         );
     };
@@ -2514,7 +2745,6 @@ fn assigned_value_type(
             model,
             decl,
             value_syntax,
-            target_ty,
             model.type_of_expr(value_syntax),
         );
     };
@@ -2529,7 +2759,6 @@ fn assigned_value_type(
                     model,
                     decl,
                     value_syntax,
-                    target_ty,
                     model.type_of_expr_at(value_syntax, assign_pos),
                 )
             }
@@ -2542,10 +2771,8 @@ fn assigned_value_type_with_self_widening(
     model: &SemanticModel,
     decl: &SemanticId,
     value_syntax: emmylua_parser::LuaSyntaxId,
-    target_ty: &LuaType,
     value_ty: LuaType,
 ) -> LuaType {
-    let value_ty = widen_consts_to_target(model, value_ty, target_ty);
     if is_self_dependent_expr(model, value_syntax, decl) && is_const_like(&value_ty) {
         widen_const_type(value_ty)
     } else {
@@ -3320,44 +3547,6 @@ fn type_alias_discriminant_from_condition(
     None
 }
 
-/// Widen RHS literal constants to their base type only when the target variable already has a "primitive union" type.
-/// For example, `result: integer|string` assigned `1 | "override"` widens to `integer|string`;
-/// unannotated variables or enum/literal types keep the original literal.
-fn widen_consts_to_target(model: &SemanticModel, ty: LuaType, target: &LuaType) -> LuaType {
-    if matches!(target, LuaType::Unknown | LuaType::Any) {
-        return ty;
-    }
-    let is_primitive = |t: &LuaType| -> bool {
-        matches!(
-            t,
-            LuaType::Integer | LuaType::Number | LuaType::String | LuaType::Boolean
-        )
-    };
-    let target_components = match target {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other.clone()],
-    };
-    let non_nil_components: Vec<_> = target_components
-        .iter()
-        .filter(|component| **component != LuaType::Nil)
-        .cloned()
-        .collect();
-    let target_is_primitive_union =
-        !non_nil_components.is_empty() && non_nil_components.iter().all(is_primitive);
-    if !target_is_primitive_union {
-        return ty;
-    }
-    // In a nullable primitive union (e.g. `string?`), widen literals only when the assignment is compatible with that non-nil primitive;
-    // incompatible assignments (`string?` variable assigned `1`) keep the exact literal (which would otherwise drop nil).
-    if target_components.contains(&LuaType::Nil) {
-        let non_nil_target = LuaType::from_vec(non_nil_components);
-        if !model.type_check(&ty, &non_nil_target) {
-            return ty;
-        }
-    }
-    widen_const_type(ty)
-}
-
 /// After generic binding substitution, widen literal constants to their base type (`1` → `integer`).
 fn widen_const_type(ty: LuaType) -> LuaType {
     match ty {
@@ -3734,6 +3923,7 @@ fn narrow_member_condition(
 ) -> Option<Narrowing> {
     let chunk = model.chunk()?;
     let cond = LuaExpr::cast(cond_ptr.to_node(&chunk)?.syntax().clone())?;
+    let (cond, branch_is_true) = normalize_condition(cond, branch_is_true)?;
     if let LuaExpr::CallExpr(call) = &cond {
         if let Some((arg, guard_ty)) = type_guard_call_target(model, call)
             && let LuaExpr::IndexExpr(index_expr) = &arg
@@ -5370,11 +5560,12 @@ fn walk_decl(
 fn member_branch_is_pure(
     model: &SemanticModel,
     tree: &FlowTree,
-    member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    query: MemberQuery<'_>,
     start: FlowId,
     stop: FlowId,
 ) -> bool {
+    let member = query.member;
+    let access = query.access;
     let mut current = start;
     let mut visited = HashSet::new();
     loop {
@@ -5388,7 +5579,7 @@ fn member_branch_is_pure(
             return false;
         };
         match &node.kind {
-            FlowNodeKind::Assignment(_) => {
+            FlowNodeKind::Assignment(_) | FlowNodeKind::ImplFunc(_) => {
                 if tree.get_flow_effects(current).iter().any(|effect| {
                     matches!(
                         effect,
@@ -5433,8 +5624,7 @@ fn member_branch_is_pure(
 
 fn walk_member(
     model: &SemanticModel,
-    member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    query: MemberQuery<'_>,
     tree: &FlowTree,
     antecedent: Option<&FlowAntecedent>,
     visited: &mut HashSet<FlowId>,
@@ -5442,18 +5632,20 @@ fn walk_member(
 ) -> Option<LuaType> {
     match antecedent {
         // Backtracked to the start: use the member's declaration type as the base and apply cast widening collected on the path.
-        None => flow_member_value_type(model, member).map(|ty| finalize(model, ty, path)),
+        None => query
+            .initial_type(model)
+            .map(|ty| finalize(model, ty, path)),
         Some(FlowAntecedent::Single(next)) => {
-            trace_member(model, member, access, tree, *next, visited, path)
+            trace_member(model, query, tree, *next, visited, path)
         }
         Some(FlowAntecedent::Multiple(multi_id)) => {
             let branches = tree.get_multi_antecedents(*multi_id)?;
             if let Some(common) = local_merge_common(tree, branches)
-                && branches.iter().all(|branch| {
-                    member_branch_is_pure(model, tree, member, access, *branch, common)
-                })
+                && branches
+                    .iter()
+                    .all(|branch| member_branch_is_pure(model, tree, query, *branch, common))
             {
-                return trace_member(model, member, access, tree, common, visited, path);
+                return trace_member(model, query, tree, common, visited, path);
             }
             let mut merged = LuaType::Unknown;
             for branch in branches {
@@ -5461,14 +5653,17 @@ fn walk_member(
                 let mut branch_path = path.clone_path();
                 if let Some(branch_ty) = trace_member(
                     model,
-                    member,
-                    access,
+                    query,
                     tree,
                     *branch,
                     &mut branch_visited,
                     &mut branch_path,
                 ) {
-                    merged = merge_types(merged, branch_ty);
+                    merged = if query.options.assignments {
+                        merge_types(merged, branch_ty)
+                    } else {
+                        intersect_types(merged, branch_ty)
+                    };
                 }
             }
             Some(merged)

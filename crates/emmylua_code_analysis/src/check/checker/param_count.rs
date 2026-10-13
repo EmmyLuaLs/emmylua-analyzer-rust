@@ -120,15 +120,7 @@ fn check_call(
     let colon_call = analysis.colon_call;
 
     for candidate in &candidates {
-        let range = param_count_range(semantic_model, candidate, colon_call);
-        let colon_extra = usize::from(
-            colon_call && !candidate.is_colon_define() && !first_param_is_self(candidate),
-        );
-        let call_min = arg_range.min + colon_extra;
-        let call_max = arg_range.max.map(|max| max + colon_extra);
-        let enough = call_max.is_none_or(|max| max >= range.min);
-        let not_too_many = range.max.is_none_or(|max| call_min <= max);
-        if enough && not_too_many {
+        if candidate_accepts_arguments(semantic_model, candidate, &args, colon_call) {
             return;
         }
     }
@@ -665,6 +657,24 @@ struct ParamCountRange {
     max: Option<usize>,
     #[allow(dead_code)]
     variadic: bool,
+}
+
+pub(super) fn candidate_accepts_arguments(
+    semantic_model: &SemanticModel<'_>,
+    candidate: &LuaFunctionType,
+    args: &[LuaExpr],
+    colon_call: bool,
+) -> bool {
+    let actual = expanded_arg_range(semantic_model, args);
+    let expected = param_count_range(semantic_model, candidate, colon_call);
+    let colon_extra =
+        usize::from(colon_call && !candidate.is_colon_define() && !first_param_is_self(candidate));
+    actual
+        .max
+        .is_none_or(|max| max + colon_extra >= expected.min)
+        && expected
+            .max
+            .is_none_or(|max| actual.min + colon_extra <= max)
 }
 
 fn param_count_range(
