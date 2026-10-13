@@ -1188,3 +1188,62 @@ function KPlayer.GetPlayerObjById() end",
         ));
     }
 }
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_global_members() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "constants.lua",
+        r#"
+        ---@enum transport.DistanceResult
+        DISTANCE_RESULT = { AVAILABLE = 0, UNREACHABLE = -2 }
+    "#,
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        local a = DISTANCE_RESULT.UNREACHABLE
+        local b = DISTANCE_RESULT['AVAILABLE']
+        return a, b
+    "#
+        ),
+        eq(true)
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            "return DISTANCE_RESULT.TYPO"
+        ),
+        eq(false)
+    );
+}
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_values_are_not_runtime_tables() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "constants.lua",
+        r#"
+        ---@enum transport.DistanceResult
+        DISTANCE_RESULT = { AVAILABLE = 0, UNREACHABLE = -2 }
+        ---@type transport.DistanceResult
+        CURRENT_DISTANCE = DISTANCE_RESULT.AVAILABLE
+    "#,
+    );
+    for source in [
+        "return CURRENT_DISTANCE.UNREACHABLE",
+        "---@param result transport.DistanceResult\nlocal function f(result) return result.UNREACHABLE end",
+        "---@type transport.DistanceResult\nlocal DISTANCE_RESULT = 0\nreturn DISTANCE_RESULT.UNREACHABLE",
+    ] {
+        assert_that!(
+            ws.has_no_diagnostic(DiagnosticCode::UndefinedField, source),
+            eq(false),
+            "{source}"
+        );
+    }
+}
