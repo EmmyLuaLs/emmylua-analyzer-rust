@@ -255,10 +255,10 @@ fn valid_named_member(
     if let Some(def) = named_type_def(semantic_model, &prefix_ty)
         && def.kind == TypeDefKind::Enum
     {
-        // Enum values have no fields; their runtime table has the constructor's
-        // keys. Validate that surface before permissive conditional-key handling.
+        // Only the enum's runtime table exposes constructor keys. An enum-typed
+        // value resolves to None and remains invalid, including in conditions.
         return enum_runtime_decl(semantic_model, prefix)
-            .is_some_and(|decl| enum_table_access(semantic_model, &decl, &def, index_key));
+            .is_some_and(|decl| enum_table_access(semantic_model, decl, &def, index_key));
     }
 
     let key_ty = key_type(semantic_model, index_key);
@@ -299,7 +299,8 @@ fn enum_table_access(
     _def: &TypeDef,
     index_key: &LuaIndexKey,
 ) -> bool {
-    // Dynamic keys (parameter enum type / expression) are allowed broadly.
+    // Preserve permissive handling of expression keys before static lookup;
+    // static_member_key below is never asked to resolve a dynamic expression.
     if matches!(index_key, LuaIndexKey::Expr(_)) {
         return true;
     }
@@ -316,6 +317,9 @@ fn enum_table_access(
     {
         return true;
     }
+    // Keep the existing declaration-owned member/value fallback for entries
+    // attached outside the constructor. Constructor keys take precedence above;
+    // this fallback preserves the checker's prior acceptance policy.
     let key_text = index_key.get_path_part();
     let mut accepted: Vec<String> = Vec::new();
     for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
@@ -547,7 +551,10 @@ fn is_mapped_alias(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> bool {
 
 /// Resolve the declaration of an enum runtime table (`Enum.A`), excluding enum-typed values (`p.a`).
 /// Both global and local enum runtime tables count as direct references; pure `---@type` variables do not.
-fn enum_runtime_decl(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> Option<Decl> {
+fn enum_runtime_decl<'db>(
+    semantic_model: &SemanticModel<'db>,
+    prefix: &LuaExpr,
+) -> Option<&'db Decl> {
     let LuaExpr::NameExpr(name_expr) = prefix else {
         return None;
     };
@@ -567,7 +574,7 @@ fn enum_runtime_decl(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> Op
     let syntax = decl.value_expr_syntax?;
     let tree = semantic_model.syntax_tree_of(decl.file_id)?;
     let node = syntax.to_node_from_root(&tree.get_red_root())?;
-    matches!(LuaExpr::cast(node), Some(LuaExpr::TableExpr(_))).then(|| decl.clone())
+    matches!(LuaExpr::cast(node), Some(LuaExpr::TableExpr(_))).then_some(decl)
 }
 
 /// Generic parameter projection fallback (`Ref("T")`): replace with the constraint type declared in the signature doc.
