@@ -16,8 +16,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaDocTagAs, LuaExpr,
-    LuaLiteralToken, UnaryOperator,
+    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaCallExprStat, LuaComment, LuaDocTagAs,
+    LuaExpr, LuaLiteralToken, UnaryOperator,
 };
 use rowan::TextSize;
 
@@ -440,7 +440,11 @@ pub fn type_of_expr_at(
     match &expr {
         LuaExpr::NameExpr(name_expr) => {
             if let Some(decl) = model.resolve_name(name_expr.get_position()) {
-                return model.type_of_decl_at(&decl, offset);
+                return apply_inline_as_casts(
+                    model,
+                    expr_syntax,
+                    model.type_of_decl_at(&decl, offset),
+                );
             }
             model.type_of_expr(expr_syntax)
         }
@@ -619,7 +623,7 @@ pub fn type_of_expr_at(
             let result = binary_type(model, op_token.get_op(), &left_ty, &right_ty);
             apply_expr_casts(model, expr_syntax, result)
         }
-        _ => model.type_of_expr(expr_syntax),
+        _ => apply_inline_as_casts(model, expr_syntax, model.type_of_expr(expr_syntax)),
     }
 }
 
@@ -1021,9 +1025,31 @@ fn apply_expr_casts(
     expr_syntax: emmylua_parser::LuaSyntaxId,
     base: LuaType,
 ) -> LuaType {
+    apply_bound_casts(model, expr_syntax, base, true)
+}
+
+/// Apply only expression-local @as assertions, without importing statement casts
+/// into ordinary declaration inference or name-expression queries.
+pub(super) fn apply_inline_as_casts(
+    model: &SemanticModel,
+    expr_syntax: emmylua_parser::LuaSyntaxId,
+    base: LuaType,
+) -> LuaType {
+    apply_bound_casts(model, expr_syntax, base, false)
+}
+
+fn apply_bound_casts(
+    model: &SemanticModel,
+    expr_syntax: emmylua_parser::LuaSyntaxId,
+    base: LuaType,
+    include_tag_casts: bool,
+) -> LuaType {
     let Some(tree) = model.flow_tree() else {
         return base;
     };
+    if !tree.has_tag_cast() {
+        return base;
+    }
     // Inline casts may be bound to the expression itself or an ancestor node (e.g. an assignment statement),
     // so check both the expression and all ancestors' flow bindings.
     let mut flow_ids = Vec::new();
@@ -1046,7 +1072,7 @@ fn apply_expr_casts(
     for flow_id in flow_ids {
         for effect in tree.get_flow_effects(flow_id) {
             match effect {
-                FlowEffect::TagCast(cast_ptr) => {
+                FlowEffect::TagCast(cast_ptr) if include_tag_casts => {
                     let Some(chunk) = model.chunk() else {
                         continue;
                     };
@@ -1084,7 +1110,10 @@ fn apply_expr_casts(
                     let Some(as_tag) = as_ptr.to_node(&chunk) else {
                         continue;
                     };
-                    if let Some(doc_type) = as_tag.get_type() {
+                    if inline_as_target(&as_tag)
+                        .is_some_and(|target| target.get_syntax_id() == expr_syntax)
+                        && let Some(doc_type) = as_tag.get_type()
+                    {
                         ty = model.doc_type_lua(doc_type.get_syntax_id());
                     }
                 }
@@ -1093,6 +1122,20 @@ fn apply_expr_casts(
         }
     }
     ty
+}
+
+/// An inline assertion applies to its attached expression. When the parser
+/// attaches a trailing comment to a statement, its target is the last RHS value.
+fn inline_as_target(as_tag: &LuaDocTagAs) -> Option<LuaExpr> {
+    let owner = as_tag.get_parent::<LuaComment>()?.get_owner()?;
+    match owner {
+        LuaAst::LuaLocalStat(stat) => stat.get_value_exprs().last(),
+        LuaAst::LuaAssignStat(stat) => stat.get_var_and_expr_list().1.last().cloned(),
+        LuaAst::LuaReturnStat(stat) => stat.get_expr_list().last(),
+        LuaAst::LuaCallExprStat(stat) => stat.get_call_expr().map(LuaExpr::CallExpr),
+        LuaAst::LuaTableField(field) => field.get_value_expr(),
+        owner => LuaExpr::cast(owner.syntax().clone()),
+    }
 }
 
 /// `---@cast` path operation: widen / remove / replace.
@@ -1465,11 +1508,9 @@ fn trace_decl_uncached(
                     collect_decl_cast(model, decl, cast_ptr, path);
                 }
             }
-            FlowNodeKind::AsCast(as_ptr) => {
-                if options.casts {
-                    collect_decl_as_cast(model, decl, as_ptr, path);
-                }
-            }
+            // An @as assertion belongs to its expression, not every declaration
+            // whose flow path passes this comment. Assignment RHS queries apply it.
+            FlowNodeKind::AsCast(_) => {}
             // Backtracked to the start (e.g. function parameters with no DeclPosition node): use the declaration type as the base and apply path guards/casts.
             FlowNodeKind::Start | FlowNodeKind::Unreachable => {
                 if matches!(node.kind, FlowNodeKind::Unreachable) && mode == TraceMode::MergeBranch
@@ -1591,7 +1632,11 @@ fn trace_member(
                             narrowings: Vec::new(),
                             casts: path.casts.clone(),
                         };
-                        let mut value_ty = model.type_of_expr(*value_syntax);
+                        let mut value_ty = apply_inline_as_casts(
+                            model,
+                            *value_syntax,
+                            model.type_of_expr(*value_syntax),
+                        );
                         if let Some(annotation) = member_annotation_type(model, member) {
                             if model.type_check(&annotation, &value_ty) {
                                 value_ty = widen_const_type(value_ty);
@@ -1606,9 +1651,7 @@ fn trace_member(
             FlowNodeKind::TagCast(cast_ptr) => {
                 collect_member_cast(model, member, cast_ptr, path);
             }
-            FlowNodeKind::AsCast(as_ptr) => {
-                collect_member_as_cast(model, member, as_ptr, path);
-            }
+            FlowNodeKind::AsCast(_) => {}
             FlowNodeKind::TrueCondition(cond_ptr) => {
                 if let Some(narrowing) = narrow_member_condition(model, member, cond_ptr, true) {
                     path.narrowings.push(narrowing);
@@ -1874,46 +1917,6 @@ fn collect_member_cast(
             _ => {}
         }
     }
-}
-
-/// Inline assertion `--[[@as T]]`: when matching the current decl's path, replace the path type directly with T.
-fn collect_decl_as_cast(
-    model: &SemanticModel,
-    _decl: &SemanticId,
-    as_ptr: &emmylua_parser::LuaAstPtr<LuaDocTagAs>,
-    path: &mut PathState,
-) {
-    let Some(ty) = as_cast_type(model, as_ptr) else {
-        return;
-    };
-    if !matches!(ty, LuaType::Unknown) {
-        path.casts.push(CastOp::Replace(ty));
-    }
-}
-
-/// Inline assertion `--[[@as T]]`: when matching the current member's path, replace the path type directly with T.
-fn collect_member_as_cast(
-    model: &SemanticModel,
-    _member: &SemanticId,
-    as_ptr: &emmylua_parser::LuaAstPtr<LuaDocTagAs>,
-    path: &mut PathState,
-) {
-    let Some(ty) = as_cast_type(model, as_ptr) else {
-        return;
-    };
-    if !matches!(ty, LuaType::Unknown) {
-        path.casts.push(CastOp::Replace(ty));
-    }
-}
-
-fn as_cast_type(
-    model: &SemanticModel,
-    as_ptr: &emmylua_parser::LuaAstPtr<LuaDocTagAs>,
-) -> Option<LuaType> {
-    let chunk = model.chunk()?;
-    let as_tag = as_ptr.to_node(&chunk)?;
-    let doc_type = as_tag.get_type()?;
-    Some(model.doc_type_lua(doc_type.get_syntax_id()))
 }
 
 /// RHS type of an assignment: if decl is a multi-return slot on this assignment, take the matching return type by `return_index`;

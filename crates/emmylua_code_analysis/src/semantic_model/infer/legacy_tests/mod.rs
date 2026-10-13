@@ -19,6 +19,7 @@ mod generic_infer_test;
 mod generic_test;
 mod infer_str_tpl_test;
 mod inherit_type;
+mod inline_as_scope;
 mod mathlib_test;
 mod member_infer_test;
 mod metatable_test;

@@ -220,7 +220,11 @@ impl<'db> SemanticModel<'db> {
                 && let Some(closure) = LuaClosureExpr::cast(node)
                 && let Some(fun) = self.type_of_signature(closure.get_syntax_id())
             {
-                return Some(LuaType::DocFunction(Rc::new(fun)));
+                return Some(flow::apply_inline_as_casts(
+                    self,
+                    value_syntax,
+                    LuaType::DocFunction(Rc::new(fun)),
+                ));
             }
             // Initializer expression: VM inference; re-entrant declaration/expression queries
             // return `None` through `CacheEntry::InProgress`.
@@ -236,6 +240,7 @@ impl<'db> SemanticModel<'db> {
                 } else {
                     self.type_of_expr(value_syntax)
                 };
+                let ty = flow::apply_inline_as_casts(self, value_syntax, ty);
                 if !matches!(ty, LuaType::Unknown) {
                     // Multi-return assignment slot: the `b` in `local a, b = f()` takes f()'s 2nd return.
                     // When a single-return function has no second slot, extra assignment targets stay Any (undeclared missing values),
