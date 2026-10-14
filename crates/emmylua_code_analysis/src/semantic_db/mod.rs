@@ -263,6 +263,10 @@ fn compute_workspace_ids(roots: &[WorkspaceRoot]) -> Vec<WorkspaceId> {
     if !ids.contains(&WorkspaceId::REMOTE) {
         ids.push(WorkspaceId::REMOTE);
     }
+    // Several roots can belong to the same logical workspace (notably MAIN).
+    // Aggregate each workspace index once, preserving registration order.
+    let mut seen = HashSet::new();
+    ids.retain(|id| seen.insert(*id));
     ids
 }
 

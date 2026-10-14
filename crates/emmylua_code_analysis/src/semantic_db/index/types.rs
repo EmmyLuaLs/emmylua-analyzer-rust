@@ -61,7 +61,9 @@ impl WorkspaceTypeIndex {
             };
             let new_defs: Vec<TypeDef> = defs
                 .iter()
-                .filter(|def| def.id != type_id)
+                // Named type IDs are shared by same-name declarations. Remove
+                // only this file's contribution, preserving real duplicates.
+                .filter(|def| def.id != type_id || def.file_id != file_id)
                 .cloned()
                 .collect();
             if new_defs.is_empty() {
