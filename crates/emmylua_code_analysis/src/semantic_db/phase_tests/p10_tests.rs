@@ -120,6 +120,43 @@ fn p10_workspace_id_caches_follow_root_changes() {
 }
 
 #[test]
+fn p10_multiple_main_roots_do_not_duplicate_type_definitions() {
+    let mut db = setup();
+    let other_root = p10_base().join("other");
+    db.add_main_workspace(other_root.clone());
+    db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
+    assert_eq!(db.all_workspace_ids().len(), 3);
+    assert_eq!(
+        db.workspace_lookup_order()
+            .iter()
+            .filter(|id| **id == WorkspaceId::MAIN)
+            .count(),
+        1
+    );
+
+    let source = "---@class Metrics\nlocal Metrics = {}";
+    let first = set_test_file(&mut db, 1, &p10_main_file("metrics.lua"), source);
+    assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
+
+    // Rebuilding indexes after a root change must preserve the same count.
+    db.add_main_workspace(p10_base().join("third"));
+    assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
+    set_test_file(
+        &mut db,
+        1,
+        &p10_main_file("metrics.lua"),
+        &format!("{source}\n"),
+    );
+    assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
+
+    // Different declarations with the same name still count as duplicates.
+    set_test_file(&mut db, 2, &other_root.join("metrics.lua"), source);
+    assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 2);
+    set_test_file(&mut db, 2, &other_root.join("metrics.lua"), "return {}");
+    assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
+}
+
+#[test]
 fn p10_type_buckets_share_arc_and_invalidate_on_write() {
     let mut db = setup();
     set_test_file(
