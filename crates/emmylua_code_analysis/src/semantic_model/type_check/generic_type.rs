@@ -62,17 +62,17 @@ pub fn check_generic_type_compact(
             }
             check_generic_type_compact_ref_type(context, source_generic, ref_id)
         }
+        LuaType::Array(array) if source_generic.get_base_type_id().get_name() == "table" => {
+            let value = source_generic
+                .get_params()
+                .get(1)
+                .unwrap_or(&LuaType::Unknown);
+            check_general_type_compact(context, value, array.get_base())
+        }
         LuaType::Table | LuaType::TableConst(_) | LuaType::Object(_) | LuaType::Tuple(_) => {
             // Table structures: M0 checks by base type name (`table`).
             Ok(())
         }
-        LuaType::Union(union) => check_all(union.iter().map(|sub| {
-            check_general_type_compact(
-                context,
-                &LuaType::Generic(Rc::new(source_generic.clone())),
-                sub,
-            )
-        })),
         _ => Err(context.mismatch(
             &LuaType::Generic(Rc::new(source_generic.clone())),
             compact_type,

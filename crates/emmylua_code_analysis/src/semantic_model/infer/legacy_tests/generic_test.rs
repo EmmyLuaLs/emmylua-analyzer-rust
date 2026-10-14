@@ -1995,10 +1995,12 @@ mod test {
                 local value
 
                 A = wrapped(value)
+                B = wrapped(nil)
             "#,
         );
 
-        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("A"), crate::LuaType::Never);
+        assert_eq!(ws.expr_ty("B"), crate::LuaType::Nil);
     }
 
     #[test]
@@ -2017,10 +2019,12 @@ mod test {
                 local value
 
                 A = wrappedTuple(value)
+                B = wrappedTuple(nil)
             "#,
         );
 
-        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("A"), crate::LuaType::Never);
+        assert_eq!(ws.expr_ty("B"), crate::LuaType::Nil);
     }
 
     #[test]

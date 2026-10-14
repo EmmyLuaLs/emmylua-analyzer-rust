@@ -22,14 +22,14 @@ mod sub_type;
 #[cfg(test)]
 mod test;
 
-use std::ops::Deref;
-
-pub use context::{TypeCheckContext, TypeCheckMode};
+pub(crate) use complex_type::integer_index_applies;
+pub use context::TypeCheckContext;
 pub use fail_reason::TypeCheckFailReason;
+pub(crate) use func_type::function_param_pairs;
 
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_head;
-use crate::{InFiled, LuaType, LuaTypeDeclId, LuaUnionType, SemanticId, TypeDef, TypeDefKind};
+use crate::{InFiled, LuaType, SemanticId, TypeDef, TypeDefKind};
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
@@ -110,11 +110,6 @@ pub fn check_type_detail(
     check_general_type_compact(&mut context, source, target)
 }
 
-/// Assignment-compatibility boolean interface: uses assignment semantics.
-pub fn is_assign_compatible(model: &SemanticModel, source: &LuaType, target: &LuaType) -> bool {
-    check_assign_type_detail(model, source, target).is_ok()
-}
-
 /// Strict subtype check: for cases requiring precise union/object subtype relationships.
 pub fn check_type_subtype(
     model: &SemanticModel,
@@ -122,20 +117,7 @@ pub fn check_type_subtype(
     target: &LuaType,
 ) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, false);
-    context.strict_union = true;
-    context.strict_object = true;
-    context.strict_generic = true;
-    check_general_type_compact(&mut context, source, target)
-}
-
-/// Assignment-compatibility detail interface: includes a detailed reason on failure.
-pub fn check_assign_type_detail(
-    model: &SemanticModel,
-    source: &LuaType,
-    target: &LuaType,
-) -> TypeCheckResult {
-    let mut context = TypeCheckContext::new(model, true);
-    context.mode = TypeCheckMode::Assignment;
+    context.strict_subtype = true;
     check_general_type_compact(&mut context, source, target)
 }
 
@@ -201,73 +183,89 @@ fn check_general_type_compact_inner(
     source: &LuaType,
     compact_type: &LuaType,
 ) -> TypeCheckResult {
-    if fast_eq_check(source, compact_type) {
-        return Ok(());
+    for (is_source, ty) in [(true, source), (false, compact_type)] {
+        if let LuaType::Ref(id) | LuaType::Def(id) = ty
+            && let Some(def) = context.type_def_of(id)
+            && def.kind == TypeDefKind::Enum
+            && !matches!(
+                if is_source { compact_type } else { source },
+                LuaType::Table | LuaType::TableConst(_)
+            )
+            && let Some(values) =
+                context.require_complete(|| enum_value_type(context.model, &def))?
+        {
+            return if is_source {
+                check_general_type_compact(context, &values, compact_type)
+            } else {
+                check_general_type_compact(context, source, &values)
+            };
+        }
     }
 
-    // Check the whole boolean domain before assignment mode selects a union member.
+    // Check both boolean values before selecting a target union member.
     if matches!(source, LuaType::Boolean) {
         return simple_type::check_simple_type_compact(context, source, compact_type);
     }
 
-    // Assignment mode: integer is assignable to number; number is not assignable to integer.
-    if context.mode.uses_assignment_rules() {
-        match (source, compact_type) {
-            (
-                LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
-                LuaType::Number,
-            ) => return Ok(()),
-            (
-                LuaType::Number | LuaType::FloatConst(_),
-                LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
-            ) => return Err(context.mismatch(source, compact_type)),
-            _ => {}
-        }
-        // Assignment mode: assigning a table literal to a named class requires nominal relationship.
-        if let (LuaType::TableConst(table), LuaType::Ref(target_id) | LuaType::Def(target_id)) =
-            (source, compact_type)
-        {
-            let source_def = table_associated_type_def(context.model, table);
-            let target_def = context.model.resolve_type_def(target_id.get_name());
-            if let (Some(source_def), Some(target_def)) = (source_def, target_def)
-                && !defs_related_ctx(context.model, &source_def, &target_def, &mut Vec::new())
-            {
-                return Err(context.mismatch(source, compact_type));
-            }
-        }
-        // Assignment mode: an integer enum target accepts broad integers; literals must be member values.
-        if let LuaType::Ref(target_id) | LuaType::Def(target_id) = compact_type
-            && let Some(def) = context.model.resolve_type_def(target_id.get_name())
-            && def.kind == TypeDefKind::Enum
-        {
-            match source {
-                LuaType::Integer | LuaType::DocIntegerConst(_) => return Ok(()),
-                LuaType::IntegerConst(value) => {
-                    if enum_integer_values_ctx(context.model, &def).contains(value) {
-                        return Ok(());
-                    }
-                    return Err(context.mismatch(source, compact_type));
-                }
-                _ => {}
-            }
-        }
-        // Source union members can match different target members; check them below.
-        if let LuaType::Union(union) = compact_type
-            && !matches!(source, LuaType::Union(_))
-        {
-            return check_alternatives(
-                context.mismatch(source, compact_type),
-                union
-                    .iter()
-                    .map(|component| check_general_type_compact(context, source, component)),
-            );
-        }
+    if let LuaType::Union(union) = source {
+        return check_all(
+            union
+                .iter()
+                .map(|member| check_general_type_compact(context, member, compact_type)),
+        );
+    }
+    // Reduce a result sequence before selecting a scalar target union member.
+    // Its first value can itself be a union (for example, `integer?`).
+    if matches!(source, LuaType::Variadic(_)) && !compact_type.contain_multi_return() {
+        return simple_type::check_variadic_type_compact(context, source, compact_type);
+    }
+    if let LuaType::Union(union) = compact_type {
+        return check_alternatives(
+            context.mismatch(source, compact_type),
+            union
+                .iter()
+                .map(|member| check_general_type_compact(context, source, member)),
+        );
     }
 
-    // Assignment-specific checks: semantics for object/intersection/function assignment not yet in the general path.
-    if context.mode.uses_assignment_rules()
-        && assign::check_special(context, source, compact_type)?.is_some()
+    if matches!(compact_type, LuaType::Variadic(_))
+        && !matches!(
+            source,
+            LuaType::Any
+                | LuaType::Unknown
+                | LuaType::Never
+                | LuaType::TplRef(_)
+                | LuaType::ModuleRef(_)
+        )
     {
+        return simple_type::check_variadic_type_compact(context, source, compact_type);
+    }
+
+    // Values use the same rules in assignments, arguments, and results.
+    match (source, compact_type) {
+        (
+            LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
+            LuaType::Number,
+        ) => return Ok(()),
+        (
+            LuaType::Number | LuaType::FloatConst(_),
+            LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
+        ) => return Err(context.mismatch(source, compact_type)),
+        _ => {}
+    }
+    // Assigning a table literal to a named class requires nominal relationship.
+    if let (LuaType::TableConst(table), LuaType::Ref(target_id) | LuaType::Def(target_id)) =
+        (source, compact_type)
+    {
+        let source_def = table_associated_type_def(context.model, table);
+        let target_def = context.model.resolve_type_def(target_id.get_name());
+        if let (Some(source_def), Some(target_def)) = (source_def, target_def)
+            && !defs_related_ctx(context.model, &source_def, &target_def, &mut Vec::new())
+        {
+            return Err(context.mismatch(source, compact_type));
+        }
+    }
+    if assign::check_special(context, source, compact_type)?.is_some() {
         return Ok(());
     }
 
@@ -371,31 +369,6 @@ fn check_union_intersection_source(
     compact_type: &LuaType,
 ) -> TypeCheckResult {
     match source {
-        LuaType::Union(union) => {
-            // Assignment mode: every member of the source union must be assignable to the target.
-            if context.mode.uses_assignment_rules() {
-                return check_all(
-                    union
-                        .iter()
-                        .map(|member| check_general_type_compact(context, member, compact_type)),
-                );
-            }
-            // Strict subtype mode: when the target is also a union, every target component must have a matching member in the source union.
-            if context.strict_union
-                && let LuaType::Union(target_union) = compact_type
-            {
-                return check_all(target_union.iter().map(|target_component| {
-                    check_general_type_compact(context, source, target_component)
-                }));
-            }
-            // Source union: pass if any member is assignable (old semantics).
-            check_alternatives(
-                context.mismatch(source, compact_type),
-                union
-                    .iter()
-                    .map(|member| check_general_type_compact(context, member, compact_type)),
-            )
-        }
         LuaType::Intersection(intersection) => {
             // Source intersection: any member matching is enough.
             check_alternatives(
@@ -450,29 +423,25 @@ fn def_extends_ctx(
     false
 }
 
-fn enum_integer_values_ctx(model: &SemanticModel, def: &TypeDef) -> std::collections::HashSet<i64> {
-    let mut out = std::collections::HashSet::new();
-    for member_ref in model.members_of_owner(&def.id).iter() {
-        let Some(facts) = model.file_facts_of(member_ref.file_id) else {
-            continue;
+fn enum_value_type(model: &SemanticModel, def: &TypeDef) -> Option<LuaType> {
+    let facts = model.file_facts_of(def.file_id)?;
+    let decl = facts.decl_named(def.name.as_str())?;
+    let mut values = Vec::new();
+    for member_ref in model.members_of_owner(&decl.id).iter() {
+        let facts = model.file_facts_of(member_ref.file_id)?;
+        let member = facts.member_by_id(&member_ref.id)?;
+        let syntax = member.value_syntax?;
+        let tree = model.syntax_tree_of(member_ref.file_id)?;
+        let node = syntax.to_node_from_root(&tree.get_red_root())?;
+        // Preserve literal values while sharing recursion state across file views.
+        let value = if let Some(value) = eval_enum_integer_expr(node.text().to_string()) {
+            LuaType::IntegerConst(value)
+        } else {
+            model.model_for(member_ref.file_id).type_of_expr(syntax)
         };
-        let Some(member) = facts.member_by_id(&member_ref.id) else {
-            continue;
-        };
-        let Some(value_syntax) = member.value_syntax else {
-            continue;
-        };
-        let Some(tree) = model.syntax_tree_of(member_ref.file_id) else {
-            continue;
-        };
-        let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root()) else {
-            continue;
-        };
-        if let Some(value) = eval_enum_integer_expr(node.text().to_string()) {
-            out.insert(value);
-        }
+        values.push(value);
     }
-    out
+    (!values.is_empty()).then(|| LuaType::from_vec(values))
 }
 
 fn eval_enum_integer_expr(text: String) -> Option<i64> {
@@ -494,37 +463,4 @@ fn is_like_any(ty: &LuaType) -> bool {
         LuaType::TplRef(tpl) => tpl.get_constraint().is_none(),
         _ => false,
     }
-}
-
-fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
-    match (a, b) {
-        (LuaType::Nil, LuaType::Nil)
-        | (LuaType::Table, LuaType::Table)
-        | (LuaType::Userdata, LuaType::Userdata)
-        | (LuaType::Function, LuaType::Function)
-        | (LuaType::Thread, LuaType::Thread)
-        | (LuaType::Boolean, LuaType::Boolean)
-        | (LuaType::String, LuaType::String)
-        | (LuaType::Integer, LuaType::Integer)
-        | (LuaType::Number, LuaType::Number)
-        | (LuaType::Io, LuaType::Io)
-        | (LuaType::Global, LuaType::Global)
-        | (LuaType::Unknown, LuaType::Unknown)
-        | (LuaType::Any, LuaType::Any) => true,
-        (LuaType::Ref(left), LuaType::Ref(right)) => left == right,
-        (LuaType::Union(u), LuaType::Ref(id)) => {
-            if let LuaUnionType::Nullable(LuaType::Ref(left)) = u.deref() {
-                return left == id;
-            }
-            false
-        }
-        (LuaType::Generic(left), LuaType::Generic(right)) => left == right,
-        _ => false,
-    }
-}
-
-// Ensure LuaTypeDeclId can be constructed globally (used for tests/base type names).
-#[allow(unused)]
-fn _assert_decl_id(id: LuaTypeDeclId) {
-    let _ = id;
 }

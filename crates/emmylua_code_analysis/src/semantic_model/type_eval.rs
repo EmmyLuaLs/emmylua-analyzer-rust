@@ -797,7 +797,7 @@ fn check_conditional_extends(
             ConditionalCheck::False
         };
     }
-    match model.type_check_cached(source, target, false) {
+    match model.type_check_cached(source, target, true) {
         Some(true) => ConditionalCheck::True,
         Some(false) => ConditionalCheck::False,
         None => ConditionalCheck::Unresolved,

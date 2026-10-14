@@ -133,9 +133,7 @@ mod test {
         // `def()` creates `virtual_0.lua`, so the block is requireable as `virtual_0`.
         let ty = ws.expr_ty(r#"require("virtual_0")"#);
         let integer = ws.ty("integer");
-        let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &integer));
-        assert!(!ws.check_type(&ty, &nil));
+        assert_eq!(ty, integer);
     }
 
     // Migrated to semantic check/ (new pipeline); module export metadata block semantics pending semantic support.
@@ -177,7 +175,7 @@ mod test {
             ("a/helper.lua", "return 11"),
             ("b/helper.lua", "return 'from-b'"),
         ]);
-        for (path, expected) in [("a/control.lua", "number"), ("b/control.lua", "string")] {
+        for (path, expected) in [("a/control.lua", "integer"), ("b/control.lua", "string")] {
             let file = ws.def_file(path, "local value = require('helper')");
             let local = ws.get_node::<LuaLocalName>(file);
             let model = ws.analysis.semantic_model(file);

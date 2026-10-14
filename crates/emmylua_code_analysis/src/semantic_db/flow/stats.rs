@@ -154,6 +154,34 @@ pub(super) fn finish_entered_loop_post_flow(
     }
 }
 
+/// Read a numeric literal through parentheses and unary signs, without queries.
+pub(super) fn static_number_value(expr: &LuaExpr) -> Option<f64> {
+    let mut expr = expr.clone();
+    let mut negate = false;
+    loop {
+        expr = match expr {
+            LuaExpr::ParenExpr(paren) => paren.get_expr()?,
+            LuaExpr::UnaryExpr(unary) if unary.get_op_token()?.get_op() == UnaryOperator::OpUnm => {
+                negate = !negate;
+                unary.get_expr()?
+            }
+            LuaExpr::LiteralExpr(literal) => {
+                let LuaLiteralToken::Number(number) = literal.get_literal()? else {
+                    return None;
+                };
+                let value = match number.get_number_value() {
+                    NumberResult::Int(value) => value,
+                    NumberResult::Uint(value) => value as i64,
+                    NumberResult::Float(value) => return Some(if negate { -value } else { value }),
+                    NumberResult::Number => return None,
+                };
+                return Some(if negate { value.checked_neg()? } else { value } as f64);
+            }
+            _ => return None,
+        };
+    }
+}
+
 /// Static reachability judgement for loops; only accepts straightforward literal truthiness.
 ///
 /// This is not full constant evaluation or path inference. Dynamic expressions and complex
@@ -174,22 +202,6 @@ pub(super) fn static_literal_truthiness(expr: &LuaExpr) -> Option<bool> {
         {
             static_literal_truthiness(&unary_expr.get_expr()?).map(|truthy| !truthy)
         }
-        _ => None,
-    }
-}
-
-pub(super) fn static_number_value(expr: &LuaExpr) -> Option<f64> {
-    match expr {
-        LuaExpr::LiteralExpr(literal_expr) => match literal_expr.get_literal()? {
-            LuaLiteralToken::Number(number_token) => match number_token.get_number_value() {
-                NumberResult::Int(value) => Some(value as f64),
-                NumberResult::Uint(value) => Some(value as f64),
-                NumberResult::Float(value) => Some(value),
-                NumberResult::Number => None,
-            },
-            _ => None,
-        },
-        LuaExpr::ParenExpr(paren_expr) => static_number_value(&paren_expr.get_expr()?),
         _ => None,
     }
 }

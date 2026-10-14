@@ -703,6 +703,12 @@ impl<'db> AnalysisView<'db> {
                         self.project_shell_in(file_id, base, generic_names),
                     )))
                 }
+                TypeCandidate::Multi(slots) => LuaType::Variadic(Rc::new(VariadicType::Multi(
+                    slots
+                        .iter()
+                        .map(|slot| self.project_shell_in(file_id, slot, generic_names))
+                        .collect(),
+                ))),
                 TypeCandidate::Variadic(base) => LuaType::Variadic(Rc::new(VariadicType::Base(
                     self.project_shell_in(file_id, base, generic_names),
                 ))),

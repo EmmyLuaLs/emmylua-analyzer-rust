@@ -681,13 +681,13 @@ impl<'db> SemanticModel<'db> {
             .unwrap_or_default();
         let arg_types: Vec<LuaType> = args
             .iter()
-            .map(|arg| self.type_of_expr(arg.get_syntax_id()))
+            .map(|arg| self.type_of_expr_at(arg.get_syntax_id(), arg.get_position()))
             .collect();
         let colon_call = call_expr.is_colon_call();
         let receiver_ty = if colon_call {
             LuaIndexExpr::cast(callee.syntax().clone())
                 .and_then(|index| index.get_prefix_expr())
-                .map(|prefix| self.type_of_expr(prefix.get_syntax_id()))
+                .map(|prefix| self.type_of_expr_at(prefix.get_syntax_id(), prefix.get_position()))
                 .unwrap_or(LuaType::Unknown)
         } else {
             LuaType::Unknown

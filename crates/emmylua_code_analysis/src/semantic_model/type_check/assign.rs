@@ -1,12 +1,10 @@
-//! Assignment-specific compatibility checks: assignment semantics not yet covered by the general type_check path.
-//!
-//! These checks use semantic member/type-definition facilities; the goal is to gradually fold them into the general checks.
+//! Additional value compatibility checks for named structural types.
 
 use crate::{LuaMemberKey, LuaType, SemanticId, TypeDef};
 
 use crate::semantic_model::SemanticModel;
 
-use super::context::{TypeCheckContext, TypeCheckMode};
+use super::context::TypeCheckContext;
 use super::{RequiredChecks, TypeCheckFailReason, check_general_type_compact};
 
 pub(crate) fn check_special(
@@ -19,9 +17,6 @@ pub(crate) fn check_special(
     }
     if check_named_intersection(context, source, target)?.is_some() {
         return Ok(Some(()));
-    }
-    if context.mode == TypeCheckMode::Assignment {
-        return check_function_assign(context, source, target);
     }
     Ok(None)
 }
@@ -128,45 +123,6 @@ fn check_named_intersection(
                 })?;
         }
     }
-    checks.finish()?;
-    Ok(Some(()))
-}
-
-/// Function assignment: parameter contravariance and return covariance.
-fn check_function_assign(
-    context: &mut TypeCheckContext,
-    source: &LuaType,
-    target: &LuaType,
-) -> Result<Option<()>, TypeCheckFailReason> {
-    let (LuaType::DocFunction(source_fun), LuaType::DocFunction(target_fun)) = (source, target)
-    else {
-        return Ok(None);
-    };
-    let source_params = source_fun.get_params();
-    let target_params = target_fun.get_params();
-    if source_params.len() != target_params.len() {
-        return Err(context.mismatch(source, target));
-    }
-    let mut checks = RequiredChecks::default();
-    for (source_param, target_param) in source_params.iter().zip(target_params.iter()) {
-        if let (Some(source_ty), Some(target_ty)) = (&source_param.1, &target_param.1) {
-            // Parameter position is contravariant: the target parameter type must be acceptable by the source parameter type (including union component rules).
-            checks
-                .require(check_general_type_compact(context, target_ty, source_ty))
-                .map_err(|err| {
-                    if err.is_type_not_match() {
-                        context.mismatch(source, target)
-                    } else {
-                        err
-                    }
-                })?;
-        }
-    }
-    checks.require(check_general_type_compact(
-        context,
-        source_fun.get_ret(),
-        target_fun.get_ret(),
-    ))?;
     checks.finish()?;
     Ok(Some(()))
 }

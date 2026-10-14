@@ -1,6 +1,17 @@
-use crate::MemberList;
+use crate::{MemberList, OperatorDef};
 
 use super::prelude::*;
+
+// Object annotations lose their fields when lowered to `table` or `table | nil`.
+fn needs_rich_doc_type(ty: &LuaType) -> bool {
+    match ty {
+        LuaType::Unknown | LuaType::Table => true,
+        LuaType::Union(union) => union
+            .iter()
+            .all(|part| matches!(part, LuaType::Table | LuaType::Nil)),
+        _ => false,
+    }
+}
 
 impl<'db> SemanticModel<'db> {
     /// Members whose owner is a `SemanticId` (cross-file).
@@ -47,6 +58,21 @@ impl<'db> SemanticModel<'db> {
         let mut ty = self
             .analysis()
             .type_shell_lua_in(self.view.file_id(), &shell, &generic_names);
+        // Object annotations lower to broad `table` in TypeShell. Keep their
+        // fields and index signatures when checking a function's return value.
+        if needs_rich_doc_type(&ty)
+            && let Some(docs) = self
+                .file_facts()?
+                .signature_by_closure(closure_syntax)?
+                .docs
+                .as_ref()
+            && docs.returns.len() == 1
+        {
+            let rich = self.doc_type_lua_rich(docs.returns[0]);
+            if !matches!(rich, LuaType::Unknown) {
+                ty = rich;
+            }
+        }
         // `self` in method annotations is the receiver instance; concretize it by the owner type before return checks.
         if let Some(owner_ty) = self.method_owner_type(closure_syntax) {
             ty = infer::vm::replace_self_type(&ty, &owner_ty);
@@ -143,6 +169,19 @@ impl<'db> SemanticModel<'db> {
         self.type_of_expr_impl(expr_syntax)
     }
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
+        self.type_of_expr_cached(expr_syntax, || infer::infer_expr(self, expr_syntax))
+    }
+    /// Reuse a resolved node while keeping the ordinary query's cycle guard.
+    pub(crate) fn type_of_expr_node(&self, expr: &LuaExpr) -> LuaType {
+        self.type_of_expr_cached(expr.get_syntax_id(), || {
+            infer::vm::infer_expr_node(self, expr.clone())
+        })
+    }
+    fn type_of_expr_cached(
+        &self,
+        expr_syntax: LuaSyntaxId,
+        infer: impl FnOnce() -> LuaType,
+    ) -> LuaType {
         let key = (self.view.file_id(), expr_syntax);
         {
             let cache = self.cache.borrow();
@@ -159,7 +198,7 @@ impl<'db> SemanticModel<'db> {
             .expr_type
             .insert(key, cache::CacheEntry::InProgress);
         let revision = self.cache.borrow().revision();
-        let ty = infer::infer_expr(self, expr_syntax);
+        let ty = infer();
         let mut cache = self.cache.borrow_mut();
         let entry = cache::CacheEntry::finish(ty.clone(), cache.is_complete(revision));
         cache.expr_type.insert(key, entry);
@@ -173,7 +212,7 @@ impl<'db> SemanticModel<'db> {
     pub fn eval_conditionals_for_hover(&self, ty: &LuaType) -> LuaType {
         type_eval::eval_conditionals(self, ty)
     }
-    /// Type compatibility check (boolean version, mirrors the old `SemanticModel::type_check`).
+    /// Whether a value of `source` can be used where `target` is expected.
     pub fn type_check(&self, source: &LuaType, target: &LuaType) -> bool {
         self.type_check_cached(source, target, false)
             .unwrap_or(false)
@@ -289,6 +328,31 @@ impl<'db> SemanticModel<'db> {
         }
         ret
     }
+    /// Use the same call-operator signature for inference and diagnostics.
+    pub(crate) fn call_operator_type(&self, file_id: FileId, op: &OperatorDef) -> LuaFunctionType {
+        let params = op
+            .params
+            .iter()
+            .map(|syntax| {
+                (
+                    String::new(),
+                    Some(self.doc_type_lua_rich_in(file_id, *syntax)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let is_variadic = params
+            .last()
+            .is_some_and(|(_, ty)| matches!(ty, Some(LuaType::Variadic(_))));
+        LuaFunctionType::new(
+            AsyncState::None,
+            false,
+            is_variadic,
+            params,
+            self.doc_type_lua_rich_in(file_id, op.returns),
+            None,
+        )
+    }
+
     /// Function signature (by closure syntax location) -> structured function type (`DocFunction`).
     pub fn type_of_signature(&self, closure_syntax: LuaSyntaxId) -> Option<LuaFunctionType> {
         let signature = self.file_facts()?.signature_by_closure(closure_syntax)?;
@@ -308,7 +372,7 @@ impl<'db> SemanticModel<'db> {
             let mut ty = self
                 .param_type(closure_syntax, index)
                 .unwrap_or(LuaType::Unknown);
-            if matches!(ty, LuaType::Unknown | LuaType::Table)
+            if needs_rich_doc_type(&ty)
                 && let Some(docs) = signature.docs.as_ref()
                 && let Some((_, syntax)) = docs
                     .param_types

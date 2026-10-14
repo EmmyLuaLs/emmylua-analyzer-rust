@@ -31,9 +31,6 @@ impl CallableCandidateSet {
         self.candidates
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.candidates.is_empty()
-    }
     /// All callable candidates for `prefix_type.key` (all same-key/inherited members).
     pub(crate) fn from_prefix_type(
         model: &SemanticModel<'_>,

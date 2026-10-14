@@ -150,12 +150,12 @@ impl VirtualWorkspace {
         render::humanize_type_detailed(&model, &ty)
     }
 
-    pub fn check_type(&self, source: &LuaType, target: &LuaType) -> bool {
+    pub fn check_type(&self, expected: &LuaType, actual: &LuaType) -> bool {
         let Some(file_id) = self.last_file_id else {
             return false;
         };
         let model = self.analysis.semantic_model(file_id);
-        model.type_check_subtype(source, target)
+        model.type_check_subtype(actual, expected)
     }
 
     pub fn enable_check(&mut self, diagnostic_code: DiagnosticCode) {

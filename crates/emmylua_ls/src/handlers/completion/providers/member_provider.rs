@@ -266,6 +266,7 @@ fn doc_generic_keyof_member_infos(
             LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
+                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
@@ -299,6 +300,7 @@ fn generic_keyof_member_infos(
             LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
+                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
@@ -327,6 +329,7 @@ fn type_def_member_infos_from_facts(
             MemberInfo {
                 key,
                 typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
+                index_key_type: None,
                 id: Some(member.id.clone()),
                 file_id: Some(def.file_id),
                 is_method: member.is_method,
@@ -395,6 +398,7 @@ fn associated_type_member_infos(
             out.push(MemberInfo {
                 key,
                 typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
+                index_key_type: None,
                 id: Some(member.id.clone()),
                 file_id: Some(member_ref.file_id),
                 is_method: member.is_method,

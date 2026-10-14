@@ -19,7 +19,9 @@ use super::exports::{
 };
 use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::WorkspaceRoot;
-use super::types::{LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell};
+use super::types::{
+    LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell, checked_integer_arithmetic,
+};
 use crate::Emmyrc;
 use crate::FileId;
 use emmylua_parser::{
@@ -2563,8 +2565,8 @@ pub(crate) fn decl_references(
 // L3 semantics: signature returns (with cycle convergence)
 // ──────────────────────────────────────────────
 
-/// Per-slot function return types. Doc annotations take priority (one slot per `---@return`);
-/// otherwise scan the function body's `return` statements and merge by slot. Mutual recursion converges via semantic fixed point.
+/// Doc annotations use one shell per return slot. Inferred returns use one shell
+/// containing complete return-row alternatives, so shorter rows retain missing values.
 pub(crate) fn signature_returns(
     db: &SemanticDatabase,
     file: FileId,
@@ -2640,27 +2642,14 @@ pub(crate) fn signature_returns(
                 .is_some_and(|owner| owner.get_syntax_id() == closure_syntax)
         })
         .collect();
-    let multi_path_returns = returns.len() > 1;
-    let mut slots: Vec<TypeShell> = Vec::new();
+    let mut rows = TypeShell::unknown();
     for ret in returns {
         let exprs: Vec<_> = ret.get_expr_list().collect();
+        let mut slots = Vec::with_capacity(exprs.len());
         for (index, expr) in exprs.iter().enumerate() {
             let shell = match &expr {
                 LuaExpr::NameExpr(name) if name.get_name_text().as_deref() == Some("self") => {
                     method_self_return_shell(&facts, closure_syntax)
-                }
-                // Preserve integer literal precision when merging multi-path returns (a `return 1` branch should not be widened to number).
-                LuaExpr::LiteralExpr(literal)
-                    if multi_path_returns
-                        && let Some(LuaLiteralToken::Number(number)) = literal.get_literal() =>
-                {
-                    match number.get_number_value() {
-                        emmylua_parser::NumberResult::Int(_)
-                        | emmylua_parser::NumberResult::Uint(_) => {
-                            Some(TypeShell::from_primitive(PrimitiveType::Integer))
-                        }
-                        _ => None,
-                    }
                 }
                 _ => None,
             }
@@ -2670,20 +2659,24 @@ pub(crate) fn signature_returns(
             } else {
                 shell
             };
-            if let Some(slot) = slots.get_mut(index) {
-                slot.merge(&shell);
-            } else {
-                slots.push(shell);
-            }
+            slots.push(shell);
         }
+        let row = if slots.len() == 1 {
+            slots.pop().expect("len checked")
+        } else {
+            TypeShell {
+                candidates: vec![TypeCandidate::Multi(slots)],
+            }
+        };
+        rows.merge(&row);
     }
     // When there is no explicit return annotation and the body cannot infer a type, keep member returns from class-field declarations.
-    if slots.is_empty() || slots.iter().all(TypeShell::is_unknown) {
+    if rows.is_unknown() {
         if let Some(expected) = member_expected_returns(db, &facts, file, config, closure_syntax) {
             return expected;
         }
     }
-    slots
+    vec![rows]
 }
 
 /// When a member implementation function (`function Test.e()`) has no `---@return`, use the return type
@@ -3123,11 +3116,11 @@ fn expr_type_node(
                     BinaryOperator::OpAdd
                     | BinaryOperator::OpSub
                     | BinaryOperator::OpMul
-                    | BinaryOperator::OpDiv
                     | BinaryOperator::OpIDiv
                     | BinaryOperator::OpMod
-                    | BinaryOperator::OpPow,
-                ) => TypeShell::from_primitive(PrimitiveType::Number),
+                    | BinaryOperator::OpDiv,
+                ) => expr_type_arithmetic(db, facts, file, config, LuaExpr::BinaryExpr(binary)),
+                Some(BinaryOperator::OpPow) => TypeShell::from_primitive(PrimitiveType::Number),
                 _ => TypeShell::unknown(),
             }
         }
@@ -3135,6 +3128,8 @@ fn expr_type_node(
             let op = unary.get_op_token().map(|token| token.get_op());
             if op == Some(UnaryOperator::OpNot) {
                 TypeShell::from_primitive(PrimitiveType::Boolean)
+            } else if op == Some(UnaryOperator::OpUnm) {
+                expr_type_arithmetic(db, facts, file, config, LuaExpr::UnaryExpr(unary))
             } else {
                 unary
                     .get_expr()
@@ -3148,6 +3143,157 @@ fn expr_type_node(
             .unwrap_or_else(TypeShell::unknown),
         _ => TypeShell::unknown(),
     }
+}
+
+/// Evaluate numeric categories and checked constants in one source-bounded walk.
+/// Keeping both on the same task stack avoids native recursion and repeated subtree scans.
+fn expr_type_arithmetic(
+    db: &SemanticDatabase,
+    facts: &FileFacts,
+    file: FileId,
+    config: &Emmyrc,
+    expr: LuaExpr,
+) -> TypeShell {
+    enum Task {
+        Expr(LuaExpr),
+        Binary(BinaryOperator),
+        Negate,
+    }
+    let mut tasks = vec![Task::Expr(expr)];
+    let mut values: Vec<(TypeShell, Option<i64>)> = Vec::new();
+    while let Some(task) = tasks.pop() {
+        match task {
+            Task::Expr(LuaExpr::ParenExpr(paren)) => {
+                let Some(expr) = paren.get_expr() else {
+                    return TypeShell::unknown();
+                };
+                tasks.push(Task::Expr(expr));
+            }
+            Task::Expr(LuaExpr::UnaryExpr(unary))
+                if unary
+                    .get_op_token()
+                    .is_some_and(|op| op.get_op() == UnaryOperator::OpUnm) =>
+            {
+                let Some(expr) = unary.get_expr() else {
+                    return TypeShell::unknown();
+                };
+                tasks.push(Task::Negate);
+                tasks.push(Task::Expr(expr));
+            }
+            Task::Expr(LuaExpr::BinaryExpr(binary))
+                if binary.get_op_token().is_some_and(|op| {
+                    matches!(
+                        op.get_op(),
+                        BinaryOperator::OpAdd
+                            | BinaryOperator::OpSub
+                            | BinaryOperator::OpMul
+                            | BinaryOperator::OpDiv
+                            | BinaryOperator::OpIDiv
+                            | BinaryOperator::OpMod
+                    )
+                }) =>
+            {
+                let Some((left, right)) = binary.get_exprs() else {
+                    return TypeShell::unknown();
+                };
+                tasks.push(Task::Binary(
+                    binary.get_op_token().expect("guard checked").get_op(),
+                ));
+                tasks.push(Task::Expr(right));
+                tasks.push(Task::Expr(left));
+            }
+            Task::Expr(expr) => {
+                let constant = match &expr {
+                    LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
+                        Some(LuaLiteralToken::Number(number)) => match number.get_number_value() {
+                            emmylua_parser::NumberResult::Int(value) => Some(value),
+                            emmylua_parser::NumberResult::Uint(value) => Some(value as i64),
+                            _ => None,
+                        },
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                values.push((
+                    expr_type(db, facts, file, config, expr).first_result(),
+                    constant,
+                ));
+            }
+            Task::Binary(op) => {
+                let (right, right_constant) = values.pop().expect("right operand evaluated");
+                let (left, left_constant) = values.pop().expect("left operand evaluated");
+                let constants = left_constant.zip(right_constant);
+                let constant =
+                    constants.and_then(|(left, right)| checked_integer_arithmetic(op, left, right));
+                let integer = |candidate: &TypeCandidate| {
+                    matches!(
+                        candidate,
+                        TypeCandidate::Primitive(PrimitiveType::Integer)
+                            | TypeCandidate::Literal(LiteralShell::Integer(_))
+                    )
+                };
+                let mut shell = TypeShell::unknown();
+                if op == BinaryOperator::OpDiv {
+                    shell = TypeShell::from_primitive(if constant.is_some() {
+                        PrimitiveType::Integer
+                    } else {
+                        PrimitiveType::Number
+                    });
+                } else if matches!(
+                    op,
+                    BinaryOperator::OpAdd | BinaryOperator::OpSub | BinaryOperator::OpMul
+                ) && constants.is_some()
+                    && constant.is_none()
+                {
+                    shell = TypeShell::from_primitive(PrimitiveType::Number);
+                } else if !left.is_unknown() && !right.is_unknown() {
+                    // Map operand pairs so growing candidate sets remain monotone.
+                    if left.candidates.iter().any(integer) && right.candidates.iter().any(integer) {
+                        shell.merge(&TypeShell::from_primitive(PrimitiveType::Integer));
+                    }
+                    if left.candidates.iter().any(|ty| !integer(ty))
+                        || right.candidates.iter().any(|ty| !integer(ty))
+                    {
+                        shell.merge(&TypeShell::from_primitive(PrimitiveType::Number));
+                    }
+                }
+                values.push((shell, constant));
+            }
+            Task::Negate => {
+                let (shell, constant) = values.pop().expect("operand evaluated");
+                let negated = constant.and_then(i64::checked_neg);
+                if constant.is_some() && negated.is_none() {
+                    values.push((TypeShell::from_primitive(PrimitiveType::Number), None));
+                    continue;
+                }
+                let mut result = TypeShell::unknown();
+                for candidate in shell.candidates {
+                    let candidate = match candidate {
+                        TypeCandidate::Literal(LiteralShell::Float(bits)) => {
+                            TypeCandidate::Literal(LiteralShell::Float(
+                                (-f64::from_bits(bits)).to_bits(),
+                            ))
+                        }
+                        TypeCandidate::Literal(LiteralShell::Integer(value)) => {
+                            match value.checked_neg() {
+                                Some(value) => TypeCandidate::Literal(LiteralShell::Integer(value)),
+                                None => TypeCandidate::Primitive(PrimitiveType::Number),
+                            }
+                        }
+                        candidate => candidate,
+                    };
+                    result.merge(&TypeShell {
+                        candidates: vec![candidate],
+                    });
+                }
+                values.push((result, negated));
+            }
+        }
+    }
+    values
+        .pop()
+        .map(|(shell, _)| shell)
+        .unwrap_or_else(TypeShell::unknown)
 }
 
 fn expr_type_index(
@@ -3258,12 +3404,29 @@ fn expr_type_call(
         }
     }
     match callee_closure_syntax(facts, prefix) {
-        Some(closure_syntax) => signature_return(db, file, config, closure_syntax),
+        Some(closure_syntax) => {
+            let mut slots = signature_returns(db, file, config, closure_syntax);
+            if slots.is_empty() {
+                TypeShell::unknown()
+            } else if slots.len() == 1 {
+                slots.pop().expect("len checked")
+            } else {
+                TypeShell {
+                    candidates: vec![TypeCandidate::Multi(slots)],
+                }
+            }
+        }
         None => {
             // Function-value call: if callee type is fun(...), take its return type (including generic substitution).
             for candidate in &prefix_shell.candidates {
                 if let TypeCandidate::Function(fun) = candidate {
-                    return fun.returns.clone();
+                    return if fun.returns_multi.len() > 1 {
+                        TypeShell {
+                            candidates: vec![TypeCandidate::Multi(fun.returns_multi.clone())],
+                        }
+                    } else {
+                        fun.returns.clone()
+                    };
                 }
             }
             TypeShell::unknown()
@@ -3365,6 +3528,16 @@ fn substitute_generics(
                     base, params, args,
                 )));
             }
+            TypeCandidate::Multi(slots) => {
+                out.merge(&TypeShell {
+                    candidates: vec![TypeCandidate::Multi(
+                        slots
+                            .iter()
+                            .map(|slot| substitute_generics(slot, params, args))
+                            .collect(),
+                    )],
+                });
+            }
             TypeCandidate::Tuple(types) => {
                 out.merge(&TypeShell::from_tuple(
                     types
@@ -3409,7 +3582,7 @@ fn literal_type(literal: &LuaLiteralExpr) -> TypeShell {
         Some(LuaLiteralToken::String(_)) => TypeShell::from_primitive(PrimitiveType::String),
         Some(LuaLiteralToken::Number(number)) => match number.get_number_value() {
             emmylua_parser::NumberResult::Int(_) | emmylua_parser::NumberResult::Uint(_) => {
-                TypeShell::from_primitive(PrimitiveType::Number)
+                TypeShell::from_primitive(PrimitiveType::Integer)
             }
             emmylua_parser::NumberResult::Float(f) => {
                 TypeShell::from_literal(LiteralShell::Float(f.to_bits()))

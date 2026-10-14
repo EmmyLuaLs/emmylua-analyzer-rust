@@ -1179,13 +1179,148 @@ mod test {
     }
 
     #[test]
+    fn test_recursive_variadic_inference_preserves_other_diagnostics() {
+        let source = r#"
+            ---@param ... boolean
+            local function recurse(...)
+                if ... then return 1, 'done' end
+                return 1, recurse(true)
+            end
+            local result = recurse(false)
+            ---@type string
+            local wrong = 42
+            return result, wrong
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("wrong = 42").unwrap() + "wrong = ".len()
+        );
+    }
+
+    #[test]
+    fn test_generic_callback_keeps_prefixed_variadic_results() {
+        let source = r#"
+            ---@generic First, Rest
+            ---@param callback fun(): First, Rest...
+            ---@return First, Rest...
+            local function wrap(callback) return callback() end
+            ---@param ... integer
+            local function values(...) return true, ... end
+            local packed = {wrap(function() return values(1, 2, 3) end)}
+            ---@type boolean
+            local first = packed[1]
+            ---@type integer
+            local valid = packed[3]
+            ---@type string?
+            local wrong = packed[3]
+            return first, valid, wrong
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.rfind("packed[3]").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_long_argument_expression_keeps_type_checks() {
+        let expression = vec!["1"; 1500].join(" + ");
+        let wrong_number = format!("text_value({expression})");
+        let wrong_string = "number_value(1 --[[@as string]])";
+        let source = format!(
+            r#"
+            ---@param value number
+            local function number_value(value) return value end
+            ---@param value string
+            local function text_value(value) return value end
+            local unrelated = 1 --[[@as integer]]
+            number_value(unrelated)
+            number_value({expression})
+            {wrong_number}
+            text_value(1 --[[@as string]])
+            {wrong_string}
+        "#
+        );
+        let diagnostics = check_source(&source);
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
+        let actual: Vec<_> = diagnostics
+            .iter()
+            .map(|d| (d.code, usize::from(d.range.start())))
+            .collect();
+        assert_eq!(
+            actual,
+            vec![
+                (
+                    DiagnosticCode::ParamTypeMismatch,
+                    source.find(&wrong_number).unwrap() + "text_value(".len(),
+                ),
+                (
+                    DiagnosticCode::ParamTypeMismatch,
+                    source.find(wrong_string).unwrap() + "number_value(".len(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_guarded_member_tracks_each_access_and_owner_assignment() {
+        let source = r#"
+            ---@class A
+            ---@field type 'point'
+            ---@field handle string?
+            ---@class B
+            ---@field type 'unit'
+            ---@field handle integer?
+            ---@param text string
+            local function consume(text) return text end
+            ---@param target A | B
+            ---@param other A
+            local function check(target, other)
+                if target.handle then
+                    if target.type == 'point' then
+                        consume(target.handle)
+                        consume(other.handle)
+                        target.handle = nil
+                        consume(target.handle)
+                    end
+                    target = other
+                    if target.type == 'point' then
+                        consume(target.handle)
+                    end
+                end
+            end
+            return check
+        "#;
+        let diagnostics = check_source(source);
+        let mut actual = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::ParamTypeMismatch)
+            .map(|d| usize::from(d.range.start()))
+            .collect::<Vec<_>>();
+        actual.sort_unstable();
+        let expected = [
+            "consume(other.handle)",
+            "consume(target.handle)\n                    end",
+            "consume(target.handle)\n                    end\n                end",
+        ]
+        .map(|text| source.find(text).unwrap() + "consume(".len());
+        assert_eq!(actual, expected, "{diagnostics:#?}");
+    }
+
+    #[test]
     fn test_flow_alias() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let mut emmyrc = ws.analysis.get_emmyrc().deref().clone();
         emmyrc.strict.array_index = false;
         ws.analysis.update_config(Arc::new(emmyrc));
 
-        assert!(ws.has_no_diagnostic(
+        // With no arguments, callback stays nil; event(callback) must warn.
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class Trigger
@@ -1228,18 +1363,129 @@ mod test {
     }
 
     #[test]
-    fn test_int() {
-        let mut ws = VirtualWorkspace::new();
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::ParamTypeMismatch,
-            r#"
-            ---@param count integer
-            local function loop_count(count)
-            end
+    fn test_inferred_integer_returns_keep_argument_and_return_checks() {
+        for (body, target, accepted) in [
+            ("return 1", "integer", true),
+            ("local value = 1; return value", "integer", true),
+            ("return 7 // 3", "integer", true),
+            ("return 7 % 3", "integer", true),
+            ("return 1 + 2", "integer", true),
+            (
+                "local value = 1; if _flag then return value end; return nil",
+                "integer?",
+                true,
+            ),
+            (
+                "local value = 1; if _flag then return value end; return",
+                "integer?",
+                true,
+            ),
+            (
+                "local value = 1; if _flag then return value end; return",
+                "integer",
+                false,
+            ),
+            (
+                "local value = 1; if _flag then return value end; return 'text'",
+                "integer | string",
+                true,
+            ),
+            (
+                "if _flag then return 1 / 2 end; return nil",
+                "integer?",
+                false,
+            ),
+            (
+                "if _flag then return 1 / 2 end; return 'text'",
+                "integer | string",
+                false,
+            ),
+            (
+                "---@return number\nlocal function number() return 1 end\nreturn number()",
+                "integer",
+                false,
+            ),
+            ("return 1 / 2", "integer", false),
+            ("return 9223372036854775807 + (1 + 0)", "integer", false),
+            ("return 9223372036854775807 + (-1)", "integer", true),
+        ] {
+            let source = format!(
+                r#"
+                ---@param _flag boolean
+                local function inferred(_flag) {body} end
+                ---@param value {target}
+                local function consume(value) return value end
+                consume(inferred(true))
+                ---@return {target}
+                local function forward() return inferred(true) end
+                return forward
+                "#
+            );
+            let diagnostics = check_source(&source);
+            let mut actual = diagnostics
+                .iter()
+                .map(|d| (d.code, usize::from(d.range.start())))
+                .collect::<Vec<_>>();
+            actual.sort_by_key(|(_, offset)| *offset);
+            let expected = if accepted {
+                vec![]
+            } else {
+                vec![
+                    (
+                        DiagnosticCode::ParamTypeMismatch,
+                        source.find("inferred(true)").unwrap(),
+                    ),
+                    (
+                        DiagnosticCode::ReturnTypeMismatch,
+                        source.rfind("inferred(true)").unwrap(),
+                    ),
+                ]
+            };
+            assert_eq!(actual, expected, "{source}\n{diagnostics:#?}");
+        }
+    }
 
+    #[test]
+    fn test_division_constants_use_floating_point_precision() {
+        for (expression, expected, accepted) in [
+            ("9007199254740993 / 1", "9007199254740992", true),
+            ("9007199254740993 / 1", "9007199254740993", false),
+            ("9007199254740993 / 3", "integer", false),
+            ("9223372036854775807 / 1", "9223372036854775807", false),
+            ("45 / 3", "15", true),
+            ("-6 / 2", "-3", true),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            let source = format!(
+                r#"
+                ---@param value {expected}
+                local function consume(value) end
+                consume({expression})
+                "#
+            );
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_int() {
+        let source = r#"
+            ---@param count integer
+            local function loop_count(count) return count end
             loop_count(45 / 3)
-        "#
-        ));
+            loop_count(45 / 2)
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("45 / 2").unwrap()
+        );
     }
 
     #[test]

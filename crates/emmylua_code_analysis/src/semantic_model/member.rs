@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaAstNode, LuaDocFieldKey, LuaDocTagField, LuaTableExpr, LuaTableField};
 use hashbrown::HashMap;
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
@@ -27,6 +27,8 @@ pub struct MemberInfo {
     pub key: LuaMemberKey,
     /// Member type (after projection / generic substitution).
     pub typ: LuaType,
+    /// Declared index domain after generic substitution; absent for ordinary or synthesized members.
+    pub index_key_type: Option<LuaType>,
     /// Declaration identity (`SemanticId::Member`; `None` for synthesized members).
     pub id: Option<SemanticId>,
     /// Declaring file.
@@ -37,10 +39,15 @@ pub struct MemberInfo {
 
 /// All members of a prefix type (completion candidates; deduplicated by key, with this class's `@field` before parent/runtime values).
 pub fn member_infos(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
+    dedup_by_key(member_infos_all(model, prefix_type))
+}
+
+/// All inherited and substituted members, before choosing one declaration per key.
+pub(super) fn member_infos_all(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
     let mut out = Vec::new();
     let mut visited = Vec::new();
     collect_members(model, prefix_type, None, None, &mut visited, &mut out, None);
-    dedup_by_key(out)
+    out
 }
 
 /// Member with the given key of a prefix type (first match).
@@ -279,6 +286,7 @@ fn direct_member_info(
         LuaType::Object(object) => object.get_fields().get(key).cloned().map(|typ| MemberInfo {
             key: key.clone(),
             typ,
+            index_key_type: None,
             id: None,
             file_id: None,
             is_method: false,
@@ -326,6 +334,7 @@ pub(crate) fn member_info_impl(
         return Some(MemberInfo {
             key: key.clone(),
             typ,
+            index_key_type: None,
             id: first.as_ref().and_then(|info| info.id.clone()),
             file_id: first.as_ref().and_then(|info| info.file_id),
             is_method: first.as_ref().is_some_and(|info| info.is_method),
@@ -351,6 +360,7 @@ pub(crate) fn member_info_impl(
         return Some(MemberInfo {
             key: key.clone(),
             typ: ret,
+            index_key_type: None,
             id: None,
             file_id: None,
             is_method: false,
@@ -732,6 +742,7 @@ fn collect_members(
                     MemberInfo {
                         key: key.clone(),
                         typ: ty.clone(),
+                        index_key_type: None,
                         id: None,
                         file_id: None,
                         is_method: false,
@@ -745,6 +756,7 @@ fn collect_members(
                     MemberInfo {
                         key: LuaMemberKey::Name("[index]".into()),
                         typ: ty.clone(),
+                        index_key_type: None,
                         id: None,
                         file_id: None,
                         is_method: false,
@@ -863,6 +875,7 @@ fn expand_table_multi_return_member(
             .map(|(index, ty)| MemberInfo {
                 key: LuaMemberKey::Integer(start + index as i64),
                 typ: ty,
+                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
@@ -1012,6 +1025,27 @@ fn member_info_of(
         return None;
     }
     let mut typ = model.type_of_member(&member_ref.id)?;
+    let mut index_key_type = member.is_index_signature.then(|| {
+        (|| {
+            let tree = model.syntax_tree_of(member_ref.file_id)?;
+            let node = member
+                .value_syntax?
+                .to_node_from_root(&tree.get_red_root())?;
+            let field = node.ancestors().find_map(LuaDocTagField::cast)?;
+            let LuaDocFieldKey::Type(key) = field.get_field_key()? else {
+                return None;
+            };
+            let generics = facts
+                .type_def_by_id(&member.owner)
+                .map(|def| def.generic_params.as_slice())
+                .unwrap_or_default();
+            Some(model.doc_type_lua_in(member_ref.file_id, key.get_syntax_id(), generics))
+        })()
+        .unwrap_or_else(|| {
+            model.cache.borrow_mut().mark_incomplete();
+            LuaType::Unknown
+        })
+    });
     // Cross-file projection of runtime function members: `type_of_member` often returns a wide Function,
     // so look up the real signature in the member's declaring file to let `require(...).module.fn()` keep inferring.
     // Standard library members keep the wide Function behavior to avoid disturbing parameter checks / math library overloads.
@@ -1063,14 +1097,17 @@ fn member_info_of(
     });
     if let Some(bindings) = bindings {
         typ = unify::substitute(&typ, bindings);
+        index_key_type = index_key_type.map(|key| unify::substitute(&key, bindings));
     }
     if let Some(name_bindings) = name_bindings {
         typ = substitute_named_refs(&typ, name_bindings);
+        index_key_type = index_key_type.map(|key| substitute_named_refs(&key, name_bindings));
     }
 
     Some(MemberInfo {
         key: member_key_to_lua(&member.key),
         typ,
+        index_key_type,
         id: Some(member.id.clone()),
         file_id: Some(member_ref.file_id),
         is_method: member.is_method,
@@ -1078,7 +1115,7 @@ fn member_info_of(
 }
 
 /// Deduplicate by key (keep first: collection order = this class's @field → parent → runtime values).
-fn dedup_by_key(infos: Vec<MemberInfo>) -> Vec<MemberInfo> {
+pub(super) fn dedup_by_key(infos: Vec<MemberInfo>) -> Vec<MemberInfo> {
     let mut seen: Vec<LuaMemberKey> = Vec::new();
     let mut out = Vec::new();
     for info in infos {
@@ -1221,7 +1258,7 @@ mod tests {
         let model = env.model();
         let infos = model.member_infos(&LuaType::Ref(LuaTypeDeclId::global("M")));
         let map = member_map(&infos);
-        assert_eq!(map.get("y"), Some(&LuaType::Number));
+        assert_eq!(map.get("y"), Some(&LuaType::Integer));
     }
 
     /// Generic instance: `value` member of `Box<number>` substitutes to `number`.

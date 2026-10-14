@@ -124,13 +124,13 @@ mod test {
         // case for tuple, object, and table
         {
             let object_ty = ws.ty("{ [1]: string, [2]: number }");
-            let matched_tulple_ty = ws.ty("[string, number");
+            let matched_tuple_ty = ws.ty("[string, number]");
             let matched_object_ty = ws.ty("{ [1]: 'test', [2]: 1 }");
 
-            assert!(ws.check_type(&object_ty, &matched_tulple_ty));
+            assert!(ws.check_type(&object_ty, &matched_tuple_ty));
             assert!(ws.check_type(&object_ty, &matched_object_ty));
-            let mismatch_tulple_ty = ws.ty("[number, string]");
-            assert!(!ws.check_type(&object_ty, &mismatch_tulple_ty));
+            let mismatch_tuple_ty = ws.ty("[number, string]");
+            assert!(!ws.check_type(&object_ty, &mismatch_tuple_ty));
 
             let matched_table_ty = ws.expr_ty("{ [1] = 'test', [2] = 1 }");
             assert!(ws.check_type(&object_ty, &matched_table_ty));

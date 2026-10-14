@@ -161,7 +161,7 @@ mod test {
 
         let status_ty = ws.expr_ty("status");
         let boolean_ty = ws.ty("boolean");
-        assert!(ws.check_type(&status_ty, &boolean_ty));
+        assert!(ws.check_type(&boolean_ty, &status_ty));
         assert!(!status_ty.is_always_truthy());
         assert!(!status_ty.is_always_falsy());
 
@@ -169,7 +169,7 @@ mod test {
         let integer_or_string_ty = ws.ty("integer|string");
         let integer_ty = ws.ty("integer");
         let string_ty = ws.ty("string");
-        assert!(ws.check_type(&value_ty, &integer_or_string_ty));
+        assert!(ws.check_type(&integer_or_string_ty, &value_ty));
         assert!(ws.check_type(&value_ty, &integer_ty));
         assert!(ws.check_type(&value_ty, &string_ty));
     }

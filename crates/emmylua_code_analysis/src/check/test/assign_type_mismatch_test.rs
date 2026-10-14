@@ -1,7 +1,731 @@
 #[cfg(test)]
 mod tests {
-    use crate::check::test::check_source;
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::check::test::{check_source, check_source_with_emmyrc};
+    use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
+
+    #[test]
+    fn test_numeric_member_guards_use_equivalent_integer_keys() {
+        for (key, write, accepted) in [
+            ("1.0", "", true),
+            ("1", "t[1.0] = nil", false),
+            ("'1'", "", false),
+        ] {
+            let source = format!(
+                r#"
+                ---@param flag boolean
+                local function read(flag)
+                    local t = {{[1] = flag and 'a' or nil}}
+                    if t[1] then
+                        {write}
+                        ---@type string
+                        local value = t[{key}]
+                        return value
+                    end
+                end
+                return read
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_child_alias_guards_keep_captured_object_identity() {
+        for (setup, guard, write, read, accepted) in [
+            ("", "t.child.value", "", "b.value", true),
+            ("", "b.value", "", "t.child.value", true),
+            ("local c = (b)", "c.value", "", "t.child.value", true),
+            ("", "b.value", "t.child = other", "b.value", true),
+            ("", "b.value", "t.child = other", "t.child.value", false),
+            ("t.child = other", "b.value", "", "t.child.value", false),
+            ("", "t.child.value", "b.value = nil", "t.child.value", false),
+            ("", "t.child.value", "t.child.value = nil", "b.value", false),
+            (
+                "local a = t",
+                "b.value",
+                "a.child = other",
+                "t.child.value",
+                false,
+            ),
+            (
+                "local a = t; a = t",
+                "b.value",
+                "a.child = other",
+                "t.child.value",
+                false,
+            ),
+            (
+                "local a = t; local d = a; a = t",
+                "b.value",
+                "d.child = other",
+                "t.child.value",
+                false,
+            ),
+            (
+                "",
+                "b.value",
+                "if flag then t.child = other end",
+                "t.child.value",
+                false,
+            ),
+            ("", "b.value", "t[key] = other", "t.child.value", false),
+            ("", "b.value", "other.value = nil", "t.child.value", true),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Child
+                ---@field value string?
+                ---@class Holder
+                ---@field child Child
+                ---@param t Holder
+                ---@param other Child
+                ---@param flag boolean
+                ---@param key string
+                local function read(t, other, flag, key)
+                    local b = t.child
+                    {setup}
+                    if {guard} then
+                        {write}
+                        ---@type string
+                        local value = {read}
+                        return value
+                    end
+                end
+                return read
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_alias_guards_ignore_only_later_straight_line_assignments() {
+        for (body, accepted) in [
+            ("if b.value then consume(t.value) end; b = other", true),
+            ("if b.value then consume(t.value) end; t = other", true),
+            ("b = other; if b.value then consume(t.value) end", false),
+            ("if b.value then b = other; consume(b.value) end", false),
+            (
+                "while flag do if b.value then consume(t.value) end; b = other end",
+                false,
+            ),
+            (
+                "local inner = function() if b.value then consume(t.value) end end; t = other; return inner",
+                false,
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Holder
+                ---@field value string?
+                ---@param value string
+                local function consume(value) end
+                ---@param t Holder
+                ---@param other Holder
+                ---@param flag boolean
+                local function read(t, other, flag)
+                    local b = t
+                    {body}
+                end
+                return read
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_enum_values_across_assignment_argument_and_return() {
+        for (value, accepted, argument_accepted) in [
+            ("'a'", true, true),
+            ("'b'", true, true),
+            ("'first'", false, true),
+            ("'x'", false, false),
+        ] {
+            for (code, usage) in [
+                (
+                    DiagnosticCode::AssignTypeMismatch,
+                    format!("---@type Kind\nlocal value = {value}"),
+                ),
+                (
+                    DiagnosticCode::ParamTypeMismatch,
+                    format!(
+                        "---@param value Kind\nlocal function consume(value) end\nconsume({value})"
+                    ),
+                ),
+                (
+                    DiagnosticCode::ReturnTypeMismatch,
+                    format!("---@return Kind\nlocal function read() return {value} end"),
+                ),
+            ] {
+                let mut ws = VirtualWorkspace::new();
+                let source = format!(
+                    "---@enum Kind\nlocal Kind = {{ first = 'a', second = ('b') }}\n{usage}"
+                );
+                // Arguments also accept enum member names.
+                let accepted = if code == DiagnosticCode::ParamTypeMismatch {
+                    argument_accepted
+                } else {
+                    accepted
+                };
+                assert_eq!(ws.has_no_diagnostic(code, &source), accepted, "{source}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_string_enum_values_from_another_file() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def("---@enum Kind\nlocal Kind = { first = 'a', second = 'b' }");
+        for (value, accepted) in [("'a'", true), ("'x'", false)] {
+            let source = format!("---@type Kind\nlocal value = {value}");
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_compatibility_across_assignment_argument_and_return() {
+        for (source_type, target_type, accepted) in [
+            ("'a'", "'b'", false),
+            ("'1'", "1", false),
+            ("true", "boolean", true),
+            ("true", "false", false),
+            ("string | nil", "string", false),
+            ("Required?", "Required", false),
+            ("fun(...: number)", "fun(...: integer)", true),
+            ("fun(...: integer)", "fun(...: number)", false),
+            ("integer", "number", true),
+            ("number", "integer", false),
+            ("string", "string | nil", true),
+            ("string | integer", "string | number", true),
+            ("string | number", "string | integer", false),
+            ("string | integer", "integer", false),
+            ("fun(): string", "fun(text: string): string", true),
+            ("fun(text: string): string", "fun(): string", false),
+            ("fun(text: string)", "fun(...: string)", false),
+            ("fun(text: string?)", "fun(...: string)", true),
+            (
+                "fun(first: string, second: string)",
+                "fun(first: string, ...: string)",
+                false,
+            ),
+            (
+                "fun(first: string, second: string?)",
+                "fun(first: string, ...: string)",
+                true,
+            ),
+            ("fun(...: [string, string]...)", "fun(...: string)", false),
+            ("fun(...: [string?, string?]...)", "fun(...: string)", true),
+            (
+                "fun(...: [string, integer]...)",
+                "fun(text: string, count: integer)",
+                true,
+            ),
+            ("fun(...: [string, integer]...)", "fun(text: string)", false),
+            ("fun(...: [string, integer]...)", "fun()", false),
+            ("fun(...: [string, integer?]...)", "fun(text: string)", true),
+            ("fun(...: [string?, integer?]...)", "fun()", true),
+            ("fun(...: [string, integer])", "fun()", true),
+            (
+                "fun(prefix: boolean, ...: [string, integer]...)",
+                "fun(prefix: boolean)",
+                false,
+            ),
+            (
+                "fun(prefix: boolean, ...: [string, integer]...)",
+                "fun(prefix: boolean, text: string, count: integer)",
+                true,
+            ),
+            (
+                "fun(value: number): integer",
+                "fun(value: integer): number",
+                true,
+            ),
+            (
+                "fun(value: integer): number",
+                "fun(value: number): integer",
+                false,
+            ),
+            ("[integer]", "{[integer]: number}", true),
+            ("[integer]", "{[integer]: string}", false),
+            ("[integer, string]", "{[integer]: number}", false),
+            ("[integer, string]", "{[integer]: number | string}", true),
+            ("[integer, string]", "{[1]: number, [2]: string}", true),
+            ("[integer]", "{[2]: string}", false),
+            ("[integer]", "{[integer]: number, tag: string}", false),
+            ("[integer]", "{[integer]: number, tag: string?}", true),
+            ("integer[]", "{[integer]: number}", true),
+            ("integer[]", "{[integer]: string}", false),
+            ("integer[]", "{[integer]: number} | nil", true),
+            ("integer[]", "{[integer]: string} | nil", false),
+            ("integer[]", "{[integer]: number, [1]: string}", false),
+            ("integer[]", "{[number]: number}", true),
+            ("integer[]", "{[integer | string]: number}", true),
+            ("integer[]", "{[integer]: number, [number]: string}", false),
+            ("[integer]", "{[integer]: number, [number]: string}", false),
+            ("fun(): integer, string", "fun(): number, string", true),
+            ("fun(): integer, string", "fun(): integer, number", false),
+            ("fun(): integer, string", "fun(): string, string", false),
+            ("fun(): integer, string", "fun(): number", true),
+            ("fun(): integer, string", "fun(): string", false),
+            ("fun(): integer?, string", "fun(): number?", true),
+            ("fun(): integer", "fun(): number, string", false),
+            ("fun(): integer", "fun(): number, string?", true),
+            ("fun(): integer, string", "fun(): number, string...", true),
+            ("fun(): integer, string", "fun(): number, number...", false),
+            ("fun(): integer", "fun(): number, string...", true),
+            (
+                "fun(): integer, integer...",
+                "fun(): number, number...",
+                true,
+            ),
+            (
+                "fun(): integer, string...",
+                "fun(): number, number...",
+                false,
+            ),
+            ("fun(): integer...", "fun(): number, string", false),
+            (
+                "fun(): integer, integer...",
+                "fun(): number, number, number",
+                true,
+            ),
+            (
+                "fun(): integer, string, boolean",
+                "fun(): number, string...",
+                false,
+            ),
+            (
+                "fun(): integer, string, boolean...",
+                "fun(): number, string...",
+                false,
+            ),
+            ("fun(): nil", "fun(): nil, nil", true),
+            ("fun(): any", "fun(): integer, string", true),
+            ("fun(): never", "fun(): integer, string", true),
+            ("fun(): [integer, string]...", "fun(): number, string", true),
+            ("fun(): [integer, integer]...", "fun(): number...", true),
+            (
+                "fun(): [integer, string]...",
+                "fun(): number, number",
+                false,
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Required
+                local _Required = {{}}
+                ---@param value {source_type}
+                ---@return {target_type}
+                local function convert(value)
+                    ---@type {target_type}
+                    local _assigned = value
+                    ---@param argument {target_type}
+                    local function consume(argument) return argument end
+                    consume(value)
+                    return value
+                end
+                return convert
+                "#
+            );
+            let diagnostics = check_source(&source);
+            let mut actual = diagnostics
+                .iter()
+                .map(|d| (d.code, usize::from(d.range.start())))
+                .collect::<Vec<_>>();
+            actual.sort_by_key(|(_, offset)| *offset);
+            let expected = if accepted {
+                vec![]
+            } else {
+                vec![
+                    (
+                        DiagnosticCode::AssignTypeMismatch,
+                        source.find("assigned = value").unwrap() + "assigned = ".len(),
+                    ),
+                    (
+                        DiagnosticCode::ParamTypeMismatch,
+                        source.find("consume(value)").unwrap() + "consume(".len(),
+                    ),
+                    (
+                        DiagnosticCode::ReturnTypeMismatch,
+                        source.find("return value").unwrap() + "return ".len(),
+                    ),
+                ]
+            };
+            assert_eq!(
+                actual, expected,
+                "{source_type} -> {target_type}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_inferred_literal_unions_allow_reassignment() {
+        for (initial, replacement, wrong) in [
+            ("flag and 'open' or 'closed'", "'other'", "false"),
+            ("flag and 1 or 2", "3", "'wrong'"),
+            ("flag and 1.5 or 2.5", "3.5", "'wrong'"),
+            ("flag and 'open' or nil", "'other'", "false"),
+            ("flag and true or nil", "false", "'wrong'"),
+        ] {
+            let source = format!(
+                r#"
+                ---@param flag boolean
+                local function update(flag)
+                    local value = {initial}
+                    value = {replacement}
+                    value = {wrong}
+                    local state = {{ value = {initial} }}
+                    state.value = {replacement}
+                    state.value = {wrong}
+                    return value, state
+                end
+                return update
+                "#
+            );
+            let mut diagnostics = check_source(&source);
+            diagnostics.sort_by_key(|d| d.range.start());
+            let actual = diagnostics
+                .iter()
+                .map(|d| (d.code, usize::from(d.range.start())))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                actual,
+                ["value", "state.value"]
+                    .map(|target| (
+                        DiagnosticCode::AssignTypeMismatch,
+                        source.find(&format!("{target} = {wrong}")).unwrap()
+                            + target.len()
+                            + " = ".len(),
+                    ))
+                    .to_vec(),
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_inferred_fields_allow_reassignment_through_aliases_and_imports() {
+        for imported in [false, true] {
+            for (annotation, replacement, accepted) in [
+                ("", "'other'", true),
+                ("", "false", false),
+                ("---@type 'open' | 'closed'", "'other'", false),
+            ] {
+                let original = format!(
+                    r#"
+                    ---@type boolean
+                    local flag
+                    local original = {{
+                        {annotation}
+                        state = flag and 'open' or 'closed'
+                    }}
+                    "#
+                );
+                let mut ws = VirtualWorkspace::new();
+                let source = if imported {
+                    ws.def_file("config.lua", &format!("{original}\nreturn original"));
+                    format!("local config = require('config')\nconfig.state = {replacement}")
+                } else {
+                    format!("{original}\nlocal config = original\nconfig.state = {replacement}")
+                };
+                assert_eq!(
+                    ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                    accepted,
+                    "imported={imported}: {source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_member_comparisons_narrow_only_the_matching_key() {
+        for table in [
+            "local t = {[1] = _value, ['1'] = _value}",
+            "---@class Indexed\n---@field [1] string | integer\n---@field ['1'] string | integer\n---@type Indexed\nlocal t",
+        ] {
+            for (read, accepted) in [("t[1]", true), ("t['1']", false)] {
+                let source = format!(
+                    r#"
+                    ---@param _value string | integer
+                    local function read(_value)
+                        {table}
+                        if t[1] == 'a' then
+                            ---@type string
+                            local _text = {read}
+                        end
+                    end
+                    return read
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(
+                    diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                    if accepted {
+                        vec![]
+                    } else {
+                        vec![DiagnosticCode::AssignTypeMismatch]
+                    },
+                    "{source}\n{diagnostics:#?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_member_guards_follow_stable_local_aliases() {
+        for (setup, guarded, read, accepted) in [
+            ("local b = a", "b", "a", true),
+            ("local b = a", "a", "b", true),
+            ("local b = (a); local c = b", "c", "a", true),
+            ("local b = _other", "b", "a", false),
+            ("local b = a; b = _other", "b", "a", false),
+            ("local b = a; a = _other", "b", "a", false),
+            ("a = _other; local b = a; a = _third", "b", "a", false),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Node
+                ---@field value string?
+                ---@param a Node
+                ---@param _other Node
+                ---@param _third Node
+                local function read(a, _other, _third)
+                    {setup}
+                    if {guarded}.value then
+                        ---@type string
+                        local _text = {read}.value
+                    end
+                end
+                return read
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                if accepted {
+                    vec![]
+                } else {
+                    vec![DiagnosticCode::AssignTypeMismatch]
+                },
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_member_guards_stop_after_alias_field_writes() {
+        for (write, accepted) in [
+            ("a.value = nil", false),
+            ("b.value = nil", false),
+            ("if _flag then b.value = nil end", false),
+            ("_other.value = nil", true),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Node
+                ---@field value string?
+                ---@param a Node
+                ---@param _other Node
+                ---@param _flag boolean
+                local function read(a, _other, _flag)
+                    local b = a
+                    if b.value then
+                        {write}
+                        ---@type string
+                        local _text = a.value
+                    end
+                end
+                return read
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                if accepted {
+                    vec![]
+                } else {
+                    vec![DiagnosticCode::AssignTypeMismatch]
+                },
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_member_guards_stop_after_alias_owner_writes() {
+        for (write, accepted) in [
+            ("b.child = {value = nil}", false),
+            ("b.child = {value = 'safe'}", true),
+            ("if _flag then b.child = {value = nil} end", false),
+            ("b[_key] = {value = nil}", false),
+            ("_other.child = {value = nil}", true),
+        ] {
+            let source = format!(
+                r#"
+                ---@class Leaf
+                ---@field value string?
+                ---@class Tree
+                ---@field child Leaf
+                ---@param a Tree
+                ---@param _other Tree
+                ---@param _flag boolean
+                ---@param _key string
+                local function read(a, _other, _flag, _key)
+                    local b = a
+                    if b.child.value then
+                        {write}
+                        ---@type string
+                        local _text = a.child.value
+                    end
+                end
+                return read
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                if accepted {
+                    vec![]
+                } else {
+                    vec![DiagnosticCode::AssignTypeMismatch]
+                },
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_array_values_satisfy_numeric_members_of_index_unions() {
+        for key in ["1 | 'tag'", "Keys", "NestedKeys", "RecursiveKeys"] {
+            for (expected, accepted) in [("number", true), ("string", false)] {
+                let source = format!(
+                    r#"
+                    ---@alias Keys 1 | 'tag'
+                    ---@alias NestedKeys Keys | 'meta'
+                    ---@alias RecursiveKeys integer | 'tag' | RecursiveKeys
+                    ---@param value integer[]
+                    ---@return {{[{key}]: {expected}}}
+                    local function convert(value)
+                        ---@type {{[{key}]: {expected}}}
+                        local _assigned = value
+                        ---@param argument {{[{key}]: {expected}}}
+                        local function consume(argument) return argument end
+                        consume(value)
+                        return value
+                    end
+                    return convert
+                    "#
+                );
+                let mut config = Emmyrc::default();
+                config.strict.doc_base_const_match_base_type = false;
+                let mut diagnostics = check_source_with_emmyrc(&source, config);
+                diagnostics.sort_by_key(|d| d.range.start());
+                let codes = diagnostics.iter().map(|d| d.code).collect::<Vec<_>>();
+                let expected = if accepted {
+                    vec![]
+                } else {
+                    vec![
+                        DiagnosticCode::AssignTypeMismatch,
+                        DiagnosticCode::ParamTypeMismatch,
+                        DiagnosticCode::ReturnTypeMismatch,
+                    ]
+                };
+                assert_eq!(codes, expected, "{source}\n{diagnostics:#?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_inferred_literals_can_change_but_declared_literals_cannot() {
+        let source = r#"
+            local fraction = 1.5
+            fraction = 2.5
+            local changed = false
+            changed = true
+            local state = { ready = true }
+            state.ready = false
+            ---@type false
+            local fixed = false
+            fixed = true
+            return fraction, changed, state, fixed
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("fixed = true").unwrap() + "fixed = ".len()
+        );
+    }
+
+    #[test]
+    fn test_parameter_reassignment_preserves_literal_annotations() {
+        for (parameter_type, value, accepted) in [
+            ("false", "true", false),
+            ("false", "false", true),
+            ("true", "false", false),
+            ("boolean", "true", true),
+            ("'open'", "'closed'", false),
+            ("'open'", "'open'", true),
+            ("'open' | 'closed'", "'other'", false),
+            ("string", "'closed'", true),
+            ("1", "2", false),
+            ("1", "1", true),
+            ("1 | 2", "3", false),
+            ("integer", "2", true),
+            ("integer", "1 + 2", true),
+            ("integer", "1 / 2", false),
+            ("integer", "1.5 + 1", false),
+        ] {
+            let source = format!(
+                r#"
+                ---@param value {parameter_type}
+                local function update(value)
+                    value = {value}
+                    return value
+                end
+                return update
+                "#
+            );
+            let diagnostics = check_source(&source);
+            let actual = diagnostics
+                .iter()
+                .map(|d| (d.code, usize::from(d.range.start())))
+                .collect::<Vec<_>>();
+            let expected = if accepted {
+                vec![]
+            } else {
+                vec![(
+                    DiagnosticCode::AssignTypeMismatch,
+                    source.find("value = ").unwrap() + "value = ".len(),
+                )]
+            };
+            assert_eq!(
+                actual, expected,
+                "{parameter_type} = {value}: {diagnostics:#?}"
+            );
+        }
+    }
 
     #[test]
     fn test_vararg_packing_keeps_tuple_assignment_checks() {
@@ -225,6 +949,10 @@ mod tests {
                     DiagnosticCode::ParamTypeMismatch,
                     source.rfind("values)").unwrap()
                 ),
+                (
+                    DiagnosticCode::ParamTypeMismatch,
+                    source.find("consume_numbers(fixed)").unwrap() + "consume_numbers(".len()
+                ),
             ],
             "{diagnostics:#?}"
         );
@@ -249,7 +977,9 @@ mod tests {
                     ---@type {target}
                     local reassigned
                     reassigned = value
-                    return initialized, reassigned
+                    ---@type ({target})[]
+                    local packed = {{value}}
+                    return initialized, reassigned, packed
                 end
                 return use
                 "#,
@@ -263,15 +993,15 @@ mod tests {
 
     #[test]
     fn test_union_assignment_rejects_incompatible_source_members() {
-        for (source, target) in [
+        for (source, target, diagnostic_count) in [
             // Reject boolean, even though string and integer are accepted.
-            ("string|integer|boolean", "string|number"),
-            // Reject nil because the target does not accept it.
-            ("true?", "boolean|string"),
+            ("string|integer|boolean", "string|number", 2),
+            // Nil cannot supply a required value, but omits a table entry.
+            ("true?", "boolean|string", 1),
             // Reject number because it can contain non-integer values.
-            ("string|number", "string|integer"),
+            ("string|number", "string|integer", 2),
             // Reject integer when the target accepts only strings.
-            ("string|integer", "string"),
+            ("string|integer", "string", 2),
         ] {
             let diagnostics = check_source(&format!(
                 r#"
@@ -279,14 +1009,16 @@ mod tests {
                 local function use(value)
                     ---@type {target}
                     local target = value
-                    return target
+                    ---@type ({target})[]
+                    local packed = {{value}}
+                    return target, packed
                 end
                 return use
                 "#,
             ));
             assert_eq!(
                 diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
-                vec![DiagnosticCode::AssignTypeMismatch],
+                vec![DiagnosticCode::AssignTypeMismatch; diagnostic_count],
                 "{source} -> {target}: {diagnostics:?}"
             );
         }
@@ -1858,11 +2590,7 @@ return t
 
     #[test]
     fn test_return_overload_mixed_guards_keep_assign_narrowing() {
-        let mut ws = VirtualWorkspace::new();
-
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
+        let source = r#"
                 ---@generic T, E
                 ---@param ok boolean
                 ---@param success T
@@ -1882,6 +2610,9 @@ return t
                 local function test(cond)
                     local ok, result = pick(cond, 1, "err")
 
+                    ---@type integer
+                    local unguarded = result
+
                     if ok == false then
                         error(result)
                     end
@@ -1893,8 +2624,48 @@ return t
                     ---@type integer
                     local narrowed = result
                 end
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|d| d.code == DiagnosticCode::AssignTypeMismatch)
+                .map(|d| usize::from(d.range.start()))
+                .collect::<Vec<_>>(),
+            vec![source.find("unguarded = result").unwrap() + "unguarded = ".len()],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn test_overloaded_call_results_use_the_matching_argument_type() {
+        let mut diagnostics = check_source(
+            r#"
+            ---@overload fun(value: string): integer
+            ---@param _value boolean
+            ---@return string
+            local function pick(_value) return 'text' end
+
+            ---@type integer
+            local assigned = pick(true)
+            ---@param value integer
+            local function consume(value) return value end
+            consume(pick(true))
+            ---@return integer
+            local function forward() return pick(true) end
+            return assigned, forward
             "#,
-        ));
+        );
+        diagnostics.sort_by_key(|diagnostic| diagnostic.range.start());
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            vec![
+                DiagnosticCode::AssignTypeMismatch,
+                DiagnosticCode::ParamTypeMismatch,
+                DiagnosticCode::ReturnTypeMismatch,
+            ],
+            "{diagnostics:#?}"
+        );
     }
 
     #[test]

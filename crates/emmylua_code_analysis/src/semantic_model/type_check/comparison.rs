@@ -7,17 +7,14 @@ use hashbrown::hash_map::EntryRef;
 use hashbrown::{HashMap, HashSet};
 use std::collections::VecDeque;
 
-use super::{TypeCheckContext, TypeCheckFailReason, TypeCheckMode, TypeCheckResult};
+use super::{TypeCheckContext, TypeCheckFailReason, TypeCheckResult};
 use crate::LuaType;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Comparison {
     source: LuaType,
     target: LuaType,
-    mode: TypeCheckMode,
-    strict_union: bool,
-    strict_object: bool,
-    strict_generic: bool,
+    strict_subtype: bool,
 }
 
 struct Node {
@@ -173,10 +170,7 @@ pub(super) fn check(
     let key = Comparison {
         source: source.clone(),
         target: target.clone(),
-        mode: context.mode,
-        strict_union: context.strict_union,
-        strict_object: context.strict_object,
-        strict_generic: context.strict_generic,
+        strict_subtype: context.strict_subtype,
     };
     let comparisons = context.comparisons.clone();
     if comparisons.borrow().current.is_some() {
@@ -219,10 +213,7 @@ fn evaluate(context: &TypeCheckContext, id: usize, key: &Comparison) -> TypeChec
         graph.current = Some(id);
     }
     let mut current = TypeCheckContext {
-        mode: key.mode,
-        strict_union: key.strict_union,
-        strict_object: key.strict_object,
-        strict_generic: key.strict_generic,
+        strict_subtype: key.strict_subtype,
         ..context.clone()
     };
     let result = super::check_comparison(&mut current, &key.source, &key.target);

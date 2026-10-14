@@ -814,24 +814,7 @@ pub(crate) fn callable_functions(
             if let Some(facts) = semantic_model.file_facts_of(def.file_id)
                 && let Some(op) = facts.operator_of(&def.id, "call")
             {
-                let params = op
-                    .params
-                    .iter()
-                    .map(|syntax| {
-                        (
-                            String::new(),
-                            Some(semantic_model.doc_type_lua_rich_in(def.file_id, *syntax)),
-                        )
-                    })
-                    .collect();
-                out.push(LuaFunctionType::new(
-                    AsyncState::None,
-                    false,
-                    false,
-                    params,
-                    semantic_model.doc_type_lua_rich_in(def.file_id, op.returns),
-                    None,
-                ));
+                out.push(semantic_model.call_operator_type(def.file_id, op));
             }
             out
         }
@@ -871,24 +854,7 @@ pub(crate) fn callable_functions(
             if let Some(facts) = semantic_model.file_facts_of(def.file_id)
                 && let Some(op) = facts.operator_of(&def.id, "call")
             {
-                let params = op
-                    .params
-                    .iter()
-                    .map(|syntax| {
-                        (
-                            String::new(),
-                            Some(semantic_model.doc_type_lua_rich_in(def.file_id, *syntax)),
-                        )
-                    })
-                    .collect();
-                out.push(LuaFunctionType::new(
-                    AsyncState::None,
-                    false,
-                    false,
-                    params,
-                    semantic_model.doc_type_lua_rich_in(def.file_id, op.returns),
-                    None,
-                ));
+                out.push(semantic_model.call_operator_type(def.file_id, op));
             }
             out
         }

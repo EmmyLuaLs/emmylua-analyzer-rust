@@ -42,14 +42,11 @@ fn union(types: Vec<LuaType>) -> LuaType {
 #[test]
 fn test_primitives_and_consts() {
     use LuaType as LT;
-    assert!(
-        ok(&LT::Number, &LT::Integer),
-        "旧语义：Number 可赋给 Integer"
-    );
-    assert!(!ok(&LT::Integer, &LT::Number));
+    assert!(!ok(&LT::Number, &LT::Integer));
+    assert!(ok(&LT::Integer, &LT::Number));
     assert!(!ok(&LT::String, &LT::Number));
     assert!(ok(&LT::IntegerConst(1), &LT::Integer));
-    assert!(ok(&LT::Number, &LT::IntegerConst(1)));
+    assert!(!ok(&LT::Number, &LT::IntegerConst(1)));
     assert!(ok(&LT::StringConst(SmolStr::new("x").into()), &LT::String));
     assert!(ok(&LT::Nil, &LT::Nil));
     assert!(!ok(&LT::Nil, &LT::Number));
@@ -94,15 +91,15 @@ fn test_union_intersection() {
     use LuaType as LT;
     // Target union: source matches any one component.
     let t_union = union(vec![LT::String, LT::Number]);
-    assert!(!ok(&LT::String, &t_union), "target 并集要求全部接受");
+    assert!(ok(&LT::String, &t_union));
     assert!(!ok(&LT::Boolean, &t_union));
-    // Source union: any member matching is enough.
+    // Every possible source value must fit the target.
     let s_union = union(vec![LT::String, LT::Number]);
-    assert!(ok(&s_union, &LT::Number));
+    assert!(!ok(&s_union, &LT::Number));
     assert!(!ok(&s_union, &LT::Boolean));
-    // Nullable: `integer?` is assignable to `integer`.
+    // A nullable value cannot supply a required integer.
     let nullable = LT::Union(Rc::new(LuaUnionType::Nullable(LT::Integer)));
-    assert!(ok(&nullable, &LT::Integer));
+    assert!(!ok(&nullable, &LT::Integer));
 }
 
 #[test]
@@ -110,8 +107,8 @@ fn test_function_structure() {
     use LuaType as LT;
     // Return covariance.
     assert!(
-        ok(&doc_fun(vec![], LT::Number), &doc_fun(vec![], LT::Integer)),
-        "返回协变（旧数值宽松语义）"
+        ok(&doc_fun(vec![], LT::Integer), &doc_fun(vec![], LT::Number)),
+        "Integer results can supply number results"
     );
     assert!(
         !ok(&doc_fun(vec![], LT::String), &doc_fun(vec![], LT::Integer)),
@@ -155,6 +152,55 @@ fn test_ref_inheritance() {
     assert!(is_compatible(&model, &bar, &foo), "Bar ≤ Foo（继承）");
     assert!(is_compatible(&model, &foo, &bar), "名义双向（旧语义）");
     assert!(is_compatible(&model, &foo, &foo));
+}
+
+#[test]
+fn test_named_arrays_keep_inherited_index_types() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@class ArrayBase: table
+        ---@field [integer] string
+        ---@field label boolean
+        ---@class IntegerFieldArray: ArrayBase
+        ---@field integer boolean
+
+        ---@class GenericMetadata<K>: table
+        ---@field [K] boolean
+        ---@class ArrayWithGenericMetadata: GenericMetadata<string>
+        ---@field [integer] string
+
+        ---@class GenericArrayBase<T>: table
+        ---@field [integer] T
+        ---@class StringArray: GenericArrayBase<string>
+        ---@class OverriddenArray: GenericArrayBase<integer>
+        ---@field [integer] string
+
+        ---@class RecursiveArray: RecursiveArrayBase
+        ---@class RecursiveArrayBase: RecursiveArray
+        ---@field [integer] string
+        "#,
+    );
+    let strings = ws.ty("string[]");
+    let numbers = ws.ty("number[]");
+    for name in [
+        "IntegerFieldArray",
+        "ArrayWithGenericMetadata",
+        "StringArray",
+        "OverriddenArray",
+        "RecursiveArray",
+    ] {
+        let source = ws.ty(name);
+        let model = ws.analysis.semantic_model(file);
+        assert!(
+            model.type_check(&source, &strings),
+            "{name} is a string array"
+        );
+        assert!(
+            !model.type_check(&source, &numbers),
+            "{name} is not a number array"
+        );
+    }
 }
 
 #[test]
@@ -202,7 +248,7 @@ fn test_instance_base() {
         LT::Number,
         InFiled::new(FileId::new(0), Default::default()),
     )));
-    assert!(ok(&inst, &LT::Integer));
+    assert!(!ok(&inst, &LT::Integer));
     assert!(!ok(&inst, &LT::String));
 }
 

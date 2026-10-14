@@ -70,10 +70,13 @@ fn unresolved_conditional_comparisons_stay_deferred() {
         ws.ty("Cycle extends string and boolean or integer"),
         ws.ty("string extends (Cycle | integer) and boolean or integer"),
         ws.ty("Cycle extends {value: infer T} and T or integer"),
-        ws.ty("Branch extends Source and boolean or integer"),
     ];
     let accepted = ws.ty("string extends string and boolean or integer");
-    let rejected = ws.ty("integer extends string and boolean or integer");
+    let rejected = [
+        ws.ty("integer extends string and boolean or integer"),
+        // One rejected source alternative is enough even if another is unfinished.
+        ws.ty("Branch extends Source and boolean or integer"),
+    ];
     let known_union_branch = ws.ty("string extends (Cycle | string) and boolean or integer");
     let deferred_field = ws.ty("{value: Cycle extends string and boolean or integer}");
     let target = ws.ty("{value: string}");
@@ -94,7 +97,9 @@ fn unresolved_conditional_comparisons_stay_deferred() {
         Err(TypeCheckFailReason::Unresolved)
     );
     assert_eq!(eval_conditionals(&model, &accepted), LuaType::Boolean);
-    assert_eq!(eval_conditionals(&model, &rejected), LuaType::Integer);
+    for rejected in rejected {
+        assert_eq!(eval_conditionals(&model, &rejected), LuaType::Integer);
+    }
     assert_eq!(
         eval_conditionals(&model, &known_union_branch),
         LuaType::Boolean
@@ -202,7 +207,14 @@ fn recursive_alternatives_keep_only_proven_answers() {
         let model = ws.analysis.semantic_model(file);
         assert!(!model.type_check(&ty, &LuaType::Integer));
         assert_eq!(eval_conditionals(&model, &conditional), conditional);
-        assert_eq!(eval_conditionals(&model, &productive), LuaType::String);
+        // A source union requires every alternative. An intersection can use
+        // its known integer component without resolving the cycle.
+        let expected = if operator == "|" {
+            productive.clone()
+        } else {
+            LuaType::String
+        };
+        assert_eq!(eval_conditionals(&model, &productive), expected);
     }
 }
 
@@ -225,7 +237,6 @@ fn growing_computations_report_excessive_evaluation() {
         "#,
     );
     for name in [
-        "Grow<string>",
         "Left<string>",
         "Right<string>",
         "InferGrow<string>",
@@ -246,7 +257,16 @@ fn growing_computations_report_excessive_evaluation() {
         );
         assert_eq!(eval_conditionals(&model, &conditional), conditional);
     }
-    let known = ws.ty("Productive<string> extends integer and boolean or string");
+    // The string alternative proves a mismatch before the growing branch is needed.
+    let rejected = ws.ty("Grow<string>");
+    let conditional = ws.ty("Grow<string> extends integer and boolean or string");
+    let model = ws.analysis.semantic_model(file);
+    assert!(
+        check_type(&model, &rejected, &LuaType::Integer).is_err_and(|err| err.is_type_not_match())
+    );
+    assert_eq!(eval_conditionals(&model, &conditional), LuaType::String);
+
+    let known = ws.ty("integer extends (Productive<string> | integer) and boolean or string");
     let model = ws.analysis.semantic_model(file);
     assert_eq!(eval_conditionals(&model, &known), LuaType::Boolean);
 }
@@ -274,7 +294,8 @@ fn recursive_alias_arguments_can_change_within_a_finite_set() {
         model.member_type(&candidate, &LuaMemberKey::Name("value".into())),
         Some(LuaType::Integer)
     );
-    assert!(model.type_check(&changed, &LuaType::Integer));
+    // The string alternative cannot supply an integer.
+    assert!(!model.type_check(&changed, &LuaType::Integer));
     assert!(model.type_check_subtype(&switch, &accepted));
     assert!(!model.type_check_subtype(&switch, &rejected));
 }
@@ -340,7 +361,8 @@ fn inferred_components_can_consume_recursive_alias_arguments() {
     }
     let wrapped = ws.ty("Wrapped<string>");
     let model = ws.analysis.semantic_model(file);
-    assert!(model.type_check(&wrapped, &LuaType::Integer));
+    // Resolving a later integer alternative must not discard the string alternative.
+    assert!(!model.type_check(&wrapped, &LuaType::Integer));
 }
 
 #[test]
@@ -364,11 +386,8 @@ fn recursive_json_aliases_keep_finite_nested_values() {
         ] {
             let source_type = ws.ty(source);
             let model = ws.analysis.semantic_model(file);
-            let result = crate::semantic_model::type_check::check_assign_type_detail(
-                &model,
-                &source_type,
-                &target,
-            );
+            let result =
+                crate::semantic_model::type_check::check_type_detail(&model, &source_type, &target);
             if matches!(source, "fun()" | "thread") {
                 assert!(
                     result.is_err_and(|err| err.is_type_not_match()),
@@ -400,7 +419,7 @@ fn recursive_matches_ignore_unused_union_alternatives() {
         let target = ws.ty(target);
         let model = ws.analysis.semantic_model(file);
         assert_eq!(
-            crate::semantic_model::type_check::check_assign_type_detail(&model, &source, &target),
+            crate::semantic_model::type_check::check_type_detail(&model, &source, &target),
             Ok(()),
             "{target:?}"
         );
@@ -415,8 +434,7 @@ fn finite_comparisons_have_no_depth_cutoff() {
     for (leaf, accepted) in [("string", true), ("(fun())", false)] {
         let source = ws.ty(&format!("{leaf}{}", "[]".repeat(256)));
         let model = ws.analysis.semantic_model(file);
-        let result =
-            crate::semantic_model::type_check::check_assign_type_detail(&model, &source, &target);
+        let result = crate::semantic_model::type_check::check_type_detail(&model, &source, &target);
         assert_eq!(result.is_ok(), accepted, "{leaf}");
         if !accepted {
             assert!(result.is_err_and(|err| err.is_type_not_match()));
@@ -451,7 +469,7 @@ fn function_parameters_keep_independent_alias_paths() {
             expected
         );
         assert_eq!(
-            crate::semantic_model::type_check::check_assign_type_detail(
+            crate::semantic_model::type_check::check_type_detail(
                 &model,
                 &source_type,
                 &target_type
