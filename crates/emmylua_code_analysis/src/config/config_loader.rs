@@ -69,15 +69,15 @@ pub fn load_configs_raw(config_files: Vec<PathBuf>, partial_emmyrcs: Option<Vec<
         let flatten_config = FlattenConfigObject::parse(first_config);
         flatten_config.to_emmyrc()
     } else {
-        let merge_config =
-            config_jsons
-                .into_iter()
-                .fold(Value::Object(Default::default()), |mut acc, item| {
-                    merge_values(&mut acc, item);
-                    acc
-                });
-        let flatten_config = FlattenConfigObject::parse(merge_config.clone());
-        flatten_config.to_emmyrc()
+        config_jsons
+            .into_iter()
+            // Normalize each layer before merging so dotted and nested keys
+            // share the same precedence and array-append behavior.
+            .map(|item| FlattenConfigObject::parse(item).to_emmyrc())
+            .fold(Value::Object(Default::default()), |mut acc, item| {
+                merge_values(&mut acc, item);
+                acc
+            })
     }
 }
 
@@ -114,5 +114,233 @@ fn merge_values(base: &mut Value, overlay: Value) {
         (base_slot, overlay_value) => {
             *base_slot = overlay_value;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_configs, load_configs_raw};
+    use crate::config::EmmyrcLuaVersion;
+    use serde_json::{Value, json};
+
+    fn merge(layers: Vec<Value>) -> Value {
+        load_configs_raw(Vec::new(), Some(layers))
+    }
+
+    #[test]
+    fn mixed_key_notation_preserves_array_layers() {
+        let dotted = json!({"workspace.ignoreDir": ["vendor"]});
+        let nested = json!({"workspace": {"ignoreDir": ["managed-mod"]}});
+        assert_eq!(
+            merge(vec![dotted.clone(), nested.clone()])["workspace"]["ignoreDir"],
+            json!(["vendor", "managed-mod"])
+        );
+        assert_eq!(
+            merge(vec![nested, dotted])["workspace"]["ignoreDir"],
+            json!(["managed-mod", "vendor"])
+        );
+    }
+
+    #[test]
+    fn mixed_key_notation_preserves_scalar_precedence() {
+        assert_eq!(
+            merge(vec![
+                json!({"runtime.version": "Lua5.1"}),
+                json!({"runtime": {"version": "Lua5.2"}}),
+            ])["runtime"]["version"],
+            "Lua5.2"
+        );
+        assert_eq!(
+            merge(vec![
+                json!({"runtime": {"version": "Lua5.2"}}),
+                json!({"runtime.version": "Lua5.3"}),
+            ])["runtime"]["version"],
+            "Lua5.3"
+        );
+    }
+
+    #[test]
+    fn normalization_retains_other_settings_and_array_entry_objects() {
+        let library = json!({"path": "library", "ignoreDir": ["test"]});
+        let result = merge(vec![
+            json!({"workspace.library": [library.clone()], "diagnostics.disable": ["unused"]}),
+            json!({"workspace": {"ignoreDir": ["managed-mod"]}}),
+        ]);
+        assert_eq!(result["workspace"]["library"], json!([library]));
+        assert_eq!(result["diagnostics"]["disable"], json!(["unused"]));
+        assert_eq!(result["workspace"]["ignoreDir"], json!(["managed-mod"]));
+    }
+
+    #[test]
+    fn same_notation_retains_existing_merge_behavior() {
+        // Only duplicates within the appended overlay are removed, not matches in the base.
+        assert_eq!(
+            merge(vec![
+                json!({"workspace": {"ignoreDir": ["first"]}}),
+                json!({"workspace": {"ignoreDir": ["second", "second"]}}),
+            ])["workspace"]["ignoreDir"],
+            json!(["first", "second"])
+        );
+        assert_eq!(
+            merge(vec![
+                json!({"workspace": {"ignoreDir": ["first"]}}),
+                json!({"workspace": {"ignoreDir": ["first", "second", "second"]}}),
+            ])["workspace"]["ignoreDir"],
+            json!(["first", "first", "second"])
+        );
+        assert_eq!(merge(vec![]), json!({}));
+        assert_eq!(
+            merge(vec![json!({"runtime.version": "Lua5.2"})]),
+            json!({"runtime": {"version": "Lua5.2"}})
+        );
+    }
+
+    #[test]
+    fn empty_and_sparse_layers_preserve_values_and_array_order() {
+        assert_eq!(
+            merge(vec![json!({"diagnostics.enable": false}), json!({})]),
+            json!({"diagnostics": {"enable": false}})
+        );
+        assert_eq!(
+            merge(vec![json!({"runtime.version": "Lua5.2"}), json!({})]),
+            json!({"runtime": {"version": "Lua5.2"}})
+        );
+        assert_eq!(
+            merge(vec![
+                json!({"runtime.version": "Lua5.2", "workspace.ignoreDir": ["first"]}),
+                json!({}),
+                json!({"workspace": {"ignoreDir": ["second"]}}),
+                json!({}),
+                json!({"workspace.ignoreDir": ["third"], "diagnostics.enable": false}),
+            ]),
+            json!({
+                "runtime": {"version": "Lua5.2"},
+                "workspace": {"ignoreDir": ["first", "second", "third"]},
+                "diagnostics": {"enable": false},
+            })
+        );
+    }
+
+    #[test]
+    fn normalization_is_sparse_and_preserves_leaf_values() {
+        assert_eq!(merge(vec![json!({})]), json!({}));
+        let entries = json!([{"path": "library", "custom.key": {"enabled": false}}, null]);
+        let result = merge(vec![json!({
+            "workspace.library": entries.clone(),
+            "extension": {"enabled": false, "count": 0, "value": null, "list": []},
+        })]);
+        assert_eq!(
+            result,
+            json!({
+                "workspace": {"library": entries},
+                "extension": {"enabled": false, "count": 0, "value": null, "list": []},
+            })
+        );
+    }
+
+    #[test]
+    fn single_layer_mixed_notation_keeps_existing_duplicate_key_precedence() {
+        let layer = json!({
+            "runtime.version": "Lua5.2",
+            "workspace.ignoreDir": ["dotted"],
+            "workspace": {"ignoreDir": ["nested"], "library": ["library"]},
+        });
+        // Traversal visits the nested workspace object first. The explicit
+        // dotted key then replaces the same flattened path within this layer.
+        let expected = json!({
+            "runtime": {"version": "Lua5.2"},
+            "workspace": {"ignoreDir": ["dotted"], "library": ["library"]},
+        });
+        assert_eq!(merge(vec![layer.clone()]), expected);
+        assert_eq!(merge(vec![layer, json!({})]), expected);
+    }
+
+    #[test]
+    fn dotted_child_survives_an_invalid_parent_repaired_by_a_later_layer() {
+        let result = merge(vec![
+            json!({"workspace": false, "workspace.ignoreDir": ["vendor"]}),
+            json!({"workspace": {"library": ["lib"]}}),
+        ]);
+        assert_eq!(
+            result,
+            json!({"workspace": {"ignoreDir": ["vendor"], "library": ["lib"]}})
+        );
+    }
+
+    #[test]
+    fn mixed_layers_keep_unknown_keys_and_duplicates_across_layers() {
+        let result = merge(vec![
+            json!({"unknown.foo": 1, "workspace.ignoreDir": ["same"]}),
+            json!({"unknown": {"bar": 2}, "workspace": {"ignoreDir": ["same", "new", "new"]}}),
+        ]);
+        assert_eq!(result["unknown"], json!({"foo": 1, "bar": 2}));
+        assert_eq!(
+            result["workspace"]["ignoreDir"],
+            json!(["same", "same", "new"])
+        );
+    }
+
+    #[test]
+    fn later_valid_scalar_overrides_invalid_type_before_deserialization() {
+        let layers = vec![
+            json!({"runtime.version": false}),
+            json!({"runtime": {"version": "Lua5.2"}}),
+        ];
+        assert_eq!(
+            merge(layers.clone()),
+            json!({"runtime": {"version": "Lua5.2"}})
+        );
+        assert_eq!(
+            load_configs(Vec::new(), Some(layers)).runtime.version,
+            EmmyrcLuaVersion::Lua52
+        );
+    }
+
+    #[test]
+    fn file_layers_and_partial_settings_share_normalization_and_precedence() {
+        struct TestDirectory(std::path::PathBuf);
+        impl Drop for TestDirectory {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let directory = std::env::temp_dir().join(format!(
+            "emmylua-config-layers-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let _cleanup = TestDirectory(directory.clone());
+        let base = directory.join("base.json");
+        let empty = directory.join("empty.json");
+        let overlay = directory.join("overlay.json");
+        std::fs::write(
+            &base,
+            r#"{"runtime.version":"Lua5.1","workspace.ignoreDir":["base"]}"#,
+        )
+        .unwrap();
+        std::fs::write(&empty, "{}").unwrap();
+        std::fs::write(
+            &overlay,
+            r#"{"runtime":{"version":"Lua5.2"},"workspace":{"ignoreDir":["overlay"]}}"#,
+        )
+        .unwrap();
+        let result = load_configs_raw(
+            vec![base, empty, overlay],
+            Some(vec![
+                json!({"runtime.version": "Lua5.3", "workspace.ignoreDir": ["partial"]}),
+            ]),
+        );
+        assert_eq!(
+            result,
+            json!({
+                "runtime": {"version": "Lua5.3"},
+                "workspace": {"ignoreDir": ["base", "overlay", "partial"]},
+            })
+        );
     }
 }
