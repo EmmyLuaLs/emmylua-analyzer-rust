@@ -17,6 +17,7 @@ pub(crate) mod types;
 pub(crate) mod update;
 
 use hashbrown::{HashMap, HashSet};
+use itertools::Itertools;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -258,15 +259,13 @@ fn compute_workspace_ids(roots: &[WorkspaceRoot]) -> Vec<WorkspaceId> {
     let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
         vec![WorkspaceId::MAIN]
     } else {
-        roots.iter().map(|root| root.id).collect()
+        // Several roots can belong to the same logical workspace (notably MAIN).
+        // Aggregate each workspace index once, preserving registration order.
+        roots.iter().map(|root| root.id).unique().collect()
     };
     if !ids.contains(&WorkspaceId::REMOTE) {
         ids.push(WorkspaceId::REMOTE);
     }
-    // Several roots can belong to the same logical workspace (notably MAIN).
-    // Aggregate each workspace index once, preserving registration order.
-    let mut seen = HashSet::new();
-    ids.retain(|id| seen.insert(*id));
     ids
 }
 

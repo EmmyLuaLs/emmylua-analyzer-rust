@@ -125,14 +125,15 @@ fn p10_multiple_main_roots_do_not_duplicate_type_definitions() {
     let other_root = p10_base().join("other");
     db.add_main_workspace(other_root.clone());
     db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
-    assert_eq!(db.all_workspace_ids().len(), 3);
-    assert_eq!(
-        db.workspace_lookup_order()
-            .iter()
-            .filter(|id| **id == WorkspaceId::MAIN)
-            .count(),
-        1
-    );
+    let library_id = db
+        .all_workspace_ids()
+        .iter()
+        .copied()
+        .find(|id| id.is_library())
+        .unwrap();
+    let expected_ids = [WorkspaceId::MAIN, library_id, WorkspaceId::REMOTE];
+    assert_eq!(db.all_workspace_ids(), expected_ids);
+    assert_eq!(db.workspace_lookup_order(), expected_ids);
 
     let source = "---@class Metrics\nlocal Metrics = {}";
     let first = set_test_file(&mut db, 1, &p10_main_file("metrics.lua"), source);
@@ -140,12 +141,33 @@ fn p10_multiple_main_roots_do_not_duplicate_type_definitions() {
 
     // Rebuilding indexes after a root change must preserve the same count.
     db.add_main_workspace(p10_base().join("third"));
+    assert_eq!(db.all_workspace_ids(), expected_ids);
+    assert_eq!(db.workspace_lookup_order(), expected_ids);
     assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
+
+    // A real declaration edit must remove the old name and index the new one.
     set_test_file(
         &mut db,
         1,
         &p10_main_file("metrics.lua"),
-        &format!("{source}\n"),
+        &source.replace("Metrics", "RenamedMetrics"),
+    );
+    assert!(
+        db.analysis()
+            .type_def_locations(first, "Metrics")
+            .is_empty()
+    );
+    assert_eq!(
+        db.analysis()
+            .type_def_locations(first, "RenamedMetrics")
+            .len(),
+        1
+    );
+    set_test_file(&mut db, 1, &p10_main_file("metrics.lua"), source);
+    assert!(
+        db.analysis()
+            .type_def_locations(first, "RenamedMetrics")
+            .is_empty()
     );
     assert_eq!(db.analysis().type_def_locations(first, "Metrics").len(), 1);
 
