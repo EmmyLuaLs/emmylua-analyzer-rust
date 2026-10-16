@@ -23,8 +23,9 @@ use super::sequence::{
 };
 use super::spacing::{SpaceRule, space_around_binary_op};
 use super::trivia::{
-    count_blank_lines_before, has_non_trivia_before_on_same_line_tokenwise,
-    node_has_direct_comment_child, source_line_prefix_width, trailing_gap_requests_alignment,
+    attached_source_prefix_width, count_blank_lines_before,
+    has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
+    source_line_prefix_width, trailing_gap_requests_alignment,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -1509,7 +1510,7 @@ fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr
                 let mut flat_layout = layout;
                 flat_layout.strategy = ExpandStrategy::Never;
                 let flat_docs = format_delimited_sequence(ctx, flat_layout);
-                if ir::ir_flat_width(&flat_docs) + source_line_prefix_width(expr.syntax())
+                if ir::ir_flat_width(&flat_docs) + attached_source_prefix_width(expr.syntax())
                     <= ctx.config.layout.max_line_width
                 {
                     flat_docs
@@ -1568,7 +1569,7 @@ fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr
         let mut flat_layout = layout.clone();
         flat_layout.strategy = ExpandStrategy::Never;
         let flat_docs = format_delimited_sequence(ctx, flat_layout);
-        if ir::ir_flat_width(&flat_docs) + source_line_prefix_width(expr.syntax())
+        if ir::ir_flat_width(&flat_docs) + attached_source_prefix_width(expr.syntax())
             <= ctx.config.layout.max_line_width
         {
             return flat_docs;
