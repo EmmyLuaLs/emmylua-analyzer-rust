@@ -516,7 +516,10 @@ impl<'db> SemanticModel<'db> {
         let Some(prefix) = index_expr.get_prefix_expr() else {
             return false;
         };
-        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
+        // This argument-only check needs the owner after casts, guards and assignments.
+        // type_of_expr_at caches by syntax/offset. Do not skip declared non-unions:
+        // casts and assignments can widen them into unions with missing members.
+        let prefix_ty = self.type_of_expr_at(prefix.get_syntax_id(), index_expr.get_position());
         let LuaType::Union(union) = &prefix_ty else {
             return false;
         };
