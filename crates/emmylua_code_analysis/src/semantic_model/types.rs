@@ -110,20 +110,22 @@ impl<'db> SemanticModel<'db> {
             _ => self.view.file_id(),
         };
         let key = (cache_file, decl.clone());
-        match self.cache.borrow().decl_type.get(&key) {
-            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
-            Some(cache::CacheEntry::InProgress) => return None,
-            None => {}
+        {
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.decl_type.get(&key) {
+                return entry.get_inference_seed(&cache).cloned().flatten();
+            }
         }
+        let _query = cache::QueryCacheScope::new(&self.cache);
         self.cache
             .borrow_mut()
             .decl_type
             .insert(key.clone(), cache::CacheEntry::InProgress);
+        let revision = self.cache.borrow().revision();
         let result = self.type_of_decl_impl(decl);
-        self.cache
-            .borrow_mut()
-            .decl_type
-            .insert(key, cache::CacheEntry::Ready(result.clone()));
+        let mut cache = self.cache.borrow_mut();
+        let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+        cache.decl_type.insert(key, entry);
         result
     }
     pub(crate) fn type_of_decl_impl(&self, decl: &SemanticId) -> Option<LuaType> {
@@ -792,20 +794,22 @@ impl<'db> SemanticModel<'db> {
             _ => self.view.file_id(),
         };
         let key = (cache_file, member.clone());
-        match self.cache.borrow().member_type.get(&key) {
-            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
-            Some(cache::CacheEntry::InProgress) => return None,
-            None => {}
+        {
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.member_type.get(&key) {
+                return entry.get_inference_seed(&cache).cloned().flatten();
+            }
         }
+        let _query = cache::QueryCacheScope::new(&self.cache);
         self.cache
             .borrow_mut()
             .member_type
             .insert(key.clone(), cache::CacheEntry::InProgress);
+        let revision = self.cache.borrow().revision();
         let result = self.type_of_member_impl(member);
-        self.cache
-            .borrow_mut()
-            .member_type
-            .insert(key, cache::CacheEntry::Ready(result.clone()));
+        let mut cache = self.cache.borrow_mut();
+        let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+        cache.member_type.insert(key, entry);
         result
     }
     pub(crate) fn type_of_member_impl(&self, member: &SemanticId) -> Option<LuaType> {
@@ -861,8 +865,6 @@ impl<'db> SemanticModel<'db> {
         let ty = self
             .analysis()
             .type_shell_lua_in(member_file, &shell, &generic_names);
-        let ty = type_eval::expand_alias_generic(self, &ty);
-        let ty = type_eval::eval_conditionals(self, &ty);
         let ty = if let Some(facts) = self.file_facts_of(member_file)
             && let Some(member_def) = facts.member_by_id(member)
             && member_def.doc_type_syntax.is_none()
@@ -991,11 +993,13 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().member_infos.get(prefix_type) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = member::member_infos(self, prefix_type);
-        self.cache
-            .borrow_mut()
-            .member_infos
-            .insert(prefix_type.clone(), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .member_infos
+                .insert(prefix_type.clone(), value.clone());
+        });
         value
     }
     /// The specified-key member of a prefix type (first match).
@@ -1012,11 +1016,13 @@ impl<'db> SemanticModel<'db> {
         {
             return value.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = member::member_info(self, prefix_type, key);
-        self.cache
-            .borrow_mut()
-            .member_info
-            .insert((prefix_type.clone(), key.clone()), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .member_info
+                .insert((prefix_type.clone(), key.clone()), value.clone());
+        });
         value
     }
     /// Replaces `TplRef` in a type with a set of generic arguments (for hover/display-layer call-site projection).
@@ -1234,12 +1240,14 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = cached {
             return self.sanitize_global_generic_decl(decl, cached);
         }
+        let revision = self.cache.borrow().revision();
         let ty = flow::type_of_decl_at(self, decl, offset);
         if let Some(start) = start {
-            self.cache
-                .borrow_mut()
-                .flow_decl
-                .insert((self.view.file_id(), decl.clone(), start), ty.clone());
+            self.cache.publish_if_complete(revision, |cache| {
+                cache
+                    .flow_decl
+                    .insert((self.view.file_id(), decl.clone(), start), ty.clone());
+            });
         }
         self.sanitize_global_generic_decl(decl, ty)
     }
@@ -1292,11 +1300,13 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let ty = flow::type_of_member_at(self, member, offset);
-        self.cache
-            .borrow_mut()
-            .member_type_at
-            .insert((cache_file, member.clone(), offset), ty.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .member_type_at
+                .insert((cache_file, member.clone(), offset), ty.clone());
+        });
         ty
     }
     /// Decl type before the flow node at offset (for assignment checks: this assignment does not participate in the target type).
@@ -1341,42 +1351,106 @@ impl<'db> SemanticModel<'db> {
         expr_syntax: LuaSyntaxId,
         offset: TextSize,
     ) -> LuaType {
-        let file_id = self.view.file_id();
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .expr_type_at
-            .get(&(file_id, expr_syntax, offset))
-        {
-            return cached.clone();
+        // Flow reads must not turn a long binary/member chain into native
+        // recursion. Evaluate each prefix/operand before its parent, as the VM does.
+        enum Task {
+            Enter(LuaExpr),
+            Finish(LuaExpr, u64),
         }
-        let ty = flow::type_of_expr_at(self, expr_syntax, offset);
-        self.cache
-            .borrow_mut()
+        let file_id = self.view.file_id();
+        let root_key = (file_id, expr_syntax, offset);
+        {
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.expr_type_at.get(&root_key) {
+                return entry.get(&cache).cloned().unwrap_or(LuaType::Unknown);
+            }
+        }
+        let Some(expr) = self
+            .syntax_tree()
+            .and_then(|tree| expr_syntax.to_node_from_root(&tree.get_red_root()))
+            .and_then(LuaExpr::cast)
+        else {
+            return self.type_of_expr(expr_syntax);
+        };
+        let _query = cache::QueryCacheScope::new(&self.cache);
+        let mut pending = vec![Task::Enter(expr)];
+        while let Some(task) = pending.pop() {
+            match task {
+                Task::Enter(expr) => {
+                    let key = (file_id, expr.get_syntax_id(), offset);
+                    if self.cache.borrow().expr_type_at.contains_key(&key) {
+                        continue;
+                    }
+                    self.cache
+                        .borrow_mut()
+                        .expr_type_at
+                        .insert(key, cache::CacheEntry::InProgress);
+                    pending.push(Task::Finish(expr.clone(), self.cache.borrow().revision()));
+                    match expr {
+                        LuaExpr::BinaryExpr(binary) => {
+                            if let Some((left, right)) = binary.get_exprs() {
+                                pending.push(Task::Enter(right));
+                                pending.push(Task::Enter(left));
+                            }
+                        }
+                        LuaExpr::IndexExpr(index) => {
+                            if let Some(prefix) = index.get_prefix_expr() {
+                                pending.push(Task::Enter(prefix));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Task::Finish(expr, revision) => {
+                    let syntax = expr.get_syntax_id();
+                    let is_index = matches!(expr, LuaExpr::IndexExpr(_));
+                    let ty = flow::type_of_expr_at_node(self, expr, offset);
+                    let ty = if is_index {
+                        let ty = type_eval::expand_alias_generic(self, &ty);
+                        type_eval::eval_conditionals(self, &ty)
+                    } else {
+                        ty
+                    };
+                    let mut cache = self.cache.borrow_mut();
+                    let entry = cache::CacheEntry::finish(ty, cache.is_complete(revision));
+                    cache.expr_type_at.insert((file_id, syntax, offset), entry);
+                }
+            }
+        }
+        let cache = self.cache.borrow();
+        cache
             .expr_type_at
-            .insert((file_id, expr_syntax, offset), ty.clone());
-        ty
+            .get(&root_key)
+            .and_then(|entry| entry.get(&cache))
+            .cloned()
+            .unwrap_or(LuaType::Unknown)
     }
     /// Operator-overload return type: when operand is a named type with `---@operator`, look up the return type by operator name.
     pub fn operator_type(&self, op_name: &str, operand: &LuaType) -> Option<LuaType> {
-        let decl_id = match operand {
-            LuaType::Ref(id) | LuaType::Def(id) => id,
-            _ => return None,
-        };
-        let def = self.type_def_of(decl_id)?;
-        // Alias forwarding: `AliasType` -> `Origin`, where the operator is defined on Origin.
-        if def.kind == TypeDefKind::Alias
-            && let Some(target) = self.alias_target(&def)
-        {
-            return self.operator_type(op_name, &target);
+        let mut current = operand.clone();
+        let mut visited = HashSet::new();
+        loop {
+            let decl_id = match &current {
+                LuaType::Ref(id) | LuaType::Def(id) => id,
+                _ => return None,
+            };
+            if !visited.insert(decl_id.clone()) {
+                return None;
+            }
+            let def = self.type_def_of(decl_id)?;
+            if def.kind == TypeDefKind::Alias {
+                current = self.alias_target(&def)?;
+                continue;
+            }
+            let facts = self.file_facts_of(def.file_id)?;
+            let op = facts.operator_of(&def.id, op_name)?;
+            let returns =
+                self.analysis()
+                    .doc_type_lua(def.file_id, op.returns, &def.generic_params);
+            return (!matches!(returns, LuaType::Unknown)).then_some(returns);
         }
-        let facts = self.file_facts_of(def.file_id)?;
-        let op = facts.operator_of(&def.id, op_name)?;
-        let returns = self
-            .analysis()
-            .doc_type_lua(def.file_id, op.returns, &def.generic_params);
-        (!matches!(returns, LuaType::Unknown)).then_some(returns)
     }
+
     /// All type definitions for a scope + full name (cross-file; used by checkers / inheritance chains).
     pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> TypeDefList {
         self.analysis().type_defs_in_scope(scope, full_name)

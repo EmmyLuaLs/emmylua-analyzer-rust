@@ -2,13 +2,12 @@
 //!
 //! Parts still missing from semantic fall back: alias origin, enum field unions, call operator.
 
-use crate::{LuaGenericType, LuaType, LuaTypeDeclId, TypeDef};
+use crate::{LuaGenericType, LuaType, LuaTypeDeclId, TypeDef, TypeDefKind};
 use emmylua_parser::{LuaAstNode, LuaDocTagClass};
 
 use super::context::TypeCheckContext;
-use super::guard::TypeCheckGuard;
 use super::sub_type::{get_base_type_id, is_sub_type_of};
-use super::{TypeCheckResult, check_general_type_compact};
+use super::{TypeCheckResult, check_all, check_general_type_compact};
 
 /// Generic inheritance matching: whether sub's inheritance chain contains a generic parent matching the target generic instance arguments.
 fn is_sub_type_of_generic(
@@ -86,55 +85,23 @@ pub fn check_ref_type_compact(
     context: &mut TypeCheckContext,
     source_id: &LuaTypeDeclId,
     compact_type: &LuaType,
-    check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     // The type definition must exist.
     let Some(type_def) = context.type_def_of(source_id) else {
         return Err(context.mismatch(&LuaType::Ref(source_id.clone()), compact_type));
     };
-    let _ = type_def;
 
-    if context.is_alias(source_id) {
-        // Source is an alias: expand to its target type and re-check as the new source (recursive aliases are cycle-protected by the guard).
-        if let Some(target) = context.alias_target_of(source_id) {
-            return check_general_type_compact(
-                context,
-                &target,
-                compact_type,
-                check_guard.next_level()?,
-            );
-        }
-        // The alias's expected type must accept every branch of the actual union.
-        if let LuaType::Union(compact_union) = compact_type {
-            for compact_sub_type in compact_union.iter() {
-                check_ref_type_compact(
-                    context,
-                    source_id,
-                    compact_sub_type,
-                    check_guard.next_level()?,
-                )?;
-            }
-            return Ok(());
-        }
-        // Without an alias origin type, fall back to nominal: same id passes.
-        if matches!(compact_type, LuaType::Def(id) | LuaType::Ref(id) if id == source_id) {
-            return Ok(());
-        }
-        return Err(context.mismatch(&LuaType::Ref(source_id.clone()), compact_type));
+    if type_def.kind == TypeDefKind::Enum {
+        return check_ref_enum(context, source_id, compact_type);
     }
 
-    if context.is_enum(source_id) {
-        return check_ref_enum(context, source_id, compact_type, check_guard);
-    }
-
-    check_ref_class(context, source_id, compact_type, check_guard)
+    check_ref_class(context, source_id, compact_type)
 }
 
 fn check_ref_enum(
     context: &mut TypeCheckContext,
     source_id: &LuaTypeDeclId,
     compact_type: &LuaType,
-    _check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     // Directly match the same type.
     if matches!(compact_type, LuaType::Def(id) | LuaType::Ref(id) if id == source_id) {
@@ -164,7 +131,6 @@ fn check_ref_class(
     context: &mut TypeCheckContext,
     source_id: &LuaTypeDeclId,
     compact_type: &LuaType,
-    check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     match compact_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
@@ -187,19 +153,15 @@ fn check_ref_class(
         }
         LuaType::Table => Ok(()),
         LuaType::Union(union_type) => {
-            for typ in union_type.iter() {
-                check_general_type_compact(
-                    context,
-                    &LuaType::Ref(source_id.clone()),
-                    typ,
-                    check_guard.next_level()?,
-                )?;
-            }
-            Ok(())
+            check_all(union_type.iter().map(|typ| {
+                check_general_type_compact(context, &LuaType::Ref(source_id.clone()), typ)
+            }))
         }
         LuaType::Generic(generic) => {
             let base_type_id = generic.get_base_type_id();
-            if (context.strict_generic && is_sub_type_of_generic(context, source_id, generic))
+            if (context.strict_generic
+                && context
+                    .require_complete(|| is_sub_type_of_generic(context, source_id, generic))?)
                 || (!context.strict_generic
                     && (source_id == &base_type_id
                         || is_sub_type_of(context, &base_type_id, source_id)

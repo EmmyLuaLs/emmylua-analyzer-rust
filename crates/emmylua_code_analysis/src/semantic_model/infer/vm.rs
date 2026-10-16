@@ -1030,7 +1030,16 @@ impl<'a> InferVm<'a> {
         None
     }
 
-    fn index_member(&mut self, mut owner: Value, key: &LuaMemberKey) -> Value {
+    fn index_member(&mut self, owner: Value, key: &LuaMemberKey) -> Value {
+        let mut value = self.index_member_impl(owner, key);
+        // Member projection only substitutes arguments. Evaluate the result
+        // here, where the expression consumes it, rather than during lookup.
+        value.ty = expand_alias_generic(self.model, &value.ty);
+        value.ty = eval_conditionals(self.model, &value.ty);
+        value
+    }
+
+    fn index_member_impl(&mut self, mut owner: Value, key: &LuaMemberKey) -> Value {
         let receiver_ty = Some(owner.ty.clone());
         // On `any` (including alias cycles that converge to any), any field is still any.
         if owner.ty.is_any() {

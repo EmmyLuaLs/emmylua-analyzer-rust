@@ -14,7 +14,7 @@ use crate::semantic_model::render::humanize_type;
 
 /// Rules for comparing a value's type with the expected type.
 /// Call argument counts are checked separately.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeCheckMode {
     /// General compatibility checks, such as checking function arguments.
     /// If `Dog` extends `Animal`, a `Dog` can supply an `Animal` parameter.
@@ -48,6 +48,7 @@ pub struct TypeCheckContext<'db> {
     pub strict_object: bool,
     /// Strict generic inheritance mode: retain parent class generic arguments for precise inheritance checks.
     pub strict_generic: bool,
+    pub(super) comparisons: std::rc::Rc<std::cell::RefCell<super::comparison::Comparisons>>,
 }
 
 impl<'db> TypeCheckContext<'db> {
@@ -59,6 +60,21 @@ impl<'db> TypeCheckContext<'db> {
             strict_union: false,
             strict_object: false,
             strict_generic: false,
+            comparisons: Default::default(),
+        }
+    }
+
+    /// Do not use an unfinished semantic dependency as comparison evidence.
+    pub(super) fn require_complete<T>(
+        &self,
+        query: impl FnOnce() -> T,
+    ) -> Result<T, TypeCheckFailReason> {
+        let revision = self.model.cache.borrow().revision();
+        let result = query();
+        if self.model.cache.borrow().is_complete(revision) {
+            Ok(result)
+        } else {
+            Err(TypeCheckFailReason::Unresolved)
         }
     }
 
@@ -91,20 +107,6 @@ impl<'db> TypeCheckContext<'db> {
             .iter()
             .map(|name| LuaType::Ref(LuaTypeDeclId::global(name)))
             .collect()
-    }
-
-    pub fn is_alias(&self, id: &LuaTypeDeclId) -> bool {
-        self.type_def_of(id)
-            .is_some_and(|def| def.kind == TypeDefKind::Alias)
-    }
-
-    /// Alias expansion: the target type (after projection, generic references keep `TplRef`).
-    pub fn alias_target_of(&self, id: &LuaTypeDeclId) -> Option<LuaType> {
-        let def = self.type_def_of(id)?;
-        if def.kind != TypeDefKind::Alias {
-            return None;
-        }
-        self.model.alias_target(&def)
     }
 
     pub fn is_enum(&self, id: &LuaTypeDeclId) -> bool {

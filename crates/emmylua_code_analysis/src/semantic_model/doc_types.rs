@@ -4,14 +4,24 @@ use crate::{LuaArrayType, LuaConditionalType, LuaGenericType, LuaMappedType};
 impl<'db> SemanticModel<'db> {
     /// Alias target type (after projection; generic parameter references keep `TplRef`, and instantiation is substituted by the caller).
     pub fn alias_target(&self, def: &TypeDef) -> Option<LuaType> {
-        if let Some(cached) = self.cache.borrow().alias_targets.get(&def.id) {
-            return cached.clone();
+        {
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.alias_targets.get(&def.id) {
+                return entry.get(&cache).cloned().flatten();
+            }
         }
-        let result = self.alias_target_uncached(def);
+        let _query = cache::QueryCacheScope::new(&self.cache);
+        // Projection can re-enter semantic queries. Publish the guard before
+        // starting it, and release the cache borrow before calling the query.
         self.cache
             .borrow_mut()
             .alias_targets
-            .insert(def.id.clone(), result.clone());
+            .insert(def.id.clone(), cache::CacheEntry::InProgress);
+        let revision = self.cache.borrow().revision();
+        let result = self.alias_target_uncached(def);
+        let mut cache = self.cache.borrow_mut();
+        let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+        cache.alias_targets.insert(def.id.clone(), entry);
         result
     }
     pub(crate) fn alias_target_uncached(&self, def: &TypeDef) -> Option<LuaType> {
