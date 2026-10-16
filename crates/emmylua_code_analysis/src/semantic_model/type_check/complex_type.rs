@@ -3,52 +3,46 @@
 use crate::{LuaMemberKey, LuaType};
 
 use super::context::TypeCheckContext;
-use super::guard::TypeCheckGuard;
-use super::{TypeCheckResult, check_general_type_compact};
+use super::{
+    RequiredChecks, TypeCheckResult, check_all, check_alternatives, check_general_type_compact,
+};
 
 pub fn check_complex_type_compact(
     context: &mut TypeCheckContext,
     source: &LuaType,
     compact_type: &LuaType,
-    check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     match source {
         LuaType::Array(source_array) => {
             let base = source_array.get_base().clone();
             match compact_type {
-                LuaType::Array(compact_array) => check_general_type_compact(
-                    context,
-                    &base,
-                    compact_array.get_base(),
-                    check_guard.next_level()?,
-                ),
+                LuaType::Array(compact_array) => {
+                    check_general_type_compact(context, &base, compact_array.get_base())
+                }
                 LuaType::Object(object) if context.mode.uses_assignment_rules() => {
                     let array_base = source_array.get_base();
-                    for (key_ty, expected) in object.get_index_access() {
-                        if matches!(
-                            key_ty,
-                            LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
-                        ) && (matches!(expected, LuaType::Any | LuaType::Unknown)
-                            || check_general_type_compact(
-                                context,
-                                array_base,
-                                expected,
-                                check_guard.next_level()?,
-                            )
-                            .is_ok())
-                        {
-                            return Ok(());
-                        }
-                    }
-                    Err(context.mismatch(source, compact_type))
+                    check_alternatives(
+                        context.mismatch(source, compact_type),
+                        object
+                            .get_index_access()
+                            .iter()
+                            .filter(|(key_ty, _)| {
+                                matches!(
+                                    key_ty,
+                                    LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
+                                )
+                            })
+                            .map(|(_, expected)| {
+                                check_general_type_compact(context, array_base, expected)
+                            }),
+                    )
                 }
-                LuaType::Tuple(tuple) => {
-                    let next_guard = check_guard.next_level()?;
-                    for element in tuple.get_types() {
-                        check_general_type_compact(context, &base, element, next_guard)?;
-                    }
-                    Ok(())
-                }
+                LuaType::Tuple(tuple) => check_all(
+                    tuple
+                        .get_types()
+                        .iter()
+                        .map(|element| check_general_type_compact(context, &base, element)),
+                ),
                 LuaType::Table
                 | LuaType::TableGeneric(_)
                 | LuaType::Ref(_)
@@ -64,11 +58,12 @@ pub fn check_complex_type_compact(
                 if source_types.len() != compact_types.len() {
                     return Err(context.mismatch(source, compact_type));
                 }
-                let next_guard = check_guard.next_level()?;
-                for (s, t) in source_types.iter().zip(compact_types.iter()) {
-                    check_general_type_compact(context, s, t, next_guard)?;
-                }
-                Ok(())
+                check_all(
+                    source_types
+                        .iter()
+                        .zip(compact_types)
+                        .map(|(s, t)| check_general_type_compact(context, s, t)),
+                )
             }
             LuaType::Table
             | LuaType::Array(_)
@@ -85,11 +80,12 @@ pub fn check_complex_type_compact(
                 if source_types.len() != compact_types.len() {
                     return Err(context.mismatch(source, compact_type));
                 }
-                let next_guard = check_guard.next_level()?;
-                for (s, t) in source_types.iter().zip(compact_types.iter()) {
-                    check_general_type_compact(context, s, t, next_guard)?;
-                }
-                Ok(())
+                check_all(
+                    source_types
+                        .iter()
+                        .zip(compact_types)
+                        .map(|(s, t)| check_general_type_compact(context, s, t)),
+                )
             }
             LuaType::Table
             | LuaType::Array(_)
@@ -100,39 +96,39 @@ pub fn check_complex_type_compact(
         },
         LuaType::Object(source_object) if context.strict_object => match compact_type {
             LuaType::Object(compact_object) => {
-                let next_guard = check_guard.next_level()?;
+                let mut checks = RequiredChecks::default();
                 for (key, expected) in source_object.get_fields() {
                     if let Some(actual) = compact_object.get_field(key) {
-                        check_general_type_compact(context, expected, actual, next_guard)?;
+                        checks.require(check_general_type_compact(context, expected, actual))?;
                     }
                 }
-                Ok(())
+                checks.finish()
             }
             LuaType::Tuple(tuple) => {
-                let next_guard = check_guard.next_level()?;
+                let mut checks = RequiredChecks::default();
                 for (index, element_ty) in tuple.get_types().iter().enumerate() {
                     let key = LuaMemberKey::Integer(index as i64 + 1);
                     let Some(expected) = source_object.get_fields().get(&key) else {
                         return Err(context.mismatch(source, compact_type));
                     };
-                    check_general_type_compact(context, expected, element_ty, next_guard)?;
+                    checks.require(check_general_type_compact(context, expected, element_ty))?;
                 }
-                Ok(())
+                checks.finish()
             }
             LuaType::TableConst(_) => {
-                let table_infos = context.model.member_infos(compact_type);
-                let next_guard = check_guard.next_level()?;
+                let table_infos =
+                    context.require_complete(|| context.model.member_infos(compact_type))?;
+                let mut checks = RequiredChecks::default();
                 for (key, expected) in source_object.get_fields() {
-                    let Some(actual) = table_infos
+                    if let Some(actual) = table_infos
                         .iter()
                         .find(|info| &info.key == key)
-                        .map(|info| info.typ.clone())
-                    else {
-                        continue;
-                    };
-                    check_general_type_compact(context, expected, &actual, next_guard)?;
+                        .map(|info| &info.typ)
+                    {
+                        checks.require(check_general_type_compact(context, expected, actual))?;
+                    }
                 }
-                Ok(())
+                checks.finish()
             }
             LuaType::Table | LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => Ok(()),
             _ => Err(context.mismatch(source, compact_type)),
@@ -164,7 +160,7 @@ pub fn check_complex_type_compact(
         }
         LuaType::MultiLineUnion(source_multi) => {
             let union = source_multi.to_union();
-            check_general_type_compact(context, &union, compact_type, check_guard.next_level()?)
+            check_general_type_compact(context, &union, compact_type)
         }
         _ => Err(context.mismatch(source, compact_type)),
     }

@@ -144,20 +144,25 @@ impl<'db> SemanticModel<'db> {
     }
     pub(crate) fn type_of_expr_impl(&self, expr_syntax: LuaSyntaxId) -> LuaType {
         let key = (self.view.file_id(), expr_syntax);
-        match self.cache.borrow().expr_type.get(&key) {
-            Some(cache::CacheEntry::Ready(cached)) => return cached.clone(),
-            Some(cache::CacheEntry::InProgress) => return LuaType::Unknown,
-            None => {}
+        {
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.expr_type.get(&key) {
+                return entry
+                    .get_inference_seed(&cache)
+                    .cloned()
+                    .unwrap_or(LuaType::Unknown);
+            }
         }
+        let _query = cache::QueryCacheScope::new(&self.cache);
         self.cache
             .borrow_mut()
             .expr_type
             .insert(key, cache::CacheEntry::InProgress);
+        let revision = self.cache.borrow().revision();
         let ty = infer::infer_expr(self, expr_syntax);
-        self.cache
-            .borrow_mut()
-            .expr_type
-            .insert(key, cache::CacheEntry::Ready(ty.clone()));
+        let mut cache = self.cache.borrow_mut();
+        let entry = cache::CacheEntry::finish(ty.clone(), cache.is_complete(revision));
+        cache.expr_type.insert(key, entry);
         ty
     }
     /// Hover/display layer only: expands generic alias instances (`Pick<...>` -> `T[K]` structure).
@@ -170,25 +175,53 @@ impl<'db> SemanticModel<'db> {
     }
     /// Type compatibility check (boolean version, mirrors the old `SemanticModel::type_check`).
     pub fn type_check(&self, source: &LuaType, target: &LuaType) -> bool {
-        if let Some(cached) = self
-            .cache
-            .borrow()
-            .type_check
-            .get(&(source.clone(), target.clone()))
+        self.type_check_cached(source, target, false)
+            .unwrap_or(false)
+    }
+    /// Precise subtype proof, including object fields and generic arguments.
+    pub fn type_check_subtype(&self, source: &LuaType, target: &LuaType) -> bool {
+        self.type_check_cached(source, target, true)
+            .unwrap_or(false)
+    }
+    pub(super) fn type_check_cached(
+        &self,
+        source: &LuaType,
+        target: &LuaType,
+        subtype: bool,
+    ) -> Option<bool> {
+        let key = (source.clone(), target.clone(), subtype);
         {
-            return *cached;
+            let cache = self.cache.borrow();
+            if let Some(entry) = cache.type_check.get(&key) {
+                return entry.get_complete(&cache).copied();
+            }
         }
-        let result = type_check::is_compatible_uncached(self, source, target);
+        let _query = cache::QueryCacheScope::new(&self.cache);
         self.cache
             .borrow_mut()
             .type_check
-            .insert((source.clone(), target.clone()), result);
+            .insert(key.clone(), cache::CacheEntry::InProgress);
+        let result = if subtype {
+            type_check::check_type_subtype(self, source, target)
+        } else {
+            type_check::check_type(self, source, target)
+        };
+        let result = match result {
+            Ok(()) => Some(true),
+            Err(err) if err.is_type_not_match() => Some(false),
+            Err(_) => None,
+        };
+        let mut cache = self.cache.borrow_mut();
+        if result.is_none() {
+            cache.mark_incomplete();
+        }
+        // Comparison outcomes carry their own completeness. An unfinished
+        // alternative does not invalidate a proof from another alternative.
+        cache.type_check.insert(
+            key,
+            cache::CacheEntry::finish(result.unwrap_or(false), result.is_some()),
+        );
         result
-    }
-    /// Strict subtype check: union targets across all components, object field-level checks, generic alias expansion.
-    /// Only for tests/callers needing precise subtype relations; does not affect the old `type_check` loose compatibility semantics.
-    pub fn type_check_subtype(&self, source: &LuaType, target: &LuaType) -> bool {
-        type_check::check_type_subtype(self, source, target).is_ok()
     }
     /// Multi-value expression list types (mirrors old `infer_expr_list_types`; trailing multi-returns expand according to var_count).
     pub fn infer_expr_list_types(

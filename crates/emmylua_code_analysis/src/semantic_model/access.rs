@@ -533,11 +533,11 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().callable_functions.get(ty) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = callable_functions(self, ty);
-        self.cache
-            .borrow_mut()
-            .callable_functions
-            .insert(ty.clone(), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache.callable_functions.insert(ty.clone(), value.clone());
+        });
         value
     }
     /// Unified callable candidates for a name callee.
@@ -629,11 +629,13 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = callable_candidates_uncached(self, callee);
-        self.cache
-            .borrow_mut()
-            .callable_candidates
-            .insert((file_id, syntax), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .callable_candidates
+                .insert((file_id, syntax), value.clone());
+        });
         value
     }
     pub(crate) fn call_site_analysis(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
@@ -642,11 +644,11 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().call_site.get(&(file_id, syntax)) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let analysis = self.call_site_analysis_uncached(call_expr);
-        self.cache
-            .borrow_mut()
-            .call_site
-            .insert((file_id, syntax), analysis.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache.call_site.insert((file_id, syntax), analysis.clone());
+        });
         analysis
     }
     pub(crate) fn call_site_analysis_uncached(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
@@ -716,6 +718,7 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let analysis = self.call_site_analysis(call_expr);
         let signatures = resolved_call_signatures(
             self,
@@ -725,10 +728,11 @@ impl<'db> SemanticModel<'db> {
             analysis.colon_call,
             &analysis.receiver_ty,
         );
-        self.cache
-            .borrow_mut()
-            .call_site_signatures
-            .insert((file_id, syntax), signatures.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .call_site_signatures
+                .insert((file_id, syntax), signatures.clone());
+        });
         signatures
     }
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
@@ -737,11 +741,13 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().resolve_member.get(&(file_id, syntax)) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let result = self.resolve_member_impl(index_expr);
-        self.cache
-            .borrow_mut()
-            .resolve_member
-            .insert((file_id, syntax), result.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .resolve_member
+                .insert((file_id, syntax), result.clone());
+        });
         result
     }
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {

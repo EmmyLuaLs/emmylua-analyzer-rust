@@ -10,9 +10,7 @@ use crate::{
 
 use super::check_type_detail;
 use super::context::TypeCheckContext;
-use super::{
-    TypeCheckFailReason, check_general_type_compact, guard::TypeCheckGuard, is_compatible,
-};
+use super::{TypeCheckFailReason, check_general_type_compact, is_compatible};
 
 /// Model-less context (structural tests don't need resolution).
 fn with_ctx<R>(f: impl FnOnce(&mut TypeCheckContext<'_>) -> R) -> R {
@@ -23,9 +21,7 @@ fn with_ctx<R>(f: impl FnOnce(&mut TypeCheckContext<'_>) -> R) -> R {
 }
 
 fn ok(source: &LuaType, target: &LuaType) -> bool {
-    with_ctx(|context| {
-        check_general_type_compact(context, source, target, TypeCheckGuard::new()).is_ok()
-    })
+    with_ctx(|context| check_general_type_compact(context, source, target).is_ok())
 }
 
 fn doc_fun(params: Vec<Option<LuaType>>, ret: LuaType) -> LuaType {

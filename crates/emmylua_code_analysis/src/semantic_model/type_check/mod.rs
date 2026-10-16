@@ -4,16 +4,16 @@
 //! but resolving the type environment only through `semantic_model::SemanticModel` (semantic):
 //! - **Boolean first**: `is_compatible(source, target) -> bool` (zero reason overhead);
 //! - **Detail interface**: `check_type(...) -> TypeCheckResult` (includes failure reason strings);
-//! - Recursion + depth guard (`TypeCheckGuard`) protects against infinite types;
+//! - Comparisons use a finite dependency graph and an explicit work queue;
 //! - Parts still missing from semantic (alias origin, enum field unions, call operators) fall back to nominal checks.
 
 mod assign;
+mod comparison;
 mod complex_type;
 mod context;
 mod fail_reason;
 mod func_type;
 mod generic_type;
-mod guard;
 #[cfg(test)]
 mod legacy_tests;
 mod ref_type;
@@ -28,12 +28,46 @@ pub use context::{TypeCheckContext, TypeCheckMode};
 pub use fail_reason::TypeCheckFailReason;
 
 use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_eval::expand_alias_generic;
+use crate::semantic_model::type_eval::expand_alias_head;
 use crate::{
     InFiled, LuaType, LuaTypeDeclId, LuaUnionType, SemanticId, TypeDef, TypeDefKind, TypeScope,
 };
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
+
+/// A definite mismatch rejects a required check even if another is unresolved.
+#[derive(Default)]
+pub(super) struct RequiredChecks {
+    unresolved: Option<TypeCheckFailReason>,
+}
+
+impl RequiredChecks {
+    pub(super) fn require(&mut self, result: TypeCheckResult) -> TypeCheckResult {
+        match result {
+            Err(err) if err.is_unresolved() => {
+                self.unresolved = Some(err);
+                Ok(())
+            }
+            result => result,
+        }
+    }
+
+    pub(super) fn finish(self) -> TypeCheckResult {
+        if let Some(err) = self.unresolved {
+            Err(err)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub(super) fn check_all(results: impl IntoIterator<Item = TypeCheckResult>) -> TypeCheckResult {
+    let mut checks = RequiredChecks::default();
+    for result in results {
+        checks.require(result)?;
+    }
+    checks.finish()
+}
 
 /// Boolean compatibility: whether `source` is assignable to `target`.
 pub fn is_compatible(model: &SemanticModel, source: &LuaType, target: &LuaType) -> bool {
@@ -42,13 +76,30 @@ pub fn is_compatible(model: &SemanticModel, source: &LuaType, target: &LuaType) 
     model.type_check(source, target)
 }
 
-pub(crate) fn is_compatible_uncached(
+pub(crate) fn check_type(
     model: &SemanticModel,
     source: &LuaType,
     target: &LuaType,
-) -> bool {
+) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, false);
-    check_general_type_compact(&mut context, source, target, guard::TypeCheckGuard::new()).is_ok()
+    check_general_type_compact(&mut context, source, target)
+}
+
+/// A complete alternative proves a match even if another is unresolved.
+/// Without a match, an unresolved alternative prevents a definite rejection.
+fn check_alternatives(
+    mut failure: TypeCheckFailReason,
+    checks: impl IntoIterator<Item = TypeCheckResult>,
+) -> TypeCheckResult {
+    for result in checks {
+        match result {
+            Ok(()) => return Ok(()),
+            Err(err) if err.is_type_not_match() => {}
+            Err(err) if err.is_unresolved() => failure = err,
+            Err(err) => return Err(err),
+        }
+    }
+    Err(failure)
 }
 
 /// Detailed compatibility: returns a reason on failure (detail mode includes human-readable strings).
@@ -58,7 +109,7 @@ pub fn check_type_detail(
     target: &LuaType,
 ) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, true);
-    check_general_type_compact(&mut context, source, target, guard::TypeCheckGuard::new())
+    check_general_type_compact(&mut context, source, target)
 }
 
 /// Assignment-compatibility boolean interface: uses assignment semantics.
@@ -76,7 +127,7 @@ pub fn check_type_subtype(
     context.strict_union = true;
     context.strict_object = true;
     context.strict_generic = true;
-    check_general_type_compact(&mut context, source, target, guard::TypeCheckGuard::new())
+    check_general_type_compact(&mut context, source, target)
 }
 
 /// Assignment-compatibility detail interface: includes a detailed reason on failure.
@@ -87,14 +138,21 @@ pub fn check_assign_type_detail(
 ) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, true);
     context.mode = TypeCheckMode::Assignment;
-    check_general_type_compact(&mut context, source, target, guard::TypeCheckGuard::new())
+    check_general_type_compact(&mut context, source, target)
 }
 
 fn check_general_type_compact(
     context: &mut TypeCheckContext,
     source: &LuaType,
     compact_type: &LuaType,
-    check_guard: guard::TypeCheckGuard,
+) -> TypeCheckResult {
+    comparison::check(context, source, compact_type, false)
+}
+
+fn check_comparison(
+    context: &mut TypeCheckContext,
+    source: &LuaType,
+    compact_type: &LuaType,
 ) -> TypeCheckResult {
     if source == compact_type {
         return Ok(());
@@ -123,57 +181,63 @@ fn check_general_type_compact(
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    // Alias expansion: when `compact` is an alias reference, replace it with its target type and re-check (recursive aliases are cycle-protected by the guard depth).
-    if let LuaType::Ref(id) | LuaType::Def(id) = compact_type
-        && context.is_alias(id)
-        && let Some(target) = context.alias_target_of(id)
-    {
-        return check_general_type_compact(context, source, &target, check_guard.next_level()?);
-    }
-
-    // Generic alias as source: expand plain aliases (skip mapped/conditional/call; these are handled by type_eval/param checks).
-    if let LuaType::Generic(generic) = source
-        && context.is_alias(&generic.get_base_type_id())
-        && let Some(target) = context.alias_target_of(&generic.get_base_type_id())
-        && !matches!(
-            target,
-            LuaType::Mapped(_) | LuaType::Call(_) | LuaType::Conditional(_)
-        )
-    {
-        let expanded = expand_alias_generic(context.model, source);
-        if expanded != *source {
-            return check_general_type_compact(
-                context,
-                &expanded,
-                compact_type,
-                check_guard.next_level()?,
-            );
+    // Alias references are graph edges. Resolve their outer structure before
+    // applying value comparison rules, on either side of the comparison.
+    for (is_source, ty) in [(false, compact_type), (true, source)] {
+        let id = match ty {
+            LuaType::Ref(id) | LuaType::Def(id) => Some(id.clone()),
+            LuaType::Generic(generic) => Some(generic.get_base_type_id()),
+            _ => None,
+        };
+        let Some(id) = id else { continue };
+        let Some(def) = context
+            .model
+            .type_def_of(&id)
+            .filter(|def| def.kind == TypeDefKind::Alias)
+        else {
+            continue;
+        };
+        match crate::semantic_model::type_eval::alias_is_finite(context.model, &def) {
+            Some(true) => {}
+            Some(false) => return Err(TypeCheckFailReason::UnsupportedAlias(id)),
+            None => return Err(TypeCheckFailReason::Unresolved),
         }
+        if matches!(ty, LuaType::Generic(_))
+            && context
+                .require_complete(|| context.model.alias_target(&def))?
+                .is_some_and(|target| {
+                    matches!(
+                        target,
+                        LuaType::Mapped(_) | LuaType::Call(_) | LuaType::Conditional(_)
+                    )
+                })
+        {
+            continue;
+        }
+        let expanded = context
+            .require_complete(|| expand_alias_head(context.model, ty))?
+            .ok_or(TypeCheckFailReason::Unresolved)?;
+        return if is_source {
+            check_general_type_compact(context, &expanded, compact_type)
+        } else {
+            check_general_type_compact(context, source, &expanded)
+        };
     }
+    check_general_type_compact_inner(context, source, compact_type)
+}
 
+fn check_general_type_compact_inner(
+    context: &mut TypeCheckContext,
+    source: &LuaType,
+    compact_type: &LuaType,
+) -> TypeCheckResult {
     if fast_eq_check(source, compact_type) {
         return Ok(());
     }
 
-    // Resolve boolean aliases before assignment mode selects a target union member.
-    if matches!(source, LuaType::Ref(_) | LuaType::Def(_)) {
-        let mut resolved = source.clone();
-        let mut alias_guard = check_guard;
-        while let LuaType::Ref(id) | LuaType::Def(id) = &resolved
-            && let Some(target) = context.alias_target_of(id)
-            && let Ok(next_guard) = alias_guard.next_level()
-        {
-            resolved = target;
-            alias_guard = next_guard;
-        }
-        if resolved.is_boolean() {
-            return check_general_type_compact(context, &resolved, compact_type, alias_guard);
-        }
-    }
-
     // Check the whole boolean domain before assignment mode selects a union member.
     if matches!(source, LuaType::Boolean) {
-        return simple_type::check_simple_type_compact(context, source, compact_type, check_guard);
+        return simple_type::check_simple_type_compact(context, source, compact_type);
     }
 
     // Assignment mode: integer is assignable to number; number is not assignable to integer.
@@ -221,35 +285,32 @@ fn check_general_type_compact(
         if let LuaType::Union(union) = compact_type
             && !matches!(source, LuaType::Union(_))
         {
-            for component in union.iter() {
-                if check_general_type_compact(context, source, component, check_guard.next_level()?)
-                    .is_ok()
-                {
-                    return Ok(());
-                }
-            }
-            return Err(context.mismatch(source, compact_type));
+            return check_alternatives(
+                context.mismatch(source, compact_type),
+                union
+                    .iter()
+                    .map(|component| check_general_type_compact(context, source, component)),
+            );
         }
     }
 
     // Assignment-specific checks: semantics for object/intersection/function assignment not yet in the general path.
     if context.mode.uses_assignment_rules()
-        && let Some(result) = assign::check_special(context, source, compact_type, check_guard)
+        && assign::check_special(context, source, compact_type)?.is_some()
     {
-        return result;
+        return Ok(());
     }
 
     // `compact` is an intersection: source satisfies all components.
     if let LuaType::Intersection(compact_intersection) = compact_type {
         if !matches!(source, LuaType::Intersection(_)) {
-            for component in compact_intersection.get_types() {
-                if check_general_type_compact(context, source, component, check_guard.next_level()?)
-                    .is_ok()
-                {
-                    return Ok(());
-                }
-            }
-            return Err(context.mismatch(source, compact_type));
+            return check_alternatives(
+                context.mismatch(source, compact_type),
+                compact_intersection
+                    .get_types()
+                    .iter()
+                    .map(|component| check_general_type_compact(context, source, component)),
+            );
         }
     }
 
@@ -257,14 +318,9 @@ fn check_general_type_compact(
         LuaType::Unknown | LuaType::Any => Ok(()),
         LuaType::TplRef(tpl) => {
             if let Some(source_constraint) = tpl.get_constraint() {
-                return check_general_type_compact(
-                    context,
-                    source_constraint,
-                    compact_type,
-                    check_guard.next_level()?,
-                );
+                return check_general_type_compact(context, source_constraint, compact_type);
             }
-            simple_type::check_simple_type_compact(context, source, compact_type, check_guard)
+            simple_type::check_simple_type_compact(context, source, compact_type)
         }
         LuaType::Nil
         | LuaType::Table
@@ -289,21 +345,21 @@ fn check_general_type_compact(
         | LuaType::Namespace(_)
         | LuaType::Variadic(_)
         | LuaType::Language(_) => {
-            simple_type::check_simple_type_compact(context, source, compact_type, check_guard)
+            simple_type::check_simple_type_compact(context, source, compact_type)
         }
 
         LuaType::Ref(type_decl_id) => {
-            ref_type::check_ref_type_compact(context, type_decl_id, compact_type, check_guard)
+            ref_type::check_ref_type_compact(context, type_decl_id, compact_type)
         }
         LuaType::Def(type_decl_id) => {
-            ref_type::check_ref_type_compact(context, type_decl_id, compact_type, check_guard)
+            ref_type::check_ref_type_compact(context, type_decl_id, compact_type)
         }
 
         LuaType::DocFunction(doc_func) => {
-            func_type::check_doc_func_type_compact(context, doc_func, compact_type, check_guard)
+            func_type::check_doc_func_type_compact(context, doc_func, compact_type)
         }
         LuaType::Signature(sig_id) => {
-            func_type::check_sig_type_compact(context, sig_id, compact_type, check_guard)
+            func_type::check_sig_type_compact(context, sig_id, compact_type)
         }
 
         LuaType::Array(_)
@@ -314,19 +370,16 @@ fn check_general_type_compact(
         | LuaType::TableGeneric(_)
         | LuaType::Call(_)
         | LuaType::MultiLineUnion(_) => {
-            check_union_intersection_source(context, source, compact_type, check_guard)
+            check_union_intersection_source(context, source, compact_type)
         }
 
         LuaType::Generic(generic) => {
-            generic_type::check_generic_type_compact(context, generic, compact_type, check_guard)
+            generic_type::check_generic_type_compact(context, generic, compact_type)
         }
 
-        LuaType::Instance(instantiate) => check_general_type_compact(
-            context,
-            instantiate.get_base(),
-            compact_type,
-            check_guard.next_level()?,
-        ),
+        LuaType::Instance(instantiate) => {
+            check_general_type_compact(context, instantiate.get_base(), compact_type)
+        }
         LuaType::TypeGuard(_) => {
             if compact_type.is_boolean() {
                 return Ok(());
@@ -346,64 +399,44 @@ fn check_union_intersection_source(
     context: &mut TypeCheckContext,
     source: &LuaType,
     compact_type: &LuaType,
-    check_guard: guard::TypeCheckGuard,
 ) -> TypeCheckResult {
     match source {
         LuaType::Union(union) => {
             // Assignment mode: every member of the source union must be assignable to the target.
             if context.mode.uses_assignment_rules() {
-                for member in union.iter() {
-                    check_general_type_compact(
-                        context,
-                        member,
-                        compact_type,
-                        check_guard.next_level()?,
-                    )?;
-                }
-                return Ok(());
+                return check_all(
+                    union
+                        .iter()
+                        .map(|member| check_general_type_compact(context, member, compact_type)),
+                );
             }
             // Strict subtype mode: when the target is also a union, every target component must have a matching member in the source union.
             if context.strict_union
                 && let LuaType::Union(target_union) = compact_type
             {
-                let next_guard = check_guard.next_level()?;
-                for target_component in target_union.iter() {
-                    check_general_type_compact(context, source, target_component, next_guard)?;
-                }
-                return Ok(());
+                return check_all(target_union.iter().map(|target_component| {
+                    check_general_type_compact(context, source, target_component)
+                }));
             }
             // Source union: pass if any member is assignable (old semantics).
-            for member in union.iter() {
-                match check_general_type_compact(
-                    context,
-                    member,
-                    compact_type,
-                    check_guard.next_level()?,
-                ) {
-                    Ok(()) => return Ok(()),
-                    Err(err) if err.is_type_not_match() => {}
-                    Err(err) => return Err(err),
-                }
-            }
-            Err(context.mismatch(source, compact_type))
+            check_alternatives(
+                context.mismatch(source, compact_type),
+                union
+                    .iter()
+                    .map(|member| check_general_type_compact(context, member, compact_type)),
+            )
         }
         LuaType::Intersection(intersection) => {
             // Source intersection: any member matching is enough.
-            for member in intersection.get_types() {
-                if check_general_type_compact(
-                    context,
-                    member,
-                    compact_type,
-                    check_guard.next_level()?,
-                )
-                .is_ok()
-                {
-                    return Ok(());
-                }
-            }
-            Err(context.mismatch(source, compact_type))
+            check_alternatives(
+                context.mismatch(source, compact_type),
+                intersection
+                    .get_types()
+                    .iter()
+                    .map(|member| check_general_type_compact(context, member, compact_type)),
+            )
         }
-        _ => complex_type::check_complex_type_compact(context, source, compact_type, check_guard),
+        _ => complex_type::check_complex_type_compact(context, source, compact_type),
     }
 }
 

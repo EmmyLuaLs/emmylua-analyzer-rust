@@ -287,7 +287,10 @@ fn add_type_check_diagnostic(
             let reason_message = match reason {
                 TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
                 TypeCheckFailReason::TypeNotMatch => String::new(),
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
+                TypeCheckFailReason::UnsupportedAlias(id) => {
+                    format!("unsupported recursive alias `{}`", id.get_name())
+                }
+                TypeCheckFailReason::Unresolved => "unresolved type".to_string(),
             };
             let reason = if reason_message.is_empty() {
                 String::new()

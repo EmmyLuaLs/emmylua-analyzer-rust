@@ -425,22 +425,13 @@ pub fn type_of_member_before_at(
     .unwrap_or_else(fallback)
 }
 
-/// Flow-sensitive type of an expression at `offset`: NameExpr → decl flow type; IndexExpr → member flow type;
-/// other expressions fall back to ordinary inference.
-pub fn type_of_expr_at(
+/// Evaluate one flow expression after its operands and prefix are cached.
+pub(crate) fn type_of_expr_at_node(
     model: &SemanticModel,
-    expr_syntax: emmylua_parser::LuaSyntaxId,
+    expr: LuaExpr,
     offset: TextSize,
 ) -> LuaType {
-    let Some(tree) = model.syntax_tree() else {
-        return model.type_of_expr(expr_syntax);
-    };
-    let Some(node) = expr_syntax.to_node_from_root(&tree.get_red_root()) else {
-        return model.type_of_expr(expr_syntax);
-    };
-    let Some(expr) = LuaExpr::cast(node) else {
-        return model.type_of_expr(expr_syntax);
-    };
+    let expr_syntax = expr.get_syntax_id();
     match &expr {
         LuaExpr::NameExpr(name_expr) => {
             if let Some(decl) = model.resolve_name(name_expr.get_position()) {
@@ -497,7 +488,7 @@ pub fn type_of_expr_at(
                     && let Some(prefix) = index_expr.get_prefix_expr()
                     && let LuaExpr::NameExpr(_) = &prefix
                 {
-                    let prefix_ty = type_of_expr_at(model, prefix.get_syntax_id(), offset);
+                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
                     if matches!(
                         &prefix_ty,
                         LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_)
@@ -520,7 +511,7 @@ pub fn type_of_expr_at(
                     && let Some(member_def) = member_facts.member_by_id(&member_id)
                     && model.is_initializer_table_field(&member_id, member_def)
                 {
-                    let prefix_ty = type_of_expr_at(model, prefix.get_syntax_id(), offset);
+                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
                     if let Some(value_syntax) = member_def.value_syntax {
                         let expr_ty = model.type_of_expr(value_syntax);
                         match expr_ty {
@@ -561,7 +552,7 @@ pub fn type_of_expr_at(
                 if let Some(key) = member_key_from_index_expr(model, index_expr)
                     && let Some(prefix) = index_expr.get_prefix_expr()
                 {
-                    let prefix_ty = type_of_expr_at(model, prefix.get_syntax_id(), offset);
+                    let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
                     if let Some(prefix_member_ty) = model.member_type(&prefix_ty, &key)
                         && !matches!(prefix_member_ty, LuaType::Unknown | LuaType::Any)
                         && (member_type_more_specific(model, &prefix_member_ty, &member_ty)
@@ -607,14 +598,14 @@ pub fn type_of_expr_at(
                 BinaryOperator::OpAnd | BinaryOperator::OpOr
             ) && let Some(tuple_ty) = array_table_literal_tuple_type(model, &right_expr)
             {
-                let left_ty = type_of_expr_at(model, left_expr.get_syntax_id(), offset);
+                let left_ty = model.type_of_expr_at(left_expr.get_syntax_id(), offset);
                 let result = logical_binary_type(model, op_token.get_op(), left_ty, tuple_ty);
                 return apply_expr_casts(model, expr_syntax, result, All);
             }
             // General binary expressions: subexpressions first use flow-sensitive types (member/variable branch narrowing),
             // then merge with the same VM operator rules, ensuring `right.value + 1` uses the narrow type of `right.value` in the branch.
-            let left_ty = type_of_expr_at(model, left_expr.get_syntax_id(), offset);
-            let right_ty = type_of_expr_at(model, right_expr.get_syntax_id(), offset);
+            let left_ty = model.type_of_expr_at(left_expr.get_syntax_id(), offset);
+            let right_ty = model.type_of_expr_at(right_expr.get_syntax_id(), offset);
             // If either operand in an arithmetic expression fails to infer (unresolved global/field), treat it as an "inference error":
             // don't return the VM's fallback number; let the assignment layer keep the variable's previously known type.
             if matches!(
@@ -1515,15 +1506,23 @@ fn trace_decl(
         assignments: options.assignments,
         merge_branch: matches!(mode, TraceMode::MergeBranch),
     };
-    match model.trace_state_cache_get(&key) {
-        Some(cache::CacheEntry::Ready(cached)) => return cached,
-        // Not expected on a loop-free graph; treat defensively as a miss so the
-        // result is always computed rather than silently dropped.
-        Some(cache::CacheEntry::InProgress) | None => {}
+    {
+        let cache = model.cache.borrow();
+        if let Some(entry) = cache.trace_state.get(&key) {
+            return entry.get(&cache).cloned().flatten();
+        }
     }
-    model.trace_state_cache_mark_in_progress(key.clone());
+    let _query = cache::QueryCacheScope::new(&model.cache);
+    model
+        .cache
+        .borrow_mut()
+        .trace_state
+        .insert(key.clone(), cache::CacheEntry::InProgress);
+    let revision = model.cache.borrow().revision();
     let result = trace_decl_uncached(model, decl, tree, flow_id, options, mode, visited, path);
-    model.trace_state_cache_store(key, result.clone());
+    let mut cache = model.cache.borrow_mut();
+    let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+    cache.trace_state.insert(key, entry);
     result
 }
 
@@ -3637,12 +3636,11 @@ fn return_cast_for_call(
     if let Some(cached) = model.cache.borrow().return_cast.get(&key) {
         return cached.clone();
     }
+    let revision = model.cache.borrow().revision();
     let result = return_cast_for_call_uncached(model, call);
-    model
-        .cache
-        .borrow_mut()
-        .return_cast
-        .insert(key, result.clone());
+    model.cache.publish_if_complete(revision, |cache| {
+        cache.return_cast.insert(key, result.clone());
+    });
     result
 }
 

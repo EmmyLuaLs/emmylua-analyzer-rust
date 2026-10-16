@@ -5,9 +5,7 @@ use hashbrown::HashMap;
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
-use crate::semantic_model::type_eval::{
-    eval_conditionals, expand_alias_generic, substitute_named_refs,
-};
+use crate::semantic_model::type_eval::{substitute_named_refs, with_expanded_alias};
 use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaType};
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
@@ -158,32 +156,6 @@ fn find_type_def_member(
     None
 }
 
-/// Follows alias references until reaching a non-alias named type/object/array/string.
-/// A local visited set prevents recursive aliases (`A -> B -> A`) from looping forever.
-fn direct_member_info_alias(
-    model: &SemanticModel,
-    prefix_type: &LuaType,
-    key: &LuaMemberKey,
-) -> Option<MemberInfo> {
-    let mut current = prefix_type.clone();
-    let mut visited = Vec::new();
-    loop {
-        let id = match &current {
-            LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
-            _ => return direct_member_info(model, &current, key),
-        };
-        if visited.contains(&id) {
-            return None;
-        }
-        let def = model.type_def_of(&id)?;
-        if def.kind != TypeDefKind::Alias {
-            return direct_member_info(model, &current, key);
-        }
-        visited.push(id.clone());
-        current = model.alias_target(&def)?;
-    }
-}
-
 fn direct_member_info(
     model: &SemanticModel,
     prefix_type: &LuaType,
@@ -193,7 +165,10 @@ fn direct_member_info(
         LuaType::Ref(id) | LuaType::Def(id) => {
             let def = model.type_def_of(id)?;
             if def.kind == TypeDefKind::Alias {
-                return direct_member_info_alias(model, prefix_type, key);
+                return with_expanded_alias(model, prefix_type, |expanded| {
+                    direct_member_info(model, expanded, key)
+                })
+                .flatten();
             }
             let mut visited = Vec::new();
             // Bare generic type (`Box`) uses its declared defaults/constraints for member lookup.
@@ -233,8 +208,10 @@ fn direct_member_info(
         LuaType::Generic(generic) => {
             let def = model.type_def_of(&generic.get_base_type_id())?;
             if def.kind == TypeDefKind::Alias {
-                let expanded = expand_alias_generic(model, prefix_type);
-                return direct_member_info(model, &expanded, key);
+                return with_expanded_alias(model, prefix_type, |expanded| {
+                    direct_member_info(model, expanded, key)
+                })
+                .flatten();
             }
             let bindings: TplBindings = generic
                 .get_params()
@@ -571,25 +548,19 @@ fn collect_members(
         // Named type: @field + inheritance + runtime value members.
         LuaType::Ref(decl_id) | LuaType::Def(decl_id) => {
             if let Some(def) = model.type_def_of(decl_id) {
-                // Alias: collect members of the alias target instead of looking for `@field` on the alias
-                // definition itself. The visited set also guards recursive aliases.
+                // Keep the alias active through traversal of recursive structures.
                 if def.kind == TypeDefKind::Alias {
-                    if visited.contains(&def.id) {
-                        return;
-                    }
-                    visited.push(def.id.clone());
-                    if let Some(target) = model.alias_target(&def) {
+                    with_expanded_alias(model, prefix_type, |target| {
                         collect_members(
                             model,
-                            &target,
+                            target,
                             bindings,
                             name_bindings,
                             visited,
                             out,
                             filter,
                         );
-                    }
-                    visited.pop();
+                    });
                     return;
                 }
                 // Bare generic types (`Box`) fill in default generic arguments on member access,
@@ -651,8 +622,9 @@ fn collect_members(
             if let Some(def) = model.type_def_of(&generic.get_base_type_id())
                 && def.kind == TypeDefKind::Alias
             {
-                let expanded = expand_alias_generic(model, prefix_type);
-                collect_members(model, &expanded, None, None, visited, out, filter);
+                with_expanded_alias(model, prefix_type, |expanded| {
+                    collect_members(model, expanded, None, None, visited, out, filter);
+                });
                 return;
             }
             let def = model.type_def_of(&generic.get_base_type_id());
@@ -1109,11 +1081,6 @@ fn member_info_of(
     if let Some(name_bindings) = name_bindings {
         typ = substitute_named_refs(&typ, name_bindings);
     }
-    // After substituting class/generic arguments, member types still need alias expansion and conditional evaluation:
-    // `Mock<fun(...)>.ctx.calls`'s field is `MockContextCalls<MockParameters<T>>[]`;
-    // without expansion it stays `Alias<...>[]`, so rendering/diagnostics/later access cannot see `any[]`.
-    typ = expand_alias_generic(model, &typ);
-    typ = eval_conditionals(model, &typ);
 
     Some(MemberInfo {
         key: member_key_to_lua(&member.key),

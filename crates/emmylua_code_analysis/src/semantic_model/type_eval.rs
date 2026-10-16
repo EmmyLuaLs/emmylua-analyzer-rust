@@ -12,12 +12,22 @@ use smol_str::SmolStr;
 use crate::{
     GenericParam, GenericTpl, GenericTplId, LuaAliasCallKind, LuaAliasCallType, LuaArrayType,
     LuaConditionalType, LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaMappedType,
-    LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId,
-    LuaUnionType, TypeDef, TypeDefKind, VariadicType,
+    LuaMemberKey, LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType, LuaUnionType, TypeDef,
+    TypeDefKind, VariadicType,
 };
 
 use super::SemanticModel;
 use super::infer::unify;
+use super::type_check::{RequiredChecks, TypeCheckFailReason, TypeCheckResult, check_all};
+
+mod alias_expansion;
+mod alias_recursion;
+use alias_expansion::{AliasPath, ExpansionMode};
+pub(crate) use alias_expansion::{expand_alias_head, with_expanded_alias};
+pub(crate) use alias_recursion::is_finite as alias_is_finite;
+
+#[cfg(test)]
+mod tests;
 
 /// Extract keys usable as object fields from literal types (strings/integers, including unions).
 pub fn literal_keys(ty: &LuaType) -> Vec<(LuaMemberKey, LuaType)> {
@@ -133,42 +143,91 @@ pub fn member_key_from_literal(ty: &LuaType) -> Option<LuaMemberKey> {
 
 /// Try to concretely evaluate `T[K]` (K as literal / union / keyof / alias).
 pub fn eval_index_access(model: &SemanticModel, base: &LuaType, key: &LuaType) -> Option<LuaType> {
-    match key {
-        LuaType::Call(call) if call.get_call_kind() == LuaAliasCallKind::KeyOf => {
-            let key_base = call.get_operands().first()?;
-            let infos = model.member_infos(key_base);
-            if infos.is_empty() {
-                return None;
+    enum Task {
+        Enter(LuaType),
+        Leave,
+    }
+    let mut path = AliasPath::new(model);
+    let mut pending = vec![Task::Enter(key.clone())];
+    let mut keys = Vec::new();
+    while let Some(task) = pending.pop() {
+        let key = match task {
+            Task::Leave => {
+                path.leave();
+                continue;
             }
-            Some(LuaType::from_vec(
-                infos.into_iter().map(|info| info.typ).collect(),
-            ))
-        }
-        LuaType::Ref(id) | LuaType::Def(id) => {
-            let def = model.type_def_of(id)?;
-            let target = model.alias_target(&def)?;
-            eval_index_access(model, base, &target)
-        }
-        LuaType::Union(union) => {
-            let mut types = Vec::new();
-            for component in union.into_vec() {
-                if let Some(ty) = eval_index_access(model, base, &component) {
-                    if !types.contains(&ty) {
-                        types.push(ty);
-                    }
+            Task::Enter(key) => key,
+        };
+        match &key {
+            LuaType::Ref(id) | LuaType::Def(id) => {
+                let Some(def) = model.type_def_of(id) else {
+                    continue;
+                };
+                if path.enter(&key).is_none() {
+                    continue;
                 }
+                if let Some(target) = model.alias_target(&def) {
+                    pending.push(Task::Leave);
+                    pending.push(Task::Enter(target));
+                } else {
+                    path.leave();
+                }
+                continue;
             }
-            if types.is_empty() {
-                None
-            } else {
-                Some(LuaType::from_vec(types))
+            LuaType::Union(union) => {
+                for component in union.into_vec().into_iter().rev() {
+                    pending.push(Task::Enter(component));
+                }
+                continue;
             }
+            _ => {}
         }
-        _ => {
-            let member_key = member_key_from_literal(key)?;
-            model.member_type(base, &member_key)
+        keys.push(key);
+    }
+    // Key expansion is complete. Base lookup follows an independent alias path.
+    let mut types = Vec::new();
+    for key in keys {
+        let results = match &key {
+            LuaType::Call(call) if call.get_call_kind() == LuaAliasCallKind::KeyOf => call
+                .get_operands()
+                .first()
+                .map(|base| {
+                    model
+                        .member_infos(base)
+                        .into_iter()
+                        .map(|info| info.typ)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            _ => member_key_from_literal(&key)
+                .and_then(|key| indexed_member_type(model, base, &key))
+                .into_iter()
+                .collect(),
+        };
+        for ty in results {
+            if !types.contains(&ty) {
+                types.push(ty);
+            }
         }
     }
+    (!types.is_empty()).then(|| LuaType::from_vec(types))
+}
+
+// Check the selected declaration before following a computed member type.
+// Member lookup itself leaves that type unexpanded.
+fn indexed_member_type(
+    model: &SemanticModel,
+    base: &LuaType,
+    key: &LuaMemberKey,
+) -> Option<LuaType> {
+    let info = model.member_info(base, key)?;
+    if let Some(id) = &info.id
+        && alias_recursion::member_is_finite(model, id) != Some(true)
+    {
+        model.cache.borrow().mark_incomplete();
+        return None;
+    }
+    Some(info.typ)
 }
 
 /// Expand `Call(Index)` into field values/unions (semantic layer).
@@ -206,7 +265,7 @@ pub fn expand_index_call(model: &SemanticModel, call: &LuaAliasCallType) -> Opti
                     LuaMemberKey::Integer(i) => tuple.get_types().get(*i as usize).cloned(),
                     _ => None,
                 },
-                _ => model.member_type(base, &member_key),
+                _ => indexed_member_type(model, base, &member_key),
             };
             if let Some(ty) = ty
                 && !types.contains(&ty)
@@ -751,224 +810,75 @@ pub fn substitute_named_refs(ty: &LuaType, map: &HashMap<String, LuaType>) -> Lu
 /// Expand alias calls represented as `LuaType::Generic` (`ExtractFoo<T>` -> alias target) and recursively evaluate conditional types.
 /// After call-site generic bindings are substituted, calling this avoids leaking return types as `Alias<...>`.
 pub fn expand_alias_generic(model: &SemanticModel, ty: &LuaType) -> LuaType {
-    let mut visited = Vec::new();
-    expand_alias_generic_inner(model, ty, &mut visited)
+    alias_expansion::expand(model, ty, ExpansionMode::Structure).unwrap_or_else(|| ty.clone())
 }
 
-fn expand_alias_generic_inner(
-    model: &SemanticModel,
-    ty: &LuaType,
-    visited: &mut Vec<LuaTypeDeclId>,
-) -> LuaType {
+/// Rebuild the structures used by alias and conditional evaluation.
+/// The caller supplies children; this helper does not recurse or evaluate queries.
+fn map_alias_children(ty: &LuaType, map: &mut impl FnMut(&LuaType) -> LuaType) -> LuaType {
     use LuaType::*;
     match ty {
-        Generic(generic) => {
-            let base_id = generic.get_base_type_id();
-            // `std.RawGet<T, K>`: expand via type-level raw get into member types.
-            if matches!(base_id.get_name(), "std.RawGet" | "RawGet") {
-                let params = generic.get_params().to_vec();
-                if params.len() == 2 {
-                    let owner = expand_alias_generic_inner(model, &params[0], visited);
-                    let key = expand_alias_generic_inner(model, &params[1], visited);
-                    if let Some(ty) = eval_index_access(model, &owner, &key) {
-                        return ty;
-                    }
-                }
-            }
-            // Built-in `Merge<T, U>` exists as `LuaGenericType` (no user alias definition).
-            if base_id.get_name() == "Merge" {
-                let operands: Vec<LuaType> = generic
-                    .get_params()
-                    .iter()
-                    .map(|param| expand_alias_generic_inner(model, param, visited))
-                    .collect();
-                if operands.len() >= 2
-                    && let Some(merged) = eval_merge_call(
-                        model,
-                        &LuaAliasCallType::new(LuaAliasCallKind::Merge, operands),
-                    )
-                {
-                    return merged;
-                }
-            }
-            let def = model.type_def_of(&base_id);
-            if let Some(def) = &def
-                && def.kind == TypeDefKind::Alias
-                && !visited.contains(&base_id)
-            {
-                visited.push(base_id.clone());
-                if let Some(target) = model.alias_target(def) {
-                    let bindings: HashMap<GenericTplId, LuaType> = generic
-                        .get_params()
-                        .iter()
-                        .enumerate()
-                        .map(|(index, param)| (GenericTplId::Type(index as u32), param.clone()))
-                        .collect();
-                    // When rich projection does not carry the alias generic context, it projects `T` into a named reference;
-                    // substitute by name once more here to ensure `checked_type` is also substituted.
-                    let name_bindings: HashMap<::std::string::String, LuaType> = def
-                        .generic_params
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, param)| {
-                            generic
-                                .get_params()
-                                .get(index)
-                                .map(|value| (param.name.to_string(), value.clone()))
-                        })
-                        .collect();
-                    if let Conditional(cond) = &target {
-                        // When generic arguments are not yet substituted (e.g. `T` in `MockParameters<T>` is still a
-                        // class generic), do not expand the conditional alias: evaluating early would treat unbound parameters as
-                        // non-matching and incorrectly fold to `false`/`never`. Expand after concrete arguments are substituted.
-                        if generic
-                            .get_params()
-                            .iter()
-                            .any(contains_unbound_function_tpl)
-                        {
-                            visited.pop();
-                            let params = generic
-                                .get_params()
-                                .iter()
-                                .map(|param| expand_alias_generic_inner(model, param, visited))
-                                .collect();
-                            return Generic(Rc::new(LuaGenericType::new(base_id, params)));
-                        }
-                        let evaluated =
-                            eval_conditional_alias(model, cond, &bindings, &name_bindings);
-                        let expanded = expand_alias_generic_inner(model, &evaluated, visited);
-                        visited.pop();
-                        return expanded;
-                    }
-                    let named = substitute_named_refs(&target, &name_bindings);
-                    let substituted = unify::substitute(&named, &bindings);
-                    let expanded = expand_alias_generic_inner(model, &substituted, visited);
-                    visited.pop();
-                    return expanded;
-                }
-                visited.pop();
-            }
-            let params = generic
-                .get_params()
-                .iter()
-                .map(|param| expand_alias_generic_inner(model, param, visited))
-                .collect();
-            Generic(Rc::new(LuaGenericType::new(base_id, params)))
-        }
-        Array(array) => Array(Rc::new(LuaArrayType::from_base_type(
-            expand_alias_generic_inner(model, array.get_base(), visited),
+        Generic(generic) => Generic(Rc::new(LuaGenericType::new(
+            generic.get_base_type_id(),
+            generic.get_params().iter().map(&mut *map).collect(),
         ))),
+        Array(array) => Array(Rc::new(LuaArrayType::from_base_type(map(array.get_base())))),
         Tuple(tuple) => Tuple(Rc::new(LuaTupleType::new(
-            tuple
-                .get_types()
-                .iter()
-                .map(|t| expand_alias_generic_inner(model, t, visited))
-                .collect(),
+            tuple.get_types().iter().map(&mut *map).collect(),
             tuple.status,
         ))),
         Union(union) => Union(Rc::new(LuaUnionType::from_vec(
-            union
-                .into_vec()
-                .iter()
-                .map(|t| expand_alias_generic_inner(model, t, visited))
-                .collect(),
+            union.into_vec().iter().map(&mut *map).collect(),
         ))),
         Intersection(intersection) => Intersection(Rc::new(LuaIntersectionType::new(
-            intersection
-                .get_types()
-                .iter()
-                .map(|t| expand_alias_generic_inner(model, t, visited))
-                .collect(),
+            intersection.get_types().iter().map(&mut *map).collect(),
         ))),
         Object(object) => Object(Rc::new(LuaObjectType::new_with_fields(
             object
                 .get_fields()
                 .iter()
-                .map(|(k, v)| (k.clone(), expand_alias_generic_inner(model, v, visited)))
+                .map(|(k, v)| (k.clone(), map(v)))
                 .collect(),
             object
                 .get_index_access()
                 .iter()
-                .map(|(k, v)| {
-                    (
-                        expand_alias_generic_inner(model, k, visited),
-                        expand_alias_generic_inner(model, v, visited),
-                    )
-                })
+                .map(|(k, v)| (map(k), map(v)))
                 .collect(),
         ))),
         Variadic(variadic) => Variadic(Rc::new(match variadic.as_ref() {
-            VariadicType::Base(base) => {
-                VariadicType::Base(expand_alias_generic_inner(model, base, visited))
+            VariadicType::Base(base) => VariadicType::Base(map(base)),
+            VariadicType::Repeat(base) => VariadicType::Repeat(map(base)),
+            VariadicType::Multi(types) => {
+                VariadicType::Multi(types.iter().map(&mut *map).collect())
             }
-            VariadicType::Repeat(base) => {
-                VariadicType::Repeat(expand_alias_generic_inner(model, base, visited))
-            }
-            VariadicType::Multi(types) => VariadicType::Multi(
-                types
-                    .iter()
-                    .map(|t| expand_alias_generic_inner(model, t, visited))
-                    .collect(),
-            ),
         })),
-        Call(call) => {
-            let call = LuaAliasCallType::new(
-                call.get_call_kind(),
-                call.get_operands()
-                    .iter()
-                    .map(|t| expand_alias_generic_inner(model, t, visited))
-                    .collect(),
-            );
-            if call.get_call_kind() == LuaAliasCallKind::Merge
-                && let Some(merged) = eval_merge_call(model, &call)
-            {
-                return merged;
-            }
-            Call(Rc::new(call))
-        }
-        Mapped(mapped) => {
-            if let Some(expanded) = expand_mapped(model, mapped) {
-                expand_alias_generic_inner(model, &expanded, visited)
-            } else {
-                Mapped(Rc::new(LuaMappedType::new(
-                    (
-                        mapped.param.0,
-                        GenericParam::new(
-                            mapped.param.1.name.clone(),
-                            mapped
-                                .param
-                                .1
-                                .constraint
-                                .as_ref()
-                                .map(|t| expand_alias_generic_inner(model, t, visited)),
-                            mapped
-                                .param
-                                .1
-                                .default
-                                .as_ref()
-                                .map(|t| expand_alias_generic_inner(model, t, visited)),
-                            mapped.param.1.is_const,
-                            mapped.param.1.attributes.clone(),
-                        ),
-                    ),
-                    expand_alias_generic_inner(model, &mapped.value, visited),
-                    mapped.is_readonly,
-                    mapped.is_optional,
-                )))
-            }
-        }
-        Conditional(conditional) => eval_conditionals_inner(
-            model,
-            &Conditional(Rc::new(LuaConditionalType::new(
-                expand_alias_generic_inner(model, conditional.get_checked_type(), visited),
-                expand_alias_generic_inner(model, conditional.get_extends_type(), visited),
-                expand_alias_generic_inner(model, conditional.get_true_type(), visited),
-                expand_alias_generic_inner(model, conditional.get_false_type(), visited),
-                conditional.get_infer_params().to_vec(),
-                conditional.has_new,
-            ))),
-            &mut Vec::new(),
-        ),
+        Call(call) => Call(Rc::new(LuaAliasCallType::new(
+            call.get_call_kind(),
+            call.get_operands().iter().map(&mut *map).collect(),
+        ))),
+        Mapped(mapped) => Mapped(Rc::new(LuaMappedType::new(
+            (
+                mapped.param.0,
+                GenericParam::new(
+                    mapped.param.1.name.clone(),
+                    mapped.param.1.constraint.as_ref().map(&mut *map),
+                    mapped.param.1.default.as_ref().map(&mut *map),
+                    mapped.param.1.is_const,
+                    mapped.param.1.attributes.clone(),
+                ),
+            ),
+            map(&mapped.value),
+            mapped.is_readonly,
+            mapped.is_optional,
+        ))),
+        Conditional(conditional) => Conditional(Rc::new(LuaConditionalType::new(
+            map(conditional.get_checked_type()),
+            map(conditional.get_extends_type()),
+            map(conditional.get_true_type()),
+            map(conditional.get_false_type()),
+            conditional.get_infer_params().to_vec(),
+            conditional.has_new,
+        ))),
         _ => ty.clone(),
     }
 }
@@ -979,6 +889,7 @@ fn eval_conditional_alias(
     conditional: &LuaConditionalType,
     bindings: &HashMap<GenericTplId, LuaType>,
     name_bindings: &HashMap<String, LuaType>,
+    resolved_bound: Option<LuaType>,
 ) -> LuaType {
     let checked = conditional.get_checked_type();
     let naked_tpl: Option<(GenericTplId, String)> = match checked {
@@ -989,23 +900,7 @@ fn eval_conditional_alias(
         _ => None,
     };
     if let Some((tpl_id, tpl_name)) = naked_tpl {
-        let bound = bindings
-            .get(&tpl_id)
-            .or_else(|| name_bindings.get(&tpl_name))
-            .cloned();
-        if let Some(bound) = bound {
-            // The generic argument itself may be a named alias (`T = Procedure`); expand the alias first,
-            // otherwise `T extends (fun(...: infer P))` will use `Ref(Procedure)` as the function source
-            // and incorrectly go to the false branch.
-            let expanded = match &bound {
-                LuaType::Ref(id) | LuaType::Def(id) => model
-                    .type_def_of(id)
-                    .filter(|def| def.kind == TypeDefKind::Alias)
-                    .and_then(|def| model.alias_target(&def))
-                    .unwrap_or_else(|| bound.clone()),
-                other => other.clone(),
-            };
-            let bound = expand_alias_generic(model, &expanded);
+        if let Some(bound) = resolved_bound {
             if bound.is_never() {
                 return LuaType::Never;
             }
@@ -1070,81 +965,12 @@ fn eval_conditionals_inner(
     ty: &LuaType,
     visiting: &mut Vec<GenericTplId>,
 ) -> LuaType {
-    use LuaType::*;
     match ty {
-        Conditional(conditional) => eval_conditional_once(model, conditional, visiting),
-        Array(array) => Array(Rc::new(LuaArrayType::from_base_type(
-            eval_conditionals_inner(model, array.get_base(), visiting),
-        ))),
-        Tuple(tuple) => Tuple(Rc::new(LuaTupleType::new(
-            tuple
-                .get_types()
-                .iter()
-                .map(|t| eval_conditionals_inner(model, t, visiting))
-                .collect(),
-            tuple.status,
-        ))),
-        Union(union) => Union(Rc::new(LuaUnionType::from_vec(
-            union
-                .into_vec()
-                .iter()
-                .map(|t| eval_conditionals_inner(model, t, visiting))
-                .collect(),
-        ))),
-        Intersection(intersection) => Intersection(Rc::new(LuaIntersectionType::new(
-            intersection
-                .get_types()
-                .iter()
-                .map(|t| eval_conditionals_inner(model, t, visiting))
-                .collect(),
-        ))),
-        Object(object) => Object(Rc::new(LuaObjectType::new_with_fields(
-            object
-                .get_fields()
-                .iter()
-                .map(|(k, v)| (k.clone(), eval_conditionals_inner(model, v, visiting)))
-                .collect(),
-            object
-                .get_index_access()
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        eval_conditionals_inner(model, k, visiting),
-                        eval_conditionals_inner(model, v, visiting),
-                    )
-                })
-                .collect(),
-        ))),
-        Generic(generic) => Generic(Rc::new(LuaGenericType::new(
-            generic.get_base_type_id(),
-            generic
-                .get_params()
-                .iter()
-                .map(|t| eval_conditionals_inner(model, t, visiting))
-                .collect(),
-        ))),
-        Variadic(variadic) => Variadic(Rc::new(match variadic.as_ref() {
-            VariadicType::Base(base) => {
-                VariadicType::Base(eval_conditionals_inner(model, base, visiting))
-            }
-            VariadicType::Repeat(base) => {
-                VariadicType::Repeat(eval_conditionals_inner(model, base, visiting))
-            }
-            VariadicType::Multi(types) => VariadicType::Multi(
-                types
-                    .iter()
-                    .map(|t| eval_conditionals_inner(model, t, visiting))
-                    .collect(),
-            ),
-        })),
-        Call(call) => Call(Rc::new(LuaAliasCallType::new(
-            call.get_call_kind(),
-            call.get_operands()
-                .iter()
-                .map(|t| eval_conditionals_inner(model, t, visiting))
-                .collect(),
-        ))),
-        _ => ty.clone(),
+        LuaType::Conditional(conditional) => eval_conditional_once(model, conditional, visiting),
+        LuaType::Mapped(_) => ty.clone(),
+        _ => map_alias_children(ty, &mut |child| {
+            eval_conditionals_inner(model, child, visiting)
+        }),
     }
 }
 
@@ -1153,6 +979,7 @@ enum ConditionalCheck {
     True,
     False,
     Both,
+    Unresolved,
 }
 
 fn eval_conditional_once(
@@ -1193,6 +1020,7 @@ fn eval_conditional_once(
     }
 
     if contains_conditional_infer(extends) {
+        let revision = model.cache.borrow().revision();
         // `new (fun(...: infer P): any)`: when the source is a constructor type/class table, extract its constructor signature first.
         let infer_source = if conditional.has_new {
             match try_constructor_function(model, checked) {
@@ -1210,22 +1038,28 @@ fn eval_conditional_once(
         } else {
             infer_source
         };
+        if !model.cache.borrow().is_complete(revision) {
+            return LuaType::Conditional(Rc::new(conditional.clone()));
+        }
         let mut infer_assignments: HashMap<GenericTplId, InferCandidates> = HashMap::new();
-        if collect_infer_assignments(
+        let matched = collect_infer_assignments(
             model,
             &infer_source,
             extends,
             &mut infer_assignments,
             InferVariance::Covariant,
-        ) {
+        );
+        if matched.is_ok() {
             let bindings: HashMap<GenericTplId, LuaType> = infer_assignments
                 .into_iter()
                 .filter_map(|(id, candidates)| candidates.finalize(model).map(|ty| (id, ty)))
                 .collect();
             let true_ty = unify::substitute(conditional.get_true_type(), &bindings);
             eval_conditionals_inner(model, &true_ty, visiting)
-        } else {
+        } else if matched.is_err_and(|err| err.is_type_not_match()) {
             eval_conditionals_inner(model, conditional.get_false_type(), visiting)
+        } else {
+            LuaType::Conditional(Rc::new(conditional.clone()))
         }
     } else {
         match check_conditional_extends(model, checked, extends) {
@@ -1241,6 +1075,7 @@ fn eval_conditional_once(
                     eval_conditionals_inner(model, conditional.get_false_type(), visiting);
                 LuaType::from_vec(vec![true_ty, false_ty])
             }
+            ConditionalCheck::Unresolved => LuaType::Conditional(Rc::new(conditional.clone())),
         }
     }
 }
@@ -1301,32 +1136,39 @@ fn check_conditional_extends(
         for member in union.into_vec() {
             result =
                 merge_conditional_check(result, check_conditional_extends(model, &member, target));
-            if result == ConditionalCheck::Both {
+            if result == ConditionalCheck::Unresolved {
                 break;
             }
         }
         return result;
     }
     if let LuaType::Union(union) = target {
+        let mut unresolved = false;
         for member in union.into_vec() {
-            if matches!(
-                check_conditional_extends(model, source, &member),
-                ConditionalCheck::True | ConditionalCheck::Both
-            ) {
-                return ConditionalCheck::True;
+            match check_conditional_extends(model, source, &member) {
+                ConditionalCheck::True | ConditionalCheck::Both => return ConditionalCheck::True,
+                ConditionalCheck::Unresolved => unresolved = true,
+                ConditionalCheck::False => {}
             }
         }
-        return ConditionalCheck::False;
+        return if unresolved {
+            ConditionalCheck::Unresolved
+        } else {
+            ConditionalCheck::False
+        };
     }
-    if model.type_check(source, target) {
-        ConditionalCheck::True
-    } else {
-        ConditionalCheck::False
+    match model.type_check_cached(source, target, false) {
+        Some(true) => ConditionalCheck::True,
+        Some(false) => ConditionalCheck::False,
+        None => ConditionalCheck::Unresolved,
     }
 }
 
 fn merge_conditional_check(left: ConditionalCheck, right: ConditionalCheck) -> ConditionalCheck {
     match (left, right) {
+        (ConditionalCheck::Unresolved, _) | (_, ConditionalCheck::Unresolved) => {
+            ConditionalCheck::Unresolved
+        }
         (ConditionalCheck::True, ConditionalCheck::True) => ConditionalCheck::True,
         (ConditionalCheck::False, ConditionalCheck::False) => ConditionalCheck::False,
         _ => ConditionalCheck::Both,
@@ -1597,7 +1439,7 @@ fn collect_infer_assignments(
     pattern: &LuaType,
     assignments: &mut HashMap<GenericTplId, InferCandidates>,
     variance: InferVariance,
-) -> bool {
+) -> TypeCheckResult {
     use LuaType::*;
     if let TplRef(tpl) = pattern
         && tpl.get_tpl_id().is_conditional_infer()
@@ -1606,7 +1448,7 @@ fn collect_infer_assignments(
             .entry(tpl.get_tpl_id())
             .or_default()
             .insert(variance, source);
-        return true;
+        return Ok(());
     }
     match pattern {
         Array(pattern_array) => match source {
@@ -1617,24 +1459,23 @@ fn collect_infer_assignments(
                 assignments,
                 variance,
             ),
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         Tuple(pattern_tuple) => match source {
             Tuple(source_tuple)
                 if pattern_tuple.get_types().len() == source_tuple.get_types().len() =>
             {
-                for (p, s) in pattern_tuple
-                    .get_types()
-                    .iter()
-                    .zip(source_tuple.get_types().iter())
-                {
-                    if !collect_infer_assignments(model, s, p, assignments, variance) {
-                        return false;
-                    }
-                }
-                true
+                check_all(
+                    pattern_tuple
+                        .get_types()
+                        .iter()
+                        .zip(source_tuple.get_types())
+                        .map(|(p, s)| {
+                            collect_infer_assignments(model, s, p, assignments, variance)
+                        }),
+                )
             }
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         Variadic(pattern_variadic) => match source {
             Variadic(source_variadic) => {
@@ -1665,30 +1506,29 @@ fn collect_infer_assignments(
                             variance,
                         )
                     }
-                    _ => false,
+                    _ => Err(TypeCheckFailReason::TypeNotMatch),
                 }
             }
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         Generic(pattern_generic) => match source {
             Generic(source_generic) => {
                 if pattern_generic.get_base_type_id() != source_generic.get_base_type_id()
                     || pattern_generic.get_params().len() != source_generic.get_params().len()
                 {
-                    return false;
+                    return Err(TypeCheckFailReason::TypeNotMatch);
                 }
-                for (p, s) in pattern_generic
-                    .get_params()
-                    .iter()
-                    .zip(source_generic.get_params().iter())
-                {
-                    if !collect_infer_assignments(model, s, p, assignments, variance) {
-                        return false;
-                    }
-                }
-                true
+                check_all(
+                    pattern_generic
+                        .get_params()
+                        .iter()
+                        .zip(source_generic.get_params())
+                        .map(|(p, s)| {
+                            collect_infer_assignments(model, s, p, assignments, variance)
+                        }),
+                )
             }
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         Object(pattern_object) => match source {
             Object(source_object) => infer_from_object_to_object(
@@ -1701,19 +1541,23 @@ fn collect_infer_assignments(
             Ref(_) | Def(_) | TableConst(_) => {
                 infer_from_class_to_object(model, source, pattern_object, assignments, variance)
             }
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         DocFunction(pattern_fun) => match source {
             DocFunction(source_fun) => {
                 collect_infer_from_function(model, source_fun, pattern_fun, assignments, variance)
             }
-            _ => false,
+            _ => Err(TypeCheckFailReason::TypeNotMatch),
         },
         _ => {
             if contains_conditional_infer(pattern) {
-                false
+                Err(TypeCheckFailReason::TypeNotMatch)
             } else {
-                source == pattern || model.type_check(source, pattern)
+                match model.type_check_cached(source, pattern, false) {
+                    Some(true) => Ok(()),
+                    Some(false) => Err(TypeCheckFailReason::TypeNotMatch),
+                    None => Err(TypeCheckFailReason::Unresolved),
+                }
             }
         }
     }
@@ -1725,25 +1569,24 @@ fn infer_from_object_to_object(
     pattern_object: &LuaObjectType,
     assignments: &mut HashMap<GenericTplId, InferCandidates>,
     variance: InferVariance,
-) -> bool {
+) -> TypeCheckResult {
+    let mut checks = RequiredChecks::default();
     for (key, pattern_field_ty) in pattern_object.get_fields() {
         match source_object.get_fields().get(key) {
-            Some(source_field_ty) => {
-                if !collect_infer_assignments(
-                    model,
-                    source_field_ty,
-                    pattern_field_ty,
-                    assignments,
-                    variance,
-                ) {
-                    return false;
-                }
+            Some(source_field_ty) => checks.require(collect_infer_assignments(
+                model,
+                source_field_ty,
+                pattern_field_ty,
+                assignments,
+                variance,
+            ))?,
+            None if contains_conditional_infer(pattern_field_ty) => {
+                return Err(TypeCheckFailReason::TypeNotMatch);
             }
-            None if contains_conditional_infer(pattern_field_ty) => return false,
             _ => {}
         }
     }
-    true
+    checks.finish()
 }
 
 fn infer_from_class_to_object(
@@ -1752,23 +1595,36 @@ fn infer_from_class_to_object(
     pattern_object: &LuaObjectType,
     assignments: &mut HashMap<GenericTplId, InferCandidates>,
     variance: InferVariance,
-) -> bool {
+) -> TypeCheckResult {
+    let mut checks = RequiredChecks::default();
     for (key, pattern_field_ty) in pattern_object.get_fields() {
-        if let Some(source_field_ty) = model.member_type(source, key) {
-            if !collect_infer_assignments(
+        let revision = model.cache.borrow().revision();
+        let source_field_ty = model.member_type(source, key);
+        if !model.cache.borrow().is_complete(revision) {
+            checks.require(Err(TypeCheckFailReason::Unresolved))?;
+            continue;
+        }
+        if let Some(source_field_ty) = source_field_ty {
+            checks.require(collect_infer_assignments(
                 model,
                 &source_field_ty,
                 pattern_field_ty,
                 assignments,
                 variance,
-            ) {
-                return false;
-            }
+            ))?;
         } else if contains_conditional_infer(pattern_field_ty) {
-            return false;
+            return Err(TypeCheckFailReason::TypeNotMatch);
         }
     }
-    true
+    checks.finish()
+}
+
+fn infer_fixed_param_count(function: &LuaFunctionType) -> usize {
+    let params = function.get_params();
+    let has_variadic = params
+        .last()
+        .is_some_and(|(name, ty)| name == "..." || ty.as_ref().is_some_and(|ty| ty.is_variadic()));
+    params.len() - usize::from(has_variadic)
 }
 
 fn collect_infer_from_function(
@@ -1777,37 +1633,29 @@ fn collect_infer_from_function(
     pattern_fun: &LuaFunctionType,
     assignments: &mut HashMap<GenericTplId, InferCandidates>,
     variance: InferVariance,
-) -> bool {
+) -> TypeCheckResult {
     let pattern_params = pattern_fun.get_params();
     let source_params = source_fun.get_params();
-    let has_variadic = pattern_params
-        .last()
-        .is_some_and(|(name, ty)| name == "..." || ty.as_ref().is_some_and(|ty| ty.is_variadic()));
-    let normal_param_len = if has_variadic {
-        pattern_params.len().saturating_sub(1)
-    } else {
-        pattern_params.len()
-    };
+    let normal_param_len = infer_fixed_param_count(pattern_fun);
+    let has_variadic = normal_param_len < pattern_params.len();
     if !has_variadic && source_params.len() > normal_param_len {
-        return false;
+        return Err(TypeCheckFailReason::TypeNotMatch);
     }
+    let mut checks = RequiredChecks::default();
     for (i, (_, pattern_param)) in pattern_params.iter().take(normal_param_len).enumerate() {
         let source_param = source_params.get(i).and_then(|(_, ty)| ty.as_ref());
         let pattern_ty = pattern_param.as_ref();
         match (source_param, pattern_ty) {
-            (Some(source_ty), Some(pattern_ty)) => {
-                if !collect_infer_assignments(
-                    model,
-                    source_ty,
-                    pattern_ty,
-                    assignments,
-                    variance.flip(),
-                ) {
-                    return false;
-                }
+            (Some(source_ty), Some(pattern_ty)) => checks.require(collect_infer_assignments(
+                model,
+                source_ty,
+                pattern_ty,
+                assignments,
+                variance.flip(),
+            ))?,
+            (None, Some(pattern_ty)) if contains_conditional_infer(pattern_ty) => {
+                return Err(TypeCheckFailReason::TypeNotMatch);
             }
-            (Some(_), None) => {}
-            (None, Some(pattern_ty)) if contains_conditional_infer(pattern_ty) => return false,
             _ => {}
         }
     }
@@ -1842,18 +1690,24 @@ fn collect_infer_from_function(
                 LuaTupleStatus::InferResolve,
             ))),
         };
-        return collect_infer_assignments(model, &ty, pattern_ty, assignments, variance.flip());
+        checks.require(collect_infer_assignments(
+            model,
+            &ty,
+            pattern_ty,
+            assignments,
+            variance.flip(),
+        ))?;
+        return checks.finish();
     }
     let pattern_ret = pattern_fun.get_ret();
     if contains_conditional_infer(pattern_ret) {
-        collect_infer_assignments(
+        checks.require(collect_infer_assignments(
             model,
             source_fun.get_ret(),
             pattern_ret,
             assignments,
             variance,
-        )
-    } else {
-        true
+        ))?;
     }
+    checks.finish()
 }
