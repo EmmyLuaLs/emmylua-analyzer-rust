@@ -996,7 +996,7 @@ end, 4, 5, 6, 7, 8, 9, 10
     fn test_non_first_multiline_callback_tail_refills_after_end() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                max_line_width: 28,
+                max_line_width: 27,
                 ..Default::default()
             },
             ..Default::default()
