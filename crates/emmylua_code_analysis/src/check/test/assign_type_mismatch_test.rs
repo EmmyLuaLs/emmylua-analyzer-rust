@@ -1906,6 +1906,9 @@ return t
             ---@class B
             ---@class C
             ---@class D
+            ---@alias Pair A | B
+            ---@alias TooWide A | B | C | D
+            ---@alias Identity<T> T
 
             ---@param a A | B | C
             ---@return boolean
@@ -1914,21 +1917,23 @@ return t
             end
             "#,
         );
-        assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
-            ---@type fun(a: A | B | C | D): boolean
-            local tmp = condition
-            "#,
-        ));
-
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
-            ---@type fun(a: A | B): boolean
-            local tmp = condition
-            "#,
-        ));
+        for (parameter, accepted) in [
+            ("A | B | C | D", false),
+            ("TooWide", false),
+            ("Identity<A | B | C | D>", false),
+            ("A | B", true),
+            ("Pair", true),
+            ("Identity<A | B>", true),
+        ] {
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::AssignTypeMismatch,
+                    &format!("---@type fun(a: {parameter}): boolean\nlocal tmp = condition"),
+                ),
+                accepted,
+                "{parameter}"
+            );
+        }
     }
 
     #[test]

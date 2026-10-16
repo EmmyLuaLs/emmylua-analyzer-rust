@@ -274,29 +274,19 @@ fn add_type_check_diagnostic(
     arg_type: &LuaType,
     param_type: &LuaType,
 ) {
-    match check_type_detail(semantic_model, arg_type, param_type) {
-        Ok(()) => {}
-        Err(reason) => {
-            let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch => String::new(),
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
-            };
-            let reason = if reason_message.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", reason_message)
-            };
-            context.add_diagnostic(
-                DiagnosticCode::AttributeParamTypeMismatch,
-                range,
-                t!(
-                    "expected `%{expected}` but found `%{found}`.%{reason}",
-                    expected = humanize_type(semantic_model, param_type),
-                    found = humanize_type(semantic_model, arg_type),
-                    reason = reason
-                ),
-            );
-        }
-    }
+    let reason = match check_type_detail(semantic_model, arg_type, param_type) {
+        Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => format!(" {reason}"),
+        Err(TypeCheckFailReason::TypeNotMatch) => String::new(),
+        _ => return,
+    };
+    context.add_diagnostic(
+        DiagnosticCode::AttributeParamTypeMismatch,
+        range,
+        t!(
+            "expected `%{expected}` but found `%{found}`.%{reason}",
+            expected = humanize_type(semantic_model, param_type),
+            found = humanize_type(semantic_model, arg_type),
+            reason = reason
+        ),
+    );
 }

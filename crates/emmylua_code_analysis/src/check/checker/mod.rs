@@ -259,6 +259,25 @@ pub fn check_file(semantic_model: &SemanticModel<'_>, config: Arc<CheckConfig>) 
     run_checked::<check_field::CheckFieldChecker>(&mut context, semantic_model);
     run_checked::<discard_returns::DiscardReturnsChecker>(&mut context, semantic_model);
     run_checked::<global_non_module::GlobalInNonModuleChecker>(&mut context, semantic_model);
+    let mut ranges: Vec<_> = semantic_model
+        .type_evaluation_errors()
+        .into_iter()
+        .map(|origin| {
+            origin
+                .and_then(|id| semantic_model.type_def_of(&id))
+                .filter(|def| def.file_id == semantic_model.file_id())
+                .map_or(TextRange::empty(0.into()), |def| def.name_range)
+        })
+        .collect();
+    ranges.sort_unstable_by_key(|range| (range.start(), range.end()));
+    ranges.dedup();
+    for range in ranges {
+        context.add_diagnostic(
+            DiagnosticCode::TypeComplexity,
+            range,
+            t!("Type evaluation is too complex or possibly infinite."),
+        );
+    }
     context.into_diagnostics()
 }
 

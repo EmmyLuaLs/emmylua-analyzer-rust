@@ -1680,23 +1680,39 @@ mod test {
     #[test]
     fn test_index_access_with_keyof_alias() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::ParamTypeMismatch,
+        ws.def(
             r#"
             ---@class A
             ---@field one 1
-
+            ---@class B
+            ---@field one string
+            ---@alias Key 'one'
             ---@alias KeyofA keyof A
-            ---@type A[KeyofA]
-            local tmp
-
-            ---@param v 1
-            local function test(v)
-            end
-
-            test(tmp)
-        "#,
-        ));
+            ---@alias KeyofB keyof B
+            "#,
+        );
+        for indexed in [
+            "A[KeyofA]",
+            "A[Key]",
+            "A[KeyofB]",
+            "RawGet<A, Key>",
+            "RawGet<A, keyof B>",
+            "[1, string][0]",
+            "RawGet<[1, string], 0>",
+        ] {
+            for (parameter, accepted) in [("1", true), ("string", false)] {
+                assert_eq!(
+                    ws.has_no_diagnostic(
+                        DiagnosticCode::ParamTypeMismatch,
+                        &format!(
+                            "---@type {indexed}\nlocal value\n---@param v {parameter}\nlocal function accept(v) end\naccept(value)"
+                        ),
+                    ),
+                    accepted,
+                    "{indexed} -> {parameter}"
+                );
+            }
+        }
     }
 
     #[test]

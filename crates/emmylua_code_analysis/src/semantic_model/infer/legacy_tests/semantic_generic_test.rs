@@ -452,20 +452,25 @@ result = {
 
     #[test]
     fn test_nested_function_generic_shadows_outer_function_generic() {
-        let mut ws = VirtualWorkspace::new();
-        ws.def(
-            r#"
+        for (return_type, callable) in [
+            ("fun<T>(value: T): T", "returned"),
+            ("{callback: fun<T>(value: T): T}", "returned.callback"),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            ws.def(&format!(
+                r#"
             ---@generic T
             ---@param value T
-            ---@return fun<T>(value: T): T
+            ---@return {return_type}
             function make(value)
             end
 
-            local fn = make("outer")
-            result = fn(1)
-        "#,
-        );
+            local returned = make("outer")
+            result = {callable}(1)
+            "#,
+            ));
 
-        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
+            assert_eq!(ws.expr_ty("result"), ws.ty("integer"), "{return_type}");
+        }
     }
 }

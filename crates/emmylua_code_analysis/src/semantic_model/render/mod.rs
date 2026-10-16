@@ -7,20 +7,18 @@
 
 use std::collections::HashSet;
 use std::fmt::{self, Write};
-use std::rc::Rc;
 
 use hashbrown::HashMap;
 
 use crate::{
-    AsyncState, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType,
-    VariadicType,
-};
-use crate::{
-    GenericParam, LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaMappedType, LuaObjectType,
-    LuaTupleType, TypeDef, TypeDefKind,
+    AsyncState, GenericTplId, LuaFunctionType, LuaMappedType, LuaMemberKey, LuaType, LuaTypeDeclId,
+    LuaUnionType, TypeDef, TypeDefKind, VariadicType,
 };
 
-use super::type_eval::{eval_conditionals, expand_alias_generic, expand_index_call, expand_mapped};
+use super::type_eval::{
+    eval_conditionals, expand_alias_generic, expand_index_call, expand_mapped,
+    substitute_named_refs,
+};
 use super::{SemanticModel, infer};
 
 #[cfg(test)]
@@ -464,7 +462,7 @@ impl<'a> TypeHumanizer<'a> {
                     name_bindings.insert(param.name.to_string(), ty.clone());
                 }
             }
-            let target = self.substitute_named_refs(&target, &name_bindings);
+            let target = substitute_named_refs(&target, &name_bindings);
             let target = infer::unify::substitute(&target, &bindings);
             let target = expand_alias_generic(self.model, &target);
             let target = eval_conditionals(self.model, &target);
@@ -665,109 +663,6 @@ impl<'a> TypeHumanizer<'a> {
 
         self.level = saved;
         w.write_str(" }")
-    }
-
-    fn substitute_named_refs(&self, ty: &LuaType, map: &HashMap<String, LuaType>) -> LuaType {
-        use LuaType::*;
-        match ty {
-            Ref(id) | Def(id) => map
-                .get(id.get_name())
-                .cloned()
-                .unwrap_or_else(|| ty.clone()),
-            Array(array) => Array(Rc::new(LuaArrayType::from_base_type(
-                self.substitute_named_refs(array.get_base(), map),
-            ))),
-            Tuple(tuple) => Tuple(Rc::new(LuaTupleType::new(
-                tuple
-                    .get_types()
-                    .iter()
-                    .map(|t| self.substitute_named_refs(t, map))
-                    .collect(),
-                tuple.status,
-            ))),
-            Union(union) => Union(Rc::new(LuaUnionType::from_vec(
-                union
-                    .iter()
-                    .map(|t| self.substitute_named_refs(t, map))
-                    .collect(),
-            ))),
-            Object(object) => Object(Rc::new(LuaObjectType::new_with_fields(
-                object
-                    .get_fields()
-                    .iter()
-                    .map(|(k, v)| (k.clone(), self.substitute_named_refs(v, map)))
-                    .collect(),
-                object
-                    .get_index_access()
-                    .iter()
-                    .map(|(k, v)| {
-                        (
-                            self.substitute_named_refs(k, map),
-                            self.substitute_named_refs(v, map),
-                        )
-                    })
-                    .collect(),
-            ))),
-            Variadic(variadic) => Variadic(Rc::new(match variadic.as_ref() {
-                VariadicType::Base(base) => {
-                    VariadicType::Base(self.substitute_named_refs(base, map))
-                }
-                VariadicType::Repeat(base) => {
-                    VariadicType::Repeat(self.substitute_named_refs(base, map))
-                }
-                VariadicType::Multi(types) => VariadicType::Multi(
-                    types
-                        .iter()
-                        .map(|t| self.substitute_named_refs(t, map))
-                        .collect(),
-                ),
-            })),
-            Call(call) => Call(Rc::new(LuaAliasCallType::new(
-                call.get_call_kind(),
-                call.get_operands()
-                    .iter()
-                    .map(|t| self.substitute_named_refs(t, map))
-                    .collect(),
-            ))),
-            Mapped(mapped) => {
-                let constraint = mapped
-                    .param
-                    .1
-                    .constraint
-                    .as_ref()
-                    .map(|t| self.substitute_named_refs(t, map));
-                let default = mapped
-                    .param
-                    .1
-                    .default
-                    .as_ref()
-                    .map(|t| self.substitute_named_refs(t, map));
-                Mapped(Rc::new(LuaMappedType::new(
-                    (
-                        mapped.param.0,
-                        GenericParam::new(
-                            mapped.param.1.name.clone(),
-                            constraint,
-                            default,
-                            mapped.param.1.is_const,
-                            mapped.param.1.attributes.clone(),
-                        ),
-                    ),
-                    self.substitute_named_refs(&mapped.value, map),
-                    mapped.is_readonly,
-                    mapped.is_optional,
-                )))
-            }
-            Conditional(conditional) => Conditional(Rc::new(LuaConditionalType::new(
-                self.substitute_named_refs(conditional.get_checked_type(), map),
-                self.substitute_named_refs(conditional.get_extends_type(), map),
-                self.substitute_named_refs(conditional.get_true_type(), map),
-                self.substitute_named_refs(conditional.get_false_type(), map),
-                conditional.get_infer_params().to_vec(),
-                conditional.has_new,
-            ))),
-            _ => ty.clone(),
-        }
     }
 
     /// Mapped types: prefer semantic expansion into an object; keep the mapped structure when expansion fails.

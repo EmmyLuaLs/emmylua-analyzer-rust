@@ -15,8 +15,8 @@ mod types;
 #[cfg(test)]
 mod legacy_visibility_tests;
 
-use hashbrown::HashSet;
 use std::cell::{Ref, RefCell, RefMut};
+use std::rc::Rc;
 
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use smol_str::SmolStr;
@@ -25,7 +25,7 @@ use crate::semantic_db::def::SemanticId;
 use crate::semantic_db::{AnalysisView, FileView, SemanticDatabase};
 use crate::{FileId, LuaFunctionType, LuaType};
 
-/// Lazily allocated per-model local query cache.
+/// Lazily allocated query cache shared by a model and its file views.
 ///
 /// A typical `SemanticModel` query only touches a few cache maps (or none at
 /// all). Keeping `SemanticLocalCache` inline makes every model ~1KB; this
@@ -55,40 +55,17 @@ impl LazyCache {
             inner.as_deref_mut().expect("lazy cache initialized")
         })
     }
-}
 
-/// Lazily allocated in-progress set (same motivation as [`LazyCache`]).
-struct LazySet<T> {
-    inner: RefCell<Option<Box<HashSet<T>>>>,
-}
-
-impl<T> Default for LazySet<T> {
-    fn default() -> Self {
-        Self {
-            inner: RefCell::new(None),
+    /// Publish an already computed result only if its dependencies completed.
+    fn publish_if_complete(
+        &self,
+        revision: u64,
+        publish: impl FnOnce(&mut cache::SemanticLocalCache),
+    ) {
+        let mut cache = self.borrow_mut();
+        if cache.is_complete(revision) {
+            publish(&mut cache);
         }
-    }
-}
-
-impl<T> LazySet<T> {
-    fn ensure(&self) {
-        if self.inner.borrow().is_none() {
-            *self.inner.borrow_mut() = Some(Box::new(HashSet::new()));
-        }
-    }
-
-    fn borrow(&self) -> Ref<'_, HashSet<T>> {
-        self.ensure();
-        Ref::map(self.inner.borrow(), |inner| {
-            inner.as_deref().expect("lazy set initialized")
-        })
-    }
-
-    fn borrow_mut(&self) -> RefMut<'_, HashSet<T>> {
-        self.ensure();
-        RefMut::map(self.inner.borrow_mut(), |inner| {
-            inner.as_deref_mut().expect("lazy set initialized")
-        })
     }
 }
 
@@ -96,12 +73,8 @@ impl<T> LazySet<T> {
 pub struct SemanticModel<'db> {
     view: FileView<'db>,
 
-    /// Per-model local query cache. Recursion-in-progress state is stored in
-    /// cache entries, so no separate O(n) guard stacks are needed.
-    cache: LazyCache,
-    /// Closure-return inference depends on the VM closure environment, so its
-    /// result cannot be globally memoized; only O(1) in-progress tracking is kept.
-    closure_return_in_progress: LazySet<LuaSyntaxId>,
+    /// Query results and recursion state shared across `model_for` file views.
+    cache: Rc<LazyCache>,
 }
 
 /// Member-reference resolution result: index expression -> actual member declaration.
@@ -159,8 +132,7 @@ impl<'db> SemanticModel<'db> {
     pub fn new(db: &'db SemanticDatabase, file_id: FileId) -> Self {
         Self {
             view: AnalysisView::new(db).file(file_id),
-            cache: LazyCache::default(),
-            closure_return_in_progress: LazySet::default(),
+            cache: Rc::new(LazyCache::default()),
         }
     }
 
@@ -171,49 +143,25 @@ impl<'db> SemanticModel<'db> {
         self.view.analysis()
     }
 
-    /// Look up a memoized declaration-trace state (see [`cache::TraceStateKey`]).
-    pub(crate) fn trace_state_cache_get(
-        &self,
-        key: &cache::TraceStateKey,
-    ) -> Option<cache::CacheEntry<Option<LuaType>>> {
-        self.cache.borrow().trace_state.get(key).cloned()
-    }
-
-    /// Mark a declaration-trace state as being computed.
-    pub(crate) fn trace_state_cache_mark_in_progress(&self, key: cache::TraceStateKey) {
-        self.cache
-            .borrow_mut()
-            .trace_state
-            .insert(key, cache::CacheEntry::InProgress);
-    }
-
-    /// Store a finished declaration-trace state.
-    pub(crate) fn trace_state_cache_store(
-        &self,
-        key: cache::TraceStateKey,
-        result: Option<LuaType>,
-    ) {
-        self.cache
-            .borrow_mut()
-            .trace_state
-            .insert(key, cache::CacheEntry::Ready(result));
-    }
     pub(crate) fn is_closure_return_in_progress(&self, closure_syntax: LuaSyntaxId) -> bool {
-        self.closure_return_in_progress
+        self.cache
             .borrow()
-            .contains(&closure_syntax)
+            .closure_return_in_progress
+            .contains(&(self.file_id(), closure_syntax))
     }
 
     pub(crate) fn begin_closure_return_infer(&self, closure_syntax: LuaSyntaxId) {
-        self.closure_return_in_progress
+        self.cache
             .borrow_mut()
-            .insert(closure_syntax);
+            .closure_return_in_progress
+            .insert((self.file_id(), closure_syntax));
     }
 
     pub(crate) fn end_closure_return_infer(&self, closure_syntax: LuaSyntaxId) {
-        self.closure_return_in_progress
+        self.cache
             .borrow_mut()
-            .remove(&closure_syntax);
+            .closure_return_in_progress
+            .remove(&(self.file_id(), closure_syntax));
     }
 }
 

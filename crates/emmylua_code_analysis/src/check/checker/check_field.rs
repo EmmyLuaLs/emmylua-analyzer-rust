@@ -10,6 +10,7 @@ use emmylua_parser::{
 use crate::DiagnosticCode;
 use crate::semantic_db::def::{SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::SemanticModel;
+use crate::semantic_model::type_eval::expand_alias_branches;
 use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType};
 
 use super::assign_type_mismatch::signature_matches_key;
@@ -485,7 +486,7 @@ fn check_against_type(
     // MissingFields: required (non-nullable) members are missing.
     let mut missing: Vec<_> = members
         .iter()
-        .filter(|(key, ty)| !field_keys.contains(*key) && !is_optional(ty))
+        .filter(|(key, ty)| !field_keys.contains(*key) && !is_optional(semantic_model, ty))
         .map(|(key, _)| key.to_path())
         .collect();
     missing.sort_unstable();
@@ -577,8 +578,9 @@ fn find_type_def(semantic_model: &SemanticModel<'_>, type_def_id: &SemanticId) -
 }
 
 /// Whether the field is optional (nullable / unknown).
-fn is_optional(ty: &LuaType) -> bool {
-    match ty {
+fn is_optional(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> bool {
+    let ty = expand_alias_branches(semantic_model, ty).unwrap_or_else(|| ty.clone());
+    match &ty {
         LuaType::Any | LuaType::Unknown | LuaType::Nil => true,
         LuaType::Union(union) => union.into_vec().iter().any(|t| matches!(t, LuaType::Nil)),
         _ => false,

@@ -26,8 +26,8 @@ use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
 use crate::semantic_model::member::{MemberInfo, table_const_class_type, table_metatable_type};
 use crate::semantic_model::type_eval::{
-    class_generic_map, eval_conditionals, expand_alias_generic, sanitize_unresolved_generics,
-    sanitize_unresolved_generics_with_model, substitute_named_refs,
+    class_generic_map, eval_conditionals, expand_alias_generic, expand_alias_head,
+    sanitize_unresolved_generics, sanitize_unresolved_generics_with_model, substitute_named_refs,
 };
 use crate::{
     AsyncState, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind, LuaArrayType,
@@ -1030,7 +1030,16 @@ impl<'a> InferVm<'a> {
         None
     }
 
-    fn index_member(&mut self, mut owner: Value, key: &LuaMemberKey) -> Value {
+    fn index_member(&mut self, owner: Value, key: &LuaMemberKey) -> Value {
+        let mut value = self.index_member_impl(owner, key);
+        // Member projection only substitutes arguments. Evaluate the result
+        // here, where the expression consumes it, rather than during lookup.
+        value.ty = expand_alias_generic(self.model, &value.ty);
+        value.ty = eval_conditionals(self.model, &value.ty);
+        value
+    }
+
+    fn index_member_impl(&mut self, mut owner: Value, key: &LuaMemberKey) -> Value {
         let receiver_ty = Some(owner.ty.clone());
         // On `any` (including alias cycles that converge to any), any field is still any.
         if owner.ty.is_any() {
@@ -3099,7 +3108,8 @@ impl<'a> InferVm<'a> {
                 visited.push(id.clone());
                 let mut out = Vec::new();
                 if let Some(def) = self.model.type_def_of(id)
-                    && let Some(target) = self.model.alias_target(&def)
+                    && def.kind == TypeDefKind::Alias
+                    && let Some(target) = expand_alias_head(self.model, ty)
                 {
                     out = self.expand_callable_types(&target, visited);
                 }
@@ -3151,16 +3161,9 @@ impl<'a> InferVm<'a> {
                 let mut out = Vec::new();
                 if let Some(def) = self.model.type_def_of(&base_id)
                     && def.kind == TypeDefKind::Alias
-                    && let Some(target) = self.model.alias_target(&def)
+                    && let Some(target) = expand_alias_head(self.model, ty)
                 {
-                    let bindings: unify::TplBindings = generic
-                        .get_params()
-                        .iter()
-                        .enumerate()
-                        .map(|(index, ty)| (GenericTplId::Type(index as u32), ty.clone()))
-                        .collect();
-                    let instantiated = unify::substitute(&target, &bindings);
-                    out = self.expand_callable_types(&instantiated, visited);
+                    out = self.expand_callable_types(&target, visited);
                 }
                 if out.is_empty()
                     && let Some(def) = self.model.type_def_of(&base_id)
@@ -3200,6 +3203,11 @@ impl<'a> InferVm<'a> {
                 }
                 visited.pop();
                 out
+            }
+            LuaType::Call(_) | LuaType::Conditional(_) | LuaType::Mapped(_) => {
+                expand_alias_head(self.model, ty)
+                    .map(|expanded| self.expand_callable_types(&expanded, visited))
+                    .unwrap_or_default()
             }
             _ => Vec::new(),
         }
