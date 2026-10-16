@@ -1188,3 +1188,117 @@ function KPlayer.GetPlayerObjById() end",
         ));
     }
 }
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_global_members() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "constants.lua",
+        r#"
+        ---@enum transport.DistanceResult
+        DISTANCE_RESULT = { AVAILABLE = 0, UNREACHABLE = -2 }
+    "#,
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        local a = DISTANCE_RESULT.UNREACHABLE
+        local b = DISTANCE_RESULT['AVAILABLE']
+        return a, b
+    "#
+        ),
+        eq(true)
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            "return DISTANCE_RESULT.TYPO"
+        ),
+        eq(false)
+    );
+}
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_values_are_not_runtime_tables() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "constants.lua",
+        r#"
+        ---@enum transport.DistanceResult
+        DISTANCE_RESULT = { AVAILABLE = 0, UNREACHABLE = -2 }
+        ---@type transport.DistanceResult
+        CURRENT_DISTANCE = DISTANCE_RESULT.AVAILABLE
+    "#,
+    );
+    for source in [
+        "return CURRENT_DISTANCE.UNREACHABLE",
+        "---@param result transport.DistanceResult\nlocal function f(result) return result.UNREACHABLE end",
+        "---@type transport.DistanceResult\nlocal DISTANCE_RESULT = 0\nreturn DISTANCE_RESULT.UNREACHABLE",
+    ] {
+        assert_that!(
+            ws.has_no_diagnostic(DiagnosticCode::UndefinedField, source),
+            eq(false),
+            "{source}"
+        );
+    }
+}
+
+#[googletest::gtest]
+fn enum_runtime_same_file_local_members() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    for name in ["LocalEnum", "Alias"] {
+        let mut ws = VirtualWorkspace::new();
+        let declaration =
+            format!("---@enum LocalEnum\nlocal {name} = {{READY = 1, STOPPED = -2}}\n");
+        assert_that!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::UndefinedField,
+                &format!(
+                    "{declaration} local a = {name}.READY\nif {name}['STOPPED'] then return a end"
+                )
+            ),
+            eq(true),
+            "{name}"
+        );
+        assert_that!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::UndefinedField,
+                &format!("{declaration} if {name}['TYPO'] then return end")
+            ),
+            eq(false),
+            "{name}"
+        );
+    }
+}
+
+#[googletest::gtest]
+fn enum_runtime_cross_file_dynamic_and_conditional_keys() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("constants.lua", "---@enum Status\nSTATUS = { READY = 1 }");
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        ---@param key string
+        local function get(key) return STATUS[key] end
+        if STATUS['READY'] then return get('READY') end
+    "#
+        ),
+        eq(true)
+    );
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            "if STATUS['TYPO'] then return end"
+        ),
+        eq(false)
+    );
+}
