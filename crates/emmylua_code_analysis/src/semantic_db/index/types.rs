@@ -51,6 +51,8 @@ impl WorkspaceTypeIndex {
             })
     }
 
+    /// Remove only the given file's definitions, preserving same-name declarations
+    /// from other files even when they share a named semantic ID.
     pub(crate) fn remove_file(&mut self, file_id: FileId) {
         let Some(keys) = self.by_file.remove(&file_id) else {
             return;
@@ -61,7 +63,7 @@ impl WorkspaceTypeIndex {
             };
             let new_defs: Vec<TypeDef> = defs
                 .iter()
-                .filter(|def| def.id != type_id)
+                .filter(|def| def.id != type_id || def.file_id != file_id)
                 .cloned()
                 .collect();
             if new_defs.is_empty() {
