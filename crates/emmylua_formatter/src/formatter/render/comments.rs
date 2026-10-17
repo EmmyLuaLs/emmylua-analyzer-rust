@@ -77,7 +77,9 @@ fn append_trailing_statement_semicolon(
     docs: &mut Vec<DocIR>,
     node: &LuaSyntaxNode,
 ) {
-    if !ctx.config.output.preserve_statement_semicolon {
+    if !ctx.config.output.preserve_statement_semicolon
+        && !next_statement_starts_with_parenthesized_expression(node)
+    {
         return;
     }
 
@@ -87,6 +89,29 @@ fn append_trailing_statement_semicolon(
 
     docs.extend(token_left_spacing_docs(plan, Some(&semicolon)));
     docs.push(ir::source_token(semicolon));
+}
+
+fn next_statement_starts_with_parenthesized_expression(node: &LuaSyntaxNode) -> bool {
+    // Without the separator, Lua can parse `f()\n(g)()` as a continuation call.
+    let mut next = node.next_sibling_or_token();
+    while let Some(element) = next {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine)
+            | LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                next = element.next_sibling_or_token();
+            }
+            LuaKind::Syntax(_) => {
+                let Some(next_node) = element.as_node() else {
+                    return false;
+                };
+                return next_node.first_token().is_some_and(|token| {
+                    token.kind() == LuaKind::Token(LuaTokenKind::TkLeftParen)
+                });
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 pub(crate) fn source_order_token_is_trailing_statement_semicolon(
