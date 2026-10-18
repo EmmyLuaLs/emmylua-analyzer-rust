@@ -1123,7 +1123,7 @@ fn add_mismatch(
     };
     let message = match reason {
         Some(reason) => t!(
-            "expected `%{target}` but found `%{value}`. %{reason}",
+            "expected `%{target}` but found `%{value}`.\n  %{reason}",
             target = humanize_type(context.semantic_model, target),
             value = humanize_type(context.semantic_model, value_ty),
             reason = reason

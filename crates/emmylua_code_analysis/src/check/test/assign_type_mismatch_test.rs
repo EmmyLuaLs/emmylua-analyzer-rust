@@ -28,7 +28,7 @@ mod tests {
         );
         assert_eq!(
             diagnostics[0].message,
-            "expected `integer` but found `(string,integer)`. expected `integer`, found `(string,integer)`"
+            "expected `integer` but found `(string,integer)`.\n  expected `integer`, found `(string,integer)`"
         );
     }
 
