@@ -69,6 +69,7 @@ pub fn attached_source_prefix_width(node: &LuaSyntaxNode) -> usize {
         match token.kind().to_token() {
             LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine => previous = token.prev_token(),
             LuaTokenKind::TkAssign | LuaTokenKind::TkReturn => {
+                // Both tokens are ASCII, so their char count is their width; `+ 1` is the space after them.
                 return source_token_prefix_width(&token) + token.text().chars().count() + 1;
             }
             _ => break,

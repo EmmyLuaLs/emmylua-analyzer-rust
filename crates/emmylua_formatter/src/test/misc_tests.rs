@@ -835,8 +835,8 @@ end
 
     // ========== width estimates independent of the source layout (#1302) ==========
 
-    /// Format `text`, then format the result again.
-    fn format_twice(text: &str, config: &LuaFormatConfig) -> (String, String) {
+    /// Format `text`, assert that formatting the result again changes nothing, and return it.
+    fn format_idempotent(text: &str, config: &LuaFormatConfig) -> String {
         let level = LuaLanguageLevel::default();
         let first = reformat_lua_code(&SourceText { text, level }, config);
         let second = reformat_lua_code(
@@ -846,7 +846,8 @@ end
             },
             config,
         );
-        (first, second)
+        assert_eq!(first, second, "not idempotent for:\n{text}");
+        first
     }
 
     fn two_space_config(max_line_width: usize) -> LuaFormatConfig {
@@ -897,10 +898,8 @@ end
     :totable()
 end
 "#;
-        let (from_packed, again) = format_twice(packed, &config);
-        assert_eq!(from_packed, again);
-        let (from_expanded, again) = format_twice(expanded, &config);
-        assert_eq!(from_expanded, again);
+        let from_packed = format_idempotent(packed, &config);
+        let from_expanded = format_idempotent(expanded, &config);
         assert_eq!(from_packed, from_expanded);
         assert!(
             from_packed.lines().all(|line| line.len() <= 120),
@@ -914,10 +913,8 @@ end
         // (2) was taken for its column in the output (14), so it was joined flat past the limit.
         let config = two_space_config(120);
         let fields = "{ red = '31', green = '32', yellow = '33', blue = '34', magenta = '35', cyan = '36', dim = '90', bold = '1' }";
-        let (same_line, again) = format_twice(&format!("local CODES = {fields}\n"), &config);
-        assert_eq!(same_line, again);
-        let (next_line, again) = format_twice(&format!("local CODES =\n  {fields}\n"), &config);
-        assert_eq!(next_line, again);
+        let same_line = format_idempotent(&format!("local CODES = {fields}\n"), &config);
+        let next_line = format_idempotent(&format!("local CODES =\n  {fields}\n"), &config);
         assert_eq!(same_line, next_line);
         assert!(
             next_line.lines().all(|line| line.len() <= 120),
