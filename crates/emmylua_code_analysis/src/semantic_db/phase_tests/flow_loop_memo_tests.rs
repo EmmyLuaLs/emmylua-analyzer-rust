@@ -10,16 +10,26 @@ use rowan::TextSize;
 use crate::semantic_model::flow::flow_metrics;
 use crate::{FileId, VirtualWorkspace};
 
-/// `n` sequential guards in `walk`, plus an unrelated loop in `other`.
-fn guard_chain_with_loop_elsewhere(n: usize) -> String {
+/// Every loop statement the binder knows; each one used to turn the memo off for
+/// the whole file.
+const LOOP_KINDS: &[(&str, &str)] = &[
+    ("for-in", "for _ in pairs(t) do end"),
+    ("numeric for", "for i = 1, #t do end"),
+    ("while", "while t do t = nil end"),
+    ("repeat", "repeat t = nil until not t"),
+];
+
+/// `n` sequential guards in `walk`, plus an unrelated `loop_stat` in `other`.
+fn guard_chain_with_loop_elsewhere(n: usize, loop_stat: &str) -> String {
     let mut content = String::from("lastDir = nil\nwalkLock = 0\n\nfunction walk(dir)\n");
     for i in 0..n {
         content.push_str(&format!(
             "  if walkLock > {i} and lastDir == dir then\n    walkLock = walkLock + 1\n  end\n"
         ));
     }
-    content
-        .push_str("  lastDir = dir\nend\n\nfunction other(t)\n  for _ in pairs(t) do end\nend\n");
+    content.push_str(&format!(
+        "  lastDir = dir\nend\n\nfunction other(t)\n  {loop_stat}\nend\n"
+    ));
     content
 }
 
@@ -44,7 +54,7 @@ fn read_every_name(ws: &VirtualWorkspace, file_id: FileId) {
 #[test]
 fn flow_loop_reachability_is_tracked_per_node() {
     let mut ws = VirtualWorkspace::new();
-    let source = guard_chain_with_loop_elsewhere(2) + BACKWARD_GOTO;
+    let source = guard_chain_with_loop_elsewhere(2, LOOP_KINDS[0].1) + BACKWARD_GOTO;
     let file_id = ws.def_file("walking.lua", &source);
     let model = ws.analysis.semantic_model(file_id);
     let tree = model.flow_tree().expect("flow tree");
@@ -65,27 +75,31 @@ fn flow_loop_reachability_is_tracked_per_node() {
     );
 }
 
-/// The number of uncached walks must stay linear in the number of guards even
-/// though the file contains a loop: `16n + 3` with the per-node gate. With the
-/// per-file gate it was `[(4, 631), (8, 52455), (16, 2065146), (32, 6638442)]`, so
-/// the check runs per size and fails on the first one instead of walking the
-/// larger chains.
+/// The number of uncached walks must stay linear in the number of guards for
+/// every loop kind in another function: `16n + 3` (`for`) or `16n + 4` (`while`,
+/// `repeat`) with the per-node gate. With the per-file gate it was already 631 at
+/// n=4 and `[(8, 52455), (16, 2065146), (32, 6638442)]` after that, so the check
+/// runs per size and fails on the first one instead of walking the larger chains.
 #[test]
 fn flow_loop_in_other_function_keeps_guard_chain_linear() {
-    let mut measurements = Vec::new();
-    for n in [4usize, 8, 16, 32] {
-        let mut ws = VirtualWorkspace::new();
-        let file_id = ws.def_file("walking.lua", &guard_chain_with_loop_elsewhere(n));
-        flow_metrics::reset();
-        read_every_name(&ws, file_id);
-        let entries = flow_metrics::trace_decl_entries();
-        measurements.push((n, entries));
+    for (kind, loop_stat) in LOOP_KINDS {
+        let mut measurements = Vec::new();
+        for n in [4usize, 8, 16, 32] {
+            let mut ws = VirtualWorkspace::new();
+            let source = guard_chain_with_loop_elsewhere(n, loop_stat);
+            let file_id = ws.def_file("walking.lua", &source);
+            flow_metrics::reset();
+            read_every_name(&ws, file_id);
+            let entries = flow_metrics::trace_decl_entries();
+            measurements.push((n, entries));
 
-        let bound = 200 + 60 * (n as u64);
-        assert!(
-            entries <= bound,
-            "the declaration walk ran {entries} times for {n} guards (bound {bound}); \
-             a loop in another function disabled the trace-state memo. So far: {measurements:?}"
-        );
+            let bound = 32 * (n as u64) + 64;
+            assert!(
+                entries <= bound,
+                "the declaration walk ran {entries} times for {n} guards (bound {bound}); \
+                 a `{kind}` loop in another function disabled the trace-state memo. \
+                 So far: {measurements:?}"
+            );
+        }
     }
 }
