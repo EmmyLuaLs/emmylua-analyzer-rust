@@ -2,7 +2,7 @@
 //!
 //! One loop anywhere in a file disabled trace-state memoization for every
 //! function in it, so a chain of `n` guards in a loop-free function walked
-//! ~2^n routes (`walking.lua` of an OTClient project never finished).
+//! ~2^n routes (`walking.lua` of a real game client project never finished).
 
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
 use rowan::TextSize;
