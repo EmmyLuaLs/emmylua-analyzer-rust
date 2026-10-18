@@ -42,6 +42,10 @@ pub struct FlowTree {
     /// backward edges whose source positions are not monotonic, so the member
     /// assignment-position fast path is conservatively disabled.
     has_complex_control: bool,
+    /// Per node: whether a loop / label / break / continue is backward-reachable from it.
+    /// Nodes whose backward cone is loop-free can memoize trace states even when another
+    /// function in the same file has loops.
+    loop_reachable: Vec<bool>,
 }
 
 impl FlowTree {
@@ -71,6 +75,11 @@ impl FlowTree {
                     | FlowNodeKind::Continue
             )
         });
+        let loop_reachable = if has_complex_control {
+            Self::compute_loop_reachable(&flow_nodes, &multiple_antecedents)
+        } else {
+            vec![false; flow_nodes.len()]
+        };
         for node in &flow_nodes {
             let flow_id = node.id;
             if matches!(node.antecedent, Some(FlowAntecedent::Multiple(_))) {
@@ -155,7 +164,65 @@ impl FlowTree {
             branch_nodes,
             unpositioned_branch,
             has_complex_control,
+            loop_reachable,
         }
+    }
+
+    /// Marks every node that can reach a loop / label / break / continue by walking its
+    /// antecedents, by propagating forward from those nodes along successor edges.
+    fn compute_loop_reachable(
+        flow_nodes: &[FlowNode],
+        multiple_antecedents: &[Vec<FlowId>],
+    ) -> Vec<bool> {
+        let mut reachable = vec![false; flow_nodes.len()];
+        let mut successors: Vec<Vec<u32>> = vec![Vec::new(); flow_nodes.len()];
+        let mut queue = VecDeque::new();
+        for node in flow_nodes {
+            let id = node.id.0;
+            match &node.antecedent {
+                Some(FlowAntecedent::Single(prev)) => {
+                    if let Some(list) = successors.get_mut(prev.0 as usize) {
+                        list.push(id);
+                    }
+                }
+                Some(FlowAntecedent::Multiple(multi_id)) => {
+                    for prev in multiple_antecedents
+                        .get(*multi_id as usize)
+                        .map(|v| v.as_slice())
+                        .unwrap_or_default()
+                    {
+                        if let Some(list) = successors.get_mut(prev.0 as usize) {
+                            list.push(id);
+                        }
+                    }
+                }
+                None => {}
+            }
+            if matches!(
+                node.kind,
+                FlowNodeKind::LoopLabel
+                    | FlowNodeKind::NamedLabel(_)
+                    | FlowNodeKind::ForIStat(_)
+                    | FlowNodeKind::Break
+                    | FlowNodeKind::Continue
+            ) && let Some(slot) = reachable.get_mut(id as usize)
+                && !*slot
+            {
+                *slot = true;
+                queue.push_back(id);
+            }
+        }
+        while let Some(id) = queue.pop_front() {
+            for &next in &successors[id as usize] {
+                if let Some(slot) = reachable.get_mut(next as usize)
+                    && !*slot
+                {
+                    *slot = true;
+                    queue.push_back(next);
+                }
+            }
+        }
+        reachable
     }
 
     pub fn get_flow_id(&self, syntax_id: LuaSyntaxId) -> Option<FlowId> {
@@ -269,6 +336,14 @@ impl FlowTree {
     /// Whether loops / labels / break / continue may create non-monotonic flow edges.
     pub fn has_complex_control(&self) -> bool {
         self.has_complex_control
+    }
+
+    /// Whether a loop / label / break / continue is backward-reachable from `flow_id`.
+    pub fn is_loop_reachable(&self, flow_id: FlowId) -> bool {
+        self.loop_reachable
+            .get(flow_id.0 as usize)
+            .copied()
+            .unwrap_or(self.has_complex_control)
     }
 
     pub fn get_multi_antecedents(&self, id: u32) -> Option<&[FlowId]> {
