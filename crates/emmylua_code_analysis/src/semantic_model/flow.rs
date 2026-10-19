@@ -1502,9 +1502,10 @@ fn trace_decl(
     // a state's value depends on the node and the options alone — never on the
     // route. That makes the state cacheable, which matters because a nested
     // conditional chain otherwise re-derives the same states along exponentially
-    // many routes. Graphs with loops keep the uncached path (see the type note on
-    // `cache::TraceStateKey`).
-    if tree.has_complex_control() {
+    // many routes. Only nodes that can reach a loop backwards keep the uncached
+    // path (see the type note on `cache::TraceStateKey`), so a loop in one function
+    // does not disable memoization for the rest of the file.
+    if tree.is_loop_reachable(flow_id) {
         return trace_decl_uncached(model, decl, tree, flow_id, options, mode, visited, path);
     }
     let key = cache::TraceStateKey {
