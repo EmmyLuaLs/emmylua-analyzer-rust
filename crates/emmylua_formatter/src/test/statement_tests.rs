@@ -1367,6 +1367,77 @@ end
         );
     }
 
+    #[test]
+    fn test_required_semicolon_before_parenthesized_statement_is_preserved() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f()
+;(req).style = 1
+"#,
+            r#"
+local req = f();
+(req).style = 1
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_required_semicolon_before_commented_parenthesized_statement_is_preserved() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f();
+-- separator before next statement
+(req).style = 1
+"#,
+            r#"
+local req = f();
+-- separator before next statement
+(req).style = 1
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_optional_semicolon_before_non_parenthesized_statement_is_removed() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f()
+;req.style = 1
+"#,
+            r#"
+local req = f()
+req.style = 1
+"#,
+            config
+        );
+    }
+
     // ========== semicolon ==========
 
     #[test]
