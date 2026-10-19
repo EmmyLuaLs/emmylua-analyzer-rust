@@ -12,6 +12,7 @@ use crate::FileId;
 use crate::LuaType;
 use crate::semantic_db::def::{Member, SemanticId};
 use crate::semantic_model::SemanticModel;
+use crate::semantic_model::type_eval::expand_alias_head;
 
 use super::{CheckContext, Checker};
 
@@ -163,7 +164,7 @@ fn required_module_file(
     semantic_model.module_file_of(&module_name)
 }
 
-/// Whether a runtime member is a function/closure definition.
+/// Whether a member resolves to a function or has a closure value.
 fn is_function_like(semantic_model: &SemanticModel<'_>, member: &Member) -> bool {
     if let Some(value_syntax) = member.value_syntax
         && let Some(tree) = semantic_model.syntax_tree()
@@ -172,10 +173,13 @@ fn is_function_like(semantic_model: &SemanticModel<'_>, member: &Member) -> bool
     {
         return true;
     }
-    semantic_model.type_of_member(&member.id).is_some_and(|ty| {
-        matches!(
-            ty,
-            LuaType::DocFunction(_) | LuaType::Signature(_) | LuaType::Function
-        )
-    })
+    semantic_model
+        .type_of_member(&member.id)
+        .and_then(|ty| expand_alias_head(semantic_model, &ty))
+        .is_some_and(|ty| {
+            matches!(
+                ty,
+                LuaType::DocFunction(_) | LuaType::Signature(_) | LuaType::Function
+            )
+        })
 }

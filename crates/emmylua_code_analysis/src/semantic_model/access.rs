@@ -8,9 +8,12 @@ impl<'db> SemanticModel<'db> {
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.db().lua_version()
     }
-    /// A model for any file on the same analysis database.
+    /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
-        SemanticModel::new(self.db(), file_id)
+        Self {
+            view: self.analysis().file(file_id),
+            cache: self.cache.clone(),
+        }
     }
     pub fn file_id(&self) -> FileId {
         self.view.file_id()
@@ -530,14 +533,15 @@ impl<'db> SemanticModel<'db> {
     /// same-file member -> same-file class `@field` -> cross-file runtime member (resolve owner -> merge members).
     /// Cached `callable_functions` result for a callee type.
     pub(crate) fn callable_functions_cached(&self, ty: &LuaType) -> Vec<LuaFunctionType> {
-        if let Some(cached) = self.cache.borrow().callable_functions.get(ty) {
+        let key = (self.file_id(), ty.clone());
+        if let Some(cached) = self.cache.borrow().callable_functions.get(&key) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = callable_functions(self, ty);
-        self.cache
-            .borrow_mut()
-            .callable_functions
-            .insert(ty.clone(), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache.callable_functions.insert(key, value.clone());
+        });
         value
     }
     /// Unified callable candidates for a name callee.
@@ -629,11 +633,13 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let value = callable_candidates_uncached(self, callee);
-        self.cache
-            .borrow_mut()
-            .callable_candidates
-            .insert((file_id, syntax), value.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .callable_candidates
+                .insert((file_id, syntax), value.clone());
+        });
         value
     }
     pub(crate) fn call_site_analysis(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
@@ -642,11 +648,11 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().call_site.get(&(file_id, syntax)) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let analysis = self.call_site_analysis_uncached(call_expr);
-        self.cache
-            .borrow_mut()
-            .call_site
-            .insert((file_id, syntax), analysis.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache.call_site.insert((file_id, syntax), analysis.clone());
+        });
         analysis
     }
     pub(crate) fn call_site_analysis_uncached(&self, call_expr: &LuaCallExpr) -> CallSiteAnalysis {
@@ -716,6 +722,7 @@ impl<'db> SemanticModel<'db> {
         {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let analysis = self.call_site_analysis(call_expr);
         let signatures = resolved_call_signatures(
             self,
@@ -725,10 +732,11 @@ impl<'db> SemanticModel<'db> {
             analysis.colon_call,
             &analysis.receiver_ty,
         );
-        self.cache
-            .borrow_mut()
-            .call_site_signatures
-            .insert((file_id, syntax), signatures.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .call_site_signatures
+                .insert((file_id, syntax), signatures.clone());
+        });
         signatures
     }
     pub fn resolve_member(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
@@ -737,11 +745,13 @@ impl<'db> SemanticModel<'db> {
         if let Some(cached) = self.cache.borrow().resolve_member.get(&(file_id, syntax)) {
             return cached.clone();
         }
+        let revision = self.cache.borrow().revision();
         let result = self.resolve_member_impl(index_expr);
-        self.cache
-            .borrow_mut()
-            .resolve_member
-            .insert((file_id, syntax), result.clone());
+        self.cache.publish_if_complete(revision, |cache| {
+            cache
+                .resolve_member
+                .insert((file_id, syntax), result.clone());
+        });
         result
     }
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {

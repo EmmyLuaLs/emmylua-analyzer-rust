@@ -66,18 +66,44 @@ mod test {
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
-            DiagnosticCode::DuplicateDocField,
-            r#"
-            ---@class Test
-            ---@field a fun()
-            ---@field a fun()
-            local Test = {}
+        for (first, second, overloads) in [
+            (
+                "fun(value: string): string",
+                "fun(value: integer): integer",
+                true,
+            ),
+            ("Callback<string>", "Callback<integer>", true),
+            (
+                "Identity<Callback<string>>",
+                "Identity<Callback<integer>>",
+                true,
+            ),
+            ("Choose<string>", "Choose<'fixed'>", true),
+            ("Identity<string>", "Identity<integer>", false),
+            ("Callback<string>", "Identity<integer>", false),
+        ] {
+            assert_eq!(
+                ws.has_no_diagnostic_in_namespace(
+                    DiagnosticCode::DuplicateDocField,
+                    &format!(
+                        r#"
+                    ---@alias Callback<T> fun(value: T): T
+                    ---@alias Identity<T> T
+                    ---@alias Choose<T> T extends string and Callback<T> or integer
+                    ---@class Test
+                    ---@field a {first}
+                    ---@field a {second}
+                    local Test = {{}}
 
-            function Test.a()
-            end
-            "#
-        ));
+                    function Test.a()
+                    end
+                    "#
+                    )
+                ),
+                overloads,
+                "field types: {first}, {second}"
+            );
+        }
 
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateSetField,

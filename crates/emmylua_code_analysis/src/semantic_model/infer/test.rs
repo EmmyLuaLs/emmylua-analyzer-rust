@@ -1411,6 +1411,36 @@ fn test_require_literal_vm() {
     );
 }
 
+#[test]
+fn test_cross_file_member_cycles_keep_independent_fields() {
+    for (value, expected) in [
+        ("42", LuaType::IntegerConst(42)),
+        ("a.value", LuaType::Unknown),
+    ] {
+        let mut ws = crate::VirtualWorkspace::new();
+        ws.def_files(vec![
+            (
+                "a.lua",
+                "local b = require('b')\nreturn { value = b.value, known = 'a' }",
+            ),
+            (
+                "b.lua",
+                &format!("local a = require('a')\nreturn {{ value = {value}, known = 42 }}"),
+            ),
+        ]);
+        let file_id = ws.def("local value = require('a').value\nlocal known = require('b').known");
+        let model = ws.analysis.semantic_model(file_id);
+        assert_eq!(
+            model.type_of_decl(&decl_of(&model, "value")),
+            Some(expected)
+        );
+        assert_eq!(
+            model.type_of_decl(&decl_of(&model, "known")),
+            Some(LuaType::IntegerConst(42))
+        );
+    }
+}
+
 // ──────────────────────────────────────────────
 // is_reference_to / is_visible
 // ──────────────────────────────────────────────

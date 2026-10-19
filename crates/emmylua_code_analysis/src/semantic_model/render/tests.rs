@@ -76,15 +76,30 @@ fn rendering_still_fills_defaults_and_missing_parameters() {
 }
 
 #[gtest]
-fn rendering_excess_arguments_keeps_alias_expansion() {
+fn rendering_instantiates_generic_aliases() {
     let mut ws = VirtualWorkspace::new();
-    ws.def("---@alias List<T> T[]\n---@alias Value<T> T['value']");
+    ws.def(
+        r#"
+        ---@class Box<T>
+        ---@alias List<T> T[]
+        ---@alias Value<T> T['value']
+        ---@alias Nested<T> Box<T>
+        ---@alias Callback<T> fun(value: T): T
+        ---@alias Values<T> table<string, T>
+        "#,
+    );
     for (annotation, detailed) in [
         ("List<string,integer>", "List<string,integer> = string[]"),
         (
             "Value<{value:integer},string>",
             "Value<{ value: integer },string> = integer",
         ),
+        ("Nested<string>", "Nested<string> = Box<string>"),
+        (
+            "Callback<string>",
+            "Callback<string> = fun(value: string) -> string",
+        ),
+        ("Values<string>", "Values<string> = table<string,string>"),
     ] {
         let ty = ws.ty(annotation);
         assert_that!(

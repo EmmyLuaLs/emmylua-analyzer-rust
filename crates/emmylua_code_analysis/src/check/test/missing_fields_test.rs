@@ -340,22 +340,46 @@ foo({})
     }
 
     #[test]
-    fn test_multiline_union_nil_field_is_optional() {
-        let mut ws = VirtualWorkspace::new();
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::MissingFields,
-            r#"
+    fn test_alias_field_optionality() {
+        for (field_type, optional) in [
+            ("PersonAge", true),
+            ("Maybe<integer>", true),
+            ("Wrapped<integer>", true),
+            ("Identity<unknown>", true),
+            ("Optional<string>", true),
+            ("Identity<integer>", false),
+            ("Optional<integer>", false),
+            ("Identity<Node>", false),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::MissingFields,
+                    &format!(
+                        r#"
             ---@alias PersonAge
             --- | integer
             --- | nil
+            ---@alias Maybe<T> T | nil
+            ---@alias Wrapped<T> Maybe<T> | T
+            ---@alias Identity<T> T
+            ---@alias Optional<T> T extends string and nil or T
+
+            ---@class Node
+            ---@field next Node
 
             ---@class Person
             ---@field name string
-            ---@field age PersonAge
+            ---@field age {field_type}
 
             ---@type Person
-            local person = { name = "123" }
+            local person = {{ name = "123" }}
         "#
-        ));
+                    )
+                ),
+                optional,
+                "field type: {field_type}"
+            );
+        }
     }
 }

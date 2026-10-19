@@ -1118,10 +1118,11 @@ impl Hash for LuaMultiLineUnion {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct LuaArrayType {
     base: LuaType,
     len: LuaArrayLen,
+    hash: OnceCell<NonZeroU64>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -1133,14 +1134,15 @@ pub enum LuaArrayLen {
 
 impl LuaArrayType {
     pub fn new(base: LuaType, len: LuaArrayLen) -> Self {
-        Self { base, len }
+        Self {
+            base,
+            len,
+            hash: OnceCell::new(),
+        }
     }
 
     pub fn from_base_type(base: LuaType) -> Self {
-        Self {
-            base,
-            len: LuaArrayLen::None,
-        }
+        Self::new(base, LuaArrayLen::None)
     }
 
     pub fn get_base(&self) -> &LuaType {
@@ -1153,6 +1155,30 @@ impl LuaArrayType {
 
     pub fn contain_tpl(&self) -> bool {
         self.contain_tpl_children()
+    }
+}
+
+impl PartialEq for LuaArrayType {
+    fn eq(&self, other: &Self) -> bool {
+        if self
+            .hash
+            .get()
+            .zip(other.hash.get())
+            .is_some_and(|(left, right)| left != right)
+        {
+            return false;
+        }
+        self.base == other.base && self.len == other.len
+    }
+}
+
+impl Eq for LuaArrayType {}
+
+impl Hash for LuaArrayType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash
+            .get_or_init(|| cached_type_hash((&self.base, &self.len)))
+            .hash(state);
     }
 }
 
@@ -1246,9 +1272,21 @@ impl LuaMappedType {
 
 #[cfg(test)]
 mod tests {
-    use std::ptr;
+    use std::{hash::BuildHasher, ptr};
 
-    use crate::{LuaMultiLineUnion, LuaObjectType, LuaType, LuaUnionType};
+    use rustc_hash::FxBuildHasher;
+
+    use crate::{LuaArrayType, LuaMultiLineUnion, LuaObjectType, LuaType, LuaUnionType};
+
+    #[test]
+    fn array_types_keep_structural_identity_after_hashing() {
+        let array = LuaArrayType::from_base_type(LuaType::String);
+        let equal = LuaArrayType::from_base_type(LuaType::String);
+
+        let hash = FxBuildHasher.hash_one(&array);
+        assert_eq!(array, equal);
+        assert_eq!(FxBuildHasher.hash_one(&equal), hash);
+    }
 
     #[test]
     fn test_union_iterator() {

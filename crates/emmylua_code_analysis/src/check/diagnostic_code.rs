@@ -15,6 +15,8 @@ pub enum DiagnosticCode {
     DocSyntaxError,
     /// Type not found
     TypeNotFound,
+    /// Type evaluation exceeded its resource budget
+    TypeComplexity,
     /// Missing return statement
     MissingReturn,
     /// Param Type not match
