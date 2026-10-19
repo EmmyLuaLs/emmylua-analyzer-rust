@@ -1,4 +1,4 @@
-use emmylua_parser::{LuaKind, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind};
+use emmylua_parser::{LuaKind, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
 use rowan::TextRange;
 
 /// Count how many blank lines appear before a node.
@@ -55,10 +55,33 @@ pub fn has_non_trivia_before_on_same_line_tokenwise(node: &LuaSyntaxNode) -> boo
 }
 
 pub fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
+    node.first_token()
+        .map_or(0, |token| source_token_prefix_width(&token))
+}
+
+/// Where `node` (a table's `{`) will start when it follows `=` or `return`, which the formatter always attaches
+/// it to: that token's source column, its width and a space. The node's own source column would depend on
+/// whether it sat on that token's line, and the next pass could then decide differently (#1302). After any
+/// other token (`,`, `(`) the node may go on a line of its own, so its own column is kept.
+pub fn attached_source_prefix_width(node: &LuaSyntaxNode) -> usize {
+    let mut previous = node.first_token().and_then(|token| token.prev_token());
+    while let Some(token) = previous {
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine => previous = token.prev_token(),
+            LuaTokenKind::TkAssign | LuaTokenKind::TkReturn => {
+                // Both tokens are ASCII, so their char count is their width; `+ 1` is the space after them.
+                return source_token_prefix_width(&token) + token.text().chars().count() + 1;
+            }
+            _ => break,
+        }
+    }
+    source_line_prefix_width(node)
+}
+
+/// The source column of `token`: the width of its line before it.
+fn source_token_prefix_width(token: &LuaSyntaxToken) -> usize {
     let mut width = 0usize;
-    let Some(mut token) = node.first_token() else {
-        return 0;
-    };
+    let mut token = token.clone();
 
     while let Some(prev) = token.prev_token() {
         let text = prev.text();

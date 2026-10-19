@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         SourceText, assert_format,
-        config::{LayoutConfig, LuaFormatConfig},
+        config::{IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig},
         reformat_lua_code,
     };
     use emmylua_parser::LuaLanguageLevel;
@@ -831,5 +831,94 @@ end
         );
 
         assert_eq!(first, second);
+    }
+
+    // ========== width estimates independent of the source layout (#1302) ==========
+
+    /// Format `text`, assert that formatting the result again changes nothing, and return it.
+    fn format_idempotent(text: &str, config: &LuaFormatConfig) -> String {
+        let level = LuaLanguageLevel::default();
+        let first = reformat_lua_code(&SourceText { text, level }, config);
+        let second = reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level,
+            },
+            config,
+        );
+        assert_eq!(first, second, "not idempotent for:\n{text}");
+        first
+    }
+
+    fn two_space_config(max_line_width: usize) -> LuaFormatConfig {
+        LuaFormatConfig {
+            indent: IndentConfig {
+                kind: IndentKind::Space,
+                width: 2,
+            },
+            layout: LayoutConfig {
+                max_line_width,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_call_args_layout_does_not_depend_on_first_arg_source_column() {
+        // The packed layout's first line is exactly 120 columns. Its first argument sits right after the
+        // `(` there, and on a line of its own in the expanded layout; estimating the line from that column
+        // made each layout format into the other forever.
+        let config = two_space_config(120);
+        let packed = r#"function M.evidence(rows)
+  local facts = Seq.from(rows)
+    :map(function(row)
+      local p = row[2]
+      return Seq.concat({ p.tail ~= '' and p.tail or '[no name]', 'ft=' .. (p.filetype ~= '' and p.filetype or '-') }, {
+        'lines=' .. p.lines
+      }, p.marks ~= nil and { 'marks=' .. p.marks } or {}, p.modified and { 'MODIFIED' } or {}
+      ):join '  '
+    end)
+    :totable()
+end
+"#;
+        let expanded = r#"function M.evidence(rows)
+  local facts = Seq.from(rows)
+    :map(function(row)
+      local p = row[2]
+      return Seq.concat(
+        { p.tail ~= '' and p.tail or '[no name]', 'ft=' .. (p.filetype ~= '' and p.filetype or '-') },
+        {
+          'lines=' .. p.lines
+        },
+        p.marks ~= nil and { 'marks=' .. p.marks } or {},
+        p.modified and { 'MODIFIED' } or {}
+      ):join '  '
+    end)
+    :totable()
+end
+"#;
+        let from_packed = format_idempotent(packed, &config);
+        let from_expanded = format_idempotent(expanded, &config);
+        assert_eq!(from_packed, from_expanded);
+        assert!(
+            from_packed.lines().all(|line| line.len() <= 120),
+            "{from_packed}"
+        );
+    }
+
+    #[test]
+    fn test_table_after_assign_layout_does_not_depend_on_source_line() {
+        // Flat, the statement is 123 columns. With the table on its own line in the source, its column there
+        // (2) was taken for its column in the output (14), so it was joined flat past the limit.
+        let config = two_space_config(120);
+        let fields = "{ red = '31', green = '32', yellow = '33', blue = '34', magenta = '35', cyan = '36', dim = '90', bold = '1' }";
+        let same_line = format_idempotent(&format!("local CODES = {fields}\n"), &config);
+        let next_line = format_idempotent(&format!("local CODES =\n  {fields}\n"), &config);
+        assert_eq!(same_line, next_line);
+        assert!(
+            next_line.lines().all(|line| line.len() <= 120),
+            "{next_line}"
+        );
     }
 }

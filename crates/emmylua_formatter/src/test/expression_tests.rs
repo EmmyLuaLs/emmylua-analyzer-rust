@@ -994,9 +994,11 @@ end, 4, 5, 6, 7, 8, 9, 10
 
     #[test]
     fn test_non_first_multiline_callback_tail_refills_after_end() {
+        // The packed first line `test(1, "hello", function ()` is 28 columns. Measured from the `1` it came
+        // out 29; measured from the `(` (#1302) it is exact, so 27 is the widest limit that still expands.
         let config = LuaFormatConfig {
             layout: LayoutConfig {
-                max_line_width: 28,
+                max_line_width: 27,
                 ..Default::default()
             },
             ..Default::default()
