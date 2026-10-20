@@ -20,6 +20,7 @@ local function request_one() end
 local function accept_index(index) end
 "#;
 
+// Negative cases inspect diagnostic counts and messages, not just their presence.
 fn mismatches(source: &str) -> Vec<Diagnostic> {
     let mut ws = VirtualWorkspace::new_with_init_std_lib();
     ws.analysis
@@ -39,8 +40,7 @@ fn mismatches(source: &str) -> Vec<Diagnostic> {
 
 #[gtest]
 fn cast_owner_before_passing_optional_member() {
-    let diagnostics = mismatches(
-        r#"
+    let source = r#"
         ---@param values string[]
         local function remove_value(values)
             local result = request_path()
@@ -50,15 +50,17 @@ fn cast_owner_before_passing_optional_member() {
             if values[1] then values[2] = "updated" end
             table.remove(values, result.start_index)
         end
-        "#,
-    );
-    assert_that!(diagnostics, is_empty());
+        "#;
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
 
 #[gtest]
 fn guard_and_assignment_narrow_member_owner() {
-    let diagnostics = mismatches(
-        r#"
+    let source = r#"
         local result = request_path()
         if result.kind == "one" then
             ---@cast result.start_index uint32
@@ -67,15 +69,17 @@ fn guard_and_assignment_narrow_member_owner() {
         result = request_one()
         ---@cast result.start_index uint32
         accept_index(result.start_index)
-        "#,
-    );
-    assert_that!(diagnostics, is_empty());
+        "#;
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
 
 #[gtest]
 fn narrowed_owner_union_checks_only_remaining_components() {
-    let diagnostics = mismatches(
-        r#"
+    let source = r#"
         ---@class AnotherGoal
         ---@field start_index uint32
         ---@param result OneGoal|AllGoals|AnotherGoal
@@ -84,15 +88,17 @@ fn narrowed_owner_union_checks_only_remaining_components() {
             ---@cast result OneGoal|AnotherGoal
             table.remove(values, result.start_index)
         end
-        "#,
-    );
-    assert_that!(diagnostics, is_empty());
+        "#;
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
 
 #[gtest]
 fn nested_owner_cast_is_respected() {
-    let diagnostics = mismatches(
-        r#"
+    let source = r#"
         ---@class Wrapper
         ---@field result OneGoal|AllGoals
         ---@param wrapper Wrapper
@@ -101,9 +107,12 @@ fn nested_owner_cast_is_respected() {
             ---@cast wrapper.result OneGoal
             table.remove(values, wrapper.result.start_index)
         end
-        "#,
-    );
-    assert_that!(diagnostics, is_empty());
+        "#;
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
 
 #[gtest]
@@ -201,7 +210,11 @@ fn wide_union_cast_keeps_only_selected_owner() {
         "#,
         types.join("|")
     ));
-    assert_that!(mismatches(&source), is_empty());
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
 
 #[test]
@@ -223,6 +236,9 @@ fn recursive_class_union_member_queries_terminate() {
         end
         "#
     );
-    let diagnostics = mismatches(&source);
-    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    assert!(ws.has_no_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        &format!("{TYPES}\n{source}"),
+    ));
 }
