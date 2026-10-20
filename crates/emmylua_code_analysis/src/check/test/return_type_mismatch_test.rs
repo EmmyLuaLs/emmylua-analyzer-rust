@@ -1,10 +1,38 @@
 #[cfg(test)]
 mod tests {
+    use crate::check::test::check_source;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
+    fn test_parenthesized_member_guards_narrow_return_value() {
+        for (guard, access) in [
+            ("(box).value", "box.value"),
+            ("box.value", "(box).value"),
+            ("((box)).value", "(box).value"),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            let source = format!(
+                r#"
+                ---@class Box
+                ---@field value string?
+                ---@param box Box
+                ---@return string
+                local function read(box)
+                    if {guard} then return {access} end
+                    return ''
+                end
+                "#
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::ReturnTypeMismatch, &source),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
     fn test_issue_1226() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check_source(
             r#"
             ---@return boolean
             local function test1()
@@ -56,6 +84,34 @@ mod tests {
                 accepted,
                 "{expression} as {cast} -> {target}"
             );
+        }
+    }
+
+    #[test]
+    fn test_and_or_function_guard_needs_a_truthy_result() {
+        for (result_type, accepted) in [("string", true), ("string?", false)] {
+            let source = format!(
+                r#"
+                ---@param value string | fun(): {result_type}
+                ---@return string
+                local function text(value)
+                    return type(value) == 'function' and value() or value
+                end
+                return text
+            "#
+            );
+            let diagnostics = check_source(&source);
+            let actual = diagnostics
+                .iter()
+                .filter(|d| d.code == DiagnosticCode::ReturnTypeMismatch)
+                .map(|d| usize::from(d.range.start()))
+                .collect::<Vec<_>>();
+            let expected = if accepted {
+                vec![]
+            } else {
+                vec![source.find("type(value)").unwrap()]
+            };
+            assert_eq!(actual, expected, "{diagnostics:#?}");
         }
     }
 

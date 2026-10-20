@@ -138,7 +138,7 @@ fn test_infer_expr_function_structure() {
 
 #[test]
 fn test_infer_expr_member_cross_file() {
-    // B defines M.x = 1; A reads M.x -> Number.
+    // B defines M.x = 1; A reads M.x -> Integer.
     let emmyrc = Arc::new(Emmyrc::default());
     let mut db = SemanticDatabase::new();
     db.update_config(emmyrc);
@@ -152,7 +152,7 @@ fn test_infer_expr_member_cross_file() {
     let model = env.model();
 
     let y = decl_of(&model, "y");
-    assert_eq!(model.type_of_decl(&y), Some(LuaType::Number));
+    assert_eq!(model.type_of_decl(&y), Some(LuaType::Integer));
 }
 
 #[test]
@@ -275,7 +275,7 @@ fn test_vm_name_binary() {
 
 #[test]
 fn test_vm_member_access() {
-    // VM：LoadName(t) + IndexMember(a) → Number。
+    // VM：LoadName(t) + IndexMember(a) → Integer。
     let env = model_of("local t = {}\nt.a = 5\nlocal y = t.a");
     let model = env.model();
     let y = model
@@ -286,12 +286,12 @@ fn test_vm_member_access() {
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
     let ty = infer_expr_vm(&model, init);
-    assert_eq!(ty, LuaType::Number);
+    assert_eq!(ty, LuaType::Integer);
 }
 
 #[test]
 fn test_vm_call() {
-    // VM: LoadName(f) + Call(0) -> returns Number.
+    // A call keeps the inferred integer return type.
     let env = model_of("local function f() return 1 end\nlocal y = f()");
     let model = env.model();
     let y = model
@@ -302,7 +302,7 @@ fn test_vm_call() {
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
     let ty = infer_expr_vm(&model, init);
-    assert_eq!(ty, LuaType::Number);
+    assert_eq!(ty, LuaType::Integer);
 }
 
 #[test]
@@ -1082,7 +1082,7 @@ fn test_semantic_info_member_use() {
     let info = model
         .semantic_info(rowan::NodeOrToken::Token(token))
         .expect("semantic info");
-    assert_eq!(info.typ, LuaType::Number);
+    assert_eq!(info.typ, LuaType::Integer);
     assert_eq!(info.decl, Some(member));
 }
 
@@ -1837,4 +1837,40 @@ fn test_operator_len() {
     let model = env.model();
     let n = decl_of(&model, "n");
     assert_eq!(model.type_of_decl(&n), Some(LuaType::Number));
+}
+
+#[test]
+fn expression_casts_use_the_current_file() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let plain = ws.def_file(
+        "plain.lua",
+        "local first = 1\nlocal other = 2 --[[@as boolean]]",
+    );
+    let cast = ws.def_file(
+        "cast.lua",
+        "local first = 1 --[[@as string]]\nlocal other = 2",
+    );
+    let first_value = |file| ws.get_node::<emmylua_parser::LuaLiteralExpr>(file);
+    let plain_value = first_value(plain);
+    let cast_value = first_value(cast);
+
+    // Both views share one request. Read them in both orders.
+    for files in [[plain, cast], [cast, plain]] {
+        let model = ws.analysis.semantic_model(files[0]);
+        for file in files {
+            let view = model.model_for(file);
+            let value = if file == plain {
+                &plain_value
+            } else {
+                &cast_value
+            };
+            let actual = view.type_of_expr_at(value.get_syntax_id(), value.get_position());
+            let expected = if file == plain {
+                LuaType::IntegerConst(1)
+            } else {
+                LuaType::String
+            };
+            assert_eq!(actual, expected);
+        }
+    }
 }

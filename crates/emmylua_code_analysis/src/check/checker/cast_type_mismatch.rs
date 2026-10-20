@@ -1,15 +1,13 @@
 //! # cast_type_mismatch — cast target and expression type incompatible for `---@cast key -|+ type`
 //!
-//! origin = key expression type; target = cast type node projection; report when `is_compatible(origin, target)`
-//! fails (bidirectional super↔sub is covered by type_check ref checks). Operator casts and
-//! `@cast` local/global variable declaration semantics are left for later.
+//! A cast may widen or narrow a type. Use precise subtype checks in both directions
+//! so broad value compatibility cannot accept an unrelated literal alternative.
 
 use emmylua_parser::{LuaAstNode, LuaDocTagCast};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
 use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_check::is_compatible;
 
 use super::{CheckContext, Checker};
 use crate::semantic_model::render::humanize_type;
@@ -76,7 +74,8 @@ fn check_cast_tag(
             continue;
         };
         let target_type = semantic_model.doc_type_lua(target_doc_type.get_syntax_id());
-        if is_compatible(semantic_model, &check_origin, &target_type)
+        if semantic_model.type_check_subtype(&check_origin, &target_type)
+            || semantic_model.type_check_subtype(&target_type, &check_origin)
             || cast_broad_compatible(&check_origin, &target_type)
         {
             continue;

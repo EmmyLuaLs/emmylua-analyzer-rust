@@ -6,9 +6,26 @@
 
 use std::sync::Arc;
 
+use emmylua_parser::BinaryOperator;
 use smol_str::SmolStr;
 
 use crate::FileId;
+
+/// Convert an exact, in-range floating-point integer without saturating the cast.
+pub(crate) fn exact_integer(value: f64) -> Option<i64> {
+    (value.fract() == 0.0 && (i64::MIN as f64..i64::MAX as f64).contains(&value))
+        .then_some(value as i64)
+}
+
+pub(crate) fn checked_integer_arithmetic(op: BinaryOperator, left: i64, right: i64) -> Option<i64> {
+    match op {
+        BinaryOperator::OpAdd => left.checked_add(right),
+        BinaryOperator::OpSub => left.checked_sub(right),
+        BinaryOperator::OpMul => left.checked_mul(right),
+        BinaryOperator::OpDiv => exact_integer(left as f64 / right as f64),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrimitiveType {
@@ -100,6 +117,10 @@ pub enum TypeCandidate {
     Array(Arc<TypeShell>),
     /// Variadic: `T...` → base type.
     Variadic(Arc<TypeShell>),
+    /// Ordered result slots, with an optional expanding final slot.
+    /// `return true, ...` with integer varargs keeps
+    /// `Multi([Boolean, Repeat(Integer)])`, rather than `Boolean | Integer`.
+    Multi(Vec<TypeShell>),
     /// Repeated runtime values; tuple values do not expand into their fields.
     Repeat(Arc<TypeShell>),
     /// Tuple: `[number, string]` → per-slot types.
@@ -238,6 +259,13 @@ impl TypeShell {
                     }
                 }
                 TypeCandidate::Repeat(base) => out.merge(base),
+                TypeCandidate::Multi(slots) => {
+                    if let Some(first) = slots.first() {
+                        out.merge(&first.first_result());
+                    } else {
+                        out.merge(&Self::from_primitive(PrimitiveType::Nil));
+                    }
+                }
                 _ => out.merge(&Self {
                     candidates: vec![candidate.clone()],
                 }),

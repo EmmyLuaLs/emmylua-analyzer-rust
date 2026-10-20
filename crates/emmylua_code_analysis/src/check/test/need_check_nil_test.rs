@@ -70,7 +70,14 @@ mod test {
             "if t.items[1] then t.items[_index] = nil; print(t.items[1]:sub(1)) end",
             "if t.items[1] then if _index == 1 then t.items = {} end; print(t.items[1]:sub(1)) end",
         ] {
-            check_class_array_guard("string", body, &[DiagnosticCode::NeedCheckNil]);
+            check_class_array_guard(
+                "string",
+                body,
+                &[
+                    DiagnosticCode::ParamTypeMismatch,
+                    DiagnosticCode::NeedCheckNil,
+                ],
+            );
         }
     }
 
@@ -85,12 +92,23 @@ mod test {
             "if (t.items[1] ~= nil) ~= nil then print(t.items[1]:sub(1)) end",
             "if (not not t.items[1]) ~= nil then print(t.items[1]:sub(1)) end",
         ] {
-            check_class_array_guard("string", body, &[DiagnosticCode::NeedCheckNil]);
+            check_class_array_guard(
+                "string",
+                body,
+                &[
+                    DiagnosticCode::ParamTypeMismatch,
+                    DiagnosticCode::NeedCheckNil,
+                ],
+            );
         }
         check_class_array_guard(
             "string",
             "if t.items[1] then local t = _other; print(t.items[1]:sub(1)) end",
-            &[DiagnosticCode::RedefinedLocal, DiagnosticCode::NeedCheckNil],
+            &[
+                DiagnosticCode::RedefinedLocal,
+                DiagnosticCode::ParamTypeMismatch,
+                DiagnosticCode::NeedCheckNil,
+            ],
         );
     }
 

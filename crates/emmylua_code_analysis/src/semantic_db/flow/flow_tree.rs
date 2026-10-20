@@ -28,6 +28,8 @@ pub struct FlowTree {
     decl_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>>,
     /// Sorted `(assignment statement start, flow id)` entries per assigned member.
     member_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>>,
+    /// Assignment statements sorted by start, including writes without member IDs.
+    assignments: Vec<(TextRange, FlowId)>,
     /// Sorted `(position, flow id)` for `DeclPosition` nodes.
     decl_positions: Vec<(TextSize, FlowId)>,
     /// Sorted `(condition position, flow id)` for true/false condition nodes.
@@ -61,6 +63,7 @@ impl FlowTree {
     ) -> Self {
         let mut decl_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>> = HashMap::new();
         let mut member_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>> = HashMap::new();
+        let mut assignments = Vec::new();
         let mut decl_positions: Vec<(TextSize, FlowId)> = Vec::new();
         let mut condition_nodes: Vec<(TextSize, FlowId)> = Vec::new();
         let mut cast_nodes: Vec<(TextSize, FlowId)> = Vec::new();
@@ -91,7 +94,9 @@ impl FlowTree {
             }
             match &node.kind {
                 FlowNodeKind::Assignment(assign_ptr) => {
-                    let assign_pos = assign_ptr.get_syntax_id().get_range().start();
+                    let range = assign_ptr.get_syntax_id().get_range();
+                    assignments.push((range, flow_id));
+                    let assign_pos = range.start();
                     for effect in node_effects
                         .get(&flow_id)
                         .map(|v| v.as_slice())
@@ -133,6 +138,7 @@ impl FlowTree {
         for entries in member_assignments.values_mut() {
             entries.sort_by_key(|(pos, _)| *pos);
         }
+        assignments.sort_by_key(|(range, _)| range.start());
         decl_positions.sort_by_key(|(pos, _)| *pos);
         condition_nodes.sort_by_key(|(pos, _)| *pos);
         cast_nodes.sort_by_key(|(pos, _)| *pos);
@@ -159,6 +165,7 @@ impl FlowTree {
             binding_starts,
             decl_assignments,
             member_assignments,
+            assignments,
             decl_positions,
             condition_nodes,
             cast_nodes,
@@ -283,6 +290,24 @@ impl FlowTree {
         let entries = self.decl_assignments.get(decl)?;
         let idx = entries.partition_point(|(pos, _)| *pos <= offset);
         idx.checked_sub(1).map(|idx| entries[idx])
+    }
+
+    /// Assignment statements fully contained in the inclusive position interval.
+    pub fn assignments_between(
+        &self,
+        start: TextSize,
+        end: TextSize,
+    ) -> impl Iterator<Item = (TextRange, FlowId)> + '_ {
+        let first = self
+            .assignments
+            .partition_point(|(range, _)| range.start() < start);
+        let last = self
+            .assignments
+            .partition_point(|(range, _)| range.start() <= end);
+        self.assignments[first.min(last)..last]
+            .iter()
+            .copied()
+            .filter(move |(range, _)| range.end() <= end)
     }
 
     /// Latest `(assignment position, flow id)` for `member` at or before `offset`.

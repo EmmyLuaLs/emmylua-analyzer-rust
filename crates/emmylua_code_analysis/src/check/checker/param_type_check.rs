@@ -16,10 +16,10 @@ use crate::semantic_model::infer::unify;
 use crate::semantic_model::infer::vm::unify_call_bindings;
 use crate::semantic_model::render::humanize_type;
 use crate::semantic_model::type_check::is_compatible;
-use crate::semantic_model::{SemanticModel, type_check, type_eval};
+use crate::semantic_model::{SemanticModel, type_eval};
 use crate::{
     DiagnosticCode, LuaFunctionType, LuaMemberKey, LuaTupleStatus, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaTypeNode, TypeDef, TypeDefKind, VariadicType,
+    LuaTypeNode, TypeDefKind, VariadicType,
 };
 
 use super::param_count::first_param_is_self;
@@ -180,8 +180,21 @@ fn index_expr_callable_candidates(
             ),
             None => CallableCandidateSet::from_prefix_type(semantic_model, &prefix_ty, &key),
         };
+        let mut candidates = candidates.into_candidates();
+        // A partial class can have both `@field` overloads and runtime methods on its local owner.
+        for member in semantic_model
+            .members_of_owner_named(&resolved.owner, &resolved.name)
+            .iter()
+        {
+            if let Some(functions) =
+                crate::semantic_model::infer::vm::InferVm::new(semantic_model, &[])
+                    .callable_candidates_for_owner_single(&member.id)
+            {
+                candidates.extend(functions);
+            }
+        }
         if !candidates.is_empty() {
-            return candidates.into_candidates();
+            return CallableCandidateSet::new(candidates).into_candidates();
         }
     }
 
@@ -668,10 +681,7 @@ fn check_arg_pairs(
                         }
                         slot_ty = unify::substitute(&slot_ty, bindings);
                         slot_ty = type_eval::expand_alias_generic(semantic_model, &slot_ty);
-                        if arg_ty == slot_ty
-                            || is_compatible(semantic_model, &arg_ty, &slot_ty)
-                            || type_check::is_assign_compatible(semantic_model, &arg_ty, &slot_ty)
-                        {
+                        if arg_ty == slot_ty || is_compatible(semantic_model, &arg_ty, &slot_ty) {
                             continue;
                         }
                         out.push(Mismatch {
@@ -702,7 +712,7 @@ fn check_arg_pairs(
                         let param_ty = unify::substitute(&param_ty_orig, bindings);
                         if arg_ty == param_ty
                             || param_generic_base_match(semantic_model, &arg_ty, &param_ty)
-                            || type_check::is_assign_compatible(semantic_model, &arg_ty, &param_ty)
+                            || is_compatible(semantic_model, &arg_ty, &param_ty)
                         {
                             continue;
                         }
@@ -759,12 +769,10 @@ fn check_arg_pairs(
             continue;
         }
         // Check the whole boolean domain before selecting a single union component.
-        if value_kind(semantic_model, &call_arg_ty) == ValueKind::Boolean
+        if is_compatible(semantic_model, &call_arg_ty, &LuaType::Boolean)
             && !param_ty.contains_tpl_node()
         {
-            if !is_compatible(semantic_model, &call_arg_ty, &param_ty)
-                && !literal_compatible(semantic_model, &call_arg_ty, &param_ty)
-            {
+            if !is_compatible(semantic_model, &call_arg_ty, &param_ty) {
                 out.push(Mismatch {
                     range: arg.get_range(),
                     message: mismatch_message(semantic_model, &call_arg_ty, &param_ty, name),
@@ -796,7 +804,7 @@ fn check_arg_pairs(
                 .collect::<Vec<_>>();
             if components
                 .iter()
-                .any(|component| union_component_accepts(semantic_model, &call_arg_ty, component))
+                .any(|component| is_compatible(semantic_model, &call_arg_ty, component))
             {
                 continue;
             }
@@ -810,7 +818,7 @@ fn check_arg_pairs(
             if union
                 .into_vec()
                 .iter()
-                .any(|component| union_component_accepts(semantic_model, &call_arg_ty, component))
+                .any(|component| is_compatible(semantic_model, &call_arg_ty, component))
             {
                 continue;
             }
@@ -826,21 +834,10 @@ fn check_arg_pairs(
         if call_arg_ty == param_ty {
             continue;
         }
-        let exact_const = match (&call_arg_ty, &param_ty) {
-            (LuaType::StringConst(a), LuaType::StringConst(b)) => a == b,
-            (
-                LuaType::IntegerConst(a) | LuaType::DocIntegerConst(a),
-                LuaType::IntegerConst(b) | LuaType::DocIntegerConst(b),
-            ) => a == b,
-            _ => true,
-        };
-        let leaf_compat = exact_const
-            && (!matches!(call_arg_ty, LuaType::Function) || matches!(param_ty, LuaType::Any))
+        let leaf_compat = (!matches!(call_arg_ty, LuaType::Function)
+            || matches!(param_ty, LuaType::Any))
             && param_generic_base_match(semantic_model, &call_arg_ty, &param_ty);
-        if leaf_compat
-            || literal_compatible(semantic_model, &call_arg_ty, &param_ty)
-            || named_kind_compatible(semantic_model, &call_arg_ty, &param_ty)
-        {
+        if leaf_compat || enum_name_compatible(semantic_model, &call_arg_ty, &param_ty) {
             continue;
         }
         out.push(Mismatch {
@@ -1014,151 +1011,6 @@ fn generic_constraint_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> 
     None
 }
 
-/// Basic value-domain classification: string / integer / number / boolean categories after enum/alias/class expansion.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ValueKind {
-    Nil,
-    Boolean,
-    String,
-    Integer,
-    Number,
-    Other,
-}
-
-fn value_kind(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> ValueKind {
-    value_kind_inner(semantic_model, ty, &mut Vec::new())
-}
-
-fn value_kind_inner(
-    semantic_model: &SemanticModel<'_>,
-    ty: &LuaType,
-    visited: &mut Vec<LuaTypeDeclId>,
-) -> ValueKind {
-    match ty {
-        LuaType::Nil => ValueKind::Nil,
-        LuaType::Boolean | LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => {
-            ValueKind::Boolean
-        }
-        LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => ValueKind::String,
-        LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-            ValueKind::Integer
-        }
-        LuaType::Number | LuaType::FloatConst(_) => ValueKind::Number,
-        LuaType::Union(union) => {
-            let mut kind = None;
-            for component in union.into_vec() {
-                let component_kind = value_kind_inner(semantic_model, &component, visited);
-                if kind.is_some_and(|kind| kind != component_kind) {
-                    return ValueKind::Other;
-                }
-                kind = Some(component_kind);
-            }
-            kind.unwrap_or(ValueKind::Other)
-        }
-        LuaType::Ref(id) | LuaType::Def(id) => {
-            if visited.contains(id) {
-                return ValueKind::Other;
-            }
-            visited.push(id.clone());
-            let Some(def) = semantic_model.type_def_of(id) else {
-                return ValueKind::Other;
-            };
-            match def.kind {
-                TypeDefKind::Alias => semantic_model
-                    .alias_target(&def)
-                    .map(|target| value_kind_inner(semantic_model, &target, visited))
-                    .unwrap_or(ValueKind::Other),
-                TypeDefKind::Class => {
-                    let base_types = semantic_model.base_types(&def.type_decl_id());
-                    if base_types.contains(&LuaType::Integer) {
-                        ValueKind::Integer
-                    } else if base_types.contains(&LuaType::Number) {
-                        ValueKind::Number
-                    } else if base_types.contains(&LuaType::String) {
-                        ValueKind::String
-                    } else {
-                        ValueKind::Other
-                    }
-                }
-                TypeDefKind::Enum => enum_value_kind(semantic_model, &def),
-            }
-        }
-        _ => ValueKind::Other,
-    }
-}
-
-fn enum_value_kind(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> ValueKind {
-    let mut kind: Option<ValueKind> = None;
-    let Some(facts) = semantic_model.file_facts_of(def.file_id) else {
-        return ValueKind::Other;
-    };
-    let Some(decl) = facts.decl_named(def.name.as_str()) else {
-        return ValueKind::Other;
-    };
-    for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
-        let Some(member_facts) = semantic_model.file_facts_of(member_ref.file_id) else {
-            continue;
-        };
-        let Some(member) = member_facts.member_by_id(&member_ref.id) else {
-            continue;
-        };
-        let Some(value_syntax) = member.value_syntax else {
-            continue;
-        };
-        let Some(node) = semantic_model
-            .syntax_tree()
-            .and_then(|tree| value_syntax.to_node_from_root(&tree.get_red_root()))
-        else {
-            continue;
-        };
-        let raw = node.text().to_string();
-        let item_kind = if raw.starts_with(['"', '\'']) {
-            ValueKind::String
-        } else if raw.parse::<i64>().is_ok() {
-            ValueKind::Integer
-        } else if raw.parse::<f64>().is_ok() {
-            ValueKind::Number
-        } else {
-            ValueKind::Other
-        };
-        if let Some(kind) = kind
-            && kind != item_kind
-        {
-            return ValueKind::Other;
-        }
-        kind = Some(item_kind);
-    }
-    kind.unwrap_or(ValueKind::Other)
-}
-
-fn named_kind_compatible(
-    semantic_model: &SemanticModel<'_>,
-    arg_ty: &LuaType,
-    param_ty: &LuaType,
-) -> bool {
-    // Literal constants must match exactly (`"a"` != `"beforeAll"`).
-    if let (LuaType::StringConst(a), LuaType::StringConst(b)) = (arg_ty, param_ty) {
-        return a == b;
-    }
-    if let (
-        LuaType::IntegerConst(a) | LuaType::DocIntegerConst(a),
-        LuaType::IntegerConst(b) | LuaType::DocIntegerConst(b),
-    ) = (arg_ty, param_ty)
-    {
-        return a == b;
-    }
-    let arg_kind = value_kind(semantic_model, arg_ty);
-    let param_kind = value_kind(semantic_model, param_ty);
-    if matches!(arg_kind, ValueKind::Other) || matches!(param_kind, ValueKind::Other) {
-        return false;
-    }
-    arg_kind == param_kind
-        || matches!(
-            (arg_kind, param_kind),
-            (ValueKind::Integer, ValueKind::Number) | (ValueKind::Number, ValueKind::Integer)
-        )
-}
-
 /// Callback parameters vs function arguments: use the explicit work-queue function solver for structural/contravariant checks.
 fn is_function_like_type(ty: &LuaType) -> bool {
     match ty {
@@ -1187,7 +1039,7 @@ fn function_arg_compatible(
     let expected = doc_function_of(semantic_model, param_ty);
     match (actual, expected) {
         (Some(actual), Some(expected)) => {
-            functions_compatible(semantic_model, &actual, &expected, bindings).compatible
+            functions_compatible(semantic_model, &actual, &expected, bindings)
         }
         // One side cannot be projected to DocFunction: preserve legacy M0 behavior to avoid false positives for Function/Ref forms.
         _ => matches!(
@@ -1221,92 +1073,45 @@ fn doc_function_of(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<L
     }
 }
 
-/// Whether the argument constant text matches an enum / literal-alias value set.
-fn literal_compatible(
+/// Preserve the argument checker's acceptance of enum member-name strings.
+fn enum_name_compatible(
     semantic_model: &SemanticModel<'_>,
     arg_ty: &LuaType,
     param_ty: &LuaType,
 ) -> bool {
-    let arg_text = match arg_ty {
-        LuaType::StringConst(s) | LuaType::DocStringConst(s) => Some(s.as_ref().to_string()),
-        LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) => Some(i.to_string()),
-        LuaType::BooleanConst(b) | LuaType::DocBooleanConst(b) => Some(b.to_string()),
-        _ => None,
-    };
-    let Some(arg_text) = arg_text else {
+    let (LuaType::StringConst(name) | LuaType::DocStringConst(name)) = arg_ty else {
         return false;
     };
-    let boolean_only = arg_ty.is_boolean();
-    literal_values(semantic_model, param_ty, &mut Vec::new(), boolean_only)
-        .is_some_and(|values| values.iter().any(|value| value == &arg_text))
-}
-
-/// Literal value text for enum / alias (recursive cycle guard).
-fn literal_values(
-    semantic_model: &SemanticModel<'_>,
-    ty: &LuaType,
-    visited: &mut Vec<LuaTypeDeclId>,
-    boolean_only: bool,
-) -> Option<Vec<String>> {
-    match ty {
-        LuaType::StringConst(s) | LuaType::DocStringConst(s) if !boolean_only => {
-            Some(vec![s.as_ref().to_string()])
-        }
-        LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) if !boolean_only => {
-            Some(vec![i.to_string()])
-        }
-        LuaType::BooleanConst(b) | LuaType::DocBooleanConst(b) => Some(vec![b.to_string()]),
-        LuaType::Union(union) => {
-            let mut values = Vec::new();
-            for component in union.into_vec() {
-                if let Some(mut component_values) =
-                    literal_values(semantic_model, &component, visited, boolean_only)
+    let mut pending = vec![param_ty.clone()];
+    let mut visited = Vec::new();
+    while let Some(ty) = pending.pop() {
+        match ty {
+            LuaType::Union(union) => pending.extend(union.into_vec()),
+            LuaType::Ref(id) | LuaType::Def(id) => {
+                if visited.contains(&id) {
+                    continue;
+                }
+                visited.push(id.clone());
+                let Some(def) = semantic_model.type_def_of(&id) else {
+                    continue;
+                };
+                if def.kind == TypeDefKind::Alias {
+                    pending.extend(semantic_model.alias_target(&def));
+                } else if def.kind == TypeDefKind::Enum
+                    && let Some(facts) = semantic_model.file_facts_of(def.file_id)
+                    && let Some(decl) = facts.decl_named(def.name.as_str())
+                    && semantic_model
+                        .members_of_owner(&decl.id)
+                        .iter()
+                        .any(|member| member.name.as_str() == name.as_ref())
                 {
-                    values.append(&mut component_values);
+                    return true;
                 }
             }
-            (!values.is_empty()).then_some(values)
+            _ => {}
         }
-        LuaType::Ref(id) | LuaType::Def(id) => {
-            if visited.contains(id) {
-                return None;
-            }
-            visited.push(id.clone());
-            let def = semantic_model.type_def_of(id)?;
-            if def.kind == TypeDefKind::Alias {
-                return semantic_model.alias_target(&def).and_then(|target| {
-                    literal_values(semantic_model, &target, visited, boolean_only)
-                });
-            }
-            // enum: runtime table member names and values.
-            if def.kind == TypeDefKind::Enum {
-                let facts = semantic_model.file_facts_of(def.file_id)?;
-                let decl = facts.decl_named(def.name.as_str())?;
-                let mut values = Vec::new();
-                for member_ref in semantic_model.members_of_owner(&decl.id).iter() {
-                    if !boolean_only {
-                        values.push(member_ref.name.to_string());
-                    }
-                    if let Some(member_facts) = semantic_model.file_facts_of(member_ref.file_id)
-                        && let Some(member) = member_facts.member_by_id(&member_ref.id)
-                        && let Some(value_syntax) = member.value_syntax
-                        && let Some(node) = semantic_model
-                            .syntax_tree()
-                            .and_then(|tree| value_syntax.to_node_from_root(&tree.get_red_root()))
-                    {
-                        let raw = node.text().to_string();
-                        // Boolean arguments match values, not member names or quoted text.
-                        if !boolean_only || matches!(raw.as_str(), "true" | "false") {
-                            values.push(raw.trim_matches(['"', '\'']).to_string());
-                        }
-                    }
-                }
-                return (!values.is_empty()).then_some(values);
-            }
-            None
-        }
-        _ => None,
     }
+    false
 }
 
 /// Unknown/any/never arguments are not checked.
@@ -1315,41 +1120,6 @@ fn skip_arg(arg_ty: &LuaType, param_ty: &LuaType) -> bool {
         return true;
     }
     matches!(arg_ty, LuaType::Nil) && matches!(param_ty, LuaType::Any | LuaType::Unknown)
-}
-
-/// `param?` projects to T|nil: both nil and T are compatible; for union parameters choose a component based on argument shape
-/// (`F|integer` + function argument -> take F).
-/// Component acceptance for union parameters: constant components of the same kind with different values don't match (`keyof` member union semantics),
-/// others fall back to structural compatibility (`string|true`'s boolean matches the boolean component).
-fn union_component_accepts(
-    semantic_model: &SemanticModel<'_>,
-    arg: &LuaType,
-    component: &LuaType,
-) -> bool {
-    if arg == component {
-        return true;
-    }
-    match (arg, component) {
-        (LuaType::StringConst(a), LuaType::StringConst(b))
-        | (LuaType::DocStringConst(a), LuaType::DocStringConst(b))
-            if a != b =>
-        {
-            false
-        }
-        (LuaType::IntegerConst(a), LuaType::IntegerConst(b))
-        | (LuaType::DocIntegerConst(a), LuaType::DocIntegerConst(b))
-            if a != b =>
-        {
-            false
-        }
-        (LuaType::BooleanConst(a), LuaType::BooleanConst(b))
-        | (LuaType::DocBooleanConst(a), LuaType::DocBooleanConst(b))
-            if a != b =>
-        {
-            false
-        }
-        _ => is_compatible(semantic_model, arg, component),
-    }
 }
 
 fn effective_param(param_ty: &LuaType, arg_ty: &LuaType) -> LuaType {
@@ -1380,9 +1150,6 @@ fn effective_param(param_ty: &LuaType, arg_ty: &LuaType) -> LuaType {
                 })
             {
                 return (*function_component).clone();
-            }
-            if let Some(non_nil) = non_nil.first() {
-                return (*non_nil).clone();
             }
         }
     }

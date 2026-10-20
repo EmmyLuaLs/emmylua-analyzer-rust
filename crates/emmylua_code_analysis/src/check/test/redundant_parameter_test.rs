@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod test {
+    use crate::check::test::check_source;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
@@ -120,20 +121,44 @@ mod test {
 
     #[test]
     fn test_variadic_call_operator() {
-        let mut ws = VirtualWorkspace::new();
-        let source = r#"
-            ---@class Callable
-            ---@operator call(string...): string
+        for (class, instance) in [
+            ("Callable", "Callable"),
+            ("Callable<T>", "Callable<integer>"),
+        ] {
+            let source = format!(
+                r#"
+                ---@class {class}
+                ---@operator call(string...): string
 
-            ---@type Callable
-            local callable
+                ---@type {instance}
+                local callable
 
-            callable("a", "b")
-            callable("a", 1)
-        "#;
-
-        assert!(ws.has_no_diagnostic(DiagnosticCode::RedundantParameter, source));
-        assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
+                callable()
+                callable("a", "b", "c")
+                callable("a", 1)
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|d| {
+                        matches!(
+                            d.code,
+                            DiagnosticCode::ParamTypeMismatch
+                                | DiagnosticCode::MissingParameter
+                                | DiagnosticCode::RedundantParameter
+                        )
+                    })
+                    .map(|d| (d.code, usize::from(d.range.start())))
+                    .collect::<Vec<_>>(),
+                vec![(
+                    DiagnosticCode::ParamTypeMismatch,
+                    source.find("1)").unwrap()
+                )],
+                "{class}: {diagnostics:#?}"
+            );
+        }
     }
 
     #[test]

@@ -3,22 +3,17 @@ use std::rc::Rc;
 use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType,
-    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaLiteralToken, LuaLocalStat, LuaTableExpr, LuaVarExpr,
-    NumberResult,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr,
+    LuaIndexKey, LuaLiteralToken, LuaLocalStat, LuaTableExpr, LuaVarExpr, NumberResult,
 };
 
 use crate::DiagnosticCode;
-use crate::check::checker::param_type_check;
 use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_check::{
-    TypeCheckFailReason, check_assign_type_detail, is_compatible,
-};
+use crate::semantic_model::type_check::{TypeCheckFailReason, check_type_detail, is_compatible};
 use crate::{Decl, LuaMemberKey, LuaType, LuaTypeNode, SemanticId, TypeDef, TypeDefKind};
 
 use super::{CheckContext, Checker, check_field::static_member_key};
 use crate::semantic_model::render::humanize_type;
-use crate::semantic_model::type_check::is_assign_compatible as type_check_is_assign_compatible;
 
 pub struct AssignTypeMismatchChecker;
 
@@ -42,69 +37,6 @@ impl Checker for AssignTypeMismatchChecker {
             }
         }
     }
-}
-
-/// Call to `---@overload fun(): integer`: when the main signature returns a union, use the overload return type.
-fn call_overload_compatible(
-    semantic_model: &SemanticModel<'_>,
-    call: &LuaCallExpr,
-    target: &LuaType,
-) -> bool {
-    let callee = call.get_prefix_expr();
-    let Some(LuaExpr::NameExpr(name_expr)) = callee else {
-        return false;
-    };
-    let Some(decl) = semantic_model.resolve_name(name_expr.get_position()) else {
-        return false;
-    };
-    let SemanticId::Decl(decl_key) = decl else {
-        return false;
-    };
-    let Some(facts) = semantic_model.file_facts_of(decl_key.file_id) else {
-        return false;
-    };
-    let Some(decl) = facts.decl_by_id(&SemanticId::Decl(decl_key.clone())) else {
-        return false;
-    };
-    let Some(closure_syntax) = decl.value_expr_syntax else {
-        return false;
-    };
-    let Some(signature) = facts.signature_by_closure(closure_syntax) else {
-        return false;
-    };
-    let Some(docs) = signature.docs.as_ref() else {
-        return false;
-    };
-    let arg_count = call.get_args_count().unwrap_or(0);
-    for overload_syntax in &docs.overloads {
-        let Some(tree) = semantic_model.syntax_tree_of(decl_key.file_id) else {
-            continue;
-        };
-        let Some(node) = overload_syntax.to_node_from_root(&tree.get_red_root()) else {
-            continue;
-        };
-        let Some(LuaDocType::Func(func)) = LuaDocType::cast(node) else {
-            continue;
-        };
-        if func.get_params().count() != arg_count {
-            continue;
-        }
-        let Some(return_list) = func.get_return_type_list() else {
-            continue;
-        };
-        let Some(ret_ty) = return_list
-            .get_return_type_list()
-            .next()
-            .and_then(|ret| ret.get_name_and_type().1)
-        else {
-            continue;
-        };
-        let ret = semantic_model.doc_type_lua_rich_in(decl_key.file_id, ret_ty.get_syntax_id());
-        if is_assign_compatible(semantic_model, &ret, target) {
-            return true;
-        }
-    }
-    false
 }
 
 /// `---@generic T: string` plus `` `T` `` parameter: a string argument that resolves to a class name not satisfying the constraint yields AssignTypeMismatch.
@@ -171,7 +103,7 @@ fn check_str_tpl_constraint_call(
         };
         for (name, constraint) in &constraints {
             if str_tpl_uses_name(param_ty, name)
-                && !is_assign_compatible(semantic_model, &resolved, constraint)
+                && !is_compatible(semantic_model, &resolved, constraint)
             {
                 add_mismatch(context, arg.get_range(), constraint, &resolved);
                 return true;
@@ -471,7 +403,10 @@ fn check_member_assign(
     target_offset: rowan::TextSize,
     value_expr: &LuaExpr,
 ) {
-    let mut target = semantic_model.type_of_member_at(member_id, target_offset);
+    let mut target = semantic_model.member_assignment_type(
+        member_id,
+        semantic_model.type_of_member_at(member_id, target_offset),
+    );
     // `t.x = value`: resolve_member first returns the synthesized member for this assignment; prefer the same-named member on the prefix's declared type.
     if let Some(facts) = semantic_model.file_facts()
         && let Some(member) = facts.member_by_id(member_id)
@@ -487,7 +422,10 @@ fn check_member_assign(
             let declared_ty = infos
                 .into_iter()
                 .find(|info| info.id.as_ref() != Some(member_id))
-                .map(|info| info.typ)
+                .map(|info| match info.id {
+                    Some(id) => semantic_model.member_assignment_type(&id, info.typ),
+                    None => info.typ,
+                })
                 .or_else(|| semantic_model.member_type(&prefix_ty, &key));
             if let Some(declared_ty) = declared_ty {
                 target = declared_ty;
@@ -575,7 +513,7 @@ fn check_value_against(
             // Compatibility resolves tuple aliases and unions. Keep the intersection guard:
             // the general check currently accepts a table matching only one component.
             if !matches!(target, LuaType::Intersection(_))
-                && is_assign_compatible(semantic_model, &value_ty, target)
+                && is_compatible(semantic_model, &value_ty, target)
             {
                 return;
             }
@@ -583,124 +521,13 @@ fn check_value_against(
         }
         return;
     }
-    // Multiple candidate signatures (`@overload fun(): integer`): pass if any candidate return type is compatible.
-    if let LuaExpr::CallExpr(call) = value_expr
-        && let Some(callee) = call.get_prefix_expr()
-    {
-        for candidate in param_type_check::callable_candidates(semantic_model, &callee) {
-            if is_assign_compatible(semantic_model, candidate.get_ret(), target) {
-                return;
-            }
-        }
-        if call_overload_compatible(semantic_model, call, target) {
-            return;
-        }
-    }
     let value_ty = assignment_value_type(semantic_model, value_expr);
-    // `b = 1 + (a and 1 or 0)`: VM maps numeric literals to Number, so allow arithmetic expressions for integer targets.
-    if matches!(target, LuaType::Integer)
-        && matches!(value_ty, LuaType::Number)
-        && is_numeric_binary_expr(value_expr)
-    {
-        return;
-    }
-    if let LuaType::Union(union) = &value_ty
-        && union
-            .into_vec()
-            .iter()
-            .any(|component| is_assign_compatible(semantic_model, component, target))
-        && guard_narrowed_call_result(semantic_model, value_expr)
-    {
-        return;
-    }
     if matches!(value_ty, LuaType::Unknown | LuaType::Any | LuaType::Never)
-        || is_assign_compatible(semantic_model, &value_ty, target)
+        || is_compatible(semantic_model, &value_ty, target)
     {
         return;
     }
     add_mismatch(context, value_expr.get_range(), target, &value_ty);
-}
-
-fn is_numeric_binary_expr(expr: &LuaExpr) -> bool {
-    match expr {
-        LuaExpr::BinaryExpr(binary) => binary.get_op_token().is_some_and(|op| {
-            matches!(
-                op.get_op(),
-                BinaryOperator::OpAdd
-                    | BinaryOperator::OpSub
-                    | BinaryOperator::OpMul
-                    | BinaryOperator::OpIDiv
-                    | BinaryOperator::OpDiv
-                    | BinaryOperator::OpMod
-            )
-        }),
-        LuaExpr::ParenExpr(paren) => paren
-            .get_expr()
-            .is_some_and(|inner| is_numeric_binary_expr(&inner)),
-        _ => false,
-    }
-}
-
-/// `local ok, result = pick(...)` plus `@return_overload` guard: pass the result union when it matches the target component.
-fn guard_narrowed_call_result(semantic_model: &SemanticModel<'_>, value_expr: &LuaExpr) -> bool {
-    let LuaExpr::NameExpr(name_expr) = value_expr else {
-        return false;
-    };
-    let Some(decl) = semantic_model.resolve_name(name_expr.get_position()) else {
-        return false;
-    };
-    let Some(facts) = semantic_model.file_facts() else {
-        return false;
-    };
-    let Some(decl_def) = facts.decl_by_id(&decl) else {
-        return false;
-    };
-    if decl_def.multi_return_index.is_none() {
-        return false;
-    }
-    let Some(LuaExpr::CallExpr(call)) = decl_def
-        .value_expr_syntax
-        .and_then(|syntax| {
-            semantic_model
-                .syntax_tree()
-                .and_then(|tree| syntax.to_node_from_root(&tree.get_red_root()))
-        })
-        .and_then(LuaExpr::cast)
-    else {
-        return false;
-    };
-    let Some(callee) = call.get_prefix_expr() else {
-        return false;
-    };
-    let LuaExpr::NameExpr(callee_name) = callee else {
-        return false;
-    };
-    let Some(callee_decl) = semantic_model.resolve_name(callee_name.get_position()) else {
-        return false;
-    };
-    let Some(signature) = semantic_model.type_of_decl_signature(&callee_decl) else {
-        return false;
-    };
-    let _ = signature;
-    // Then check the signature docs for return_overload: main signature union plus return_overload branches.
-    let SemanticId::Decl(decl_key) = callee_decl.clone() else {
-        return false;
-    };
-    let Some(callee_facts) = semantic_model.file_facts_of(decl_key.file_id) else {
-        return false;
-    };
-    let Some(callee_decl) = callee_facts.decl_by_id(&SemanticId::Decl(decl_key)) else {
-        return false;
-    };
-    let Some(sig) = callee_decl
-        .value_expr_syntax
-        .and_then(|syntax| callee_facts.signature_by_closure(syntax))
-    else {
-        return false;
-    };
-    sig.docs
-        .as_ref()
-        .is_some_and(|docs| !docs.return_overloads.is_empty())
 }
 
 /// Assignment RHS type: when VM yields `Function`, if the RHS is a named function, resolve its cross-file signature structure.
@@ -746,19 +573,6 @@ fn resolve_unbound_generic(semantic_model: &SemanticModel<'_>, ty: LuaType) -> L
         }
     }
     ty
-}
-
-/// Assignment compatibility: when target is a union, source may satisfy any component (whereas type_check's union check requires all components).
-fn is_assign_compatible(
-    semantic_model: &SemanticModel<'_>,
-    source: &LuaType,
-    target: &LuaType,
-) -> bool {
-    if type_check_is_assign_compatible(semantic_model, source, target) {
-        return true;
-    }
-
-    false
 }
 
 fn check_table_fields(
@@ -815,10 +629,10 @@ fn check_table_fields(
                 continue;
             }
             let key_ty = index_key_type(semantic_model, &key);
-            if let Some((_, expected)) =
-                object.get_index_access().iter().find(|(signature_key, _)| {
-                    is_assign_compatible(semantic_model, &key_ty, signature_key)
-                })
+            if let Some((_, expected)) = object
+                .get_index_access()
+                .iter()
+                .find(|(signature_key, _)| is_compatible(semantic_model, &key_ty, signature_key))
             {
                 check_table_value(context, semantic_model, &value_expr, expected);
             }
@@ -926,26 +740,10 @@ fn check_table_value(
     }
     let value_ty =
         semantic_model.type_of_expr_at(value_expr.get_syntax_id(), value_expr.get_range().start());
-    // VM projects numeric literals to Number: allow when target is integer.
-    if matches!(expected, LuaType::Integer)
-        && matches!(value_ty, LuaType::Number)
-        && matches!(value_expr, LuaExpr::LiteralExpr(_))
-    {
-        return;
-    }
-    // Union element: a table-constructor value passes if any union component matches (`{ callbacks }` in guard branch).
-    if let LuaType::Union(union) = &value_ty
-        && union
-            .into_vec()
-            .iter()
-            .any(|component| is_assign_compatible(semantic_model, component, expected))
-    {
-        return;
-    }
-    if matches!(
-        value_ty,
-        LuaType::Unknown | LuaType::Any | LuaType::Never | LuaType::Nil
-    ) || is_assign_compatible(semantic_model, &value_ty, expected)
+    // Nil omits an entry from a table constructor.
+    let expected_or_absent = LuaType::from_vec(vec![expected.clone(), LuaType::Nil]);
+    if matches!(value_ty, LuaType::Unknown | LuaType::Any | LuaType::Never)
+        || is_compatible(semantic_model, &value_ty, &expected_or_absent)
     {
         return;
     }
@@ -1117,7 +915,7 @@ fn add_mismatch(
     target: &LuaType,
     value_ty: &LuaType,
 ) {
-    let reason = match check_assign_type_detail(context.semantic_model, value_ty, target) {
+    let reason = match check_type_detail(context.semantic_model, value_ty, target) {
         Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => Some(reason),
         _ => None,
     };

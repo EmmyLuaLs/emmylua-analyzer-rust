@@ -1,14 +1,11 @@
 //! Compatibility of base types and constants (fully ported from the old
 //! `semantic::type_check::simple_type`, with db access going through the semantic context).
 
-use std::ops::Deref;
-use std::rc::Rc;
+use crate::{LuaMemberKey, LuaType, LuaTypeDeclId};
 
-use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, VariadicType};
-
-use super::context::{TypeCheckContext, TypeCheckMode};
+use super::context::TypeCheckContext;
 use super::sub_type::{base_type_name, get_base_type_id, is_sub_type_of};
-use super::{TypeCheckResult, check_all, check_alternatives};
+use super::{TypeCheckResult, check_all};
 
 pub fn check_simple_type_compact(
     context: &mut TypeCheckContext,
@@ -17,21 +14,8 @@ pub fn check_simple_type_compact(
 ) -> TypeCheckResult {
     match source {
         LuaType::Unknown | LuaType::Any => return Ok(()),
-        LuaType::Nil => {
-            if let LuaType::Nil = compact_type {
-                return Ok(());
-            }
-        }
         LuaType::Table | LuaType::TableConst(_) => {
             if let (LuaType::TableConst(_), LuaType::Tuple(tuple)) = (source, compact_type) {
-                // Table entries use assignment rules, including optional and union elements.
-                let mut element_context = TypeCheckContext {
-                    mode: match context.mode {
-                        TypeCheckMode::Compatibility => TypeCheckMode::Assignment,
-                        mode => mode,
-                    },
-                    ..context.clone()
-                };
                 return check_all(
                     tuple
                         .get_types()
@@ -42,13 +26,19 @@ pub fn check_simple_type_compact(
                             let actual = context
                                 .require_complete(|| context.model.member_type(source, &key))?
                                 .unwrap_or(LuaType::Nil);
-                            super::check_general_type_compact(
-                                &mut element_context,
-                                &actual,
-                                expected,
-                            )
+                            super::check_general_type_compact(context, &actual, expected)
                         }),
                 );
+            }
+            if let (LuaType::TableConst(_), LuaType::Object(object)) = (source, compact_type)
+                && context.strict_subtype
+            {
+                return check_all(object.get_fields().iter().map(|(key, expected)| {
+                    let actual = context
+                        .require_complete(|| context.model.member_type(source, key))?
+                        .unwrap_or(LuaType::Nil);
+                    super::check_general_type_compact(context, &actual, expected)
+                }));
             }
             if matches!(
                 compact_type,
@@ -85,11 +75,6 @@ pub fn check_simple_type_compact(
                 return Ok(());
             }
         }
-        LuaType::Thread => {
-            if let LuaType::Thread = compact_type {
-                return Ok(());
-            }
-        }
         LuaType::Boolean => {
             // Both values must fit, possibly through different target union members.
             return check_all([true, false].into_iter().map(|value| {
@@ -105,22 +90,18 @@ pub fn check_simple_type_compact(
             LuaType::BooleanConst(other) | LuaType::DocBooleanConst(other) if value == other => {
                 return Ok(());
             }
-            LuaType::Union(union) => {
-                return check_alternatives(
-                    context.mismatch(source, compact_type),
-                    union.iter().map(|component| {
-                        super::check_general_type_compact(context, source, component)
-                    }),
-                );
-            }
             _ => {}
         },
         LuaType::String => match compact_type {
-            LuaType::String
-            | LuaType::StringConst(_)
-            | LuaType::DocStringConst(_)
-            | LuaType::StrTplRef(_)
-            | LuaType::Language(_) => {
+            LuaType::String | LuaType::StrTplRef(_) | LuaType::Language(_) => return Ok(()),
+            LuaType::StringConst(_) | LuaType::DocStringConst(_)
+                if !context.strict_subtype
+                    && context
+                        .model
+                        .db()
+                        .config_input()
+                        .is_none_or(|config| config.strict.doc_base_const_match_base_type) =>
+            {
                 return Ok(());
             }
             LuaType::Ref(_) => {
@@ -137,14 +118,9 @@ pub fn check_simple_type_compact(
             }
             _ => {}
         },
-        LuaType::StringConst(_) => match compact_type {
-            LuaType::String
-            | LuaType::StringConst(_)
-            | LuaType::StrTplRef(_)
-            | LuaType::Language(_) => {
-                return Ok(());
-            }
-            LuaType::DocStringConst(_) => {
+        LuaType::StringConst(value) | LuaType::DocStringConst(value) => match compact_type {
+            LuaType::String | LuaType::StrTplRef(_) | LuaType::Language(_) => return Ok(()),
+            LuaType::StringConst(other) | LuaType::DocStringConst(other) if value == other => {
                 return Ok(());
             }
             LuaType::Ref(_) => {
@@ -162,7 +138,15 @@ pub fn check_simple_type_compact(
             _ => {}
         },
         LuaType::Integer => match compact_type {
-            LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
+            LuaType::Integer => return Ok(()),
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
+                if !context.strict_subtype
+                    && context
+                        .model
+                        .db()
+                        .config_input()
+                        .is_none_or(|config| config.strict.doc_base_const_match_base_type) =>
+            {
                 return Ok(());
             }
             LuaType::Ref(_) => {
@@ -174,20 +158,9 @@ pub fn check_simple_type_compact(
             }
             _ => {}
         },
-        LuaType::IntegerConst(value) => match compact_type {
-            LuaType::IntegerConst(other) => {
-                if context.mode.uses_assignment_rules() || value == other {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
-            LuaType::DocIntegerConst(other) => {
-                if context.mode.uses_assignment_rules() || value == other {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
-            LuaType::Integer | LuaType::Number => {
+        LuaType::IntegerConst(value) | LuaType::DocIntegerConst(value) => match compact_type {
+            LuaType::Integer | LuaType::Number => return Ok(()),
+            LuaType::IntegerConst(other) | LuaType::DocIntegerConst(other) if value == other => {
                 return Ok(());
             }
             LuaType::Ref(_) => {
@@ -199,64 +172,9 @@ pub fn check_simple_type_compact(
             }
             _ => {}
         },
-        LuaType::Number | LuaType::FloatConst(_) => {
-            if matches!(
-                compact_type,
-                LuaType::Number
-                    | LuaType::FloatConst(_)
-                    | LuaType::Integer
-                    | LuaType::IntegerConst(_)
-                    | LuaType::DocIntegerConst(_)
-            ) {
-                return Ok(());
-            }
-        }
-        LuaType::Io => {
-            if let LuaType::Io = compact_type {
-                return Ok(());
-            }
-        }
-        LuaType::Global => {
-            if let LuaType::Global = compact_type {
-                return Ok(());
-            }
-        }
-        LuaType::DocIntegerConst(i) => match compact_type {
-            LuaType::IntegerConst(j) => {
-                if i == j {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
-            LuaType::Integer | LuaType::Number => {
-                return Ok(());
-            }
-            LuaType::DocIntegerConst(j) => {
-                if i == j {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
-            LuaType::Ref(_) => {
-                // M0: doc constants are checked against custom integer types by nominal base type (integer).
-                return check_base_type_for_ref_compact(context, source, compact_type);
-            }
-            _ => {}
-        },
-        LuaType::DocStringConst(s) => match compact_type {
-            LuaType::StringConst(t) => {
-                if s == t {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
-            LuaType::String => return Err(context.mismatch(source, compact_type)),
-            LuaType::DocStringConst(t) => {
-                if s == t {
-                    return Ok(());
-                }
-                return Err(context.mismatch(source, compact_type));
-            }
+        LuaType::FloatConst(value) => match compact_type {
+            LuaType::Number => return Ok(()),
+            LuaType::FloatConst(other) if value == other => return Ok(()),
             _ => {}
         },
         LuaType::StrTplRef(_) => {
@@ -265,15 +183,8 @@ pub fn check_simple_type_compact(
             }
         }
         LuaType::TplRef(_) => return Ok(()),
-        LuaType::Namespace(source_namespace) => {
-            if let LuaType::Namespace(compact_namespace) = compact_type
-                && source_namespace == compact_namespace
-            {
-                return Ok(());
-            }
-        }
-        LuaType::Variadic(source_type) => {
-            return check_variadic_type_compact(context, source_type, compact_type);
+        LuaType::Variadic(_) => {
+            return check_variadic_type_compact(context, source, compact_type);
         }
         LuaType::Language(lang_str) => match compact_type {
             LuaType::Language(compact_lang_str) => {
@@ -287,14 +198,6 @@ pub fn check_simple_type_compact(
             _ => {}
         },
         _ => {}
-    }
-
-    if let LuaType::Union(union) = compact_type {
-        return check_all(
-            union
-                .iter()
-                .map(|sub_compact| super::check_general_type_compact(context, source, sub_compact)),
-        );
     }
 
     Err(context.mismatch(source, compact_type))
@@ -336,57 +239,43 @@ fn base_type_name_of_ref(id: &LuaTypeDeclId) -> Option<&'static str> {
     }
 }
 
-fn check_variadic_type_compact(
+pub(super) fn check_variadic_type_compact(
     context: &mut TypeCheckContext,
-    source_type: &VariadicType,
+    source: &LuaType,
     compact_type: &LuaType,
 ) -> TypeCheckResult {
-    let mut element_context = TypeCheckContext {
-        mode: match context.mode {
-            TypeCheckMode::Compatibility => TypeCheckMode::Result,
-            mode => mode,
-        },
-        ..context.clone()
+    let LuaType::Variadic(target_results) = compact_type else {
+        // A single-value context uses only the first result.
+        let first = source.get_result_slot_type(0).unwrap_or(LuaType::Nil);
+        return super::check_general_type_compact(context, &first, compact_type);
     };
-    match &source_type {
-        VariadicType::Base(source_base) | VariadicType::Repeat(source_base) => match compact_type {
-            LuaType::Variadic(compact_variadic) => match compact_variadic.deref() {
-                VariadicType::Base(_) | VariadicType::Repeat(_) => {
-                    let count = compact_variadic
-                        .get_max_len()
-                        .or_else(|| source_type.get_max_len())
-                        .unwrap_or(1);
-                    return check_all((0..count).map(|index| {
-                        let source = source_type.get_type(index).cloned().unwrap_or(LuaType::Nil);
-                        let compact = compact_variadic
-                            .get_type(index)
-                            .cloned()
-                            .unwrap_or(LuaType::Nil);
-                        super::check_general_type_compact(&mut element_context, &source, &compact)
-                    }));
-                }
-                VariadicType::Multi(compact_multi) => {
-                    return check_all(compact_multi.iter().enumerate().map(
-                        |(index, compact_type)| {
-                            let source = if compact_type.contain_multi_return() {
-                                LuaType::Variadic(Rc::new(source_type.get_new_variadic_from(index)))
-                            } else {
-                                source_type.get_type(index).cloned().unwrap_or(LuaType::Nil)
-                            };
-                            super::check_general_type_compact(
-                                &mut element_context,
-                                &source,
-                                compact_type,
-                            )
-                        },
-                    ));
-                }
-            },
-            _ => {
-                super::check_general_type_compact(context, source_base, compact_type)?;
-            }
-        },
-        VariadicType::Multi(_) => {}
+    let (source_max, source_count) = match source {
+        LuaType::Variadic(results) => (
+            results.get_max_len(),
+            results
+                .get_max_len()
+                .unwrap_or_else(|| results.get_min_len().unwrap_or(0) + 1),
+        ),
+        _ => (Some(1), 1),
+    };
+    let target_min = target_results.get_min_len().unwrap_or(0);
+    // One position after both fixed prefixes covers repeated tails. Finite
+    // targets ignore extra results; finite sources may omit a target's tail.
+    let count = target_results
+        .get_max_len()
+        .unwrap_or_else(|| source_count.max(target_min + 1));
+    let mut checks = super::RequiredChecks::default();
+    for index in 0..count {
+        if index >= target_min && source_max.is_some_and(|len| index >= len) {
+            break;
+        }
+        let actual = source.get_result_slot_type(index).unwrap_or(LuaType::Nil);
+        let expected = compact_type
+            .get_result_slot_type(index)
+            .unwrap_or(LuaType::Nil);
+        checks.require(super::check_general_type_compact(
+            context, &actual, &expected,
+        ))?;
     }
-    Ok(())
+    checks.finish()
 }

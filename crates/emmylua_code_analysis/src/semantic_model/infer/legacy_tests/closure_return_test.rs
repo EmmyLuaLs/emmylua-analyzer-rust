@@ -9,9 +9,7 @@ mod test {
 
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer");
-        let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert_eq!(ty, expected);
     }
 
     #[test]
@@ -363,9 +361,7 @@ mod test {
 
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer|string");
-        let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert_eq!(ty, expected);
     }
 
     #[test]
@@ -392,8 +388,25 @@ mod test {
 
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer|string");
-        let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert_eq!(ty, expected);
+    }
+
+    #[test]
+    fn test_inferred_return_rows_keep_missing_slots_and_final_calls() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local function tail() return 'text' end
+            ---@param flag boolean
+            local function choose(flag)
+                if flag then return 1 end
+                return 1, tail()
+            end
+            first, second = choose(true)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("string|nil"));
     }
 }

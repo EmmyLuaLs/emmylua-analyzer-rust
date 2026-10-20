@@ -7,7 +7,7 @@ use crate::LuaSignatureId;
 use crate::LuaType;
 
 use super::context::TypeCheckContext;
-use super::{RequiredChecks, TypeCheckResult, check_all, check_general_type_compact};
+use super::{RequiredChecks, TypeCheckResult, check_general_type_compact};
 
 pub fn check_doc_func_type_compact(
     context: &mut TypeCheckContext,
@@ -36,13 +36,6 @@ pub fn check_doc_func_type_compact(
                 ))
             }
         }
-        LuaType::Union(union) => check_all(union.iter().map(|union_type| {
-            check_general_type_compact(
-                context,
-                &LuaType::DocFunction(Rc::new(source_func.clone())),
-                union_type,
-            )
-        })),
         LuaType::Function => Ok(()),
         _ => Err(context.mismatch(
             &LuaType::DocFunction(Rc::new(source_func.clone())),
@@ -56,50 +49,9 @@ fn check_doc_func_type_compact_for_params(
     source_func: &LuaFunctionType,
     compact_func: &LuaFunctionType,
 ) -> TypeCheckResult {
-    let source_params = source_func.get_params();
-    let mut compact_params: Vec<(String, Option<LuaType>)> = compact_func.get_params().to_vec();
-
-    if compact_func.is_colon_define() {
-        compact_params.insert(0, ("self".to_string(), None));
-    }
-
-    let source_is_variadic = source_func.is_variadic();
-    let compact_is_variadic = compact_func.is_variadic();
-    let source_len = source_params.len();
-    let compact_len = compact_params.len();
     let mut checks = RequiredChecks::default();
-    for i in 0..compact_len {
-        let Some(source_param) = source_params.get(i) else {
-            break;
-        };
-        let compact_param = &compact_params[i];
-        let source_param_type = &source_param.1;
-
-        if source_is_variadic && i + 1 == source_len {
-            checks.require(check_doc_func_type_compact_for_varargs(
-                context,
-                source_param_type,
-                &compact_params[i..],
-            ))?;
-        }
-
-        if compact_is_variadic && i + 1 == compact_len {
-            break;
-        }
-
-        let compact_param_type = &compact_param.1;
-        if let (Some(source_type), Some(compact_type)) = (source_param_type, compact_param_type) {
-            // Parameters: when injecting values, the compact parameter type must be acceptable to the source.
-            let result = check_general_type_compact(context, compact_type, source_type);
-            if result.as_ref().is_err_and(|err| err.is_type_not_match())
-                && i == 0
-                && source_type.is_self_infer()
-                && compact_param.0 == "self"
-            {
-                continue;
-            }
-            checks.require(result)?;
-        }
+    for (source, target) in function_param_pairs(source_func, compact_func) {
+        checks.require(check_general_type_compact(context, &source, &target))?;
     }
 
     // Return covariance (not checked in the old version; added here): the source return must be assignable to the compact return.
@@ -111,22 +63,51 @@ fn check_doc_func_type_compact_for_params(
     checks.finish()
 }
 
-fn check_doc_func_type_compact_for_varargs(
-    context: &mut TypeCheckContext,
-    varargs: &Option<LuaType>,
-    compact_params: &[(String, Option<LuaType>)],
-) -> TypeCheckResult {
-    let Some(varargs_type) = varargs else {
-        return Ok(());
-    };
-    check_all(
-        compact_params
-            .iter()
-            .filter_map(|(_, ty)| ty.as_ref())
-            .map(|compact_param_type| {
-                check_general_type_compact(context, compact_param_type, varargs_type)
-            }),
-    )
+/// Parameter constraints in value-flow order: the caller's argument type must
+/// fit the implementation's parameter type. Both checkers use the same slot rules.
+pub(crate) fn function_param_pairs(
+    source_func: &LuaFunctionType,
+    compact_func: &LuaFunctionType,
+) -> Vec<(LuaType, LuaType)> {
+    let source_params = source_func.get_variadic_params();
+    let target_params = compact_func.get_variadic_params();
+    // After both fixed prefixes, one comparison covers repeated parameter tails.
+    let count = source_params
+        .get_max_len()
+        .unwrap_or_else(|| source_params.get_min_len().unwrap_or(0) + 1)
+        .max(
+            target_params
+                .get_max_len()
+                .unwrap_or_else(|| target_params.get_min_len().unwrap_or(0) + 1),
+        );
+    // Expanding tuple tails contain fixed slots; repeated tails contain none.
+    let fixed_source_count = source_params.get_min_len().unwrap_or(0);
+    let fixed_target_count = target_params.get_min_len().unwrap_or(0);
+    let mut pairs = Vec::new();
+    for index in 0..count {
+        let Some(source_param) = source_params.get_type(index) else {
+            // The function ignores arguments beyond its own parameters.
+            break;
+        };
+        let target_param = match target_params.get_type(index) {
+            Some(ty) => ty,
+            None if index < fixed_source_count => &LuaType::Nil,
+            None => break,
+        };
+        if source_param.is_self_infer() || target_param.is_self_infer() {
+            continue;
+        }
+        // A repeated caller tail can be empty. A fixed implementation slot
+        // beyond the caller's prefix must also accept a missing argument.
+        let target_param = if index < fixed_source_count && index >= fixed_target_count {
+            LuaType::from_vec(vec![target_param.clone(), LuaType::Nil])
+        } else {
+            target_param.clone()
+        };
+        pairs.push((target_param, source_param.clone()));
+    }
+
+    pairs
 }
 
 fn check_doc_func_type_compact_for_signature(

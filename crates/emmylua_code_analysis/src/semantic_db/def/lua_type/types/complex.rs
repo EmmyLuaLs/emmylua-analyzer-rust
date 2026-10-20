@@ -145,6 +145,25 @@ impl LuaFunctionType {
         self.is_variadic
     }
 
+    /// Parameter slots, including the receiver and any expanding or repeated tail.
+    pub fn get_variadic_params(&self) -> VariadicType {
+        let mut types: Vec<_> = self
+            .params
+            .iter()
+            .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
+            .collect();
+        if self.is_colon_define {
+            types.insert(0, LuaType::SelfInfer);
+        }
+        if self.is_variadic
+            && let Some(last) = types.last_mut()
+            && !matches!(last, LuaType::Variadic(_))
+        {
+            *last = LuaType::Variadic(Rc::new(VariadicType::Repeat(last.clone())));
+        }
+        VariadicType::Multi(types)
+    }
+
     pub fn get_variadic_ret(&self) -> VariadicType {
         if let LuaType::Variadic(variadic) = &self.ret {
             return variadic.deref().clone();

@@ -147,7 +147,7 @@ fn test_decl_type_from_literal_initializer() {
     let a = decl_local(&facts, "a");
     assert_primitive(
         &db.analysis().decl_type(fid, a).expect("type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -160,7 +160,7 @@ fn test_decl_type_name_resolution_chain() {
     let y = decl_local(&facts, "y");
     assert_primitive(
         &db.analysis().decl_type(fid, y).expect("type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -174,7 +174,7 @@ fn test_decl_type_self_reference_cycle_fixpoint() {
     let a = decl_local(&facts, "a");
     assert_primitive(
         &db.analysis().decl_type(fid, a).expect("type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -188,11 +188,11 @@ fn test_decl_type_forward_reference_chain() {
     let b = decl_local(&facts, "b");
     assert_primitive(
         &db.analysis().decl_type(fid, a).expect("a type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
     assert_primitive(
         &db.analysis().decl_type(fid, b).expect("b type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -534,7 +534,7 @@ fn test_member_type() {
 
     assert_primitive(
         &db.analysis().member_type(fid, find("foo")).expect("foo"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
     assert_primitive(
         &db.analysis().member_type(fid, find("bar")).expect("bar"),
@@ -561,7 +561,7 @@ fn test_member_type_via_name_reference() {
         .expect("member a");
     assert_primitive(
         &db.analysis().member_type(fid, a_local).expect("a type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -579,7 +579,7 @@ fn test_member_global_root() {
 #[test]
 fn test_member_chain_resolution() {
     let mut db = setup();
-    // T.a = T.b; T.b = 1 → a resolves to Number through the IndexExpr member chain.
+    // T.a = T.b; T.b = 1 → a resolves to Integer through the IndexExpr member chain.
     let fid = set_test_file(&mut db, 1, "a.lua", "local T = {}\nT.a = T.b\nT.b = 1");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
@@ -591,7 +591,7 @@ fn test_member_chain_resolution() {
         .expect("member a");
     assert_primitive(
         &db.analysis().member_type(fid, a_local).expect("a type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -631,7 +631,7 @@ fn test_member_phase2_cross_file_resolution() {
         &db.analysis()
             .member_type(x_member.file_id, x_member.id.clone())
             .expect("x type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -741,7 +741,7 @@ fn test_phase2_cross_file_member_in_expr_type() {
     let y = decl_local(&facts, "y");
     assert_primitive(
         &db.analysis().decl_type(fid, y).expect("y type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -921,23 +921,23 @@ fn test_require_module_resolution() {
     let v = decl_local(&facts, "v");
     assert_primitive(
         &db.analysis().decl_type(fid, v).expect("v type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
 #[test]
 fn test_require_module_subdir_suffix() {
     let mut db = setup();
-    // B: subdirectory module returns number.
+    // B: subdirectory module returns an integer.
     set_test_file(&mut db, 2, "sub/mod.lua", "return 42");
-    // A: require('sub.mod') suffix match → Number.
+    // A: require('sub.mod') suffix match → Integer.
     let fid = set_test_file(&mut db, 1, "a.lua", "local n = require('sub.mod')");
 
     let facts = db.analysis().file_facts(fid).expect("facts");
     let n = decl_local(&facts, "n");
     assert_primitive(
         &db.analysis().decl_type(fid, n).expect("n type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -952,7 +952,7 @@ fn test_invalidation_granularity_cross_file_decl_reexecutes() {
     let y = decl_local(&facts, "y");
     assert_primitive(
         &db.analysis().decl_type(fid, y.clone()).expect("y"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 
     // 所有相关查询已经是普通函数，这里只验证跨文件编辑后结果确实刷新为 String。
@@ -1059,7 +1059,7 @@ fn test_require_module_init_lua() {
     let n = decl_local(&facts, "n");
     assert_primitive(
         &db.analysis().decl_type(fid, n).expect("n type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1081,7 +1081,7 @@ fn test_require_module_map_rewrite() {
     let n = decl_local(&facts, "n");
     assert_primitive(
         &db.analysis().decl_type(fid, n).expect("n type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1102,13 +1102,13 @@ fn test_require_fuzzy_suffix_prefers_exact() {
     let n = decl_local(&facts, "n");
     assert_primitive(
         &db.analysis().decl_type(fid, n).expect("n"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
     // require("sub.b") → exact match.
     let m = decl_local(&facts, "m");
     assert_primitive(
         &db.analysis().decl_type(fid, m).expect("m type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1149,13 +1149,13 @@ fn test_dual_identity_type_and_runtime_members() {
         type_keys
     );
 
-    // Member type: `M.x` in A reads B's runtime x = 1 → Number.
+    // Member type: `M.x` in A reads B's runtime x = 1 → Integer.
     let fid = set_test_file(&mut db, 1, "a.lua", "local y = M.x");
     let facts = db.analysis().file_facts(fid).expect("facts");
     let y = decl_local(&facts, "y");
     assert_primitive(
         &db.analysis().decl_type(fid, y).expect("y type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1178,7 +1178,7 @@ fn test_anonymous_table_module_member() {
     let v = decl_local(&facts, "v");
     assert_primitive(
         &db.analysis().decl_type(fid, v).expect("v type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1478,7 +1478,7 @@ fn test_lua_syntax_id_disambiguates_nested_same_start() {
     let a = decl_local(&facts, "a");
     assert_primitive(
         &db.analysis().decl_type(fid, a).expect("type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 
@@ -1615,7 +1615,23 @@ fn test_call_returns_function_return_type() {
     let x = decl_local(&facts, "x");
     assert_primitive(
         &db.analysis().decl_type(fid, x).expect("x type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
+    );
+}
+
+#[test]
+fn test_long_integer_arithmetic_returns_stay_integer() {
+    let mut db = setup();
+    let source = format!(
+        "---@param value integer\nlocal function f(value) return value{} end\nlocal result = f(0)",
+        " + 1".repeat(4096),
+    );
+    let fid = set_test_file(&mut db, 1, "a.lua", &source);
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let result = decl_local(&facts, "result");
+    assert_primitive(
+        &db.analysis().decl_type(fid, result).expect("result type"),
+        PrimitiveType::Integer,
     );
 }
 
@@ -1636,12 +1652,12 @@ fn test_signature_doc_return() {
 #[test]
 fn test_signature_mutual_recursion_converges() {
     let mut db = setup();
-    // foo → bar → foo: semantic cycle_fn converges, no panic.
+    // Recursive calls, including a prefixed return, stop without a panic.
     let fid = set_test_file(
         &mut db,
         1,
         "a.lua",
-        "function foo() return bar() end\nfunction bar() return foo() end",
+        "function foo() return bar() end\nfunction bar() return foo() end\nfunction prefixed() return 1, prefixed() end",
     );
 
     let facts = db.analysis().file_facts(fid).expect("facts");
@@ -1655,8 +1671,16 @@ fn test_signature_mutual_recursion_converges() {
         .iter()
         .find(|s| s.name.as_deref() == Some("bar"))
         .expect("bar sig");
+    let prefixed_sig = facts
+        .signatures
+        .iter()
+        .find(|s| s.name.as_deref() == Some("prefixed"))
+        .expect("prefixed sig");
     let _ = db.analysis().signature_return(fid, foo_sig.closure_syntax);
     let _ = db.analysis().signature_return(fid, bar_sig.closure_syntax);
+    let _ = db
+        .analysis()
+        .signature_return(fid, prefixed_sig.closure_syntax);
 }
 
 #[test]
@@ -1981,7 +2005,7 @@ fn test_global_assignment_extracts_decl() {
     let foo = decl_local(&facts, "foo");
     assert_primitive(
         &db.analysis().decl_type(fid, foo).expect("type"),
-        PrimitiveType::Number,
+        PrimitiveType::Integer,
     );
 }
 

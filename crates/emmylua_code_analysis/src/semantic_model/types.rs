@@ -752,25 +752,39 @@ impl<'db> SemanticModel<'db> {
         let substituted = infer::unify::substitute(slot, &bindings);
         (!matches!(substituted, LuaType::Unknown)).then_some(substituted)
     }
-    /// Infers `ipairs` slots directly from integer-index members of named types (does not depend on global pairs/ipairs signatures).
+    /// Infers `ipairs` slots from integer-index members, including inherited generic members.
     pub(crate) fn infer_iter_from_type_def(
         &self,
         id: &LuaTypeDeclId,
         index: usize,
     ) -> Option<LuaType> {
-        let def = self.type_def_of(id)?;
-        let mut values: Vec<LuaType> = Vec::new();
-        for member_ref in self.members_of_owner(&def.id).iter() {
-            let facts = self.file_facts_of(member_ref.file_id)?;
-            let member = facts.member_by_id(&member_ref.id)?;
-            let is_integer_key = matches!(member.key, LuaMemberKey::Integer(_));
-            let is_index_sig = member.is_index_signature;
-            if !is_integer_key && !is_index_sig {
-                continue;
+        let mut members = member::member_infos_all(self, &LuaType::Ref(id.clone()));
+        // Filter before selecting overrides: an ordinary `integer` field and
+        // an `[integer]` index signature have the same text key.
+        let mut context = type_check::TypeCheckContext::new(self, false);
+        let mut incomplete = false;
+        members.retain(|info| {
+            if matches!(info.key, LuaMemberKey::Integer(_)) {
+                return true;
             }
-            let value = self
-                .type_of_member(&member_ref.id)
-                .unwrap_or(LuaType::Unknown);
+            let Some(key) = &info.index_key_type else {
+                return false;
+            };
+            match type_check::integer_index_applies(&mut context, key) {
+                Ok(applies) => applies,
+                Err(_) => {
+                    incomplete = true;
+                    false
+                }
+            }
+        });
+        if incomplete {
+            self.cache.borrow_mut().mark_incomplete();
+            return None;
+        }
+        let mut values: Vec<LuaType> = Vec::new();
+        for info in member::dedup_by_key(members) {
+            let value = info.typ;
             if !values.contains(&value) {
                 values.push(value);
             }
@@ -1299,7 +1313,8 @@ impl<'db> SemanticModel<'db> {
     ) -> LuaType {
         flow::type_of_decl_before_at(self, decl, offset)
     }
-    /// Target type for assignment checks: applies `---@cast +T`, excludes this assignment, but does not apply conditional narrowing.
+    /// Assignment contract: widens inferred literals, preserves parameter and
+    /// `---@type` contracts, and applies casts without conditional narrowing.
     pub fn type_of_decl_assign_target_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
         self.type_of_decl_assign_target_at_impl(decl, offset)
     }
@@ -1308,7 +1323,34 @@ impl<'db> SemanticModel<'db> {
         decl: &SemanticId,
         offset: TextSize,
     ) -> LuaType {
-        flow::type_of_decl_assign_target_at(self, decl, offset)
+        let target = flow::type_of_decl_assign_target_at(self, decl, offset);
+        let inferred = self
+            .file_facts()
+            .and_then(|facts| facts.decl_by_id(decl))
+            .is_some_and(|decl| {
+                decl.doc_type_syntax.is_none() && !matches!(decl.kind, DeclKind::Param)
+            });
+        if inferred {
+            widen_assignment_type(target)
+        } else {
+            target
+        }
+    }
+    /// Member assignment contract, keeping explicit field annotations exact.
+    pub(crate) fn member_assignment_type(&self, member: &SemanticId, target: LuaType) -> LuaType {
+        let inferred = match member {
+            SemanticId::Member(key) => self.file_facts_of(key.file_id),
+            _ => None,
+        }
+        .and_then(|facts| facts.member_by_id(member))
+        .is_some_and(|member| {
+            member.doc_type_syntax.is_none() && !matches!(member.owner, SemanticId::TypeDef(_))
+        });
+        if inferred {
+            widen_assignment_type(target)
+        } else {
+            target
+        }
     }
     /// Member type before the flow node at offset (for assignment checks: this member assignment does not participate in the target type).
     pub fn type_of_member_before_at(&self, member: &SemanticId, offset: TextSize) -> LuaType {
@@ -1333,8 +1375,8 @@ impl<'db> SemanticModel<'db> {
         // Flow reads must not turn a long binary/member chain into native
         // recursion. Evaluate each prefix/operand before its parent, as the VM does.
         enum Task {
-            Enter(LuaExpr),
-            Finish(LuaExpr, u64),
+            Enter(LuaExpr, TextSize),
+            Finish(LuaExpr, TextSize, u64),
         }
         let file_id = self.view.file_id();
         let root_key = (file_id, expr_syntax, offset);
@@ -1352,11 +1394,11 @@ impl<'db> SemanticModel<'db> {
             return self.type_of_expr(expr_syntax);
         };
         let _query = cache::QueryCacheScope::new(&self.cache);
-        let mut pending = vec![Task::Enter(expr)];
+        let mut pending = vec![Task::Enter(expr, offset)];
         while let Some(task) = pending.pop() {
             match task {
-                Task::Enter(expr) => {
-                    let key = (file_id, expr.get_syntax_id(), offset);
+                Task::Enter(expr, at) => {
+                    let key = (file_id, expr.get_syntax_id(), at);
                     if self.cache.borrow().expr_type_at.contains_key(&key) {
                         continue;
                     }
@@ -1364,26 +1406,32 @@ impl<'db> SemanticModel<'db> {
                         .borrow_mut()
                         .expr_type_at
                         .insert(key, cache::CacheEntry::InProgress);
-                    pending.push(Task::Finish(expr.clone(), self.cache.borrow().revision()));
+                    pending.push(Task::Finish(
+                        expr.clone(),
+                        at,
+                        self.cache.borrow().revision(),
+                    ));
                     match expr {
                         LuaExpr::BinaryExpr(binary) => {
                             if let Some((left, right)) = binary.get_exprs() {
-                                pending.push(Task::Enter(right));
-                                pending.push(Task::Enter(left));
+                                let right_pos = right.get_position();
+                                let left_pos = left.get_position();
+                                pending.push(Task::Enter(right, right_pos));
+                                pending.push(Task::Enter(left, left_pos));
                             }
                         }
                         LuaExpr::IndexExpr(index) => {
                             if let Some(prefix) = index.get_prefix_expr() {
-                                pending.push(Task::Enter(prefix));
+                                pending.push(Task::Enter(prefix, at));
                             }
                         }
                         _ => {}
                     }
                 }
-                Task::Finish(expr, revision) => {
+                Task::Finish(expr, at, revision) => {
                     let syntax = expr.get_syntax_id();
                     let is_index = matches!(expr, LuaExpr::IndexExpr(_));
-                    let ty = flow::type_of_expr_at_node(self, expr, offset);
+                    let ty = flow::type_of_expr_at_node(self, expr, at);
                     let ty = if is_index {
                         let ty = type_eval::expand_alias_generic(self, &ty);
                         type_eval::eval_conditionals(self, &ty)
@@ -1392,7 +1440,7 @@ impl<'db> SemanticModel<'db> {
                     };
                     let mut cache = self.cache.borrow_mut();
                     let entry = cache::CacheEntry::finish(ty, cache.is_complete(revision));
-                    cache.expr_type_at.insert((file_id, syntax, offset), entry);
+                    cache.expr_type_at.insert((file_id, syntax, at), entry);
                 }
             }
         }
@@ -1546,6 +1594,16 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
         }
     }
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
+}
+
+fn widen_assignment_type(ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::Union(union) => {
+            LuaType::from_vec(union.iter().cloned().map(widen_assignment_type).collect())
+        }
+        LuaType::FloatConst(_) => LuaType::Number,
+        _ => infer::vm::widen_variadic_const(&ty),
+    }
 }
 
 /// Removes nil from a type (used for generic for loop keys: the loop stops when the first value is nil).

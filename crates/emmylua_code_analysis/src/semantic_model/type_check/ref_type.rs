@@ -6,7 +6,7 @@ use crate::{LuaGenericType, LuaType, LuaTypeDeclId, TypeDefKind};
 
 use super::context::TypeCheckContext;
 use super::sub_type::{get_base_type_id, is_sub_type_of};
-use super::{TypeCheckResult, check_all, check_general_type_compact};
+use super::{TypeCheckResult, check_general_type_compact};
 
 /// Generic inheritance matching: whether sub's inheritance chain contains a generic parent matching the target generic instance arguments.
 fn is_sub_type_of_generic(
@@ -117,18 +117,19 @@ fn check_ref_class(
             }
             Err(context.mismatch(&LuaType::Ref(source_id.clone()), compact_type))
         }
-        LuaType::Table => Ok(()),
-        LuaType::Union(union_type) => {
-            check_all(union_type.iter().map(|typ| {
-                check_general_type_compact(context, &LuaType::Ref(source_id.clone()), typ)
-            }))
+        LuaType::Array(array) => {
+            let value = context
+                .require_complete(|| context.model.infer_iter_from_type_def(source_id, 1))?
+                .ok_or_else(|| context.mismatch(&LuaType::Ref(source_id.clone()), compact_type))?;
+            check_general_type_compact(context, &value, array.get_base())
         }
+        LuaType::Table => Ok(()),
         LuaType::Generic(generic) => {
             let base_type_id = generic.get_base_type_id();
-            if (context.strict_generic
+            if (context.strict_subtype
                 && context
                     .require_complete(|| is_sub_type_of_generic(context, source_id, generic))?)
-                || (!context.strict_generic
+                || (!context.strict_subtype
                     && (source_id == &base_type_id
                         || is_sub_type_of(context, &base_type_id, source_id)
                         || is_sub_type_of(context, source_id, &base_type_id)))

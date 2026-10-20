@@ -130,44 +130,6 @@ fn return_compatible(
     if source == target {
         return true;
     }
-    if let LuaType::Union(source_union) = source {
-        // Historical compatibility: ordinary union returns still use "any member assignable" (some flow guards do not yet fully narrow impossible components).
-        // But when the return value contains a function component and the target is a named class, all components must be checked; otherwise the function could be silently treated as a class instance.
-        let components = source_union.into_vec();
-        let target_is_named_class = matches!(target, LuaType::Ref(_) | LuaType::Def(_));
-        let has_function = components.iter().any(|component| {
-            matches!(
-                component,
-                LuaType::Function | LuaType::DocFunction(_) | LuaType::Signature(_)
-            )
-        });
-        let require_all = target_is_named_class && has_function;
-        return if require_all {
-            components
-                .iter()
-                .all(|component| return_compatible(semantic_model, component, target))
-        } else {
-            components
-                .iter()
-                .any(|component| return_compatible(semantic_model, component, target))
-        };
-    }
-    // Integer literal -> number.
-    if matches!(
-        source,
-        LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
-    ) && matches!(target, LuaType::Number)
-    {
-        return true;
-    }
-    // `table<K,V>` -> `V[]`.
-    if let (LuaType::Generic(generic), LuaType::Array(array)) = (source, target)
-        && generic.get_base_type_id().get_name() == "table"
-        && let Some(value_ty) = generic.get_params().get(1)
-        && return_compatible(semantic_model, value_ty, array.get_base())
-    {
-        return true;
-    }
     if is_compatible(semantic_model, source, target) {
         return true;
     }

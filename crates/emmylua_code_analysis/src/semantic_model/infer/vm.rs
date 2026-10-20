@@ -2098,33 +2098,33 @@ impl<'a> InferVm<'a> {
         let Some(closure) = LuaClosureExpr::cast(node) else {
             return LuaType::Unknown;
         };
-        let return_exprs: Vec<LuaExpr> = closure
-            .descendants::<LuaReturnStat>()
-            .filter(|ret| {
-                ret.ancestors::<LuaClosureExpr>()
-                    .next()
-                    .is_some_and(|owner| owner.get_syntax_id() == closure_syntax)
-            })
-            .flat_map(|ret| ret.get_expr_list())
-            .collect();
-        if return_exprs.is_empty() {
-            return LuaType::Unknown;
-        }
         let mut types = Vec::new();
-        for expr in return_exprs {
-            let expr_syntax = expr.get_syntax_id();
-            let mut code = Vec::new();
-            compile(expr, self.model.file_id(), &mut code);
-            code.push(Instr::Result);
-            let mut vm = InferVm::new(self.model, &code);
-            vm.closure_params = self.closure_params.clone();
-            let mut ty = vm.run();
-            // `---@as` / flow casts are attached to return expression nodes; flow queries can
-            // give a more precise return type than bare VM (e.g. `{} --[[@as Promise<integer>]]`).
-            let flow_ty = type_of_expr_with_cast(self.model, expr_syntax, ExprCastMode::All);
-            if !matches!(flow_ty, LuaType::Unknown | LuaType::Any) && flow_ty != ty {
-                ty = flow_ty;
+        for ret in closure.descendants::<LuaReturnStat>().filter(|ret| {
+            ret.ancestors::<LuaClosureExpr>()
+                .next()
+                .is_some_and(|owner| owner.get_syntax_id() == closure_syntax)
+        }) {
+            let exprs: Vec<_> = ret.get_expr_list().collect();
+            let mut slots = Vec::new();
+            for (index, expr) in exprs.iter().enumerate() {
+                let expr_syntax = expr.get_syntax_id();
+                let mut ty = self.type_of_expr_inherit(expr_syntax);
+                let flow_ty = type_of_expr_with_cast(self.model, expr_syntax, ExprCastMode::All);
+                if !matches!(flow_ty, LuaType::Unknown | LuaType::Any) && flow_ty != ty {
+                    ty = flow_ty;
+                }
+                if index + 1 < exprs.len() {
+                    ty = ty.get_result_slot_type(0).unwrap_or(LuaType::Nil);
+                }
+                slots.push(ty);
             }
+            // Values in one return form a sequence; different return statements
+            // form alternatives. `return true, ...` keeps its boolean prefix.
+            let ty = if slots.len() == 1 {
+                slots.pop().expect("len checked")
+            } else {
+                LuaType::Variadic(Rc::new(VariadicType::Multi(slots)))
+            };
             if !matches!(ty, LuaType::Unknown | LuaType::Any) && !types.contains(&ty) {
                 types.push(ty);
             }
@@ -3129,24 +3129,7 @@ impl<'a> InferVm<'a> {
                     if let Some(facts) = self.model.file_facts_of(def.file_id)
                         && let Some(op) = facts.operator_of(&def.id, "call")
                     {
-                        let params = op
-                            .params
-                            .iter()
-                            .map(|syntax| {
-                                (
-                                    String::new(),
-                                    Some(self.model.doc_type_lua_rich_in(def.file_id, *syntax)),
-                                )
-                            })
-                            .collect();
-                        out.push(LuaFunctionType::new(
-                            AsyncState::None,
-                            false,
-                            false,
-                            params,
-                            self.model.doc_type_lua_rich_in(def.file_id, op.returns),
-                            None,
-                        ));
+                        out.push(self.model.call_operator_type(def.file_id, op));
                     }
                 }
                 visited.pop();
@@ -3181,24 +3164,7 @@ impl<'a> InferVm<'a> {
                     if let Some(facts) = self.model.file_facts_of(def.file_id)
                         && let Some(op) = facts.operator_of(&def.id, "call")
                     {
-                        let params = op
-                            .params
-                            .iter()
-                            .map(|syntax| {
-                                (
-                                    String::new(),
-                                    Some(self.model.doc_type_lua_rich_in(def.file_id, *syntax)),
-                                )
-                            })
-                            .collect();
-                        out.push(LuaFunctionType::new(
-                            AsyncState::None,
-                            false,
-                            false,
-                            params,
-                            self.model.doc_type_lua_rich_in(def.file_id, op.returns),
-                            None,
-                        ));
+                        out.push(self.model.call_operator_type(def.file_id, op));
                     }
                 }
                 visited.pop();
@@ -3301,6 +3267,7 @@ fn constructor_candidate(
                     id: Some(member.id.clone()),
                     file_id: Some(member.file_id),
                     is_method: true,
+                    index_key_type: None,
                 })
         })?;
     let member_file = member_info.file_id?;
@@ -4215,6 +4182,11 @@ pub fn infer_expr_vm(model: &SemanticModel, expr_syntax: LuaSyntaxId) -> LuaType
     let Some(expr) = LuaExpr::cast(node) else {
         return LuaType::Unknown;
     };
+    infer_expr_node(model, expr)
+}
+
+/// Infer an already resolved expression without another walk from the syntax root.
+pub(crate) fn infer_expr_node(model: &SemanticModel, expr: LuaExpr) -> LuaType {
     let mut code = Vec::new();
     compile(expr, model.file_id(), &mut code);
     code.push(Instr::Result);
@@ -4567,25 +4539,13 @@ pub(crate) fn binary_type(
             if let (Some(left_i), Some(right_i)) =
                 (integer_const_value(left), integer_const_value(&right))
             {
-                let value = match op {
-                    OpAdd => left_i.checked_add(right_i),
-                    OpSub => left_i.checked_sub(right_i),
-                    OpMul => left_i.checked_mul(right_i),
-                    _ => None,
-                };
+                let value =
+                    crate::semantic_db::types::checked_integer_arithmetic(op, left_i, right_i);
                 return value.map(LuaType::IntegerConst).unwrap_or(LuaType::Number);
             }
             // Addition like `integer + 1` (one side is the integer base type, the other is an
             // integer literal) still stays integer.
-            let left_is_integer = matches!(
-                left,
-                LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
-            );
-            let right_is_integer = matches!(
-                right,
-                LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
-            );
-            if left_is_integer && right_is_integer {
+            if integer_operand(left) && integer_operand(&right) {
                 LuaType::Integer
             } else {
                 LuaType::Number
@@ -4594,6 +4554,20 @@ pub(crate) fn binary_type(
         OpDiv | OpIDiv | OpMod | OpPow => {
             if left.is_any() || right.is_any() {
                 LuaType::Any
+            } else if matches!(op, OpDiv)
+                && let (Some(left), Some(right)) =
+                    (integer_const_value(left), integer_const_value(&right))
+                && right != 0
+            {
+                // Lua `/` converts both operands to floating-point before division.
+                crate::semantic_db::types::checked_integer_arithmetic(op, left, right)
+                    .map(LuaType::IntegerConst)
+                    .unwrap_or(LuaType::Number)
+            } else if matches!(op, OpIDiv | OpMod)
+                && integer_operand(left)
+                && integer_operand(&right)
+            {
+                LuaType::Integer
             } else {
                 LuaType::Number
             }
@@ -4882,6 +4856,13 @@ fn integer_const_value(ty: &LuaType) -> Option<i64> {
     }
 }
 
+fn integer_operand(ty: &LuaType) -> bool {
+    match ty {
+        LuaType::Union(union) => union.iter().all(LuaType::is_integer),
+        _ => ty.is_integer(),
+    }
+}
+
 fn is_enum_like_dynamic_key(model: &SemanticModel, ty: &LuaType) -> bool {
     let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
         return false;
@@ -4918,6 +4899,18 @@ fn unary_type(
         && let Some(ty) = model.operator_type(name, operand)
     {
         return ty;
+    }
+    if op == OpUnm {
+        match operand {
+            LuaType::IntegerConst(value) | LuaType::DocIntegerConst(value) => {
+                return value
+                    .checked_neg()
+                    .map(LuaType::IntegerConst)
+                    .unwrap_or(LuaType::Number);
+            }
+            LuaType::FloatConst(value) => return LuaType::FloatConst(-value),
+            _ => {}
+        }
     }
     operand.clone()
 }

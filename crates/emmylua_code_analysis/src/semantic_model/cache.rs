@@ -5,6 +5,7 @@
 
 use hashbrown::{HashMap, HashSet};
 use std::cell::Cell;
+use std::rc::Rc;
 
 use emmylua_parser::{LuaExpr, LuaSyntaxId};
 use rowan::TextSize;
@@ -203,6 +204,8 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) member_type: HashMap<(FileId, SemanticId), CacheEntry<Option<LuaType>>>,
     pub(crate) resolve_member: HashMap<(FileId, LuaSyntaxId), Option<ResolvedMember>>,
     pub(crate) expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), CacheEntry<LuaType>>,
+    /// Cast-bearing flow bindings on the node and its ancestors, nearest first.
+    pub(crate) expr_cast_flows: HashMap<(FileId, LuaSyntaxId), Rc<Vec<FlowId>>>,
     pub(crate) resolve_name: HashMap<(FileId, TextSize), Option<SemanticId>>,
     pub(crate) resolve_owner_set: HashMap<SemanticId, Vec<SemanticId>>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
