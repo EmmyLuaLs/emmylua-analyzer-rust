@@ -6,7 +6,7 @@ use crate::{LuaGenericType, LuaType, LuaTypeDeclId, TypeDefKind};
 
 use super::context::TypeCheckContext;
 use super::sub_type::{get_base_type_id, is_sub_type_of};
-use super::{TypeCheckResult, check_general_type_compact};
+use super::{TypeCheckResult, check_general_type_compact, table_associated_type_def};
 
 /// Generic inheritance matching: whether sub's inheritance chain contains a generic parent matching the target generic instance arguments.
 fn is_sub_type_of_generic(
@@ -140,10 +140,30 @@ fn check_ref_class(
             }
         }
         // Table/object/tuple/intersection structures: M0 uses base type name (`table`) plus nominal fallback (semantic member-structure checks are left for later).
-        LuaType::TableConst(_)
-        | LuaType::Object(_)
-        | LuaType::Tuple(_)
-        | LuaType::Intersection(_) => {
+        LuaType::TableConst(table) => {
+            /*
+               ---@class A
+               local A = {}
+               A.__index = A
+            */
+            if let Some(target_def) = table_associated_type_def(context.model, table)
+                && target_def.kind == TypeDefKind::Class
+            {
+                check_general_type_compact(
+                    context,
+                    &LuaType::Ref(source_id.clone()),
+                    &LuaType::Ref(target_def.type_decl_id()),
+                )
+            } else {
+                if let Some(base_id) = get_base_type_id(compact_type)
+                    && is_sub_type_of(context, source_id, &base_id)
+                {
+                    return Ok(());
+                }
+                Err(context.mismatch(&LuaType::Ref(source_id.clone()), compact_type))
+            }
+        }
+        LuaType::Object(_) | LuaType::Tuple(_) | LuaType::Intersection(_) => {
             if let Some(base_id) = get_base_type_id(compact_type)
                 && is_sub_type_of(context, source_id, &base_id)
             {

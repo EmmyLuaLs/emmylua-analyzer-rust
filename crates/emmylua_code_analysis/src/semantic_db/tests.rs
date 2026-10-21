@@ -1621,18 +1621,33 @@ fn test_call_returns_function_return_type() {
 
 #[test]
 fn test_long_integer_arithmetic_returns_stay_integer() {
-    let mut db = setup();
-    let source = format!(
-        "---@param value integer\nlocal function f(value) return value{} end\nlocal result = f(0)",
-        " + 1".repeat(4096),
-    );
-    let fid = set_test_file(&mut db, 1, "a.lua", &source);
-    let facts = db.analysis().file_facts(fid).expect("facts");
-    let result = decl_local(&facts, "result");
-    assert_primitive(
-        &db.analysis().decl_type(fid, result).expect("result type"),
-        PrimitiveType::Integer,
-    );
+    let run = || {
+        let mut db = setup();
+        let source = format!(
+            "---@param value integer\nlocal function f(value) return value{} end\nlocal result = f(0)",
+            " + 1".repeat(4096),
+        );
+        let fid = set_test_file(&mut db, 1, "a.lua", &source);
+        let facts = db.analysis().file_facts(fid).expect("facts");
+        let result = decl_local(&facts, "result");
+        assert_primitive(
+            &db.analysis().decl_type(fid, result).expect("result type"),
+            PrimitiveType::Integer,
+        );
+    };
+
+    #[cfg(windows)]
+    {
+        // 深层 Rowan 语法树的析构需要更大的 Windows 测试线程栈.
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(run)
+            .expect("spawn long arithmetic test thread")
+            .join()
+            .expect("long arithmetic test thread panicked");
+    }
+    #[cfg(not(windows))]
+    run();
 }
 
 #[test]

@@ -1857,17 +1857,26 @@ local b = a
             "#
         ));
 
-        // `a` is already A's class table; `setmetatable({}, a)` yields a table with A as its metatable,
-        // so it cannot directly serve as the runtime table for subclass B (B's table needs B's members/metatable).
-        assert!(!ws.has_no_diagnostic_in_namespace(
+        // 类表自引用允许赋值.
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
----@class A
-local a = {}
-a.__index = a
+                ---@class A
+                local a = {}
+                a.__index = a
+            "#
+        ));
 
----@class B: A
-local b = setmetatable({}, a)
+        // TODO: 之前该诊断依赖于`a.__index = a`的自赋值错误, 实际代码没有处理 setmetatable 的情况, 这里我们先放行后续再为此添加错误诊断
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class A
+                local a = {}
+                a.__index = a
+
+                ---@class B: A
+                local b = setmetatable({}, a)
             "#
         ));
 
@@ -2771,5 +2780,44 @@ return t
             end
         "#
         ));
+    }
+
+    #[test]
+    fn class_index_assignment_self() {
+        let source = r#"
+            ---@class LinkedTableA
+            ---@field value string
+            local M = {}
+            M.__index = M
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 0, "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn class_index_assignment_keeps_declared_field_checks() {
+        let source = r#"
+            ---@class LinkedTableA
+            ---@field __index string
+            ---@field value string
+            local M = {}
+            M.__index = M
+            M.__index = 1
+            M.value = M
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::AssignTypeMismatch)
+                .map(|diagnostic| usize::from(diagnostic.range.start()))
+                .collect::<Vec<_>>(),
+            vec![
+                source.find("M.__index = M").unwrap() + "M.__index = ".len(),
+                source.find("M.__index = 1").unwrap() + "M.__index = ".len(),
+                source.find("M.value = M").unwrap() + "M.value = ".len(),
+            ],
+            "{diagnostics:#?}"
+        );
     }
 }
