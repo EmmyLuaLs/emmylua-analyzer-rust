@@ -36,6 +36,74 @@ mod tests {
     }
 
     #[gtest]
+    fn test_member_completion_skips_nonmatching_candidates() -> Result<()> {
+        for (prefix, expected) in [
+            (
+                "",
+                vec![
+                    "train",
+                    "current_surface",
+                    "select_count",
+                    "current_network_id",
+                ],
+            ),
+            ("c", vec!["current_surface", "current_network_id"]),
+            ("current_n", vec!["current_network_id"]),
+            ("select", vec!["select_count"]),
+            ("missing", vec![]),
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            let code = format!(
+                r#"
+                ---@class KnownTrain
+                ---@field train table
+                ---@field current_surface integer
+                ---@field select_count integer
+                ---@field current_network_id integer?
+                ---@param new_known_train KnownTrain
+                local function edit(new_known_train)
+                    new_known_train.{prefix}<??> = 1
+                end
+                "#
+            );
+            for _ in 0..2 {
+                let items = get_completion_items(&mut ws, &code, CompletionTriggerKind::INVOKED)?;
+                let mut labels: Vec<_> = items.iter().map(|item| item.label.as_str()).collect();
+                labels.sort_unstable();
+                let mut expected_sorted = expected.clone();
+                expected_sorted.sort_unstable();
+                assert_eq!(labels, expected_sorted, "prefix {prefix:?}");
+            }
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_member_completion_skips_nonmatching_methods() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+            ---@class Train
+            ---@field activate fun(self: Train)
+            ---@field current_network_id integer
+            ---@field connect fun(self: Train)
+            ---@field stop fun(self: Train)
+            ---@field cancel fun(self: Train)
+            ---@param train Train
+            local function edit(train)
+                train:c<??>
+            end
+            "#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        let mut labels: Vec<_> = items.iter().map(|item| item.label.as_str()).collect();
+        labels.sort_unstable();
+        assert_eq!(labels, ["cancel", "connect"]);
+        Ok(())
+    }
+
+    #[gtest]
     fn test_require_completion_skips_removed_module() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file("lib/helper.lua", "return {}");

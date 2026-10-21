@@ -26,13 +26,16 @@ pub enum CompletionTriggerStatus {
     LeftBracket,
 }
 
-/// Add completion items for a group of member infos (reused by the desc provider; Dot display semantics).
+/// Adds eligible members using dot-completion display rules.
+/// Filtering an individual candidate does not stop enumeration; this returns
+/// `Some(())` even when no item matches.
 pub(crate) fn add_member_completions(
     builder: &mut CompletionBuilder,
     members: &[MemberInfo],
 ) -> Option<()> {
     for member in members {
-        add_member_completion(builder, member.clone(), CompletionTriggerStatus::Dot)?;
+        // A filtered candidate must not stop enumeration.
+        let _ = add_member_completion(builder, member, CompletionTriggerStatus::Dot);
     }
     Some(())
 }
@@ -156,14 +159,16 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if completion_status == CompletionTriggerStatus::Colon {
         for member in members {
             if member.typ.is_function() {
-                add_member_completion(builder, member, completion_status)?;
+                // A filtered candidate must not stop enumeration.
+                let _ = add_member_completion(builder, &member, completion_status);
             }
         }
         return Some(());
     }
 
     for member in members {
-        add_member_completion(builder, member, completion_status)?;
+        // A filtered candidate must not stop enumeration.
+        let _ = add_member_completion(builder, &member, completion_status);
     }
     Some(())
 }
@@ -444,9 +449,11 @@ fn index_alias_name(builder: &CompletionBuilder, member_file: Option<FileId>) ->
     Some(inner[..end].to_string())
 }
 
+/// Adds completion items for one eligible member.
+/// `None` means this candidate was filtered out, not a provider-level failure.
 fn add_member_completion(
     builder: &mut CompletionBuilder,
-    info: MemberInfo,
+    info: &MemberInfo,
     status: CompletionTriggerStatus,
 ) -> Option<()> {
     let member_key = &info.key;
@@ -520,7 +527,7 @@ fn add_member_completion(
         _ => CallDisplay::None,
     };
 
-    let detail = member_main_detail(&builder.semantic_model, &info, call_display, skip_self)
+    let detail = member_main_detail(&builder.semantic_model, info, call_display, skip_self)
         .or_else(|| function_detail(typ, call_display, skip_self));
 
     let data = info.id.as_ref().and_then(|id| {
@@ -560,7 +567,7 @@ fn add_member_completion(
     }
 
     builder.add_completion_item(completion_item.clone());
-    add_member_overloads(builder, &info, &completion_item, status);
+    add_member_overloads(builder, info, &completion_item, status);
 
     Some(())
 }
