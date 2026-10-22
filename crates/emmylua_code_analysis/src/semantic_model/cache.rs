@@ -60,11 +60,16 @@ pub(super) struct TypeEvaluationScope<'a> {
 }
 
 impl<'a> TypeEvaluationScope<'a> {
+    pub(super) const MAX_TYPE_VISITS: usize = 1_000_000;
+    pub(super) const MAX_EVALUATION_DEPTH: usize = 64;
+
+    /// Enter a nested evaluation sharing the enclosing query's remaining work.
+    /// Exhausted work or excessive semantic nesting records an incomplete
+    /// evaluation before returning `None`; a fresh outer query resets the budget.
     pub(super) fn new(cache: &'a super::LazyCache) -> Option<Self> {
         let query = QueryCacheScope::new(cache);
         let mut state = cache.borrow_mut();
-        const MAX_EVALUATION_DEPTH: usize = 64;
-        if state.evaluation_depth >= MAX_EVALUATION_DEPTH || state.evaluation_exhausted {
+        if state.evaluation_depth >= Self::MAX_EVALUATION_DEPTH || state.evaluation_exhausted {
             state.exhaust_evaluation();
             return None;
         }
@@ -83,9 +88,8 @@ impl<'a> TypeEvaluationScope<'a> {
             };
         }
         let mut pending = vec![ty];
-        const MAX_TYPE_VISITS: usize = 1_000_000;
         while let Some(ty) = pending.pop() {
-            if cache.evaluation_exhausted || cache.evaluation_work >= MAX_TYPE_VISITS {
+            if cache.evaluation_exhausted || cache.evaluation_work >= Self::MAX_TYPE_VISITS {
                 cache.exhaust_evaluation();
                 return false;
             }
