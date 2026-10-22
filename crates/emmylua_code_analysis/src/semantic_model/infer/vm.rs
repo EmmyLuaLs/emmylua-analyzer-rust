@@ -4890,17 +4890,13 @@ fn unary_type(
     operand: &LuaType,
 ) -> LuaType {
     use emmylua_parser::UnaryOperator::*;
-    let name = match op {
-        OpUnm => Some("unm"),
-        OpLen => Some("len"),
-        _ => None,
-    };
-    if let Some(name) = name
-        && let Some(ty) = model.operator_type(name, operand)
-    {
-        return ty;
+    if op == OpLen {
+        return length_type(model, operand).unwrap_or_else(|| operand.clone());
     }
     if op == OpUnm {
+        if let Some(ty) = model.operator_type("unm", operand) {
+            return ty;
+        }
         match operand {
             LuaType::IntegerConst(value) | LuaType::DocIntegerConst(value) => {
                 return value
@@ -4913,6 +4909,24 @@ fn unary_type(
         }
     }
     operand.clone()
+}
+
+/// Resolve only the outer operand shape. Expanding array elements or restarting
+/// the recursive alias evaluator here can lose flow bounds or grow aliases forever.
+fn length_type(model: &SemanticModel, operand: &LuaType) -> Option<LuaType> {
+    let operand = crate::semantic_model::type_eval::expand_alias_branches(model, operand)?;
+    let mut pending = vec![operand];
+    let mut results = Vec::new();
+    while let Some(ty) = pending.pop() {
+        if let LuaType::Union(union) = ty {
+            pending.extend(union.into_vec());
+        } else if ty.is_table() || ty.is_object() || ty.is_string() {
+            results.push(LuaType::Integer);
+        } else {
+            results.push(model.operator_type("len", &ty)?);
+        }
+    }
+    (!results.is_empty()).then(|| LuaType::from_vec(results))
 }
 
 /// Binary operator -> `@operator` name.

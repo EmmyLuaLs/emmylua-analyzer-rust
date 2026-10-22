@@ -12,6 +12,9 @@
 //! - `---@cast x +string` adds string to x's path type;
 //! - Flow type for member assignment `t.x = v` / `self.x = v` (FlowEffect::AssignMember).
 
+mod array;
+mod guards;
+
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -39,6 +42,7 @@ use crate::semantic_model::infer::infer_call_with_bindings;
 use crate::semantic_model::infer::unify::substitute;
 use crate::semantic_model::infer::vm::{binary_type, widen_const};
 use crate::signature::LuaSignatureId;
+use guards::{guarded_on_all_paths, literal_comparison, normalize_condition};
 
 /// Backtracking options: independently collect condition guards, cast widening, and assignment hits.
 #[derive(Clone, Copy)]
@@ -449,6 +453,9 @@ pub(crate) fn type_of_expr_at_node(
             apply_casts(model.type_of_expr_node(&expr), AsOnly)
         }
         LuaExpr::IndexExpr(index_expr) => {
+            if let Some(ty) = array::last_element_type(model, index_expr, offset) {
+                return apply_casts(ty, All);
+            }
             if let Some(resolved) = model.resolve_member(index_expr)
                 && let Some(member_id) = resolved.member_id.clone().or_else(|| {
                     let prefix = index_expr.get_prefix_expr()?;
@@ -733,64 +740,37 @@ fn guarded_index_type(
     let access = LuaExpr::IndexExpr(index.clone());
     let target =
         stable_access_path(model, &access).or_else(|| index_access_path(model, &access))?;
-    let closure = LuaClosureId::from_node(index.syntax());
     if target.1.iter().any(LuaMemberKey::is_none) {
         return None;
     }
-    let tree = model.flow_tree()?;
-    if !tree.has_condition() {
-        return None;
-    }
-    let mut pending = vec![tree.get_flow_id_at(offset)?];
-    let mut visited = HashSet::new();
     let mut narrowing = Narrowing::Truthy;
-    while let Some(current) = pending.pop() {
-        if !visited.insert(current) {
-            continue;
-        }
-        let node = tree.get_flow_node(current)?;
-        match &node.kind {
-            FlowNodeKind::Assignment(ptr) if !ptr.get_syntax_id().get_range().contains(offset) => {
-                let assign = flow_assign_stat(model, &tree, current)?;
-                for var in assign.get_var_and_expr_list().0 {
-                    if let Some(written) = LuaExpr::cast(var.syntax().clone()).and_then(|expr| {
-                        stable_access_path(model, &expr).or_else(|| index_access_path(model, &expr))
-                    }) && path_write_affects(&written, &target.0, &target.1)
-                    {
-                        return None;
-                    }
+    guarded_on_all_paths(
+        model,
+        index,
+        offset,
+        |cond, truthy| {
+            if let Some(guard) = narrow_index_condition(model, &target, &access, cond, truthy) {
+                if matches!(guard, Narrowing::NotNil) {
+                    narrowing = guard;
                 }
+                true
+            } else {
+                false
             }
-            FlowNodeKind::TrueCondition(ptr) | FlowNodeKind::FalseCondition(ptr) => {
-                let cond = flow_condition_expr(model, ptr)?;
-                // A nested function can run after the guarded value changes.
-                if LuaClosureId::from_node(cond.syntax()) != closure {
+        },
+        |tree, current| {
+            let assign = flow_assign_stat(model, tree, current)?;
+            for var in assign.get_var_and_expr_list().0 {
+                if let Some(written) = LuaExpr::cast(var.syntax().clone()).and_then(|expr| {
+                    stable_access_path(model, &expr).or_else(|| index_access_path(model, &expr))
+                }) && path_write_affects(&written, &target.0, &target.1)
+                {
                     return None;
                 }
-                if let Some(guard) = narrow_index_condition(
-                    model,
-                    &target,
-                    &access,
-                    cond,
-                    matches!(node.kind, FlowNodeKind::TrueCondition(_)),
-                ) {
-                    if matches!(guard, Narrowing::NotNil) {
-                        narrowing = guard;
-                    }
-                    continue;
-                }
             }
-            FlowNodeKind::Start | FlowNodeKind::LoopLabel | FlowNodeKind::NamedLabel(_) => {
-                return None;
-            }
-            FlowNodeKind::Unreachable => continue,
-            _ => {}
-        }
-        match node.antecedent.as_ref()? {
-            FlowAntecedent::Single(next) => pending.push(*next),
-            FlowAntecedent::Multiple(id) => pending.extend(tree.get_multi_antecedents(*id)?),
-        }
-    }
+            Some(())
+        },
+    )?;
     Some(apply_narrowing(model, ty, &narrowing))
 }
 
@@ -799,48 +779,32 @@ fn narrow_index_condition(
     model: &SemanticModel,
     target: &(SemanticId, Vec<LuaMemberKey>),
     access: &LuaExpr,
-    mut cond: LuaExpr,
-    mut branch_is_true: bool,
+    cond: LuaExpr,
+    branch_is_true: bool,
 ) -> Option<Narrowing> {
-    loop {
-        match &cond {
-            LuaExpr::ParenExpr(paren) => cond = paren.get_expr()?,
-            LuaExpr::UnaryExpr(unary) if unary.get_op_token()?.get_op() == UnaryOperator::OpNot => {
-                branch_is_true = !branch_is_true;
-                cond = unary.get_expr()?;
-            }
-            LuaExpr::BinaryExpr(binary) => {
-                let op = binary.get_op_token()?.get_op();
-                if !matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe)
-                    || branch_is_true != (op == BinaryOperator::OpNe)
-                {
-                    return None;
-                }
-                let (left, right) = binary.get_exprs()?;
-                let value = match (left, right) {
-                    (value, LuaExpr::LiteralExpr(lit)) | (LuaExpr::LiteralExpr(lit), value)
-                        if literal_type(&lit) == Some(LuaType::Nil) =>
-                    {
-                        value
-                    }
-                    _ => return None,
-                };
-                return (stable_access_path_at(model, &value, access)
-                    .or_else(|| index_access_path(model, &value))
-                    .as_ref()
-                    == Some(target))
-                .then_some(Narrowing::NotNil);
-            }
-            _ => {
-                return (branch_is_true
-                    && stable_access_path_at(model, &cond, access)
-                        .or_else(|| index_access_path(model, &cond))
-                        .as_ref()
-                        == Some(target))
-                .then_some(Narrowing::Truthy);
-            }
+    let (cond, branch_is_true) = normalize_condition(cond, branch_is_true)?;
+    if let LuaExpr::BinaryExpr(binary) = &cond {
+        let (left, right) = binary.get_exprs()?;
+        let (value, literal, op) =
+            literal_comparison(left, right, binary.get_op_token()?.get_op())?;
+        if literal.is_nil()
+            && matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe)
+            && branch_is_true == (op == BinaryOperator::OpNe)
+            && stable_access_path_at(model, &value, access)
+                .or_else(|| index_access_path(model, &value))
+                .as_ref()
+                == Some(target)
+        {
+            return Some(Narrowing::NotNil);
         }
+        return None;
     }
+    (branch_is_true
+        && stable_access_path_at(model, &cond, access)
+            .or_else(|| index_access_path(model, &cond))
+            .as_ref()
+            == Some(target))
+    .then_some(Narrowing::Truthy)
 }
 
 /// Infer the VM type, then apply the selected inline casts.
@@ -973,9 +937,9 @@ fn logical_truthy_components(ty: &LuaType) -> Vec<LuaType> {
 
 fn array_index_in_known_range(index: i64, len: &LuaArrayLen) -> bool {
     match len {
-        LuaArrayLen::Max(max) => index > 0 && index <= *max,
         LuaArrayLen::Min(min) => index > 0 && index <= *min,
-        LuaArrayLen::None => false,
+        // An upper bound permits an empty array.
+        LuaArrayLen::Max(_) | LuaArrayLen::None => false,
     }
 }
 
@@ -3605,26 +3569,15 @@ fn array_len_condition(
     cond: &LuaExpr,
     branch_is_true: bool,
 ) -> Option<Narrowing> {
-    if let LuaExpr::ParenExpr(paren) = cond
-        && let Some(inner) = paren.get_expr()
-    {
-        return array_len_condition(model, decl, &inner, branch_is_true);
-    }
-    if let LuaExpr::UnaryExpr(unary) = cond
-        && unary.get_op_token()?.get_op() == UnaryOperator::OpNot
-        && let Some(inner) = unary.get_expr()
-    {
-        return array_len_condition(model, decl, &inner, !branch_is_true);
-    }
+    let (cond, branch_is_true) = normalize_condition(cond.clone(), branch_is_true)?;
     let LuaExpr::BinaryExpr(binary) = cond else {
         return None;
     };
     let op = binary.get_op_token()?.get_op();
     let (left, right) = binary.get_exprs()?;
-    let (unary_expr, lit_expr) = match (left, right) {
-        (LuaExpr::UnaryExpr(unary), LuaExpr::LiteralExpr(lit)) => (unary, lit),
-        (LuaExpr::LiteralExpr(lit), LuaExpr::UnaryExpr(unary)) => (unary, lit),
-        _ => return None,
+    let (value, literal, op) = literal_comparison(left, right, op)?;
+    let LuaExpr::UnaryExpr(unary_expr) = value else {
+        return None;
     };
     if unary_expr.get_op_token()?.get_op() != UnaryOperator::OpLen {
         return None;
@@ -3635,14 +3588,13 @@ fn array_len_condition(
     if model.resolve_name(name_expr.get_position()).as_ref() != Some(decl) {
         return None;
     }
-    let lit_ty = literal_type(&lit_expr)?;
-    let bound = match lit_ty {
+    let bound = match literal {
         LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) => i,
         _ => return None,
     };
 
     match op {
-        BinaryOperator::OpEq if branch_is_true => Some(Narrowing::ArrayLen(bound)),
+        BinaryOperator::OpEq if branch_is_true => Some(Narrowing::ArrayMinLen(bound)),
         BinaryOperator::OpLe if branch_is_true => Some(Narrowing::ArrayLen(bound)),
         BinaryOperator::OpLe => match bound.checked_add(1) {
             Some(next) => Some(Narrowing::ArrayMinLen(next)),
