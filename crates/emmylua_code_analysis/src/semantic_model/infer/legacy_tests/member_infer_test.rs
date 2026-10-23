@@ -37,6 +37,26 @@ mod test {
     }
 
     #[test]
+    fn test_field_object_type_keeps_its_shape() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class Light
+        ---@field decay { red: number, green: number }
+
+        ---@type Light
+        local light
+
+        a = light.decay
+        "#,
+        );
+
+        let a = ws.expr_ty("a");
+        assert_eq!(ws.humanize_type(a), "{ green: number, red: number }");
+    }
+
+    #[test]
     fn test_issue_1075_large_table_dynamic_string_key() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let names = (0..256)

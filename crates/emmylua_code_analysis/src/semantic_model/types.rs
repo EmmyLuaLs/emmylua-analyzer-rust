@@ -872,9 +872,19 @@ impl<'db> SemanticModel<'db> {
 
         let shell = self.analysis().member_type(member_file, member.clone())?;
         let generic_names = self.member_generic_names(member_file, member);
-        let ty = self
+        let mut ty = self
             .analysis()
             .type_shell_lua_in(member_file, &shell, &generic_names);
+        // Object annotations (`---@field x { a: number }`) lower to broad `table` in TypeShell; keep
+        // their fields, as for function params and returns.
+        if super::signature::needs_rich_doc_type(&ty)
+            && let Some(doc_syntax) = self.member_doc_type_syntax(member_file, member)
+        {
+            let rich = self.doc_type_lua_rich_in(member_file, doc_syntax);
+            if !matches!(rich, LuaType::Unknown) {
+                ty = rich;
+            }
+        }
         let ty = if let Some(facts) = self.file_facts_of(member_file)
             && let Some(member_def) = facts.member_by_id(member)
             && member_def.doc_type_syntax.is_none()
@@ -885,6 +895,14 @@ impl<'db> SemanticModel<'db> {
             ty
         };
         Some(ty)
+    }
+    /// A member's doc type node: the `@field` type, or a `---@type` annotation.
+    fn member_doc_type_syntax(&self, file_id: FileId, member: &SemanticId) -> Option<LuaSyntaxId> {
+        let member_def = self.file_facts_of(file_id)?.member_by_id(member)?;
+        match member_def.owner {
+            SemanticId::TypeDef(_) => member_def.value_syntax,
+            _ => member_def.doc_type_syntax,
+        }
     }
     /// Whether this is a table-literal field in a declaration initializer.
     /// Such members keep the literal shape from table construction; explicit `t.x = v` is not an initializer field.

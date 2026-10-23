@@ -3,7 +3,7 @@ use crate::{MemberList, OperatorDef};
 use super::prelude::*;
 
 // Object annotations lose their fields when lowered to `table` or `table | nil`.
-fn needs_rich_doc_type(ty: &LuaType) -> bool {
+pub(super) fn needs_rich_doc_type(ty: &LuaType) -> bool {
     match ty {
         LuaType::Unknown | LuaType::Table => true,
         LuaType::Union(union) => union
