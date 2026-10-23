@@ -56,6 +56,8 @@ pub struct CheckConfig {
     global_disable_glob: Vec<Regex>,
     /// Lua language level (determines `is_code_default_enable`).
     level: LuaLanguageLevel,
+    /// `emmyrc.diagnostics.check_meta_files`: report diagnostics in `---@meta` files too.
+    check_meta_files: bool,
     /// Optional per-checker timing collector for `--profile` runs.
     pub(crate) profile: Option<Arc<CheckProfile>>,
 }
@@ -92,6 +94,7 @@ impl CheckConfig {
             global_disable_set,
             global_disable_glob,
             level: emmyrc.get_language_level(),
+            check_meta_files: emmyrc.diagnostics.check_meta_files,
             profile: None,
         }
     }
@@ -103,6 +106,11 @@ impl CheckConfig {
 
     pub fn profile(&self) -> Option<&Arc<CheckProfile>> {
         self.profile.as_ref()
+    }
+
+    /// Whether `---@meta` files are checked too.
+    pub fn check_meta_files(&self) -> bool {
+        self.check_meta_files
     }
 
     /// Whether a diagnostic code is enabled (mirrors the old `is_checker_enable_by_code` default chain):

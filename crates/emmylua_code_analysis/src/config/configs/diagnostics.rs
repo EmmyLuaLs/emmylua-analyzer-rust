@@ -31,6 +31,9 @@ pub struct EmmyrcDiagnostic {
     /// Delay between opening/changing a file and scanning it for errors, in milliseconds.
     #[schemars(extend("x-vscode-setting" = true))]
     pub diagnostic_interval: Option<u64>,
+    /// Also report diagnostics in `---@meta` files, which are skipped by default (to check an API library itself).
+    #[serde(default)]
+    pub check_meta_files: bool,
 }
 
 impl Default for EmmyrcDiagnostic {
@@ -43,6 +46,7 @@ impl Default for EmmyrcDiagnostic {
             severity: HashMap::new(),
             enables: Vec::new(),
             diagnostic_interval: Some(500),
+            check_meta_files: false,
         }
     }
 }

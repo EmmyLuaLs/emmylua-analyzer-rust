@@ -32,6 +32,27 @@ fn test_meta_file_has_no_diagnostics() {
     );
 }
 
+/// `diagnostics.checkMetaFiles` checks `---@meta` files like any other.
+#[test]
+fn test_meta_file_checked_when_configured() {
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let diagnostics = check_source_with_emmyrc(
+        r#"
+        ---@meta
+        ---@param y integer
+        function f(x) end
+        "#,
+        emmyrc,
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::UndefinedDocParam),
+        1,
+        "meta file must be checked, got: {:?}",
+        diagnostics
+    );
+}
+
 /// Library workspace files must not produce diagnostics.
 #[test]
 fn test_library_file_has_no_diagnostics() {
