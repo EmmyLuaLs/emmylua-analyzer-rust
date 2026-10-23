@@ -128,7 +128,6 @@ pub struct DocMember {
     pub name: String,
     pub ty: LuaType,
     pub property: DocProperty,
-    pub is_method: bool,
     pub loc: Option<DocLoc>,
     pub signature: Option<DocSignature>,
 }
@@ -473,12 +472,6 @@ impl DocModel {
             .unwrap_or_else(|| key.to_lua_id().get_name().to_string())
     }
 
-    pub fn type_by_key(&self, key: &DocTypeKey) -> Option<&DocType> {
-        self.types_by_key
-            .get(key)
-            .and_then(|idx| self.types.get(*idx))
-    }
-
     pub fn module_name(&self, file_id: FileId) -> Option<&str> {
         self.module_name_by_file.get(&file_id).map(|s| s.as_str())
     }
@@ -538,12 +531,11 @@ impl DocModel {
         })
     }
 
-    pub fn render_type(&self, ty: &LuaType, level: RenderLevel) -> String {
+    /// Type text. Every level renders the same: named types by name, the rest in full.
+    pub fn render_type(&self, ty: &LuaType, _level: RenderLevel) -> String {
         let mut renderer = TypeTextRenderer {
             model: self,
-            level,
             depth: 0,
-            visited: HashSet::new(),
         };
         renderer.render(ty)
     }
@@ -706,7 +698,6 @@ fn project_member(
             visibility: Some(member.visibility),
             deprecated: member.deprecated,
         },
-        is_method: member.is_method,
         loc: make_loc(model, file_paths, file_id, key_range),
         signature: signature.cloned(),
     }
@@ -757,9 +748,7 @@ fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
 
 struct TypeTextRenderer<'a> {
     model: &'a DocModel,
-    level: RenderLevel,
     depth: u8,
-    visited: HashSet<DocTypeKey>,
 }
 
 impl TypeTextRenderer<'_> {
@@ -882,40 +871,10 @@ impl TypeTextRenderer<'_> {
         }
     }
 
+    /// A named type renders as its name; inlining its members would print a whole class wherever
+    /// it's mentioned.
     fn render_named(&mut self, id: &LuaTypeDeclId) -> String {
-        let name = self.model.type_name(id);
-        let key = DocTypeKey::from_lua_id(id);
-        let expand = matches!(
-            self.level,
-            RenderLevel::Documentation | RenderLevel::Detailed
-        ) && self.visited.insert(key.clone());
-        if !expand {
-            return name;
-        }
-
-        let Some(doc_type) = self.model.type_by_key(&key) else {
-            self.visited.remove(&key);
-            return name;
-        };
-        if doc_type.members.is_empty() {
-            self.visited.remove(&key);
-            return name;
-        }
-
-        let parts = doc_type
-            .members
-            .iter()
-            .map(|member| {
-                let key = if member.is_method {
-                    format!("fun {}", member.name)
-                } else {
-                    member.name.clone()
-                };
-                format!("{key}: {}", self.render(&member.ty))
-            })
-            .collect::<Vec<_>>();
-        self.visited.remove(&key);
-        format!("{name}{{ {} }}", parts.join(", "))
+        self.model.type_name(id)
     }
 
     fn render_tuple(&mut self, tuple: &LuaTupleType) -> String {

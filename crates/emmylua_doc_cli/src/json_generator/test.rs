@@ -201,3 +201,16 @@ fn function_without_returns_has_none() {
     let f = member(find(&json, "globals", "T"), "f");
     assert_eq!(f["returns"], Value::Array(Vec::new()));
 }
+
+#[test]
+fn types_refer_to_classes_by_name() {
+    let json = export_json(
+        r#"
+        ---@class Element
+        ---@field id string
+
+        ---@alias Elements Element[]
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Elements")["typ"], "Element[]");
+}
