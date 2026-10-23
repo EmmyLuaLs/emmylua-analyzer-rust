@@ -143,7 +143,7 @@ impl<'db> SemanticModel<'db> {
     pub fn resolve_owner(&self, owner: &SemanticId) -> Option<SemanticId> {
         self.analysis().resolve_owner(owner.clone())
     }
-    pub(crate) fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
+    pub fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
         if let Some(cached) = self.cache.borrow().resolve_owner_set.get(&owner) {
             return cached.clone();
         }
