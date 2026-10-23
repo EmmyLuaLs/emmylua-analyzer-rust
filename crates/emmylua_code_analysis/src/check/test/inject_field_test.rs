@@ -3,6 +3,64 @@ mod test {
     use crate::check::test::check_source;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
+    mod generic_tables {
+        use super::*;
+
+        use DiagnosticCode::ParamTypeMismatch;
+
+        fn assert_diagnostics(source: &str, expected: &[DiagnosticCode]) {
+            let diagnostics = check_source(source);
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{source}\n{diagnostics:?}"
+            );
+        }
+
+        #[test]
+        fn test_record_constructors_ignore_overwritten_nested_values() {
+            for constructor in [
+                "{item = {}, [key] = {required = 'ok'}}",
+                "({item = {}, [key] = ({required = 'ok'})})",
+            ] {
+                assert_diagnostics(
+                    &format!(
+                        "local key = 'item'\n---@param opts {{item: {{required: string}}}}\nlocal function accept(opts) return opts end\naccept({constructor})\npcall(accept, {constructor})\n---@type {{item: {{required: string}}}}\nlocal value = {constructor}\nreturn value"
+                    ),
+                    &[],
+                );
+            }
+        }
+
+        #[test]
+        fn test_object_index_signatures_allow_nil_entries() {
+            assert_diagnostics(
+                r#"
+                ---@param opts {values: table<string, string>, [string]: string}
+                local function accept(opts) return opts end
+                accept({values = {}, label = nil})
+                "#,
+                &[],
+            );
+        }
+
+        #[test]
+        fn test_generic_table_overload_requires_the_whole_call_to_match() {
+            assert_diagnostics(
+                r#"
+                ---@param values table<integer, string>
+                ---@param mode string
+                ---@overload fun(values: table<string, integer>, mode: integer)
+                local function accept(values, mode) return values, mode end
+                accept({'a'}, 'a')
+                accept({count = 1}, 1)
+                accept({count = 1}, 'a')
+                "#,
+                &[ParamTypeMismatch],
+            );
+        }
+    }
+
     #[test]
     fn test_table_literal_integral_float_keys() {
         let diagnostics = check_source(
@@ -19,6 +77,9 @@ mod test {
             ---@field [9223372036854774784] integer
             ---@type LargeNumeric
             local large = {[9223372036854774784.0] = 1}
+            ---@param value Numeric
+            local function accept(value) return value end
+            accept({[0.0] = 0, [1e0] = 1})
             return decimal, exponent, large
             "#,
         );
