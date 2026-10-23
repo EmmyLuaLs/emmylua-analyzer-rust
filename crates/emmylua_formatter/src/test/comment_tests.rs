@@ -2392,4 +2392,16 @@ function foo(a, ...) end
 "#
         );
     }
+
+    #[test]
+    fn test_inline_comments_before_following_comment_are_not_duplicated() {
+        use emmylua_parser::LuaLanguageLevel;
+
+        let source = "local x = f() --[[c]] -- a\n-- b\nlocal y = 1\n";
+        let config = crate::config::LuaFormatConfig::default();
+        let first = crate::format_text(source, LuaLanguageLevel::default(), &config).formatted;
+        assert_eq!(first, source);
+        let second = crate::format_text(&first, LuaLanguageLevel::default(), &config).formatted;
+        assert_eq!(second, first);
+    }
 }
