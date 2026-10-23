@@ -457,3 +457,25 @@ fn global_function_is_exported_as_a_function() {
     assert_eq!(names(&ping["params"], "desc"), ["The unit."]);
     assert_eq!(names(&ping["returns"], "name"), ["pinged"]);
 }
+
+#[test]
+fn multi_line_union_alias_has_its_option_descriptions() {
+    let json = export_json(
+        r#"
+        ---@alias EventPhase
+        ---| 0 # None
+        ---| 1 # Capture
+        ---| "bubble"
+        "#,
+    );
+    let phase = find(&json, "types", "EventPhase");
+    assert_eq!(
+        phase["variants"],
+        json!([
+            {"typ": "0", "desc": "None"},
+            {"typ": "1", "desc": "Capture"},
+            {"typ": "\"bubble\"", "desc": null},
+        ])
+    );
+    assert_eq!(find(&json, "types", "EventPhase")["members"], json!([]));
+}

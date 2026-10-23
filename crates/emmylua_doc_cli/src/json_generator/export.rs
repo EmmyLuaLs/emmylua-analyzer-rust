@@ -114,6 +114,16 @@ fn export_alias(model: &DocModel, doc_type: &DocType) -> Alias {
             .map(|typ| render_typ(model, typ, RenderLevel::Documentation)),
         generics: export_generics(model, &doc_type.generics),
         members: export_members(model, &doc_type.members),
+        variants: (!doc_type.variants.is_empty()).then(|| {
+            doc_type
+                .variants
+                .iter()
+                .map(|(ty, desc)| AliasVariant {
+                    typ: model.render_type(ty, RenderLevel::Simple),
+                    desc: desc.clone(),
+                })
+                .collect()
+        }),
     }
 }
 

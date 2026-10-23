@@ -19,7 +19,8 @@ use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
 
 use crate::doc_text::{
-    DocText, ReturnText, SignatureText, decl_text, member_text, signature_text, type_def_text,
+    DocText, ReturnText, SignatureText, alias_variants, decl_text, member_text, signature_text,
+    type_def_text,
 };
 
 /// Type definition kind (used for doc page categorization).
@@ -169,6 +170,8 @@ pub struct DocType {
     pub bases: Vec<LuaType>,
     pub locations: Vec<DocLoc>,
     pub members: Vec<DocMember>,
+    /// The options of a multi-line union alias, with their descriptions.
+    pub variants: Vec<(LuaType, Option<String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -413,6 +416,14 @@ impl DocModel {
                 bases,
                 locations,
                 members,
+                variants: alias_variants(&model, &first)
+                    .into_iter()
+                    .map(|(syntax, description)| {
+                        let ty =
+                            model.doc_type_lua_in(first.file_id, syntax, &first.generic_params);
+                        (ty, description)
+                    })
+                    .collect(),
             };
             types.push(doc);
         }

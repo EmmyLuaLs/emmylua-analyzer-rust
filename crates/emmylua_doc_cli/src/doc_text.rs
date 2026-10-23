@@ -4,7 +4,7 @@
 use emmylua_code_analysis::{Decl, FileId, Member, SemanticId, SemanticModel, Signature, TypeDef};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaChunk, LuaComment, LuaCommentOwner, LuaDocDescription,
-    LuaDocDescriptionOwner, LuaDocTag, LuaStat, LuaSyntaxId, LuaTableField,
+    LuaDocDescriptionOwner, LuaDocTag, LuaDocType, LuaStat, LuaSyntaxId, LuaTableField,
 };
 use rowan::TextSize;
 
@@ -103,6 +103,35 @@ pub fn member_text(model: &SemanticModel<'_>, member: &Member) -> DocText {
         });
     }
     text
+}
+
+/// The options of a multi-line union alias (`---| 0 # Invalid`): each type node and description.
+pub fn alias_variants(
+    model: &SemanticModel<'_>,
+    def: &TypeDef,
+) -> Vec<(LuaSyntaxId, Option<String>)> {
+    let Some(syntax) = def.alias_type else {
+        return Vec::new();
+    };
+    let Some(tree) = model.syntax_tree_of(def.file_id) else {
+        return Vec::new();
+    };
+    let Some(LuaDocType::MultiLineUnion(union)) = syntax
+        .to_node_from_root(&tree.get_red_root())
+        .and_then(LuaDocType::cast)
+    else {
+        return Vec::new();
+    };
+    union
+        .get_fields()
+        .filter_map(|field| {
+            let ty = field.get_type()?;
+            Some((
+                ty.get_syntax_id(),
+                description_text(field.get_description(), true),
+            ))
+        })
+        .collect()
 }
 
 /// A declaration: the comment on its statement.
