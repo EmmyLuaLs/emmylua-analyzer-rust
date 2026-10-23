@@ -69,7 +69,7 @@ fn p5_require_alias_chain_attaches_mutation_to_module_owner() {
         return M
         "#,
     );
-    ws.def_file(
+    let extra_file = ws.def_file(
         "extra.lua",
         r#"
         local M = require("mod")
@@ -79,6 +79,16 @@ fn p5_require_alias_chain_attaches_mutation_to_module_owner() {
         end
         "#,
     );
+
+    let model = ws.analysis.semantic_model(extra_file);
+    let mod_file = model.module_file_of("mod").expect("mod module file");
+    let exports = ws.analysis.db.file_exports_of(extra_file);
+    let extra = exports
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("extra"))
+        .expect("extra contribution");
+    assert_eq!(extra.owner_id, OwnerId::Module(mod_file));
 
     let ty = ws.expr_ty("require('mod').extra()");
     assert!(integer_like(&ty), "alias chain return type: {ty:?}");

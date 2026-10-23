@@ -4,6 +4,22 @@ mod tests {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
+    fn test_field_flow_does_not_change_the_returned_table_type() {
+        let diagnostics = check_source(
+            r#"
+            ---@return {text: string}
+            local function record()
+                local value = {text = 'ok'}
+                value.text = 'updated'
+                return value
+            end
+            return record
+        "#,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+    }
+
+    #[test]
     fn test_parenthesized_member_guards_narrow_return_value() {
         for (guard, access) in [
             ("(box).value", "box.value"),

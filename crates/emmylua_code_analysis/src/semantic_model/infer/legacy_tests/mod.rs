@@ -14,6 +14,7 @@ mod closure_return_test;
 mod decl_test;
 mod diagnostic_disable_test;
 mod flow;
+mod flow_contract;
 mod for_range_var_infer_test;
 mod generic_infer_test;
 mod generic_test;

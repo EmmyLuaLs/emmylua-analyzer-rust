@@ -728,6 +728,26 @@ mod tests {
     }
 
     #[test]
+    fn test_table_constructor_union_values_check_all_non_nil_alternatives() {
+        let source = r#"
+            ---@param text string?
+            ---@param mixed string|integer|nil
+            local function pack(text, mixed)
+                ---@type string[]
+                local valid = {text}
+                ---@type string[]
+                local invalid = {mixed}
+                return valid, invalid
+            end
+            return pack
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(&source[diagnostics[0].range], "mixed", "{diagnostics:#?}");
+    }
+
+    #[test]
     fn test_vararg_packing_keeps_tuple_assignment_checks() {
         let source = r#"
             ---@param ... [string, integer]
@@ -1599,6 +1619,19 @@ mod tests {
 local m = {}
 ---@type integer[]
 m.ints = {}
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+---@class A
+---@field x? A
+
+---@type A
+local t
+
+t.x = {}
             "#
         ));
 
