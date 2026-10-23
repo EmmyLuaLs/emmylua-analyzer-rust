@@ -23,6 +23,7 @@ pub enum UpdateEvent {
     DidClose(DidCloseTextDocumentParams),
     DidChangeWatchedFiles(DidChangeWatchedFilesParams),
     DidRenameFiles(RenameFilesParams),
+    Shutdown,
 }
 
 pub fn spawn_update_queue(
@@ -47,6 +48,9 @@ pub fn spawn_update_queue(
                 }
                 UpdateEvent::DidRenameFiles(params) => {
                     handlers::process_did_rename_files_handler(snapshot, params).await;
+                }
+                UpdateEvent::Shutdown => {
+                    break;
                 }
             }
         }

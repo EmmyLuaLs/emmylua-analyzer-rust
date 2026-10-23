@@ -136,8 +136,11 @@ impl ServerContext {
     }
 
     pub async fn close(&self) {
-        let mut workspace_manager = self.inner.workspace_manager.lock().await;
-        workspace_manager.watcher = None;
+        {
+            let mut workspace_manager = self.inner.workspace_manager.lock().await;
+            workspace_manager.watcher = None;
+        }
+        let _ = self.inner.update_tx.send(UpdateEvent::Shutdown);
     }
 
     pub async fn send_response(&self, response: Response) {
