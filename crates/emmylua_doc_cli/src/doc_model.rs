@@ -316,11 +316,31 @@ impl DocModel {
                 TypeDefKind::Enum => DocTypeKind::Enum,
                 TypeDefKind::Alias => DocTypeKind::Alias,
             };
-            // The runtime value can also be a member (`---@class M.Sub` on `M.Sub = {}`), whose
-            // functions are owned by the dotted name.
-            let mut owners: Vec<SemanticId> = defs.iter().map(|def| def.id.clone()).collect();
-            owners.push(SemanticId::name(first.full_name.clone()));
-            let members = owned_members(&model, &owners, &member_by_id);
+            let owners: Vec<SemanticId> = defs.iter().map(|def| def.id.clone()).collect();
+            let members = if matches!(kind, DocTypeKind::Alias) {
+                // An alias has no runtime value: the statement after its comment isn't its table.
+                let mut seen = HashSet::new();
+                let mut members: Vec<DocMember> = owners
+                    .iter()
+                    .flat_map(|owner| {
+                        model
+                            .members_of_owner(owner)
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|member| seen.insert(member.id.clone()))
+                    .filter_map(|member| member_by_id.get(&member.id).cloned())
+                    .collect();
+                members.sort_by(|a, b| a.name.cmp(&b.name));
+                members
+            } else {
+                // The runtime value can also be a member (`---@class M.Sub` on `M.Sub = {}`), whose
+                // functions are owned by the dotted name.
+                let mut owners = owners;
+                owners.push(SemanticId::name(first.full_name.clone()));
+                owned_members(&model, &owners, &member_by_id)
+            };
 
             let mut bases = model.base_types(&first.type_decl_id());
             bases.dedup();

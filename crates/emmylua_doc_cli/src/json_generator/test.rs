@@ -1,5 +1,5 @@
 use emmylua_code_analysis::VirtualWorkspace;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::doc_model::DocModel;
 use crate::json_generator::export::export;
@@ -213,4 +213,17 @@ fn types_refer_to_classes_by_name() {
         "#,
     );
     assert_eq!(find(&json, "types", "Elements")["typ"], "Element[]");
+}
+
+#[test]
+fn alias_has_no_members_of_the_code_below_it() {
+    let json = export_json(
+        r#"
+        ---@alias Id integer
+        T = {}
+
+        function T.f() end
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Id")["members"], json!([]));
 }
