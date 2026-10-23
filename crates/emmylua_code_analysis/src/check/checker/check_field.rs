@@ -8,7 +8,7 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
-use crate::semantic_db::def::{SemanticId, TypeDef, TypeDefKind};
+use crate::semantic_db::def::{MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_branches;
 use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType};
@@ -145,7 +145,7 @@ fn check_index_assign(
             || semantic_model
                 .members_of_owner(&target_id)
                 .iter()
-                .any(|member| member.name.starts_with('['))
+                .any(|member| is_index_signature(semantic_model, member))
             || is_mapped_alias(semantic_model, &def)
         {
             continue;
@@ -165,6 +165,13 @@ fn check_index_assign(
             ),
         );
     }
+}
+
+fn is_index_signature(semantic_model: &SemanticModel<'_>, member: &MemberRef) -> bool {
+    semantic_model
+        .file_facts_of(member.file_id)
+        .and_then(|facts| facts.member_by_id(&member.id))
+        .is_some_and(|member| member.is_index_signature)
 }
 
 /// Follows alias definitions until a non-alias type is reached. Returns `None` when the

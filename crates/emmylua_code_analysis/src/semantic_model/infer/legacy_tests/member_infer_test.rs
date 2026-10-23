@@ -582,4 +582,25 @@ mod test {
 
         assert_eq!(ws.expr_ty("result"), ws.ty("integer?"));
     }
+
+    #[test]
+    fn test_table_field_doc_type_overrides_initializer() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local t = {
+            ---@type integer
+            foo = nil,
+            ---@type string?
+            bar = 1,
+        }
+        a = t.foo
+        b = t.bar
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("a"), LuaType::Integer);
+        assert_eq!(ws.expr_ty("b"), ws.ty("string?"));
+    }
 }

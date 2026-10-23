@@ -2355,6 +2355,15 @@ pub(crate) fn member_type(
         return TypeShell::from_module_ref(module_file);
     }
 
+    // Like a declaration, an explicit `---@type` takes priority over the value
+    // (`---@type integer` above the table field `foo = nil`).
+    if let Some(type_syntax) = member.doc_type_syntax {
+        let shell = lower_doc_type(db, file, type_syntax, &[]);
+        if !shell.is_unknown() {
+            return shell;
+        }
+    }
+
     // Value: owner is `TypeDef` (@field) -> doc type node; otherwise -> expression.
     if let Some(value_syntax) = member.value_syntax {
         match &member.owner {
