@@ -6,8 +6,15 @@ use crate::json_generator::export::export;
 
 /// The JSON export of a single Lua file.
 fn export_json(code: &str) -> Value {
+    export_files(&[code])
+}
+
+/// The JSON export of several Lua files.
+fn export_files(files: &[&str]) -> Value {
     let mut ws = VirtualWorkspace::new();
-    ws.def(code);
+    for code in files {
+        ws.def(code);
+    }
     let model = DocModel::build(&ws.analysis);
     serde_json::to_value(export(&model, ws.analysis.emmyrc.clone())).expect("export serializes")
 }
@@ -131,6 +138,24 @@ fn every_definition_of_a_function_is_exported() {
         })
         .unwrap_or_default();
     assert_eq!(params, [vec!["a"], vec!["a", "b"]]);
+}
+
+#[test]
+fn functions_at_the_same_place_in_different_files_keep_their_own_overloads() {
+    let json = export_files(&[
+        "A = {}
+---@overload fun(x: string)
+function A.f(x) end
+",
+        "B = {}
+---@overload fun(y: number)
+function B.f(y) end
+",
+    ]);
+    let a = member(find(&json, "globals", "A"), "f");
+    let b = member(find(&json, "globals", "B"), "f");
+    assert_eq!(a["overloads"], serde_json::json!(["fun(x: string)"]));
+    assert_eq!(b["overloads"], serde_json::json!(["fun(y: number)"]));
 }
 
 #[test]

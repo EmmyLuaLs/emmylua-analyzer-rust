@@ -198,7 +198,9 @@ impl DocModel {
         let mut all_type_defs: Vec<TypeDef> = Vec::new();
         #[allow(clippy::type_complexity)]
         let mut member_sources: HashMap<SemanticId, Vec<(FileId, Member)>> = HashMap::new();
-        let mut signature_sources: HashMap<LuaSyntaxId, (FileId, Signature)> = HashMap::new();
+        // Keyed by file too: a syntax id is only a kind and a range, so closures in different files
+        // can share one.
+        let mut signature_sources: HashMap<(FileId, LuaSyntaxId), Signature> = HashMap::new();
         let mut global_sources: Vec<(FileId, Decl)> = Vec::new();
         let mut module_sources: Vec<ModuleSource> = Vec::new();
         let mut properties: HashMap<DocOwner, DocProperty> = HashMap::new();
@@ -250,7 +252,7 @@ impl DocModel {
             }
 
             for signature in &facts.signatures {
-                signature_sources.insert(signature.closure_syntax, (file_id, signature.clone()));
+                signature_sources.insert((file_id, signature.closure_syntax), signature.clone());
             }
 
             for decl in &facts.decls {
@@ -277,11 +279,11 @@ impl DocModel {
         }
 
         // Project signatures.
-        let mut signatures: HashMap<LuaSyntaxId, DocSignature> = HashMap::new();
-        for (syntax, (file_id, signature)) in &signature_sources {
+        let mut signatures: HashMap<(FileId, LuaSyntaxId), DocSignature> = HashMap::new();
+        for (key, signature) in &signature_sources {
             signatures.insert(
-                *syntax,
-                project_signature(&SemanticModel::new(db, *file_id), signature),
+                *key,
+                project_signature(&SemanticModel::new(db, key.0), signature),
             );
         }
 
@@ -296,8 +298,7 @@ impl DocModel {
                 let model = SemanticModel::new(db, *file_id);
                 let signature = member
                     .value_syntax
-                    .as_ref()
-                    .and_then(|syntax| signatures.get(syntax));
+                    .and_then(|syntax| signatures.get(&(*file_id, syntax)));
                 let doc = project_member(&model, member, &file_paths, signature);
                 member_by_id.insert(member.id.clone(), doc.clone());
                 members_by_owner.entry(owner.clone()).or_default().push(doc);
@@ -383,7 +384,7 @@ impl DocModel {
                 loc: make_loc(&model, &file_paths, *file_id, decl.name_range),
                 signature: decl
                     .value_expr_syntax
-                    .and_then(|syntax| signatures.get(&syntax).cloned()),
+                    .and_then(|syntax| signatures.get(&(*file_id, syntax)).cloned()),
                 ty,
                 members,
             });
