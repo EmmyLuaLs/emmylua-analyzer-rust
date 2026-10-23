@@ -234,6 +234,107 @@ fn function_without_returns_has_none() {
 }
 
 #[test]
+fn types_have_descriptions() {
+    let json = export_json(
+        r#"
+        ---A car.
+        ---@class Car
+        ---@field speed number How fast it goes.
+        local Car = {}
+
+        ---@enum Numbers These are numbers.
+        Numbers = {
+            ---Five.
+            FIVE = 5,
+        }
+
+        ---@class Undocumented
+        "#,
+    );
+    let car = find(&json, "types", "Car");
+    assert_eq!(car["description"], "A car.");
+    assert_eq!(member(car, "speed")["description"], "How fast it goes.");
+    let numbers = find(&json, "types", "Numbers");
+    assert_eq!(numbers["description"], "These are numbers.");
+    assert_eq!(member(numbers, "FIVE")["description"], "Five.");
+    assert_eq!(find(&json, "types", "Undocumented")["description"], "");
+}
+
+#[test]
+fn functions_have_descriptions() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---Does things.
+        ---
+        ---More detail.
+        ---@param x integer The x.
+        ---@param ... string The rest.
+        ---@return string name The name.
+        ---@return boolean
+        function T.f(x, ...) end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(f["description"], "Does things.\n\nMore detail.");
+    assert_eq!(names(&f["params"], "desc"), ["The x.", "The rest."]);
+    assert_eq!(names(&f["returns"], "name"), [json!("name"), Value::Null]);
+    assert_eq!(
+        names(&f["returns"], "desc"),
+        [json!("The name."), Value::Null]
+    );
+}
+
+#[test]
+fn table_fields_have_descriptions_deprecation_and_tags() {
+    let json = export_json(
+        r#"
+        ---The table.
+        ---@see Other
+        T = {
+            ---This is foo.
+            ---@type integer
+            foo = nil,
+            bar = 1, ---@type number The bar.
+            ---@deprecated Use foo.
+            old = 1,
+            ---@x_helper
+            helper = 1,
+        }
+        "#,
+    );
+    let t = find(&json, "globals", "T");
+    assert_eq!(t["description"], "The table.");
+    assert_eq!(
+        t["tag_content"],
+        json!([{"tag_name": "see", "content": "Other"}])
+    );
+    assert_eq!(member(t, "foo")["description"], "This is foo.");
+    assert_eq!(member(t, "bar")["description"], "The bar.");
+    let old = member(t, "old");
+    assert_eq!(old["deprecated"], true);
+    assert_eq!(old["deprecation_reason"], "Use foo.");
+    assert_eq!(
+        member(t, "helper")["tag_content"],
+        json!([{"tag_name": "x_helper", "content": ""}])
+    );
+}
+
+#[test]
+fn a_comment_defining_a_type_documents_the_type_not_its_variable() {
+    let json = export_json(
+        r#"
+        ---The widget.
+        ---@class Widget
+        widget = {}
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Widget")["description"], "The widget.");
+    assert_eq!(find(&json, "globals", "widget")["description"], Value::Null);
+}
+
+#[test]
 fn types_refer_to_classes_by_name() {
     let json = export_json(
         r#"

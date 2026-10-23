@@ -18,6 +18,10 @@ use emmylua_code_analysis::{
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
 
+use crate::doc_text::{
+    DocText, ReturnText, SignatureText, decl_text, member_text, signature_text, type_def_text,
+};
+
 /// Type definition kind (used for doc page categorization).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocTypeKind {
@@ -75,11 +79,25 @@ pub struct DocLoc {
     pub line: usize,
 }
 
-/// Property annotations (Semantic facts only carry visibility and deprecated; description text is not in facts yet).
+/// Property annotations: visibility and deprecation from Semantic facts, text from the doc comments.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocProperty {
     pub visibility: Option<VisibilityKind>,
     pub deprecated: bool,
+    pub description: Option<String>,
+    pub deprecation_reason: Option<String>,
+    /// `(tag name, content)` for `@see` and unknown tags.
+    pub tags: Vec<(String, String)>,
+}
+
+impl DocProperty {
+    fn with_text(mut self, text: DocText) -> Self {
+        self.deprecated |= text.deprecated;
+        self.description = text.description;
+        self.deprecation_reason = text.deprecation_reason;
+        self.tags = text.tags;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -101,6 +119,7 @@ pub struct DocGeneric {
 pub struct DocFnParam {
     pub name: String,
     pub ty: Option<LuaType>,
+    pub description: Option<String>,
 }
 
 /// Additional function info projected from Semantic `Signature`/`SignatureDoc`.
@@ -110,6 +129,7 @@ pub struct DocSignature {
     pub nodiscard: Option<String>,
     /// Has `---@return` tags, so an `unknown` return is documented, not just missing.
     pub has_documented_returns: bool,
+    pub text: SignatureText,
 }
 
 /// Directly renderable function view (prefers the type's own `DocFunction`, then fills in signature details).
@@ -117,6 +137,8 @@ pub struct DocSignature {
 pub struct DocFunctionInfo {
     pub params: Vec<DocFnParam>,
     pub returns: Vec<LuaType>,
+    /// Name and description of each return, by index into `returns`.
+    pub return_docs: Vec<ReturnText>,
     pub overloads: Vec<LuaType>,
     pub generics: Vec<DocGeneric>,
     pub is_async: bool,
@@ -234,6 +256,7 @@ impl DocModel {
                     DocProperty {
                         visibility: type_visibility(def.visibility),
                         deprecated: def.deprecated,
+                        ..Default::default()
                     },
                 );
             }
@@ -248,6 +271,7 @@ impl DocModel {
                     DocProperty {
                         visibility: Some(member.visibility),
                         deprecated: member.deprecated,
+                        ..Default::default()
                     },
                 );
             }
@@ -262,6 +286,7 @@ impl DocModel {
                     DocProperty {
                         visibility: None,
                         deprecated: decl.deprecated,
+                        ..Default::default()
                     },
                 );
                 if matches!(decl.kind, DeclKind::Global) && main_file_ids.contains(&file_id) {
@@ -355,7 +380,8 @@ impl DocModel {
             let property = properties
                 .get(&DocOwner::Type(first.id.clone()))
                 .cloned()
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .with_text(type_def_text(&model, &first));
 
             let doc = DocType {
                 key: key.clone(),
@@ -401,7 +427,8 @@ impl DocModel {
                 property: properties
                     .get(&DocOwner::Decl(decl.id.clone()))
                     .cloned()
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .with_text(decl_text(&model, *file_id, decl)),
                 loc: make_loc(&model, &file_paths, *file_id, decl.name_range),
                 signature: decl
                     .value_expr_syntax
@@ -451,10 +478,22 @@ impl DocModel {
             owners.extend(table_owner(&export_type));
             let members = owned_members(&model, &owners, &member_by_id);
 
+            let text = match &export_owner {
+                Some(DocOwner::Decl(id)) => {
+                    let file_id = member_file_id(id);
+                    model
+                        .file_facts_of(file_id)
+                        .and_then(|facts| facts.decl_by_id(id))
+                        .map(|decl| decl_text(&model, file_id, decl))
+                        .unwrap_or_default()
+                }
+                _ => DocText::default(),
+            };
             let property = export_owner
                 .as_ref()
                 .and_then(|owner| properties.get(owner).cloned())
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .with_text(text);
             let module_name = module_name_by_file
                 .get(&source.file_id)
                 .cloned()
@@ -511,6 +550,7 @@ impl DocModel {
                     .map(|(name, ty)| DocFnParam {
                         name: name.clone(),
                         ty: ty.clone(),
+                        description: signature.and_then(|sig| sig.text.param_description(name)),
                     })
                     .collect::<Vec<_>>(),
                 expand_returns(func.get_ret()),
@@ -528,6 +568,7 @@ impl DocModel {
                 return Some(DocFunctionInfo {
                     params: Vec::new(),
                     returns: Vec::new(),
+                    return_docs: Vec::new(),
                     overloads: Vec::new(),
                     generics: Vec::new(),
                     is_async: false,
@@ -549,6 +590,9 @@ impl DocModel {
         Some(DocFunctionInfo {
             params,
             returns,
+            return_docs: signature
+                .map(|sig| sig.text.returns.clone())
+                .unwrap_or_default(),
             overloads: signature
                 .map(|sig| sig.overloads.clone())
                 .unwrap_or_default(),
@@ -734,7 +778,9 @@ fn project_member(
         property: DocProperty {
             visibility: Some(member.visibility),
             deprecated: member.deprecated,
-        },
+            ..Default::default()
+        }
+        .with_text(member_text(model, member)),
         loc: make_loc(model, file_paths, file_id, key_range),
         signature: signature.cloned(),
     }
@@ -750,11 +796,13 @@ fn member_file_id(id: &SemanticId) -> FileId {
 }
 
 fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSignature {
+    let text = signature_text(model, signature);
     let Some(docs) = signature.docs.as_deref() else {
         return DocSignature {
             overloads: Vec::new(),
             nodiscard: None,
             has_documented_returns: false,
+            text,
         };
     };
 
@@ -768,6 +816,7 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
             .collect(),
         nodiscard: docs.nodiscard.as_ref().map(|msg| msg.to_string()),
         has_documented_returns: !docs.returns.is_empty(),
+        text,
     }
 }
 
