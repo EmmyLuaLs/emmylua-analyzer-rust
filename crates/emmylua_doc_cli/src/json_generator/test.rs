@@ -408,3 +408,19 @@ fn object_alias_keeps_its_shape() {
         "{ [string]: string }"
     );
 }
+
+#[test]
+fn variadics_render_with_dots() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@param f fun(...)
+        ---@return any ...
+        function T.call(f) end
+        "#,
+    );
+    let call = member(find(&json, "globals", "T"), "call");
+    assert_eq!(names(&call["params"], "typ"), ["fun(...)"]);
+    assert_eq!(names(&call["returns"], "typ"), ["any..."]);
+}

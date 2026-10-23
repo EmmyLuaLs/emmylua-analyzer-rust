@@ -834,7 +834,8 @@ fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
         LuaType::Unknown => Vec::new(),
         LuaType::Variadic(variadic) => match variadic.as_ref() {
             VariadicType::Multi(types) => types.clone(),
-            VariadicType::Base(base) | VariadicType::Repeat(base) => vec![base.clone()],
+            // `---@return any ...` stays variadic: `any...`.
+            VariadicType::Base(_) | VariadicType::Repeat(_) => vec![ret.clone()],
         },
         _ => vec![ret.clone()],
     }
@@ -1019,8 +1020,10 @@ impl TypeTextRenderer<'_> {
             .get_params()
             .iter()
             .map(|(name, ty)| match ty {
-                Some(ty) => format!("{name}: {}", self.render(ty)),
-                None => name.clone(),
+                Some(ty) if !matches!(ty, LuaType::Unknown) => {
+                    format!("{name}: {}", self.render(ty))
+                }
+                _ => name.clone(),
             })
             .collect::<Vec<_>>()
             .join(", ");
