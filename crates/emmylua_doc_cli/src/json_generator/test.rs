@@ -424,3 +424,19 @@ fn variadics_render_with_dots() {
     assert_eq!(names(&call["params"], "typ"), ["fun(...)"]);
     assert_eq!(names(&call["returns"], "typ"), ["any..."]);
 }
+
+#[test]
+fn literal_param_and_return_types_stay_literal() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@param kind "erase"
+        ---@return "ok"
+        function T.f(kind) end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(names(&f["params"], "typ"), ["\"erase\""]);
+    assert_eq!(names(&f["returns"], "typ"), ["\"ok\""]);
+}

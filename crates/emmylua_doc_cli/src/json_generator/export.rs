@@ -190,10 +190,11 @@ fn export_function(
             .iter()
             .map(|param| FnParam {
                 name: Some(param.name.clone()),
+                // Params and returns are as annotated: a literal type stays literal (`"erase"`).
                 typ: param
                     .ty
                     .as_ref()
-                    .map(|ty| render_typ(model, ty, RenderLevel::Simple)),
+                    .map(|ty| model.render_type(ty, RenderLevel::Simple)),
                 desc: param.description.clone(),
             })
             .collect(),
@@ -205,7 +206,7 @@ fn export_function(
                 let doc = func.return_docs.get(index).cloned().unwrap_or_default();
                 FnParam {
                     name: doc.name,
-                    typ: Some(render_typ(model, ty, RenderLevel::Simple)),
+                    typ: Some(model.render_type(ty, RenderLevel::Simple)),
                     desc: doc.description,
                 }
             })
