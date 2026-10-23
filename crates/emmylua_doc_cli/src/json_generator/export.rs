@@ -71,13 +71,18 @@ fn export_globals(model: &DocModel) -> Vec<Global> {
                     loc,
                     members: export_members(model, &global.members),
                 }),
-                typ => Global::Field(GlobalField {
-                    name: global.name.clone(),
-                    property,
-                    loc,
-                    typ: render_typ(model, typ, RenderLevel::Simple),
-                    literal: render_const(typ),
-                }),
+                typ => match model.function_info(typ, global.signature.as_ref()) {
+                    Some(func) => {
+                        Global::Fn(export_function(model, &global.name, property, loc, func))
+                    }
+                    None => Global::Field(GlobalField {
+                        name: global.name.clone(),
+                        property,
+                        loc,
+                        typ: render_typ(model, typ, RenderLevel::Simple),
+                        literal: render_const(typ),
+                    }),
+                },
             }
         })
         .collect()

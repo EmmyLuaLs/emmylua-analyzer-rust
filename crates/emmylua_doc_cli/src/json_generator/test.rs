@@ -440,3 +440,20 @@ fn literal_param_and_return_types_stay_literal() {
     assert_eq!(names(&f["params"], "typ"), ["\"erase\""]);
     assert_eq!(names(&f["returns"], "typ"), ["\"ok\""]);
 }
+
+#[test]
+fn global_function_is_exported_as_a_function() {
+    let json = export_json(
+        r#"
+        ---Pings a unit.
+        ---@param unitID integer The unit.
+        ---@return boolean pinged Whether it was pinged.
+        function UnitSeismicPing(unitID) end
+        "#,
+    );
+    let ping = find(&json, "globals", "UnitSeismicPing");
+    assert_eq!(ping["type"], "fn");
+    assert_eq!(ping["description"], "Pings a unit.");
+    assert_eq!(names(&ping["params"], "desc"), ["The unit."]);
+    assert_eq!(names(&ping["returns"], "name"), ["pinged"]);
+}

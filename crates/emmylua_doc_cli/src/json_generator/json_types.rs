@@ -15,6 +15,7 @@ pub struct Index {
 pub enum Global {
     Table(GlobalTable),
     Field(GlobalField),
+    Fn(Fn),
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
