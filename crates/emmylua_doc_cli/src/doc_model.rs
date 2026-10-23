@@ -12,8 +12,8 @@ use std::rc::Rc;
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
-    LuaTypeDeclId, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel, Signature,
-    TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    LuaTypeDeclId, LuaUnionType, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel,
+    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType,
 };
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
@@ -878,12 +878,7 @@ impl TypeTextRenderer<'_> {
             LuaType::Ref(id) | LuaType::Def(id) => self.render_named(id),
             LuaType::Array(array) => format!("{}[]", self.render(array.get_base())),
             LuaType::Tuple(tuple) => self.render_tuple(tuple),
-            LuaType::Union(union) => union
-                .into_vec()
-                .iter()
-                .map(|ty| self.render(ty))
-                .collect::<Vec<_>>()
-                .join(" | "),
+            LuaType::Union(union) => self.render_union(union),
             LuaType::Intersection(intersection) => intersection
                 .get_types()
                 .iter()
@@ -963,6 +958,42 @@ impl TypeTextRenderer<'_> {
     /// it's mentioned.
     fn render_named(&mut self, id: &LuaTypeDeclId) -> String {
         self.model.type_name(id)
+    }
+
+    /// Like the language server's hover: `T?`, `(A|B)` and `(A|B)?`, named types first.
+    fn render_union(&mut self, union: &LuaUnionType) -> String {
+        let mut has_nil = false;
+        let mut has_function = false;
+        let mut seen = HashSet::new();
+        let mut parts = Vec::new();
+        for ty in union.into_vec() {
+            if ty.is_nil() {
+                has_nil = true;
+                continue;
+            }
+            has_function |= ty.is_function();
+            let text = self.render(&ty);
+            if seen.insert(text.clone()) {
+                parts.push((union_rank(&ty), text));
+            }
+        }
+        if parts.is_empty() {
+            return "nil".to_string();
+        }
+        parts.sort_by_key(|(rank, _)| *rank);
+        let needs_parens = parts.len() > 1 || (has_function && has_nil);
+        let mut text = parts
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect::<Vec<_>>()
+            .join("|");
+        if needs_parens {
+            text = format!("({text})");
+        }
+        if has_nil {
+            text.push('?');
+        }
+        text
     }
 
     fn render_tuple(&mut self, tuple: &LuaTupleType) -> String {
@@ -1078,6 +1109,26 @@ impl TypeTextRenderer<'_> {
             mapped.param.1.name,
             self.render(&mapped.value)
         )
+    }
+}
+
+/// Union member order, as in the language server's hover: named and structured types, then
+/// `true`, `false`, the rest.
+fn union_rank(ty: &LuaType) -> u8 {
+    match ty {
+        LuaType::Ref(_)
+        | LuaType::Def(_)
+        | LuaType::Generic(_)
+        | LuaType::TplRef(_)
+        | LuaType::StrTplRef(_)
+        | LuaType::Object(_)
+        | LuaType::Array(_)
+        | LuaType::TableGeneric(_)
+        | LuaType::DocFunction(_)
+        | LuaType::Call(_) => 0,
+        LuaType::BooleanConst(true) | LuaType::DocBooleanConst(true) => 1,
+        LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => 2,
+        _ => 3,
     }
 }
 

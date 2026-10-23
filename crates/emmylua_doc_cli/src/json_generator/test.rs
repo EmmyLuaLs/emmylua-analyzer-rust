@@ -359,3 +359,39 @@ fn alias_has_no_members_of_the_code_below_it() {
     );
     assert_eq!(find(&json, "types", "Id")["members"], json!([]));
 }
+
+#[test]
+fn unions_render_like_hover() {
+    let json = export_json(
+        r#"
+        ---@class Bar
+        ---@class Baz
+
+        ---@class Widget
+        ---@field optional number?
+        ---@field union Bar|Baz
+        ---@field optional_union (Bar|integer)?
+        ---@field result integer|false
+        "#,
+    );
+    let widget = find(&json, "types", "Widget");
+    assert_eq!(member(widget, "optional")["typ"], "number?");
+    assert_eq!(member(widget, "union")["typ"], "(Bar|Baz)");
+    assert_eq!(member(widget, "optional_union")["typ"], "(Bar|integer)?");
+    assert_eq!(member(widget, "result")["typ"], "(false|integer)");
+}
+
+#[test]
+fn enum_type_lists_values_in_declaration_order() {
+    let json = export_json(
+        r#"
+        ---@enum Target
+        Target = {
+            UNIT = 117,
+            FEATURE = 102,
+            PROJECTILE = 112,
+        }
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Target")["typ"], "(117|102|112)");
+}

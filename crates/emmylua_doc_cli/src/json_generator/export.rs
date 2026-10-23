@@ -113,16 +113,20 @@ fn export_alias(model: &DocModel, doc_type: &DocType) -> Alias {
 }
 
 fn export_enum(model: &DocModel, doc_type: &DocType) -> Enum {
-    let enum_typ = if doc_type.members.is_empty() {
-        None
-    } else {
-        let fields = doc_type
-            .members
-            .iter()
-            .map(|member| model.render_type(&member.ty, RenderLevel::Simple))
-            .collect::<Vec<_>>()
-            .join(" | ");
-        Some(fields)
+    // The values in declaration order, as a union.
+    let mut members: Vec<&DocMember> = doc_type.members.iter().collect();
+    members.sort_by_key(|member| member.loc.as_ref().map(|loc| (loc.file.clone(), loc.line)));
+    let mut values: Vec<String> = Vec::new();
+    for member in members {
+        let value = model.render_type(&member.ty, RenderLevel::Simple);
+        if !values.contains(&value) {
+            values.push(value);
+        }
+    }
+    let enum_typ = match values.len() {
+        0 => None,
+        1 => values.pop(),
+        _ => Some(format!("({})", values.join("|"))),
     };
 
     Enum {
