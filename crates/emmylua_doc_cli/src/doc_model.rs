@@ -400,7 +400,15 @@ impl DocModel {
                     })
                     .collect(),
                 alias_type: first.alias_type.map(|syntax| {
-                    model.doc_type_lua_in(first.file_id, syntax, &first.generic_params)
+                    let ty = model.doc_type_lua_in(first.file_id, syntax, &first.generic_params);
+                    // Object aliases (`{ [string]: string }`) lower to `table`; keep their shape.
+                    if matches!(ty, LuaType::Table | LuaType::Unknown) {
+                        let rich = model.doc_type_lua_rich_in(first.file_id, syntax);
+                        if !matches!(rich, LuaType::Unknown) {
+                            return rich;
+                        }
+                    }
+                    ty
                 }),
                 bases,
                 locations,

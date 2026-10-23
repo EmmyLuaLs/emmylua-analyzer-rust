@@ -395,3 +395,16 @@ fn enum_type_lists_values_in_declaration_order() {
     );
     assert_eq!(find(&json, "types", "Target")["typ"], "(117|102|112)");
 }
+
+#[test]
+fn object_alias_keeps_its_shape() {
+    let json = export_json(
+        r#"
+        ---@alias StyleProxy { [string]: string }
+        "#,
+    );
+    assert_eq!(
+        find(&json, "types", "StyleProxy")["typ"],
+        "{ [string]: string }"
+    );
+}
