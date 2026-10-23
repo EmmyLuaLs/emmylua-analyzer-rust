@@ -21,6 +21,25 @@ use super::infer::unify::TplBindings;
 use super::member::MemberInfo;
 use super::{CallSiteAnalysis, ResolvedMember};
 
+impl super::SemanticModel<'_> {
+    /// An unfinished semantic dependency cannot prove either outcome.
+    pub(crate) fn require_complete<T>(
+        &self,
+        query: impl FnOnce() -> T,
+    ) -> Result<T, super::type_check::TypeCheckFailReason> {
+        let revision = self.cache.borrow().revision();
+        let result = query();
+        let cache = self.cache.borrow();
+        if cache.evaluation_exhausted {
+            Err(super::type_check::TypeCheckFailReason::TooComplex)
+        } else if cache.is_complete(revision) {
+            Ok(result)
+        } else {
+            Err(super::type_check::TypeCheckFailReason::Unresolved)
+        }
+    }
+}
+
 /// Keep provisional memo entries while dependent queries still need them.
 /// Discard them at the outer query boundary so the next query can retry.
 #[must_use = "keep the scope alive until the query finishes"]
@@ -225,6 +244,10 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) call_site_signatures:
         HashMap<(FileId, LuaSyntaxId), Vec<(LuaFunctionType, TplBindings)>>,
     pub(crate) member_infos: HashMap<(FileId, LuaType), Vec<MemberInfo>>,
+    pub(crate) table_construction: HashMap<
+        crate::InFiled<rowan::TextRange>,
+        Option<Rc<super::table_construction::Construction>>,
+    >,
     pub(crate) members_of_owner: HashMap<SemanticId, MemberList>,
     pub(crate) members_of_owner_named: HashMap<(SemanticId, SmolStr), MemberList>,
     pub(crate) member_info: HashMap<(FileId, LuaType, LuaMemberKey), Option<MemberInfo>>,

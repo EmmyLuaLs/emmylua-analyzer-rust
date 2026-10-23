@@ -11,7 +11,7 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaCallExprStat,
     LuaElseIfClauseStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIfStat,
-    LuaIndexExpr, LuaLocalStat, LuaRepeatStat, LuaVarExpr, LuaWhileStat, UnaryOperator,
+    LuaIndexExpr, LuaLocalStat, LuaRepeatStat, LuaWhileStat, UnaryOperator,
 };
 
 use super::comment::bind_comment;
@@ -1017,6 +1017,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                                 key: key.clone(),
                                 member: member.clone(),
                                 value_syntax: value.get_syntax_id(),
+                                result_slot: (i + 1).saturating_sub(values.len()),
                             },
                         );
                     }
@@ -1054,10 +1055,27 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 }
             },
             Continuation::FuncDone { func_stat, current } => match func_stat.get_func_name() {
-                Some(LuaVarExpr::NameExpr(_)) => {
+                Some(var) => {
                     let func_kind = FlowNodeKind::ImplFunc(func_stat.to_ptr());
                     let flow_id = self.binder.create_node(func_kind);
                     self.binder.add_antecedent(flow_id, current);
+                    if let Some(closure) = func_stat.get_closure() {
+                        for (owner, key, member) in get_var_member_ids(self.binder, &[var])
+                            .into_iter()
+                            .flatten()
+                        {
+                            self.binder.add_effect(
+                                flow_id,
+                                FlowEffect::AssignMember {
+                                    owner,
+                                    key,
+                                    member,
+                                    value_syntax: closure.get_syntax_id(),
+                                    result_slot: 0,
+                                },
+                            );
+                        }
+                    }
                     Step::Done(flow_id)
                 }
                 _ => Step::Done(current),

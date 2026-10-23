@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use emmylua_parser::{LuaAstNode, LuaDocFieldKey, LuaDocTagField, LuaTableExpr, LuaTableField};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
@@ -40,6 +40,33 @@ pub struct MemberInfo {
 /// All members of a prefix type (completion candidates; deduplicated by key, with this class's `@field` before parent/runtime values).
 pub fn member_infos(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
     dedup_by_key(member_infos_all(model, prefix_type))
+}
+
+/// Declared class fields, without runtime values from a class initializer.
+pub(crate) fn class_field_infos(model: &SemanticModel, target: &LuaType) -> Vec<MemberInfo> {
+    let mut fields = Vec::new();
+    let mut seen = HashSet::new();
+    for mut info in member_infos_all(model, target) {
+        if let Some(id) = info.id.as_ref() {
+            let Some(member) = info
+                .file_id
+                .and_then(|file| model.file_facts_of(file))
+                .and_then(|facts| facts.member_by_id(id))
+            else {
+                continue;
+            };
+            if !matches!(member.owner, SemanticId::TypeDef(_)) {
+                continue;
+            }
+            if member.is_nullable && !info.typ.is_nullable() {
+                info.typ = LuaType::from_vec(vec![info.typ, LuaType::Nil]);
+            }
+        }
+        if seen.insert((info.key.clone(), info.index_key_type.clone())) {
+            fields.push(info);
+        }
+    }
+    fields
 }
 
 /// All inherited and substituted members, before choosing one declaration per key.
@@ -263,6 +290,14 @@ fn direct_member_info(
             )
         }
         LuaType::TableConst(table) => {
+            if let Some(construction) = super::table_construction::of(model, table)
+                && construction.has_local_binding()
+            {
+                return construction
+                    .members(&model.model_for(table.file_id), None, Some(key))
+                    .into_iter()
+                    .find(|info| info.index_key_type.is_none());
+            }
             let owner = SemanticId::member(table.file_id, table.value);
             if let Some(info) = find_member_in_owner(model, &owner, key, None, None) {
                 return Some(info);
@@ -697,6 +732,12 @@ fn collect_members(
         }
         // Anonymous table literal: field members of the synthesized owner (file, range).
         LuaType::TableConst(table) => {
+            if let Some(construction) = super::table_construction::of(model, table)
+                && construction.has_local_binding()
+            {
+                out.extend(construction.members(&model.model_for(table.file_id), None, filter));
+                return;
+            }
             let owner = SemanticId::member(table.file_id, table.value);
             for member_ref in owner_member_refs(model, &owner, filter) {
                 if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
@@ -749,14 +790,14 @@ fn collect_members(
                     },
                 );
             }
-            for (_key, ty) in object.get_index_access() {
+            for (key, ty) in object.get_index_access() {
                 push_member_info(
                     out,
                     filter,
                     MemberInfo {
                         key: LuaMemberKey::Name("[index]".into()),
                         typ: ty.clone(),
-                        index_key_type: None,
+                        index_key_type: Some(key.clone()),
                         id: None,
                         file_id: None,
                         is_method: false,

@@ -74,7 +74,7 @@ pub enum Instr {
         offset: rowan::TextSize,
     },
     /// Pop owner (and dynamic key, if any), then push the member value.
-    IndexMember(IndexKey),
+    IndexMember(IndexKey, LuaSyntaxId),
     /// Pop callee + n args -> call inference (unify and substitute return).
     Call {
         arg_count: usize,
@@ -125,7 +125,7 @@ impl Value {
 enum CTask {
     Expr(LuaExpr),
     AdjustToOne,
-    Index(IndexKey),
+    Index(IndexKey, LuaSyntaxId),
     Call {
         arg_count: usize,
         colon_call: bool,
@@ -156,7 +156,7 @@ pub fn compile(expr: LuaExpr, file_id: FileId, out: &mut Vec<Instr>) {
         match task {
             CTask::Expr(expr) => compile_expr(&expr, file_id, out, &mut stack),
             CTask::AdjustToOne => out.push(Instr::AdjustToOne),
-            CTask::Index(key) => out.push(Instr::IndexMember(key)),
+            CTask::Index(key, syntax) => out.push(Instr::IndexMember(key, syntax)),
             CTask::Call {
                 arg_count,
                 colon_call,
@@ -275,13 +275,19 @@ fn compile_expr(expr: &LuaExpr, file_id: FileId, out: &mut Vec<Instr>, stack: &m
             if let Some(prefix) = index_expr.get_prefix_expr() {
                 if let Some(LuaIndexKey::Expr(key_expr)) = index_key {
                     // Dynamic key: prefix, key, IndexMember(dynamic).
-                    stack.push(CTask::Index(IndexKey::Dynamic(key_expr.get_syntax_id())));
+                    stack.push(CTask::Index(
+                        IndexKey::Dynamic(key_expr.get_syntax_id()),
+                        index_expr.get_syntax_id(),
+                    ));
                     stack.push(CTask::Expr(key_expr));
                     stack.push(CTask::Expr(prefix));
                 } else {
                     // Preserve the unknown-member fallback for incomplete Lua syntax.
                     let key = key.unwrap_or_else(|| LuaMemberKey::Name(SmolStr::new("")));
-                    stack.push(CTask::Index(IndexKey::Static(key)));
+                    stack.push(CTask::Index(
+                        IndexKey::Static(key),
+                        index_expr.get_syntax_id(),
+                    ));
                     stack.push(CTask::Expr(prefix));
                 }
             } else {
@@ -480,44 +486,33 @@ impl<'a> InferVm<'a> {
                 let value = self.load_name(&name, offset);
                 self.stack.push(value);
             }
-            Instr::IndexMember(IndexKey::Dynamic(syntax)) => {
-                debug_assert!(
-                    self.stack.len() >= 2,
-                    "dynamic index needs an owner and key"
-                );
-                let mut key_value = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
-                let owner_value = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
-                // Query the key subtree, not the enclosing index. Results are cached
-                // by syntax/offset; ordinary inference also guards dependency cycles.
-                let flow_ty = self
-                    .model
-                    .type_of_expr_at(syntax, syntax.get_range().start());
-                // Nil and Never can be valid narrowing results, not inference failures.
-                // Casts can also widen types, so a subtype-only replacement is incorrect.
-                if !matches!(flow_ty, LuaType::Unknown | LuaType::Any) {
-                    key_value.ty = flow_ty;
-                }
-                key_value.ty = key_value.ty.get_result_slot_type(0).unwrap_or(LuaType::Nil);
-                let value = self.index_member_dynamic(owner_value, key_value);
+            Instr::IndexMember(key, syntax) => {
+                let key = match key {
+                    IndexKey::Dynamic(key_syntax) => {
+                        debug_assert!(
+                            self.stack.len() >= 2,
+                            "dynamic index needs an owner and key"
+                        );
+                        let mut key = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
+                        // Refine the key subtree, never the enclosing member read.
+                        let flow = self
+                            .model
+                            .type_of_expr_at(key_syntax, key_syntax.get_range().start());
+                        // Nil and Never are valid results; casts may also widen.
+                        if !matches!(flow, LuaType::Unknown | LuaType::Any) {
+                            key.ty = flow;
+                        }
+                        key.ty = key.ty.get_result_slot_type(0).unwrap_or(LuaType::Nil);
+                        key
+                    }
+                    IndexKey::Static(key) => {
+                        debug_assert!(!self.stack.is_empty(), "static index needs an owner");
+                        Value::plain(key.to_index_type().unwrap_or(LuaType::Unknown))
+                    }
+                };
+                let owner = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
+                let value = self.read_index(owner, key, syntax);
                 self.stack.push(value);
-            }
-            Instr::IndexMember(IndexKey::Static(key)) => {
-                debug_assert!(!self.stack.is_empty(), "static index needs an owner");
-                let owner_value = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
-                if let LuaMemberKey::Integer(_) = &key
-                    && let LuaType::Array(array) = &owner_value.ty
-                {
-                    let base = array.get_base().clone();
-                    let ty = if self.model.strict_array_index() {
-                        LuaType::from_vec(vec![base, LuaType::Nil])
-                    } else {
-                        base
-                    };
-                    self.stack.push(Value::plain(ty));
-                } else {
-                    let value = self.index_member(owner_value, &key);
-                    self.stack.push(value);
-                }
             }
             Instr::Call {
                 arg_count,
@@ -1028,6 +1023,53 @@ impl<'a> InferVm<'a> {
             );
         }
         None
+    }
+
+    fn read_index(&mut self, owner: Value, key: Value, syntax: LuaSyntaxId) -> Value {
+        let Some(construction) = crate::semantic_model::table_construction::access_with_types(
+            self.model,
+            syntax,
+            &owner.ty,
+            Some(key.ty.clone()),
+        ) else {
+            return self.index_member_dynamic(owner, key);
+        };
+        let mut ty = construction.read();
+        if let Some(index) = self
+            .model
+            .syntax_tree()
+            .and_then(|tree| syntax.to_node_from_root(&tree.get_red_root()))
+            .and_then(emmylua_parser::LuaIndexExpr::cast)
+        {
+            ty = crate::semantic_model::flow::index_read_type(
+                self.model,
+                &index,
+                index.get_position(),
+                ty,
+                Some(&construction),
+            );
+        }
+        // Keep the definition identity when flow selects a different function.
+        let member = if let LuaType::Signature(signature) = &ty {
+            self.model
+                .file_facts_of(signature.get_file_id())
+                .and_then(|facts| {
+                    facts
+                        .signature_by_position(signature.get_position())
+                        .and_then(|signature| {
+                            facts.member_by_value_syntax(signature.closure_syntax)
+                        })
+                })
+                .map(|member| member.id.clone())
+        } else {
+            None
+        };
+        Value {
+            ty,
+            owner: member.or_else(|| construction.member_id()),
+            closure_syntax: None,
+            receiver: Some(owner.ty),
+        }
     }
 
     fn index_member(&mut self, owner: Value, key: &LuaMemberKey) -> Value {
@@ -2686,6 +2728,11 @@ impl<'a> InferVm<'a> {
             );
         }
         let generic_tpls = self.generic_tpls_with_metadata(file_id, generic_params);
+        for (_, ty) in &mut params {
+            if let Some(ty) = ty {
+                *ty = bind_signature_generics(ty, &generic_tpls);
+            }
+        }
         ret = bind_signature_generics(&ret, &generic_tpls);
         let async_state = if docs.is_async {
             AsyncState::Async
@@ -4784,7 +4831,16 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .collect();
             LuaType::Object(Rc::new(LuaObjectType::new_with_fields(
                 fields,
-                object.get_index_access().to_vec(),
+                object
+                    .get_index_access()
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            bind_signature_generics(key, generics),
+                            bind_signature_generics(value, generics),
+                        )
+                    })
+                    .collect(),
             )))
         }
         LuaType::Union(union) => LuaType::Union(Rc::new(LuaUnionType::from_vec(

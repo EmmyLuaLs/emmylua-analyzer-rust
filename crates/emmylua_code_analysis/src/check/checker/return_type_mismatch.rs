@@ -8,7 +8,7 @@ use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaReturnStat};
 
 use crate::LuaType;
 use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_check::is_compatible;
+use crate::semantic_model::type_check::check_type_at;
 use crate::{DiagnosticCode, SemanticId, SignatureDoc, TypeDef};
 
 use super::{CheckContext, Checker};
@@ -84,7 +84,7 @@ fn check_return_stat(
         // Uninstantiated function generic argument `Ref("T")`: check against the constraint when present, otherwise skip.
         if is_unresolved_generic_ref(semantic_model, &raw, docs) {
             if let Some(constraint) = generic_constraint_type(semantic_model, &raw)
-                && !return_compatible(semantic_model, &constraint, expected)
+                && !return_compatible(semantic_model, &constraint, expected, expr.get_range())
             {
                 context.add_diagnostic(
                     DiagnosticCode::ReturnTypeMismatch,
@@ -101,7 +101,7 @@ fn check_return_stat(
         }
         let actual = generic_constraint_type(semantic_model, &raw).unwrap_or(raw);
         if matches!(actual, LuaType::Unknown | LuaType::Any | LuaType::Never)
-            || return_compatible(semantic_model, &actual, expected)
+            || return_compatible(semantic_model, &actual, expected, expr.get_range())
         {
             continue;
         }
@@ -126,18 +126,19 @@ fn return_compatible(
     semantic_model: &SemanticModel<'_>,
     source: &LuaType,
     target: &LuaType,
+    range: rowan::TextRange,
 ) -> bool {
     if source == target {
         return true;
     }
-    if is_compatible(semantic_model, source, target) {
+    if check_type_at(semantic_model, source, target, range, false).is_ok() {
         return true;
     }
     if let LuaType::Union(target_union) = target {
         return target_union
             .into_vec()
             .iter()
-            .any(|component| return_compatible(semantic_model, source, component));
+            .any(|component| return_compatible(semantic_model, source, component, range));
     }
     generic_extends_named(semantic_model, source, target)
 }

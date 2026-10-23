@@ -576,6 +576,22 @@ impl<'db> AnalysisView<'db> {
         self.project_shell(file_id, shell)
     }
 
+    /// Alias-aware outer alternatives, without semantic expression inference.
+    pub(crate) fn type_shell_heads(
+        &self,
+        file_id: FileId,
+        shell: &TypeShell,
+    ) -> Vec<query::TypeShellHead> {
+        query::type_shell_heads(self.db, file_id, shell)
+    }
+
+    pub(crate) fn type_shell_return_heads(
+        &self,
+        head: &query::TypeShellHead,
+    ) -> Vec<query::TypeShellHead> {
+        query::type_shell_return_heads(self.db, head)
+    }
+
     /// Projection (with function generic context: `Generic("T")` → `TplRef`).
     pub fn type_shell_lua_in(
         &self,
