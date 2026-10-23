@@ -389,6 +389,50 @@ mod test {
     }
 
     #[test]
+    fn test_optional_callback_type_guards() {
+        let mut ws = VirtualWorkspace::new();
+        for (body, safe) in [
+            (
+                "if type(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "if 'function' == type(props.bar) then props.bar() end",
+                true,
+            ),
+            ("if type(props.bar) ~= 'nil' then props.bar() end", true),
+            (
+                "if type(props.bar) ~= 'function' then return end; props.bar()",
+                true,
+            ),
+            (
+                "if type(props.bar) ~= 'function' then props.bar() end",
+                false,
+            ),
+            ("if type(props.bar) == 'nil' then props.bar() end", false),
+            (
+                "local function type() return 'function' end; if type(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::NeedCheckNil,
+                    &format!(
+                        r#"
+                        ---@type {{bar?: fun():string}}
+                        local props
+                        {body}
+                        "#
+                    ),
+                ),
+                safe,
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
     fn test_stacked_same_var_truthiness_guards_build_semantic_model() {
         let mut ws = VirtualWorkspace::new();
         let repeated_guards = "if not value then return end\n".repeat(STACKED_TYPE_GUARDS);

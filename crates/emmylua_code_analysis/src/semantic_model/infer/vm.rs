@@ -2686,6 +2686,11 @@ impl<'a> InferVm<'a> {
             );
         }
         let generic_tpls = self.generic_tpls_with_metadata(file_id, generic_params);
+        for (_, ty) in &mut params {
+            if let Some(ty) = ty {
+                *ty = bind_signature_generics(ty, &generic_tpls);
+            }
+        }
         ret = bind_signature_generics(&ret, &generic_tpls);
         let async_state = if docs.is_async {
             AsyncState::Async
@@ -4784,7 +4789,16 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .collect();
             LuaType::Object(Rc::new(LuaObjectType::new_with_fields(
                 fields,
-                object.get_index_access().to_vec(),
+                object
+                    .get_index_access()
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            bind_signature_generics(key, generics),
+                            bind_signature_generics(value, generics),
+                        )
+                    })
+                    .collect(),
             )))
         }
         LuaType::Union(union) => LuaType::Union(Rc::new(LuaUnionType::from_vec(

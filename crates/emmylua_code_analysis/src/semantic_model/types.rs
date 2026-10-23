@@ -1593,6 +1593,9 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
             _ => {}
         }
     }
+    if matches!(doc_type, LuaDocType::Object(_)) {
+        return model.doc_type_lua_rich_in(def.file_id, doc_type.get_syntax_id());
+    }
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
 }
 
