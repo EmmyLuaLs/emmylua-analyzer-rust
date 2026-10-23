@@ -787,17 +787,40 @@ fn narrow_index_condition(
         let (left, right) = binary.get_exprs()?;
         let (value, literal, op) =
             literal_comparison(left, right, binary.get_op_token()?.get_op())?;
-        if literal.is_nil()
-            && matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe)
-            && branch_is_true == (op == BinaryOperator::OpNe)
-            && stable_access_path_at(model, &value, access)
-                .or_else(|| index_access_path(model, &value))
-                .as_ref()
-                == Some(target)
-        {
-            return Some(Narrowing::NotNil);
+        if !matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe) {
+            return None;
         }
-        return None;
+        let keep_matching = branch_is_true == (op == BinaryOperator::OpEq);
+        let value = match literal {
+            LuaType::Nil if !keep_matching => value,
+            LuaType::StringConst(name) | LuaType::DocStringConst(name) => {
+                let primitive = primitive_type_from_name(name.as_str())?;
+                if keep_matching == primitive.is_nil() {
+                    return None;
+                }
+                let LuaExpr::CallExpr(call) = value else {
+                    return None;
+                };
+                let LuaExpr::NameExpr(callee) = call.get_prefix_expr()? else {
+                    return None;
+                };
+                if callee.get_name_text().as_deref() != Some("type")
+                    || matches!(
+                        model.resolve_name(callee.get_position()),
+                        Some(SemanticId::Decl(key)) if !model.is_std_file(key.file_id)
+                    )
+                {
+                    return None;
+                }
+                call.get_args_list()?.get_args().next()?
+            }
+            _ => return None,
+        };
+        return (stable_access_path_at(model, &value, access)
+            .or_else(|| index_access_path(model, &value))
+            .as_ref()
+            == Some(target))
+        .then_some(Narrowing::NotNil);
     }
     (branch_is_true
         && stable_access_path_at(model, &cond, access)
