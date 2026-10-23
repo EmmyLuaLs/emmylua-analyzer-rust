@@ -17,6 +17,11 @@ use crate::semantic_model::render::humanize_type;
 
 pub struct AssignTypeMismatchChecker;
 
+pub(super) struct TypeMismatch {
+    pub(super) range: rowan::TextRange,
+    pub(super) message: String,
+}
+
 impl Checker for AssignTypeMismatchChecker {
     const CODES: &[DiagnosticCode] = &[DiagnosticCode::AssignTypeMismatch];
 
@@ -32,7 +37,6 @@ impl Checker for AssignTypeMismatchChecker {
                 LuaAst::LuaTableExpr(table) => {
                     check_inline_table_fields(context, semantic_model, &table)
                 }
-                LuaAst::LuaCallExpr(call) => check_call_args(context, semantic_model, &call),
                 _ => {}
             }
         }
@@ -129,42 +133,6 @@ fn str_tpl_uses_name(ty: &LuaType, name: &str) -> bool {
             .iter()
             .any(|component| str_tpl_uses_name(component, name)),
         _ => false,
-    }
-}
-
-/// Table literals in call arguments: check each field against the callee parameter type (`f({ t = "" })`).
-fn check_call_args(
-    context: &mut CheckContext<'_>,
-    semantic_model: &SemanticModel<'_>,
-    call: &LuaCallExpr,
-) {
-    if call.get_prefix_expr().is_none() {
-        return;
-    }
-    let analysis = semantic_model.call_site_analysis(call);
-    let candidates = analysis.candidates;
-    if candidates.is_empty() {
-        return;
-    }
-    let Some(args) = call.get_args_list() else {
-        return;
-    };
-    for candidate in &candidates {
-        let params = candidate.get_params();
-        for (index, arg) in args.get_args().enumerate() {
-            let Some((_, Some(param_ty))) = params.get(index) else {
-                break;
-            };
-            if !matches!(arg, LuaExpr::TableExpr(_)) {
-                continue;
-            }
-            let LuaExpr::TableExpr(table) = arg else {
-                continue;
-            };
-            if is_structured_table_target(semantic_model, param_ty) {
-                check_table_fields(context, semantic_model, param_ty, &table);
-            }
-        }
     }
 }
 
@@ -489,6 +457,23 @@ fn check_value_against(
     target: &LuaType,
     value_expr: &LuaExpr,
 ) {
+    let mut mismatches = Vec::new();
+    collect_value_mismatches(&mut mismatches, semantic_model, target, value_expr);
+    for mismatch in mismatches {
+        context.add_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            mismatch.range,
+            mismatch.message,
+        );
+    }
+}
+
+fn collect_value_mismatches(
+    mismatches: &mut Vec<TypeMismatch>,
+    semantic_model: &SemanticModel<'_>,
+    target: &LuaType,
+    value_expr: &LuaExpr,
+) {
     if let LuaExpr::TableExpr(table) = value_expr {
         // Plain table target without a declared type: keep old behavior — don't check each field or report a type mismatch (same table identity).
         if matches!(
@@ -503,7 +488,7 @@ fn check_value_against(
             return;
         }
         if is_structured_table_target(semantic_model, target) {
-            check_table_fields(context, semantic_model, target, table);
+            collect_table_field_mismatches(mismatches, semantic_model, target, table);
         } else {
             let value_ty = semantic_model
                 .type_of_expr_at(value_expr.get_syntax_id(), value_expr.get_range().start());
@@ -517,7 +502,12 @@ fn check_value_against(
             {
                 return;
             }
-            add_mismatch(context, value_expr.get_range(), target, &value_ty);
+            mismatches.push(type_mismatch(
+                semantic_model,
+                value_expr.get_range(),
+                target,
+                &value_ty,
+            ));
         }
         return;
     }
@@ -527,7 +517,12 @@ fn check_value_against(
     {
         return;
     }
-    add_mismatch(context, value_expr.get_range(), target, &value_ty);
+    mismatches.push(type_mismatch(
+        semantic_model,
+        value_expr.get_range(),
+        target,
+        &value_ty,
+    ));
 }
 
 /// Assignment RHS type: when VM yields `Function`, if the RHS is a named function, resolve its cross-file signature structure.
@@ -575,8 +570,21 @@ fn resolve_unbound_generic(semantic_model: &SemanticModel<'_>, ty: LuaType) -> L
     ty
 }
 
-fn check_table_fields(
-    context: &mut CheckContext<'_>,
+/// Let argument checking collect field errors after it substitutes call generics.
+pub(super) fn table_field_mismatches(
+    semantic_model: &SemanticModel<'_>,
+    target: &LuaType,
+    table: &LuaTableExpr,
+) -> Vec<TypeMismatch> {
+    let mut mismatches = Vec::new();
+    if is_structured_table_target(semantic_model, target) {
+        collect_table_field_mismatches(&mut mismatches, semantic_model, target, table);
+    }
+    mismatches
+}
+
+fn collect_table_field_mismatches(
+    mismatches: &mut Vec<TypeMismatch>,
     semantic_model: &SemanticModel<'_>,
     target: &LuaType,
     table: &LuaTableExpr,
@@ -585,7 +593,7 @@ fn check_table_fields(
     if let LuaType::Union(union) = target {
         for component in union.into_vec().iter() {
             if is_structured_table_target(semantic_model, component) {
-                check_table_fields(context, semantic_model, component, table);
+                collect_table_field_mismatches(mismatches, semantic_model, component, table);
                 return;
             }
         }
@@ -597,7 +605,7 @@ fn check_table_fields(
             let Some(value_expr) = field.get_value_expr() else {
                 continue;
             };
-            check_table_value(context, semantic_model, &value_expr, expected);
+            collect_table_value_mismatches(mismatches, semantic_model, &value_expr, expected);
         }
         return;
     }
@@ -610,7 +618,7 @@ fn check_table_fields(
             let Some(value_expr) = field.get_value_expr() else {
                 continue;
             };
-            check_table_value(context, semantic_model, &value_expr, expected);
+            collect_table_value_mismatches(mismatches, semantic_model, &value_expr, expected);
         }
         return;
     }
@@ -625,14 +633,19 @@ fn check_table_fields(
                 .as_ref()
                 .and_then(|key| object.get_fields().get(key))
             {
-                check_table_value(context, semantic_model, &value_expr, expected);
+                collect_table_value_mismatches(mismatches, semantic_model, &value_expr, expected);
                 continue;
             }
             let key_ty = index_key_type(semantic_model, &key);
             if let Ok(infos) = semantic_model.applicable_index_infos(target, &key_ty)
                 && let Some(info) = infos.first()
             {
-                check_table_value(context, semantic_model, &value_expr, &info.value_type);
+                collect_table_value_mismatches(
+                    mismatches,
+                    semantic_model,
+                    &value_expr,
+                    &info.value_type,
+                );
             }
         }
         return;
@@ -645,7 +658,7 @@ fn check_table_fields(
         && let Some(alias_target) = semantic_model.alias_target(&def)
         && is_structured_table_target(semantic_model, &alias_target)
     {
-        check_table_fields(context, semantic_model, &alias_target, table);
+        collect_table_field_mismatches(mismatches, semantic_model, &alias_target, table);
         return;
     }
 
@@ -685,7 +698,7 @@ fn check_table_fields(
             let Some(value_expr) = field.get_value_expr() else {
                 continue;
             };
-            check_table_value(context, semantic_model, &value_expr, expected);
+            collect_table_value_mismatches(mismatches, semantic_model, &value_expr, expected);
             continue;
         }
         // Static member not found -> check against index signatures (`@field [integer] string`).
@@ -701,7 +714,7 @@ fn check_table_fields(
         let Some(value_expr) = field.get_value_expr() else {
             continue;
         };
-        check_table_value(context, semantic_model, &value_expr, expected);
+        collect_table_value_mismatches(mismatches, semantic_model, &value_expr, expected);
     }
     // Array-shaped table literal + integer index signature: required static members from class inheritance must still appear
     // (an Opts with `@field [integer] string` still requires the parent's `@field foo boolean`).
@@ -727,7 +740,12 @@ fn check_table_fields(
                         value_expr.get_syntax_id(),
                         value_expr.get_range().start(),
                     );
-                    add_mismatch(context, value_expr.get_range(), required_ty, &value_ty);
+                    mismatches.push(type_mismatch(
+                        semantic_model,
+                        value_expr.get_range(),
+                        required_ty,
+                        &value_ty,
+                    ));
                 }
                 break;
             }
@@ -735,14 +753,14 @@ fn check_table_fields(
     }
 }
 
-fn check_table_value(
-    context: &mut CheckContext<'_>,
+fn collect_table_value_mismatches(
+    mismatches: &mut Vec<TypeMismatch>,
     semantic_model: &SemanticModel<'_>,
     value_expr: &LuaExpr,
     expected: &LuaType,
 ) {
     if matches!(value_expr, LuaExpr::TableExpr(_)) {
-        check_value_against(context, semantic_model, expected, value_expr);
+        collect_value_mismatches(mismatches, semantic_model, expected, value_expr);
         return;
     }
     let value_ty =
@@ -754,7 +772,12 @@ fn check_table_value(
     {
         return;
     }
-    add_mismatch(context, value_expr.get_range(), expected, &value_ty);
+    mismatches.push(type_mismatch(
+        semantic_model,
+        value_expr.get_range(),
+        expected,
+        &value_ty,
+    ));
 }
 
 pub(super) fn index_key_type(semantic_model: &SemanticModel<'_>, key: &LuaIndexKey) -> LuaType {
@@ -865,22 +888,39 @@ fn add_mismatch(
     target: &LuaType,
     value_ty: &LuaType,
 ) {
-    let reason = match check_type_detail(context.semantic_model, value_ty, target) {
+    let mismatch = type_mismatch(context.semantic_model, range, target, value_ty);
+    context.add_diagnostic(
+        DiagnosticCode::AssignTypeMismatch,
+        mismatch.range,
+        mismatch.message,
+    );
+}
+
+fn type_mismatch(
+    semantic_model: &SemanticModel<'_>,
+    range: rowan::TextRange,
+    target: &LuaType,
+    value_ty: &LuaType,
+) -> TypeMismatch {
+    let reason = match check_type_detail(semantic_model, value_ty, target) {
         Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => Some(reason),
         _ => None,
     };
     let message = match reason {
         Some(reason) => t!(
             "expected `%{target}` but found `%{value}`.\n  %{reason}",
-            target = humanize_type(context.semantic_model, target),
-            value = humanize_type(context.semantic_model, value_ty),
+            target = humanize_type(semantic_model, target),
+            value = humanize_type(semantic_model, value_ty),
             reason = reason
         ),
         None => t!(
             "expected `%{target}` but found `%{value}`",
-            target = humanize_type(context.semantic_model, target),
-            value = humanize_type(context.semantic_model, value_ty)
+            target = humanize_type(semantic_model, target),
+            value = humanize_type(semantic_model, value_ty)
         ),
     };
-    context.add_diagnostic(DiagnosticCode::AssignTypeMismatch, range, message);
+    TypeMismatch {
+        range,
+        message: message.into_owned(),
+    }
 }

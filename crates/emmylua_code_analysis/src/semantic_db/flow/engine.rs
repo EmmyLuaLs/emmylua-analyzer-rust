@@ -1054,10 +1054,21 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 }
             },
             Continuation::FuncDone { func_stat, current } => match func_stat.get_func_name() {
-                Some(LuaVarExpr::NameExpr(_)) => {
+                Some(var @ LuaVarExpr::NameExpr(_)) => {
                     let func_kind = FlowNodeKind::ImplFunc(func_stat.to_ptr());
                     let flow_id = self.binder.create_node(func_kind);
                     self.binder.add_antecedent(flow_id, current);
+                    if let Some(Some(decl)) = get_var_decl_ids(self.binder, &[var]).first()
+                        && let Some(closure) = func_stat.get_closure()
+                    {
+                        self.binder.add_effect(
+                            flow_id,
+                            FlowEffect::AssignDecl {
+                                decl: decl.clone(),
+                                value_syntax: closure.get_syntax_id(),
+                            },
+                        );
+                    }
                     Step::Done(flow_id)
                 }
                 _ => Step::Done(current),

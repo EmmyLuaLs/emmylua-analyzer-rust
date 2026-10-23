@@ -430,6 +430,8 @@ impl<'db> SemanticModel<'db> {
             {
                 ty = expected_param_ty;
             }
+            // Rich object projection keeps names; restore the function's generic scope.
+            ty = infer::vm::bind_signature_generics(&ty, &generic_params);
             ty = type_eval::expand_alias_generic(self, &ty);
             // Do not evaluate conditional types here: before function generics are substituted, `T extends ...` would incorrectly take the false branch.
             // Call sites/diagnostics should call `eval_conditionals` after bindings are substituted.
@@ -939,6 +941,8 @@ impl<'db> SemanticModel<'db> {
                     })
                 })
                 .unwrap_or(LuaType::Any);
+            // Rich object projection keeps names; restore the function's generic scope.
+            ty = infer::vm::bind_signature_generics(&ty, &generic_params);
             ty = type_eval::expand_alias_generic(self, &ty);
             // See `type_of_signature`: do not evaluate conditional types before function generics are substituted.
             if nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {

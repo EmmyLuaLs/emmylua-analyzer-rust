@@ -1,4 +1,4 @@
-use crate::{DiagnosticCode, test_lib::VirtualWorkspace};
+use crate::{DiagnosticCode, LuaType, test_lib::VirtualWorkspace};
 use lsp_types::NumberOrString;
 use tokio_util::sync::CancellationToken;
 
@@ -48,7 +48,104 @@ fn check_contract_in(ws: &mut VirtualWorkspace, code: &str) -> Vec<String> {
 
 fn assert_contract(code: &str) {
     let failures = check_contract(code);
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert!(failures.is_empty(), "{code}\n{}", failures.join("\n"));
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: function assignments lose declared call contracts"]
+fn declared_function_contracts_survive_all_call_forms() {
+    for annotation in [
+        "fun(value: number): number",
+        "Callback",
+        "Callback|nil",
+        "TypedCallback<number>",
+    ] {
+        for definition in [
+            "local accept = function(value) return value end",
+            "local accept; accept = function(value) return value end",
+            "local accept; function accept(value) return value end",
+        ] {
+            assert_contract(&format!(
+                r#"
+                ---@alias Callback fun(value: number): number
+                ---@alias TypedCallback<T> fun(value: T): T
+                ---@type {annotation}
+                {definition}
+                local alias = accept
+                accept(1);
+                (accept)(1);
+                alias(1)
+                pcall(accept, 1)
+                accept('text'); -- Error: the declared parameter is a number.
+                (accept)('text'); -- Error: parentheses preserve the contract.
+                alias('text') -- Error: aliases preserve the contract.
+                pcall(accept, 'text') -- Error: protected calls preserve the contract.
+                ---@type string
+                local text = alias(1) -- Error: the declared return is a number.
+                "#,
+            ));
+        }
+    }
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: function assignments lose declared call contracts"]
+fn implementation_docs_do_not_replace_declared_call_returns() {
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    ws.def(
+        r#"
+        ---@type fun(value: number): number
+        ---@param value number
+        local make = function(value) return 'text' end
+        DirectResult = make(1)
+        local alias = make
+        AliasResult = alias(1)
+        local _, result = pcall(make, 1)
+        ProtectedResult = result
+        "#,
+    );
+    for result in ["DirectResult", "AliasResult"] {
+        assert_eq!(ws.expr_ty(result), LuaType::Number, "{result}");
+    }
+    // A protected call can also return the error message.
+    let expected = ws.ty("number|string");
+    assert_eq!(ws.expr_ty("ProtectedResult"), expected);
+}
+
+#[test]
+fn function_assignments_keep_all_declared_overloads() {
+    assert_contract(
+        r#"
+        ---@type (fun(value: number): number) | (fun(value: string): string)
+        local accept
+        function accept(value) return value end
+        local alias = accept
+        alias(1)
+        alias('text')
+        pcall(accept, 'text')
+        alias(false) -- Error: neither overload accepts a boolean.
+        pcall(accept, false) -- Error: neither overload accepts a boolean.
+        ---@type string
+        local text = alias(1) -- Error: this overload returns a number.
+        "#,
+    );
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: function assignments lose declared call contracts"]
+fn nullable_function_contracts_still_follow_nil_assignments() {
+    assert_contract(
+        r#"
+        ---@type (fun(value: number): number)?
+        local accept
+        function accept(value) return value end
+        local alias = accept
+        accept = nil
+        alias(1)
+        alias('text') -- Error: a saved function keeps its contract.
+        accept(1) -- Error: the current value is nil.
+        "#,
+    );
 }
 
 #[test]
