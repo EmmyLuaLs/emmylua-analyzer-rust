@@ -11,9 +11,10 @@ use std::rc::Rc;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
-    LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel,
-    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType, union_member_rank,
+    LuaGenericType, LuaMappedType, LuaMemberKey, LuaMultiLineUnion, LuaObjectType, LuaTupleType,
+    LuaType, LuaTypeDeclId, LuaUnionType, Member, ModuleExport, RenderLevel, SemanticId,
+    SemanticModel, Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    union_member_rank,
 };
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
@@ -89,6 +90,19 @@ pub struct DocProperty {
     pub deprecation_reason: Option<String>,
     /// `(tag name, content)` for `@see` and unknown tags.
     pub tags: Vec<(String, String)>,
+}
+
+impl DocType {
+    /// An alias's type for display: a multi-line union, with its options' descriptions, if it was
+    /// written as one.
+    pub fn alias_display_type(&self) -> Option<LuaType> {
+        if self.variants.is_empty() {
+            return self.alias_type.clone();
+        }
+        Some(LuaType::MultiLineUnion(Rc::new(LuaMultiLineUnion::new(
+            self.variants.clone(),
+        ))))
+    }
 }
 
 impl DocProperty {
