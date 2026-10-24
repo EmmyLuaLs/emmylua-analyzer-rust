@@ -7,6 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
@@ -107,6 +108,8 @@ pub struct DocFnParam {
 pub struct DocSignature {
     pub overloads: Vec<LuaType>,
     pub nodiscard: Option<String>,
+    /// Has `---@return` tags, so an `unknown` return is documented, not just missing.
+    pub has_documented_returns: bool,
 }
 
 /// Directly renderable function view (prefers the type's own `DocFunction`, then fills in signature details).
@@ -127,7 +130,6 @@ pub struct DocMember {
     pub name: String,
     pub ty: LuaType,
     pub property: DocProperty,
-    pub is_method: bool,
     pub loc: Option<DocLoc>,
     pub signature: Option<DocSignature>,
 }
@@ -136,7 +138,6 @@ pub struct DocMember {
 pub struct DocType {
     /// Type key used by the facade projection (matches the id in `LuaType::Ref/Def`).
     pub key: DocTypeKey,
-    pub def_ids: Vec<SemanticId>,
     pub name: String,
     pub full_name: String,
     pub kind: DocTypeKind,
@@ -156,6 +157,7 @@ pub struct DocModule {
     pub usings: Vec<String>,
     pub export_type: LuaType,
     pub property: DocProperty,
+    pub members: Vec<DocMember>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +167,7 @@ pub struct DocGlobal {
     pub property: DocProperty,
     pub loc: Option<DocLoc>,
     pub signature: Option<DocSignature>,
+    pub members: Vec<DocMember>,
 }
 
 pub struct DocModel {
@@ -196,7 +199,9 @@ impl DocModel {
         let mut all_type_defs: Vec<TypeDef> = Vec::new();
         #[allow(clippy::type_complexity)]
         let mut member_sources: HashMap<SemanticId, Vec<(FileId, Member)>> = HashMap::new();
-        let mut signature_sources: HashMap<LuaSyntaxId, (FileId, Signature)> = HashMap::new();
+        // Keyed by file too: a syntax id is only a kind and a range, so closures in different files
+        // can share one.
+        let mut signature_sources: HashMap<(FileId, LuaSyntaxId), Signature> = HashMap::new();
         let mut global_sources: Vec<(FileId, Decl)> = Vec::new();
         let mut module_sources: Vec<ModuleSource> = Vec::new();
         let mut properties: HashMap<DocOwner, DocProperty> = HashMap::new();
@@ -248,7 +253,7 @@ impl DocModel {
             }
 
             for signature in &facts.signatures {
-                signature_sources.insert(signature.closure_syntax, (file_id, signature.clone()));
+                signature_sources.insert((file_id, signature.closure_syntax), signature.clone());
             }
 
             for decl in &facts.decls {
@@ -275,11 +280,11 @@ impl DocModel {
         }
 
         // Project signatures.
-        let mut signatures: HashMap<LuaSyntaxId, DocSignature> = HashMap::new();
-        for (syntax, (file_id, signature)) in &signature_sources {
+        let mut signatures: HashMap<(FileId, LuaSyntaxId), DocSignature> = HashMap::new();
+        for (key, signature) in &signature_sources {
             signatures.insert(
-                *syntax,
-                project_signature(&SemanticModel::new(db, *file_id), signature),
+                *key,
+                project_signature(&SemanticModel::new(db, key.0), signature),
             );
         }
 
@@ -294,8 +299,7 @@ impl DocModel {
                 let model = SemanticModel::new(db, *file_id);
                 let signature = member
                     .value_syntax
-                    .as_ref()
-                    .and_then(|syntax| signatures.get(syntax));
+                    .and_then(|syntax| signatures.get(&(*file_id, syntax)));
                 let doc = project_member(&model, member, &file_paths, signature);
                 member_by_id.insert(member.id.clone(), doc.clone());
                 members_by_owner.entry(owner.clone()).or_default().push(doc);
@@ -314,18 +318,31 @@ impl DocModel {
                 TypeDefKind::Enum => DocTypeKind::Enum,
                 TypeDefKind::Alias => DocTypeKind::Alias,
             };
-            let mut members: Vec<DocMember> = Vec::new();
-            let mut seen_members = HashSet::new();
-            for def in &defs {
-                if let Some(list) = members_by_owner.get(&def.id) {
-                    for member in list {
-                        if seen_members.insert(member.name.clone()) {
-                            members.push(member.clone());
-                        }
-                    }
-                }
-            }
-            members.sort_by(|a, b| a.name.cmp(&b.name));
+            let owners: Vec<SemanticId> = defs.iter().map(|def| def.id.clone()).collect();
+            let members = if matches!(kind, DocTypeKind::Alias) {
+                // An alias has no runtime value: the statement after its comment isn't its table.
+                let mut seen = HashSet::new();
+                let mut members: Vec<DocMember> = owners
+                    .iter()
+                    .flat_map(|owner| {
+                        model
+                            .members_of_owner(owner)
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|member| seen.insert(member.id.clone()))
+                    .filter_map(|member| member_by_id.get(&member.id).cloned())
+                    .collect();
+                members.sort_by(|a, b| a.name.cmp(&b.name));
+                members
+            } else {
+                // The runtime value can also be a member (`---@class M.Sub` on `M.Sub = {}`), whose
+                // functions are owned by the dotted name.
+                let mut owners = owners;
+                owners.push(SemanticId::name(first.full_name.clone()));
+                owned_members(&model, &owners, &member_by_id)
+            };
 
             let mut bases = model.base_types(&first.type_decl_id());
             bases.dedup();
@@ -342,7 +359,6 @@ impl DocModel {
 
             let doc = DocType {
                 key: key.clone(),
-                def_ids: defs.iter().map(|def| def.id.clone()).collect(),
                 name: first.name.to_string(),
                 full_name: first.full_name.to_string(),
                 kind,
@@ -377,6 +393,9 @@ impl DocModel {
             let model = SemanticModel::new(db, *file_id);
 
             let ty = model.type_of_decl(&decl.id).unwrap_or(LuaType::Unknown);
+            let mut owners = vec![decl.id.clone(), SemanticId::name(decl.name.clone())];
+            owners.extend(table_owner(&ty));
+            let members = owned_members(&model, &owners, &member_by_id);
             globals.push(DocGlobal {
                 name: decl.name.to_string(),
                 property: properties
@@ -386,8 +405,9 @@ impl DocModel {
                 loc: make_loc(&model, &file_paths, *file_id, decl.name_range),
                 signature: decl
                     .value_expr_syntax
-                    .and_then(|syntax| signatures.get(&syntax).cloned()),
+                    .and_then(|syntax| signatures.get(&(*file_id, syntax)).cloned()),
                 ty,
+                members,
             });
         }
         globals.sort_by(|a, b| a.name.cmp(&b.name));
@@ -424,6 +444,12 @@ impl DocModel {
             let Some((export_type, export_owner)) = export else {
                 continue;
             };
+            let mut owners: Vec<SemanticId> = Vec::new();
+            if let Some(DocOwner::Decl(decl)) = &export_owner {
+                owners.push(decl.clone());
+            }
+            owners.extend(table_owner(&export_type));
+            let members = owned_members(&model, &owners, &member_by_id);
 
             let property = export_owner
                 .as_ref()
@@ -444,6 +470,7 @@ impl DocModel {
                 usings: source.usings,
                 export_type,
                 property,
+                members,
             });
         }
         modules.sort_by(|a, b| a.name.cmp(&b.name));
@@ -467,48 +494,8 @@ impl DocModel {
             .unwrap_or_else(|| key.to_lua_id().get_name().to_string())
     }
 
-    pub fn type_by_key(&self, key: &DocTypeKey) -> Option<&DocType> {
-        self.types_by_key
-            .get(key)
-            .and_then(|idx| self.types.get(*idx))
-    }
-
     pub fn module_name(&self, file_id: FileId) -> Option<&str> {
         self.module_name_by_file.get(&file_id).map(|s| s.as_str())
-    }
-
-    /// Returns the members owned by a value type (class members / table literal members).
-    pub fn members_of_type(&self, ty: &LuaType) -> Vec<DocMember> {
-        let mut owners: Vec<SemanticId> = Vec::new();
-        match ty {
-            LuaType::Ref(id) | LuaType::Def(id) => {
-                if let Some(doc_type) = self.type_by_key(&DocTypeKey::from_lua_id(id)) {
-                    owners.extend(doc_type.def_ids.iter().cloned());
-                }
-            }
-            LuaType::TableConst(table) => {
-                owners.push(SemanticId::member(table.file_id, table.value));
-            }
-            LuaType::Instance(instance) => {
-                let range = instance.get_range();
-                owners.push(SemanticId::member(range.file_id, range.value));
-            }
-            _ => {}
-        }
-
-        let mut seen = HashSet::new();
-        let mut members = Vec::new();
-        for owner in owners {
-            if let Some(list) = self.members_by_owner.get(&owner) {
-                for member in list {
-                    if seen.insert(member.name.clone()) {
-                        members.push(member.clone());
-                    }
-                }
-            }
-        }
-        members.sort_by(|a, b| a.name.cmp(&b.name));
-        members
     }
 
     /// Function view: uses the type's own params/returns, and signature facts fill overload/async/method/nodiscard.
@@ -552,6 +539,13 @@ impl DocModel {
             _ => return None,
         };
 
+        // `---@return unknown` is a documented return, unlike a function with no `@return`.
+        let returns =
+            if returns.is_empty() && signature.is_some_and(|sig| sig.has_documented_returns) {
+                vec![LuaType::Unknown]
+            } else {
+                returns
+            };
         Some(DocFunctionInfo {
             params,
             returns,
@@ -566,12 +560,11 @@ impl DocModel {
         })
     }
 
-    pub fn render_type(&self, ty: &LuaType, level: RenderLevel) -> String {
+    /// Type text. Every level renders the same: named types by name, the rest in full.
+    pub fn render_type(&self, ty: &LuaType, _level: RenderLevel) -> String {
         let mut renderer = TypeTextRenderer {
             model: self,
-            level,
             depth: 0,
-            visited: HashSet::new(),
         };
         renderer.render(ty)
     }
@@ -582,6 +575,79 @@ struct ModuleSource {
     module_export: ModuleExport,
     namespace: Option<String>,
     usings: Vec<String>,
+}
+
+/// The table literal that owns a value's constructor fields, if the value is one.
+fn table_owner(ty: &LuaType) -> Option<SemanticId> {
+    match ty {
+        LuaType::TableConst(table) => Some(SemanticId::member(table.file_id, table.value)),
+        LuaType::Instance(instance) => {
+            let range = instance.get_range();
+            Some(SemanticId::member(range.file_id, range.value))
+        }
+        _ => None,
+    }
+}
+
+/// Own members of a value (not inherited), from every identity it's known by: a type, its runtime
+/// table, a global name or a local (`function M.f()` is owned by the name, not the table literal).
+fn owned_members(
+    model: &SemanticModel<'_>,
+    owners: &[SemanticId],
+    member_by_id: &HashMap<SemanticId, DocMember>,
+) -> Vec<DocMember> {
+    let mut seen = HashSet::new();
+    let mut members = Vec::new();
+    for owner in owners {
+        for resolved in model.resolve_owner_set(owner.clone()) {
+            let associated = decl_owners(model, &resolved);
+            for owner in std::iter::once(resolved).chain(associated) {
+                for member in model.members_of_owner(&owner).iter() {
+                    if let Some(doc) = member_by_id.get(&member.id)
+                        && seen.insert(member.id.clone())
+                    {
+                        members.push(doc.clone());
+                    }
+                }
+            }
+        }
+    }
+    members.sort_by(|a, b| a.name.cmp(&b.name));
+    members
+}
+
+/// Other owners of a declaration's or member's members, which an `@enum` or `@class` on it doesn't
+/// resolve to: its initializer table (`X = { ... }` owns the constructor fields), and for a global
+/// its name (`function x.f()` is owned by `x`, even under `---@class X`).
+fn decl_owners(model: &SemanticModel<'_>, id: &SemanticId) -> Vec<SemanticId> {
+    let mut owners = Vec::new();
+    match id {
+        SemanticId::Decl(key) => {
+            let Some(decl) = model
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.decl_by_id(id))
+            else {
+                return owners;
+            };
+            if let Some(value) = decl.value_expr_syntax {
+                owners.push(SemanticId::member(key.file_id, value.get_range()));
+            }
+            if matches!(decl.kind, DeclKind::Global) {
+                owners.push(SemanticId::name(decl.name.clone()));
+            }
+        }
+        SemanticId::Member(key) => {
+            let value = model
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.member_by_id(id))
+                .and_then(|member| member.value_syntax);
+            if let Some(value) = value {
+                owners.push(SemanticId::member(key.file_id, value.get_range()));
+            }
+        }
+        _ => {}
+    }
+    owners
 }
 
 fn slot0(ty: LuaType) -> LuaType {
@@ -637,7 +703,21 @@ fn project_member(
     signature: Option<&DocSignature>,
 ) -> DocMember {
     let file_id = member_file_id(&member.id);
-    let ty = model.type_of_member(&member.id).unwrap_or(LuaType::Unknown);
+    // A `---@type` naming a type (`---@type Callback`) keeps the name, which has its own docs.
+    let named_type = member
+        .doc_type_syntax
+        .map(|syntax| model.doc_type_lua_in(file_id, syntax, &[]))
+        .filter(|ty| matches!(ty, LuaType::Ref(_) | LuaType::Def(_)));
+    // A runtime function's member type is just `function`; its signature has the params and returns.
+    let ty = named_type
+        .or_else(|| {
+            member
+                .value_syntax
+                .and_then(|syntax| model.type_of_signature(syntax))
+                .map(|func| LuaType::DocFunction(Rc::new(func)))
+        })
+        .or_else(|| model.type_of_member(&member.id))
+        .unwrap_or(LuaType::Unknown);
     let key_range = member.id.member_key_range().unwrap_or_else(|| {
         member
             .value_syntax
@@ -655,7 +735,6 @@ fn project_member(
             visibility: Some(member.visibility),
             deprecated: member.deprecated,
         },
-        is_method: member.is_method,
         loc: make_loc(model, file_paths, file_id, key_range),
         signature: signature.cloned(),
     }
@@ -675,6 +754,7 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
         return DocSignature {
             overloads: Vec::new(),
             nodiscard: None,
+            has_documented_returns: false,
         };
     };
 
@@ -687,11 +767,14 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
             .map(|syntax| model.doc_type_lua_in(file_id, *syntax, &generics))
             .collect(),
         nodiscard: docs.nodiscard.as_ref().map(|msg| msg.to_string()),
+        has_documented_returns: !docs.returns.is_empty(),
     }
 }
 
 fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
     match ret {
+        // Nothing documented or inferred: no returns, rather than one `unknown`.
+        LuaType::Unknown => Vec::new(),
         LuaType::Variadic(variadic) => match variadic.as_ref() {
             VariadicType::Multi(types) => types.clone(),
             VariadicType::Base(base) | VariadicType::Repeat(base) => vec![base.clone()],
@@ -704,9 +787,7 @@ fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
 
 struct TypeTextRenderer<'a> {
     model: &'a DocModel,
-    level: RenderLevel,
     depth: u8,
-    visited: HashSet<DocTypeKey>,
 }
 
 impl TypeTextRenderer<'_> {
@@ -829,40 +910,10 @@ impl TypeTextRenderer<'_> {
         }
     }
 
+    /// A named type renders as its name; inlining its members would print a whole class wherever
+    /// it's mentioned.
     fn render_named(&mut self, id: &LuaTypeDeclId) -> String {
-        let name = self.model.type_name(id);
-        let key = DocTypeKey::from_lua_id(id);
-        let expand = matches!(
-            self.level,
-            RenderLevel::Documentation | RenderLevel::Detailed
-        ) && self.visited.insert(key.clone());
-        if !expand {
-            return name;
-        }
-
-        let Some(doc_type) = self.model.type_by_key(&key) else {
-            self.visited.remove(&key);
-            return name;
-        };
-        if doc_type.members.is_empty() {
-            self.visited.remove(&key);
-            return name;
-        }
-
-        let parts = doc_type
-            .members
-            .iter()
-            .map(|member| {
-                let key = if member.is_method {
-                    format!("fun {}", member.name)
-                } else {
-                    member.name.clone()
-                };
-                format!("{key}: {}", self.render(&member.ty))
-            })
-            .collect::<Vec<_>>();
-        self.visited.remove(&key);
-        format!("{name}{{ {} }}", parts.join(", "))
+        self.model.type_name(id)
     }
 
     fn render_tuple(&mut self, tuple: &LuaTupleType) -> String {
