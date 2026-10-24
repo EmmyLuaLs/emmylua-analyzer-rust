@@ -10,7 +10,7 @@ use emmylua_parser::{
 use crate::DiagnosticCode;
 use crate::semantic_db::def::{SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_eval::expand_alias_branches;
+use crate::semantic_model::type_eval::{expand_alias_branches, expand_alias_generic};
 use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType};
 
 use super::assign_type_mismatch::signature_matches_key;
@@ -199,6 +199,19 @@ fn expand_alias_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option
     }
 }
 
+/// Instantiates a generic alias (`Partial<T>`); `None` for anything else or when it does not expand.
+fn expand_generic_alias(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaType> {
+    let LuaType::Generic(generic) = ty else {
+        return None;
+    };
+    let def = semantic_model.type_def_of(&generic.get_base_type_id())?;
+    if def.kind != TypeDefKind::Alias {
+        return None;
+    }
+    let expanded = expand_alias_generic(semantic_model, ty);
+    (&expanded != ty).then_some(expanded)
+}
+
 /// Static table key -> `LuaMemberKey` (dynamic keys are not checked).
 pub(super) fn static_member_key(
     semantic_model: &SemanticModel<'_>,
@@ -286,6 +299,14 @@ fn collect_object_super_fields(
             out.entry(key).or_insert(ty);
         }
     }
+    // `---@class Sub: Partial<T>`: a generic alias parent contributes its instantiated fields.
+    for base in semantic_model.base_types(&def.type_decl_id()) {
+        if let Some(LuaType::Object(object)) = expand_generic_alias(semantic_model, &base) {
+            for (key, ty) in object.get_fields() {
+                out.entry(key.clone()).or_insert_with(|| ty.clone());
+            }
+        }
+    }
 }
 
 /// Whether the alias target is a mapped type.
@@ -358,6 +379,11 @@ fn check_against_type(
     // Expand aliases before checking table literals against them. This makes alias-to-object,
     // alias-to-class and alias-to-unknown behave like their target types.
     if let Some(expanded) = expand_alias_type(semantic_model, target) {
+        check_against_type(context, semantic_model, &expanded, table);
+        return;
+    }
+    // A generic alias (`Partial<Linter>`) is checked as its instantiation (an `Object`).
+    if let Some(expanded) = expand_generic_alias(semantic_model, target) {
         check_against_type(context, semantic_model, &expanded, table);
         return;
     }
