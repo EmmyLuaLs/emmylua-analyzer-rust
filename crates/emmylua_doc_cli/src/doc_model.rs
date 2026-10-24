@@ -108,6 +108,8 @@ pub struct DocFnParam {
 pub struct DocSignature {
     pub overloads: Vec<LuaType>,
     pub nodiscard: Option<String>,
+    /// Has `---@return` tags, so an `unknown` return is documented, not just missing.
+    pub has_documented_returns: bool,
 }
 
 /// Directly renderable function view (prefers the type's own `DocFunction`, then fills in signature details).
@@ -537,6 +539,13 @@ impl DocModel {
             _ => return None,
         };
 
+        // `---@return unknown` is a documented return, unlike a function with no `@return`.
+        let returns =
+            if returns.is_empty() && signature.is_some_and(|sig| sig.has_documented_returns) {
+                vec![LuaType::Unknown]
+            } else {
+                returns
+            };
         Some(DocFunctionInfo {
             params,
             returns,
@@ -737,6 +746,7 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
         return DocSignature {
             overloads: Vec::new(),
             nodiscard: None,
+            has_documented_returns: false,
         };
     };
 
@@ -749,6 +759,7 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
             .map(|syntax| model.doc_type_lua_in(file_id, *syntax, &generics))
             .collect(),
         nodiscard: docs.nodiscard.as_ref().map(|msg| msg.to_string()),
+        has_documented_returns: !docs.returns.is_empty(),
     }
 }
 

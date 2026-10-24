@@ -191,6 +191,20 @@ fn module_has_functions_declared_on_its_export() {
 }
 
 #[test]
+fn documented_unknown_return_is_kept() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@return unknown
+        function T.f() end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(names(&f["returns"], "typ"), ["unknown"]);
+}
+
+#[test]
 fn function_without_returns_has_none() {
     let json = export_json(
         r#"
