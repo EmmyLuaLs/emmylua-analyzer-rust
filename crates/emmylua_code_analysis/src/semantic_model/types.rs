@@ -61,6 +61,23 @@ impl<'db> SemanticModel<'db> {
         LuaType::Ref(def.type_decl_id())
     }
 
+    /// The `---@class` or `---@enum` on the assignment statement that defines a member.
+    pub(crate) fn member_class_def(&self, file_id: FileId, member: &SemanticId) -> Option<TypeDef> {
+        let facts = self.file_facts_of(file_id)?;
+        let value_syntax = facts.member_by_id(member)?.value_syntax?;
+        let tree = self.syntax_tree_of(file_id)?;
+        let value = value_syntax.to_node_from_root(&tree.get_red_root())?;
+        // The value itself must be assigned: a field in `M.Foo = { x = 1 }` is not the class table.
+        let stat = emmylua_parser::LuaStat::cast(value.parent()?)?;
+        let emmylua_parser::LuaStat::AssignStat(_) = stat else {
+            return None;
+        };
+        facts
+            .type_def_by_owner_syntax(stat.get_syntax_id())
+            .filter(|def| matches!(def.kind, TypeDefKind::Class | TypeDefKind::Enum))
+            .cloned()
+    }
+
     /// All definition locations of a named type (used by duplicate-type checks).
     pub fn type_def_locations(&self, name: &str) -> Vec<TypeDef> {
         self.analysis()
@@ -836,6 +853,10 @@ impl<'db> SemanticModel<'db> {
         // Literal integers in `---@enum` table fields stay constant (`severity.ERROR` -> IntegerConst(1)).
         if let Some(enum_const) = self.enum_member_const(member_file, member) {
             return Some(enum_const);
+        }
+        // `---@class Foo` / `---@enum Foo` + `M.Foo = {}`: as for a declaration, the assigned table is the class table.
+        if let Some(def) = self.member_class_def(member_file, member) {
+            return Some(self.type_def_ref(&def));
         }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
