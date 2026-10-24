@@ -23,10 +23,9 @@ fn export_modules(model: &DocModel) -> Vec<Module> {
         .iter()
         .map(|module| {
             let (members, typ) = match &module.export_type {
-                LuaType::TableConst(_) | LuaType::Instance(_) => (
-                    export_members(model, &model.members_of_type(&module.export_type)),
-                    None,
-                ),
+                LuaType::TableConst(_) | LuaType::Instance(_) => {
+                    (export_members(model, &module.members), None)
+                }
                 typ => (
                     Vec::new(),
                     Some(render_typ(model, typ, RenderLevel::Simple)),
@@ -70,15 +69,20 @@ fn export_globals(model: &DocModel) -> Vec<Global> {
                     name: global.name.clone(),
                     property,
                     loc,
-                    members: export_members(model, &model.members_of_type(&global.ty)),
+                    members: export_members(model, &global.members),
                 }),
-                typ => Global::Field(GlobalField {
-                    name: global.name.clone(),
-                    property,
-                    loc,
-                    typ: render_typ(model, typ, RenderLevel::Simple),
-                    literal: render_const(typ),
-                }),
+                typ => match model.function_info(typ, global.signature.as_ref()) {
+                    Some(func) => {
+                        Global::Fn(export_function(model, &global.name, property, loc, func))
+                    }
+                    None => Global::Field(GlobalField {
+                        name: global.name.clone(),
+                        property,
+                        loc,
+                        typ: render_typ(model, typ, RenderLevel::Simple),
+                        literal: render_const(typ),
+                    }),
+                },
             }
         })
         .collect()
@@ -110,20 +114,34 @@ fn export_alias(model: &DocModel, doc_type: &DocType) -> Alias {
             .map(|typ| render_typ(model, typ, RenderLevel::Documentation)),
         generics: export_generics(model, &doc_type.generics),
         members: export_members(model, &doc_type.members),
+        variants: (!doc_type.variants.is_empty()).then(|| {
+            doc_type
+                .variants
+                .iter()
+                .map(|(ty, desc)| AliasVariant {
+                    typ: model.render_type(ty, RenderLevel::Simple),
+                    desc: desc.clone(),
+                })
+                .collect()
+        }),
     }
 }
 
 fn export_enum(model: &DocModel, doc_type: &DocType) -> Enum {
-    let enum_typ = if doc_type.members.is_empty() {
-        None
-    } else {
-        let fields = doc_type
-            .members
-            .iter()
-            .map(|member| model.render_type(&member.ty, RenderLevel::Simple))
-            .collect::<Vec<_>>()
-            .join(" | ");
-        Some(fields)
+    // The values in declaration order, as a union.
+    let mut members: Vec<&DocMember> = doc_type.members.iter().collect();
+    members.sort_by_key(|member| member.loc.as_ref().map(|loc| (loc.file.clone(), loc.line)));
+    let mut values: Vec<String> = Vec::new();
+    for member in members {
+        let value = model.render_type(&member.ty, RenderLevel::Simple);
+        if !values.contains(&value) {
+            values.push(value);
+        }
+    }
+    let enum_typ = match values.len() {
+        0 => None,
+        1 => values.pop(),
+        _ => Some(format!("({})", values.join("|"))),
     };
 
     Enum {
@@ -187,20 +205,25 @@ fn export_function(
             .iter()
             .map(|param| FnParam {
                 name: Some(param.name.clone()),
+                // Params and returns are as annotated: a literal type stays literal (`"erase"`).
                 typ: param
                     .ty
                     .as_ref()
-                    .map(|ty| render_typ(model, ty, RenderLevel::Simple)),
-                desc: None,
+                    .map(|ty| model.render_type(ty, RenderLevel::Simple)),
+                desc: param.description.clone(),
             })
             .collect(),
         returns: func
             .returns
             .iter()
-            .map(|ty| FnParam {
-                name: None,
-                typ: Some(render_typ(model, ty, RenderLevel::Simple)),
-                desc: None,
+            .enumerate()
+            .map(|(index, ty)| {
+                let doc = func.return_docs.get(index).cloned().unwrap_or_default();
+                FnParam {
+                    name: doc.name,
+                    typ: Some(model.render_type(ty, RenderLevel::Simple)),
+                    desc: doc.description,
+                }
             })
             .collect(),
         overloads: func
@@ -233,14 +256,23 @@ fn export_field(
 
 fn property_json(property: &DocProperty) -> Property {
     Property {
-        description: None,
+        description: property.description.clone(),
         visibility: match property.visibility {
             Some(VisibilityKind::Public) | None => None,
             Some(visibility) => Some(visibility.to_str().unwrap_or_default().to_string()),
         },
         deprecated: property.deprecated,
-        deprecation_reason: None,
-        tag_content: None,
+        deprecation_reason: property.deprecation_reason.clone(),
+        tag_content: (!property.tags.is_empty()).then(|| {
+            property
+                .tags
+                .iter()
+                .map(|(tag_name, content)| TagNameContent {
+                    tag_name: tag_name.clone(),
+                    content: content.clone(),
+                })
+                .collect()
+        }),
     }
 }
 

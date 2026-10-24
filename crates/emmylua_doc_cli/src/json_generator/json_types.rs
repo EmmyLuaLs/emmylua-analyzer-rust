@@ -15,6 +15,7 @@ pub struct Index {
 pub enum Global {
     Table(GlobalTable),
     Field(GlobalField),
+    Fn(Fn),
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -87,6 +88,14 @@ pub struct Alias {
     pub typ: Option<String>,
     pub generics: Vec<TypeVar>,
     pub members: Vec<Member>,
+    /// The options of a multi-line union (`---| 0 # Invalid`), with their descriptions.
+    pub variants: Option<Vec<AliasVariant>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct AliasVariant {
+    pub typ: String,
+    pub desc: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

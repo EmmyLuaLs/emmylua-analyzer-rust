@@ -75,7 +75,7 @@ fn build_alias_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
     }
     doc.set_property(collect_property(&doc_type.property));
 
-    if let Some(origin_typ) = &doc_type.alias_type {
+    if let Some(origin_typ) = &doc_type.alias_display_type() {
         let is_union = matches!(origin_typ, LuaType::Union(_) | LuaType::MultiLineUnion(_));
         let style = if is_union {
             html_type::TypeStyle::Multiline
@@ -102,7 +102,7 @@ pub fn build_module_doc(ctx: &GenContext, module: &DocModule) -> Option<HtmlDoc>
     };
     doc.set_property(collect_property(&module.property));
 
-    let members = ctx.model.members_of_type(&module.export_type);
+    let members = module.members.clone();
     let (methods, fields) = collect_members(ctx, &members, "M");
     doc.methods = methods;
     doc.fields = fields;
@@ -121,7 +121,7 @@ pub fn build_global_doc(ctx: &GenContext, global: &DocGlobal) -> Option<HtmlDoc>
 
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
-            let members = ctx.model.members_of_type(&global.ty);
+            let members = global.members.clone();
             let (methods, fields) = collect_members(ctx, &members, &name);
             doc.methods = methods;
             doc.fields = fields;
@@ -249,4 +249,43 @@ pub fn collect_members(
     }
 
     (methods, fields)
+}
+
+#[cfg(test)]
+mod tests {
+    use emmylua_code_analysis::VirtualWorkspace;
+
+    use super::{GenContext, build_alias_doc};
+    use crate::doc_model::DocModel;
+    use crate::html_generator::types::HtmlDoc;
+
+    #[test]
+    fn multi_line_union_alias_shows_its_options() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias EventPhase
+            ---| 0 # None
+            ---| 1 # Capture
+            "#,
+        );
+        let model = DocModel::build(&ws.analysis);
+        let phase = model
+            .types
+            .iter()
+            .find(|ty| ty.name == "EventPhase")
+            .expect("alias");
+        let ctx = GenContext {
+            model: &model,
+            linker: &|_| None,
+        };
+        let mut doc = HtmlDoc {
+            name: "EventPhase".to_string(),
+            ..Default::default()
+        };
+        build_alias_doc(&ctx, phase, &mut doc);
+        let display = doc.display.expect("display");
+        assert!(display.contains("# None"), "{display}");
+        assert!(display.contains("# Capture"), "{display}");
+    }
 }

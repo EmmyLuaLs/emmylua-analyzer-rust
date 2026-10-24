@@ -1,0 +1,481 @@
+use emmylua_code_analysis::VirtualWorkspace;
+use serde_json::{Value, json};
+
+use crate::doc_model::DocModel;
+use crate::json_generator::export::export;
+
+/// The JSON export of a single Lua file.
+fn export_json(code: &str) -> Value {
+    export_files(&[code])
+}
+
+/// The JSON export of several Lua files.
+fn export_files(files: &[&str]) -> Value {
+    let mut ws = VirtualWorkspace::new();
+    for code in files {
+        ws.def(code);
+    }
+    let model = DocModel::build(&ws.analysis);
+    serde_json::to_value(export(&model, ws.analysis.emmyrc.clone())).expect("export serializes")
+}
+
+fn find<'a>(json: &'a Value, section: &str, name: &str) -> &'a Value {
+    json[section]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["name"] == name))
+        .unwrap_or_else(|| panic!("no {name} in {section}: {json:#}"))
+}
+
+fn member<'a>(owner: &'a Value, name: &str) -> &'a Value {
+    owner["members"]
+        .as_array()
+        .and_then(|members| members.iter().find(|member| member["name"] == name))
+        .unwrap_or_else(|| panic!("no member {name}: {owner:#}"))
+}
+
+fn names(values: &Value, key: &str) -> Vec<Value> {
+    values
+        .as_array()
+        .map(|values| values.iter().map(|value| value[key].clone()).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn global_table_has_functions_declared_on_it() {
+    let json = export_json(
+        r#"
+        SomeTable = {}
+
+        ---@param x integer
+        ---@return string
+        function SomeTable.Foo(x) end
+        "#,
+    );
+    let foo = member(find(&json, "globals", "SomeTable"), "Foo");
+    assert_eq!(foo["type"], "fn");
+    assert_eq!(names(&foo["params"], "name"), ["x"]);
+    assert_eq!(names(&foo["params"], "typ"), ["integer"]);
+    assert_eq!(names(&foo["returns"], "typ"), ["string"]);
+}
+
+#[test]
+fn class_has_methods_declared_on_its_table() {
+    let json = export_json(
+        r#"
+        ---@class Car
+        ---@field maxSpeed number
+        local Car = {}
+
+        ---@param speed number
+        function Car:drive(speed) end
+        "#,
+    );
+    let car = find(&json, "types", "Car");
+    assert_eq!(names(&car["members"], "name"), ["drive", "maxSpeed"]);
+    let drive = member(car, "drive");
+    assert_eq!(drive["type"], "fn");
+    assert_eq!(drive["is_meth"], true);
+    assert_eq!(names(&drive["params"], "typ"), ["number"]);
+}
+
+#[test]
+fn class_has_functions_declared_on_a_differently_named_global() {
+    let json = export_json(
+        r#"
+        ---@class Widget
+        widget = {}
+
+        ---@param b integer
+        function widget.Foo(b) end
+        "#,
+    );
+    let foo = member(find(&json, "types", "Widget"), "Foo");
+    assert_eq!(names(&foo["params"], "typ"), ["integer"]);
+}
+
+#[test]
+fn namespaced_class_has_its_members() {
+    let json = export_json(
+        r#"
+        Ns = {}
+
+        ---@class Ns.Point
+        Ns.Point = {
+            ---@type number
+            x = 0,
+        }
+
+        ---@param dx number
+        function Ns.Point:move(dx) end
+        "#,
+    );
+    let point = find(&json, "types", "Ns.Point");
+    assert_eq!(names(&point["members"], "name"), ["move", "x"]);
+}
+
+#[test]
+fn every_definition_of_a_function_is_exported() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@param a integer
+        function T.f(a) end
+
+        ---@param a string
+        ---@param b string
+        function T.f(a, b) end
+        "#,
+    );
+    let t = find(&json, "globals", "T");
+    let params: Vec<_> = t["members"]
+        .as_array()
+        .map(|members| {
+            members
+                .iter()
+                .map(|f| names(&f["params"], "name"))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(params, [vec!["a"], vec!["a", "b"]]);
+}
+
+#[test]
+fn functions_at_the_same_place_in_different_files_keep_their_own_overloads() {
+    let json = export_files(&[
+        "A = {}
+---@overload fun(x: string)
+function A.f(x) end
+",
+        "B = {}
+---@overload fun(y: number)
+function B.f(y) end
+",
+    ]);
+    let a = member(find(&json, "globals", "A"), "f");
+    let b = member(find(&json, "globals", "B"), "f");
+    assert_eq!(a["overloads"], serde_json::json!(["fun(x: string)"]));
+    assert_eq!(b["overloads"], serde_json::json!(["fun(y: number)"]));
+}
+
+#[test]
+fn enum_has_its_table_constructor_entries() {
+    let json = export_json(
+        r#"
+        ---@enum Numbers
+        Numbers = {
+            ONE = 1,
+            TWO = 2,
+        }
+        "#,
+    );
+    let numbers = find(&json, "types", "Numbers");
+    assert_eq!(names(&numbers["members"], "name"), ["ONE", "TWO"]);
+}
+
+#[test]
+fn module_has_functions_declared_on_its_export() {
+    let json = export_json(
+        r#"
+        local M = {}
+
+        ---@param a string
+        function M.greet(a) end
+
+        return M
+        "#,
+    );
+    let module = &json["modules"][0];
+    let greet = member(module, "greet");
+    assert_eq!(names(&greet["params"], "typ"), ["string"]);
+}
+
+#[test]
+fn function_member_typed_with_a_named_type_keeps_the_name() {
+    let json = export_json(
+        r#"
+        ---@alias Callback fun(unitID: integer): boolean
+
+        T = {}
+
+        ---@type Callback
+        T.onUnit = function(unitID) end
+        "#,
+    );
+    let on_unit = member(find(&json, "globals", "T"), "onUnit");
+    assert_eq!(on_unit["type"], "field");
+    assert_eq!(on_unit["typ"], "Callback");
+}
+
+#[test]
+fn documented_unknown_return_is_kept() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@return unknown
+        function T.f() end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(names(&f["returns"], "typ"), ["unknown"]);
+}
+
+#[test]
+fn function_without_returns_has_none() {
+    let json = export_json(
+        r#"
+        T = {}
+        function T.f() end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(f["returns"], Value::Array(Vec::new()));
+}
+
+#[test]
+fn types_have_descriptions() {
+    let json = export_json(
+        r#"
+        ---A car.
+        ---@class Car
+        ---@field speed number How fast it goes.
+        local Car = {}
+
+        ---@enum Numbers These are numbers.
+        Numbers = {
+            ---Five.
+            FIVE = 5,
+        }
+
+        ---@class Undocumented
+        "#,
+    );
+    let car = find(&json, "types", "Car");
+    assert_eq!(car["description"], "A car.");
+    assert_eq!(member(car, "speed")["description"], "How fast it goes.");
+    let numbers = find(&json, "types", "Numbers");
+    assert_eq!(numbers["description"], "These are numbers.");
+    assert_eq!(member(numbers, "FIVE")["description"], "Five.");
+    assert_eq!(find(&json, "types", "Undocumented")["description"], "");
+}
+
+#[test]
+fn functions_have_descriptions() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---Does things.
+        ---
+        ---More detail.
+        ---@param x integer The x.
+        ---@param ... string The rest.
+        ---@return string name The name.
+        ---@return boolean
+        function T.f(x, ...) end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(f["description"], "Does things.\n\nMore detail.");
+    assert_eq!(names(&f["params"], "desc"), ["The x.", "The rest."]);
+    assert_eq!(names(&f["returns"], "name"), [json!("name"), Value::Null]);
+    assert_eq!(
+        names(&f["returns"], "desc"),
+        [json!("The name."), Value::Null]
+    );
+}
+
+#[test]
+fn table_fields_have_descriptions_deprecation_and_tags() {
+    let json = export_json(
+        r#"
+        ---The table.
+        ---@see Other
+        T = {
+            ---This is foo.
+            ---@type integer
+            foo = nil,
+            bar = 1, ---@type number The bar.
+            ---@deprecated Use foo.
+            old = 1,
+            ---@x_helper
+            helper = 1,
+        }
+        "#,
+    );
+    let t = find(&json, "globals", "T");
+    assert_eq!(t["description"], "The table.");
+    assert_eq!(
+        t["tag_content"],
+        json!([{"tag_name": "see", "content": "Other"}])
+    );
+    assert_eq!(member(t, "foo")["description"], "This is foo.");
+    assert_eq!(member(t, "bar")["description"], "The bar.");
+    let old = member(t, "old");
+    assert_eq!(old["deprecated"], true);
+    assert_eq!(old["deprecation_reason"], "Use foo.");
+    assert_eq!(
+        member(t, "helper")["tag_content"],
+        json!([{"tag_name": "x_helper", "content": ""}])
+    );
+}
+
+#[test]
+fn a_comment_defining_a_type_documents_the_type_not_its_variable() {
+    let json = export_json(
+        r#"
+        ---The widget.
+        ---@class Widget
+        widget = {}
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Widget")["description"], "The widget.");
+    assert_eq!(find(&json, "globals", "widget")["description"], Value::Null);
+}
+
+#[test]
+fn types_refer_to_classes_by_name() {
+    let json = export_json(
+        r#"
+        ---@class Element
+        ---@field id string
+
+        ---@alias Elements Element[]
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Elements")["typ"], "Element[]");
+}
+
+#[test]
+fn alias_has_no_members_of_the_code_below_it() {
+    let json = export_json(
+        r#"
+        ---@alias Id integer
+        T = {}
+
+        function T.f() end
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Id")["members"], json!([]));
+}
+
+#[test]
+fn unions_render_like_hover() {
+    let json = export_json(
+        r#"
+        ---@class Bar
+        ---@class Baz
+
+        ---@class Widget
+        ---@field optional number?
+        ---@field union Bar|Baz
+        ---@field optional_union (Bar|integer)?
+        ---@field result integer|false
+        "#,
+    );
+    let widget = find(&json, "types", "Widget");
+    assert_eq!(member(widget, "optional")["typ"], "number?");
+    assert_eq!(member(widget, "union")["typ"], "(Bar|Baz)");
+    assert_eq!(member(widget, "optional_union")["typ"], "(Bar|integer)?");
+    assert_eq!(member(widget, "result")["typ"], "(false|integer)");
+}
+
+#[test]
+fn enum_type_lists_values_in_declaration_order() {
+    let json = export_json(
+        r#"
+        ---@enum Target
+        Target = {
+            UNIT = 117,
+            FEATURE = 102,
+            PROJECTILE = 112,
+        }
+        "#,
+    );
+    assert_eq!(find(&json, "types", "Target")["typ"], "(117|102|112)");
+}
+
+#[test]
+fn object_alias_keeps_its_shape() {
+    let json = export_json(
+        r#"
+        ---@alias StyleProxy { [string]: string }
+        "#,
+    );
+    assert_eq!(
+        find(&json, "types", "StyleProxy")["typ"],
+        "{ [string]: string }"
+    );
+}
+
+#[test]
+fn variadics_render_with_dots() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@param f fun(...)
+        ---@return any ...
+        function T.call(f) end
+        "#,
+    );
+    let call = member(find(&json, "globals", "T"), "call");
+    assert_eq!(names(&call["params"], "typ"), ["fun(...)"]);
+    assert_eq!(names(&call["returns"], "typ"), ["any..."]);
+}
+
+#[test]
+fn literal_param_and_return_types_stay_literal() {
+    let json = export_json(
+        r#"
+        T = {}
+
+        ---@param kind "erase"
+        ---@return "ok"
+        function T.f(kind) end
+        "#,
+    );
+    let f = member(find(&json, "globals", "T"), "f");
+    assert_eq!(names(&f["params"], "typ"), ["\"erase\""]);
+    assert_eq!(names(&f["returns"], "typ"), ["\"ok\""]);
+}
+
+#[test]
+fn global_function_is_exported_as_a_function() {
+    let json = export_json(
+        r#"
+        ---Pings a unit.
+        ---@param unitID integer The unit.
+        ---@return boolean pinged Whether it was pinged.
+        function UnitSeismicPing(unitID) end
+        "#,
+    );
+    let ping = find(&json, "globals", "UnitSeismicPing");
+    assert_eq!(ping["type"], "fn");
+    assert_eq!(ping["description"], "Pings a unit.");
+    assert_eq!(names(&ping["params"], "desc"), ["The unit."]);
+    assert_eq!(names(&ping["returns"], "name"), ["pinged"]);
+}
+
+#[test]
+fn multi_line_union_alias_has_its_option_descriptions() {
+    let json = export_json(
+        r#"
+        ---@alias EventPhase
+        ---| 0 # None
+        ---| 1 # Capture
+        ---| "bubble"
+        "#,
+    );
+    let phase = find(&json, "types", "EventPhase");
+    assert_eq!(
+        phase["variants"],
+        json!([
+            {"typ": "0", "desc": "None"},
+            {"typ": "1", "desc": "Capture"},
+            {"typ": "\"bubble\"", "desc": null},
+        ])
+    );
+    assert_eq!(find(&json, "types", "EventPhase")["members"], json!([]));
+}
