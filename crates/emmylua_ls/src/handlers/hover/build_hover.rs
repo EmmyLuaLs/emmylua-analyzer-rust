@@ -53,7 +53,10 @@ pub fn build_semantic_info_hover(
     token: LuaSyntaxToken,
     range: TextRange,
 ) -> Option<Hover> {
-    let info = model.semantic_info(token.clone().into())?;
+    let mut info = model.semantic_info(token.clone().into())?;
+    if info.decl.is_none() {
+        info.decl = union_member_at_token(model, &token);
+    }
     let member_call_typ = if matches!(info.decl, Some(SemanticId::Member(_))) {
         let in_call = token
             .parent_ancestors()
@@ -546,6 +549,23 @@ fn table_context_type_for_expr(
 /// Whether the member access (`x.foo` / `x:foo`) containing the current token is applied to an
 /// instantiated generic prefix (`local c ---@type MyTable<int>` -> `c.aaa`), in which case the member
 /// type must be projected through the prefix's generic arguments.
+/// Member declaration for `x.key` whose prefix is a union (`P?`, `P|Q`).
+///
+/// `resolve_member` leaves union prefixes to flow narrowing, so the access has no declaration
+/// of its own; hover still shows the field's signature and docs, like `P.key` does.
+fn union_member_at_token(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> Option<SemanticId> {
+    let index_expr = LuaIndexExpr::cast(token.parent()?)?;
+    if index_expr.get_index_name_token().as_ref() != Some(token) {
+        return None;
+    }
+    let prefix_ty = model.type_of_expr(index_expr.get_prefix_expr()?.get_syntax_id());
+    if !matches!(prefix_ty, LuaType::Union(_)) {
+        return None;
+    }
+    let key = LuaMemberKey::Name(token.text().into());
+    model.member_info(&prefix_ty, &key)?.id
+}
+
 fn member_prefix_is_generic_instance(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> bool {
     let Some(index_expr) = token.parent_ancestors().find_map(LuaIndexExpr::cast) else {
         return false;
