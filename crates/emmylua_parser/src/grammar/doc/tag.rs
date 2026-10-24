@@ -381,12 +381,17 @@ fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
 
     parse_type(p)?;
 
-    if_token_bump(p, LuaTokenKind::TkName);
+    // A name on the next line is the start of a description, not this return's name.
+    if !p.current_token_starts_line() {
+        if_token_bump(p, LuaTokenKind::TkName);
+    }
 
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
         parse_type(p)?;
-        if_token_bump(p, LuaTokenKind::TkName);
+        if !p.current_token_starts_line() {
+            if_token_bump(p, LuaTokenKind::TkName);
+        }
     }
 
     p.set_lexer_state(LuaDocLexerState::Description);

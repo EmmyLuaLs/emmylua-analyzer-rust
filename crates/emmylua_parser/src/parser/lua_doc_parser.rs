@@ -190,6 +190,15 @@ impl<'b> LuaDocParser<'_, 'b> {
         self.current_token_range
     }
 
+    /// Whether a line break separates the current token from the previous one (the doc parser skips
+    /// line breaks and `---` continuations so that a type can span lines).
+    pub fn current_token_starts_line(&self) -> bool {
+        let before = &self.origin_text()[..self.current_token_range.start_offset];
+        before
+            .trim_end_matches([' ', '\t', '-'])
+            .ends_with(['\n', '\r'])
+    }
+
     pub fn current_token_text(&self) -> &'b str {
         let range = self.current_token_range;
         &self.origin_text()[range.start_offset..range.end_offset()]
