@@ -912,4 +912,61 @@ mod tests {
         ));
         Ok(())
     }
+
+    /// #1321: a field read through a union (`P?`, `P|nil`, `P|Q`) hovers like a direct field.
+    #[gtest]
+    fn test_hover_field_through_union() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let prelude = r#"
+                ---@class P
+                ---@field x boolean doc of P.x
+
+                ---@class Q
+                ---@field y boolean doc of Q.y
+
+                ---@type P?
+                local opt = {}
+                ---@type P|nil
+                local pnil = {}
+                ---@type P|Q
+                local pq = {}
+        "#;
+        let x = "```lua\n(field) x: boolean\n```\n\n---\n\ndoc of P.x".to_string();
+        let y = "```lua\n(field) y: boolean\n```\n\n---\n\ndoc of Q.y".to_string();
+        for (access, expected) in [
+            ("print(opt.<??>x)", &x),
+            ("print(pnil.<??>x)", &x),
+            ("print(pq.<??>x)", &x),
+            ("print(pq.<??>y)", &y),
+        ] {
+            check!(ws.check_hover(
+                &format!("{prelude}\n{access}"),
+                VirtualHoverResult {
+                    value: expected.clone(),
+                },
+            ));
+        }
+        Ok(())
+    }
+
+    /// #1321: an optional parameter's fields hover with their docs.
+    #[gtest]
+    fn test_hover_field_through_optional_param() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class P
+                ---@field x boolean doc of P.x
+
+                ---@param opts? P
+                local function f(opts)
+                    print(opts.<??>x)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) x: boolean\n```\n\n---\n\ndoc of P.x".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
