@@ -11,6 +11,13 @@ impl Checker for UnusedChecker {
     const CODES: &[DiagnosticCode] = &[DiagnosticCode::Unused];
 
     fn check(context: &mut CheckContext<'_>, semantic_model: &SemanticModel<'_>) {
+        // A `---@meta` file declares an API: its params and class tables are stubs, not code.
+        if semantic_model
+            .file_facts()
+            .is_some_and(|facts| facts.is_meta)
+        {
+            return;
+        }
         let Some(decls) = semantic_model.decls() else {
             return;
         };

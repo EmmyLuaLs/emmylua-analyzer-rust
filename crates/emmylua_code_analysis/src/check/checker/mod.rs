@@ -176,13 +176,15 @@ fn run_checked<T: Checker>(context: &mut CheckContext<'_>, semantic_model: &Sema
 
 /// Definition-only files never produce diagnostics.
 ///
-/// - `---@meta` files are definitions for other files to consume;
+/// - `---@meta` files are definitions for other files to consume, unless
+///   `diagnostics.checkMetaFiles` asks for them to be checked;
 /// - library/std/non-main workspace files are the same: they provide API surface
 ///   but are not edited as part of the user's project, so diagnostics are suppressed.
-fn should_skip_diagnostics(semantic_model: &SemanticModel<'_>) -> bool {
-    if semantic_model
-        .file_facts()
-        .is_some_and(|facts| facts.is_meta)
+fn should_skip_diagnostics(semantic_model: &SemanticModel<'_>, config: &CheckConfig) -> bool {
+    if !config.check_meta_files()
+        && semantic_model
+            .file_facts()
+            .is_some_and(|facts| facts.is_meta)
     {
         return true;
     }
@@ -192,7 +194,7 @@ fn should_skip_diagnostics(semantic_model: &SemanticModel<'_>) -> bool {
 }
 
 pub fn check_file(semantic_model: &SemanticModel<'_>, config: Arc<CheckConfig>) -> Vec<Diagnostic> {
-    if should_skip_diagnostics(semantic_model) {
+    if should_skip_diagnostics(semantic_model, &config) {
         return Vec::new();
     }
     let mut context = CheckContext::new(semantic_model, config);

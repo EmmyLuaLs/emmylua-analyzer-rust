@@ -32,6 +32,72 @@ fn test_meta_file_has_no_diagnostics() {
     );
 }
 
+/// `diagnostics.checkMetaFiles` checks `---@meta` files like any other.
+#[test]
+fn test_meta_file_checked_when_configured() {
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let diagnostics = check_source_with_emmyrc(
+        r#"
+        ---@meta
+        ---@param y integer
+        function f(x) end
+        "#,
+        emmyrc,
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::UndefinedDocParam),
+        1,
+        "meta file must be checked, got: {:?}",
+        diagnostics
+    );
+}
+
+/// With `diagnostics.checkMetaFiles`, a `---@meta` file's stubs aren't reported as code: no
+/// `missing-return`, `duplicate-set-field` for a function defined twice (overloads), or `unused`.
+#[test]
+fn test_meta_file_stubs_are_not_reported() {
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let diagnostics = check_source_with_emmyrc(
+        r#"
+        ---@meta
+        T = {}
+
+        ---@class Point
+        ---@field x number
+        ---@field x string
+        local Point = {}
+
+        ---@param x integer
+        ---@return integer
+        function T.f(x) end
+
+        ---@param x string
+        ---@return integer
+        function T.f(x) end
+        "#,
+        emmyrc,
+    );
+    for code in [
+        DiagnosticCode::MissingReturn,
+        DiagnosticCode::DuplicateSetField,
+        DiagnosticCode::Unused,
+    ] {
+        assert_eq!(
+            count_by_code(&diagnostics, code),
+            0,
+            "{code:?} in a meta file: {diagnostics:?}"
+        );
+    }
+    // Still a mistake in a definition file.
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::DuplicateDocField),
+        2,
+        "{diagnostics:?}"
+    );
+}
+
 /// Library workspace files must not produce diagnostics.
 #[test]
 fn test_library_file_has_no_diagnostics() {
@@ -59,6 +125,39 @@ fn test_library_file_has_no_diagnostics() {
         diagnostics.len(),
         0,
         "library file must be definition-only, got: {:?}",
+        diagnostics
+    );
+}
+
+/// `diagnostics.checkMetaFiles` checks the main workspace's meta files, not library files.
+#[test]
+fn test_library_meta_file_skipped_with_check_meta_files() {
+    use lsp_types::Uri;
+    use std::str::FromStr;
+    use std::sync::Arc;
+
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let emmyrc = Arc::new(emmyrc);
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    db.add_library_workspace(&WorkspaceFolder::new(
+        std::path::PathBuf::from("C:/libs/some-lib"),
+        true,
+    ));
+
+    let uri = Uri::from_str("file:///C:/libs/some-lib/def.lua").unwrap();
+    let fid = db.set_file_content(
+        &uri,
+        Some("---@meta\n---@param y integer\nfunction f(x) end".to_string()),
+    );
+
+    let model = SemanticModel::new(&db, fid);
+    let diagnostics = check_file(&model, Arc::new(CheckConfig::new(&emmyrc)));
+    assert_eq!(
+        diagnostics.len(),
+        0,
+        "library file must stay definition-only, got: {:?}",
         diagnostics
     );
 }
