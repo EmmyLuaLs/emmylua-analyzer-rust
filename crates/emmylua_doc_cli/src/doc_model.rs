@@ -13,7 +13,7 @@ use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
     LuaTypeDeclId, LuaUnionType, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel,
-    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType, union_member_rank,
 };
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use rowan::TextRange;
@@ -969,7 +969,8 @@ impl TypeTextRenderer<'_> {
         self.model.type_name(id)
     }
 
-    /// Like the language server's hover: `T?`, `(A|B)` and `(A|B)?`, named types first.
+    /// Like the language server's hover (`TypeHumanizer::write_union`): `T?`, `(A|B)` and `(A|B)?`,
+    /// in the same member order. Members are rendered by this renderer, and never truncated.
     fn render_union(&mut self, union: &LuaUnionType) -> String {
         let mut has_nil = false;
         let mut has_function = false;
@@ -983,7 +984,7 @@ impl TypeTextRenderer<'_> {
             has_function |= ty.is_function();
             let text = self.render(&ty);
             if seen.insert(text.clone()) {
-                parts.push((union_rank(&ty), text));
+                parts.push((union_member_rank(&ty), text));
             }
         }
         if parts.is_empty() {
@@ -1120,26 +1121,6 @@ impl TypeTextRenderer<'_> {
             mapped.param.1.name,
             self.render(&mapped.value)
         )
-    }
-}
-
-/// Union member order, as in the language server's hover: named and structured types, then
-/// `true`, `false`, the rest.
-fn union_rank(ty: &LuaType) -> u8 {
-    match ty {
-        LuaType::Ref(_)
-        | LuaType::Def(_)
-        | LuaType::Generic(_)
-        | LuaType::TplRef(_)
-        | LuaType::StrTplRef(_)
-        | LuaType::Object(_)
-        | LuaType::Array(_)
-        | LuaType::TableGeneric(_)
-        | LuaType::DocFunction(_)
-        | LuaType::Call(_) => 0,
-        LuaType::BooleanConst(true) | LuaType::DocBooleanConst(true) => 1,
-        LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => 2,
-        _ => 3,
     }
 }
 

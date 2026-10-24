@@ -501,7 +501,7 @@ impl<'a> TypeHumanizer<'a> {
             }
         }
 
-        unique.sort_by_key(|ty| self.union_type_rank(ty));
+        unique.sort_by_key(|ty| union_member_rank(ty));
 
         let total = unique.len();
         let show_dots = total > num;
@@ -531,24 +531,6 @@ impl<'a> TypeHumanizer<'a> {
         }
 
         Ok(())
-    }
-
-    fn union_type_rank(&self, ty: &LuaType) -> u8 {
-        match ty {
-            LuaType::Ref(_)
-            | LuaType::Def(_)
-            | LuaType::Generic(_)
-            | LuaType::TplRef(_)
-            | LuaType::StrTplRef(_)
-            | LuaType::Object(_)
-            | LuaType::Array(_)
-            | LuaType::TableGeneric(_)
-            | LuaType::DocFunction(_)
-            | LuaType::Call(_) => 0,
-            LuaType::BooleanConst(true) | LuaType::DocBooleanConst(true) => 1,
-            LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => 2,
-            _ => 3,
-        }
     }
 
     fn write_variadic<W: Write>(&mut self, variadic: &VariadicType, w: &mut W) -> fmt::Result {
@@ -749,6 +731,26 @@ fn write_escaped_string<W: Write>(s: &str, w: &mut W) -> fmt::Result {
 }
 
 // ─── Public entry points ────────────────────────────────────────────────────
+
+/// Sort key for a union's members when rendered: named and structured types, then `true`,
+/// `false`, the rest.
+pub fn union_member_rank(ty: &LuaType) -> u8 {
+    match ty {
+        LuaType::Ref(_)
+        | LuaType::Def(_)
+        | LuaType::Generic(_)
+        | LuaType::TplRef(_)
+        | LuaType::StrTplRef(_)
+        | LuaType::Object(_)
+        | LuaType::Array(_)
+        | LuaType::TableGeneric(_)
+        | LuaType::DocFunction(_)
+        | LuaType::Call(_) => 0,
+        LuaType::BooleanConst(true) | LuaType::DocBooleanConst(true) => 1,
+        LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => 2,
+        _ => 3,
+    }
+}
 
 pub fn humanize_type(model: &SemanticModel, ty: &LuaType) -> String {
     humanize_type_with_level(model, ty, RenderLevel::Simple)
