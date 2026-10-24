@@ -2355,6 +2355,17 @@ pub(crate) fn member_type(
         return TypeShell::from_module_ref(module_file);
     }
 
+    // `---@type T` on a runtime member assignment (`---@type T` + `M.x = v`) wins over the value,
+    // as it does for a local declaration in `decl_type`.
+    if !matches!(member.owner, SemanticId::TypeDef(_))
+        && let Some(type_syntax) = member.doc_type_syntax
+    {
+        let shell = lower_doc_type(db, file, type_syntax, &[]);
+        if !shell.is_unknown() {
+            return shell;
+        }
+    }
+
     // Value: owner is `TypeDef` (@field) -> doc type node; otherwise -> expression.
     if let Some(value_syntax) = member.value_syntax {
         match &member.owner {
@@ -2643,6 +2654,10 @@ pub(crate) fn signature_returns(
         })
         .collect();
     let mut rows = TypeShell::unknown();
+    // A `return` whose value the shell cannot type (a std call such as `os.getenv(k)`) makes the
+    // whole result unknown, so callers fall back to the VM instead of trusting the other returns
+    // alone (`if v == nil then return nil end return v` must not become `nil`).
+    let mut has_unknown_row = false;
     for ret in returns {
         let exprs: Vec<_> = ret.get_expr_list().collect();
         let mut slots = Vec::with_capacity(exprs.len());
@@ -2668,7 +2683,11 @@ pub(crate) fn signature_returns(
                 candidates: vec![TypeCandidate::Multi(slots)],
             }
         };
+        has_unknown_row |= row.is_unknown();
         rows.merge(&row);
+    }
+    if has_unknown_row {
+        rows = TypeShell::unknown();
     }
     // When there is no explicit return annotation and the body cannot infer a type, keep member returns from class-field declarations.
     if rows.is_unknown() {

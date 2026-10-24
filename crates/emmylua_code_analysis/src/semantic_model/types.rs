@@ -840,9 +840,12 @@ impl<'db> SemanticModel<'db> {
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
         // Cycles/reentry are handled by `CacheEntry::InProgress` in the shared cache.
+        // A declared `---@type` on the member wins over its value (`---@type table<string, string?>`
+        // on `G.env = setmetatable({}, { __index = ... })`); the shell below lowers that doc type.
         if let Some(facts) = self.file_facts_of(member_file)
             && let Some(member_def) = facts.member_by_id(member)
             && !matches!(member_def.owner, SemanticId::TypeDef(_))
+            && member_def.doc_type_syntax.is_none()
             && let Some(value_syntax) = member_def.value_syntax
         {
             // Table-literal fields keep the expression type from construction (`[key] = 1`, named fields
