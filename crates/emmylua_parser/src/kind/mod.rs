@@ -205,7 +205,6 @@ impl LuaOpKind {
         match kind {
             LuaTokenKind::TkDocOr | LuaTokenKind::TkDocContinueOr => LuaTypeBinaryOperator::Union,
             LuaTokenKind::TkDocAnd => LuaTypeBinaryOperator::Intersection,
-            LuaTokenKind::TkIn => LuaTypeBinaryOperator::In,
             LuaTokenKind::TkDocExtends => LuaTypeBinaryOperator::Extends,
             LuaTokenKind::TkPlus => LuaTypeBinaryOperator::Add,
             LuaTokenKind::TkMinus => LuaTypeBinaryOperator::Sub,

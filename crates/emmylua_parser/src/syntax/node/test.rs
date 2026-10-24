@@ -229,11 +229,19 @@ local t",
         let description = field.get_description().unwrap().get_description_text();
         assert_eq!(description.trim(), "in worldspace");
 
-        let mapped = get_ast_node::<crate::LuaDocMappedType>(
+        let tree = LuaParser::parse(
             "---@alias M { [K in Keys]: integer }
 local t",
+            ParserConfig::default(),
         );
-        assert!(mapped.syntax().text().to_string().contains("K in Keys"));
+        assert!(tree.get_errors().is_empty());
+        let chunk = tree.get_chunk_node();
+        let mapped = chunk
+            .descendants::<crate::LuaDocMappedType>()
+            .next()
+            .unwrap();
+        assert!(mapped.get_key().is_some());
+        assert!(matches!(mapped.get_value_type(), Some(LuaDocType::Name(_))));
     }
 
     #[test]
