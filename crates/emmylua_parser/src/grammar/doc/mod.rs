@@ -74,11 +74,15 @@ fn parse_docs(p: &mut LuaDocParser) {
             }
         }
 
+        // A tag that stops at its own line end (`---@field`) leaves the next line's
+        // `---` description start current; it is parsed on the next loop, not skipped.
         if let Some(reader) = &p.lexer.reader
             && !reader.is_eof()
             && !matches!(
                 p.current_token(),
-                LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart
+                LuaTokenKind::TkDocStart
+                    | LuaTokenKind::TkDocLongStart
+                    | LuaTokenKind::TkNormalStart
             )
         {
             p.bump_to_end();
@@ -94,6 +98,23 @@ fn parse_description(p: &mut LuaDocParser) {
 
     while let LuaTokenKind::TkDocDetail
     | LuaTokenKind::TkEndOfLine
+    | LuaTokenKind::TkWhitespace
+    | LuaTokenKind::TkDocContinue
+    | LuaTokenKind::TkNormalStart = p.current_token()
+    {
+        p.bump();
+    }
+
+    m.complete(p);
+}
+
+/// Same-line description only: plain `---` lines that follow belong to the next tag
+/// (`---@field` docs are written above the field, as in lua-language-server).
+fn parse_line_description(p: &mut LuaDocParser) {
+    let m = p.mark(LuaSyntaxKind::DocDescription);
+
+    // `TkNormalStart` here is a same-line `-- text`; a new line ends at `TkEndOfLine` first.
+    while let LuaTokenKind::TkDocDetail
     | LuaTokenKind::TkWhitespace
     | LuaTokenKind::TkDocContinue
     | LuaTokenKind::TkNormalStart = p.current_token()

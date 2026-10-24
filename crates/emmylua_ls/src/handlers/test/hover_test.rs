@@ -950,4 +950,33 @@ mod tests {
         );
         Ok(())
     }
+
+    /// #1320: plain `---` lines after a `---@field` with a same-line description belong to the
+    /// next field, not to the previous one.
+    #[gtest]
+    fn test_hover_field_doc_not_glued_to_previous_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let class = r#"
+                ---@class B
+                ---@field b1 boolean trailing b1
+                ---Above b2.
+                ---@field b2 boolean
+
+                ---@type B
+                local b = {}
+        "#;
+        check!(ws.check_hover(
+            &format!("{class}\nprint(b.<??>b1)"),
+            VirtualHoverResult {
+                value: "```lua\n(field) b1: boolean\n```\n\n---\n\ntrailing b1".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            &format!("{class}\nprint(b.<??>b2)"),
+            VirtualHoverResult {
+                value: "```lua\n(field) b2: boolean\n```\n\n---\n\nAbove b2.".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
