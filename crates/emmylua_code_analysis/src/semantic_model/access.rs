@@ -368,6 +368,16 @@ impl<'db> SemanticModel<'db> {
         let LuaType::Generic(generic) = &prefix_ty else {
             return None;
         };
+        // A field of an alias instance (`Partial<T>`) has the alias's own (mapped) type,
+        // `string?`, not the source member's `string`.
+        if self
+            .type_def_of(generic.get_base_type_id_ref())
+            .is_some_and(|def| def.kind == TypeDefKind::Alias)
+        {
+            let name = index_expr.get_index_name_token()?;
+            let key = LuaMemberKey::Name(name.text().into());
+            return self.member_info(&prefix_ty, &key).map(|info| info.typ);
+        }
         let member_type = self.type_of_member(member_id)?;
         let names = self
             .type_def_of(generic.get_base_type_id_ref())

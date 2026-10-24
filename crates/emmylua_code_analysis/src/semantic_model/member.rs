@@ -230,10 +230,17 @@ fn direct_member_info(
         LuaType::Generic(generic) => {
             let def = model.type_def_of(&generic.get_base_type_id())?;
             if def.kind == TypeDefKind::Alias {
-                return with_expanded_alias(model, prefix_type, |expanded| {
+                let mut info = with_expanded_alias(model, prefix_type, |expanded| {
                     direct_member_info(model, expanded, key)
                 })
-                .flatten();
+                .flatten()?;
+                if info.id.is_none()
+                    && let Some(source) = mapped_alias_source_member(model, &def, generic, key)
+                {
+                    info.id = source.id;
+                    info.file_id = source.file_id;
+                }
+                return Some(info);
             }
             let bindings: TplBindings = generic
                 .get_params()
@@ -298,6 +305,33 @@ fn direct_member_info(
         }
         _ => None,
     }
+}
+
+/// For a mapped alias over `keyof X` (`Partial<T>` is `{ [P in keyof T]?: T[P] }`), the member of
+/// `X` that a produced field comes from. The field keeps its own (mapped) type, but takes the
+/// source declaration, so hover and completion show `X`'s field docs.
+fn mapped_alias_source_member(
+    model: &SemanticModel,
+    def: &TypeDef,
+    generic: &crate::LuaGenericType,
+    key: &LuaMemberKey,
+) -> Option<MemberInfo> {
+    let LuaType::Mapped(mapped) = model.alias_target(def)? else {
+        return None;
+    };
+    let LuaType::Call(call) = mapped.param.1.constraint.as_ref()? else {
+        return None;
+    };
+    if call.get_call_kind() != crate::LuaAliasCallKind::KeyOf {
+        return None;
+    }
+    let names: Vec<SmolStr> = def.generic_params.iter().map(|p| p.name.clone()).collect();
+    let source = model.substitute_generic_params_named(
+        call.get_operands().first()?,
+        generic.get_params(),
+        &names,
+    );
+    member_info(model, &source, key).filter(|info| info.id.is_some())
 }
 
 pub(crate) fn member_info_impl(
@@ -647,9 +681,19 @@ fn collect_members(
             if let Some(def) = model.type_def_of(&generic.get_base_type_id())
                 && def.kind == TypeDefKind::Alias
             {
+                let start = out.len();
                 with_expanded_alias(model, prefix_type, |expanded| {
                     collect_members(model, expanded, None, None, visited, out, filter);
                 });
+                for info in &mut out[start..] {
+                    if info.id.is_none()
+                        && let Some(source) =
+                            mapped_alias_source_member(model, &def, generic, &info.key)
+                    {
+                        info.id = source.id;
+                        info.file_id = source.file_id;
+                    }
+                }
                 return;
             }
             let def = model.type_def_of(&generic.get_base_type_id());
