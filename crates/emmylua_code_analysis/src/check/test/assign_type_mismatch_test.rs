@@ -2833,6 +2833,7 @@ return t
             ("---@param pt I1334", "pt[k]", false),
             // The key must fit the index domain; a named field beats the signature.
             ("---@param pt table<'X', integer>", "pt.Y", true),
+            ("---@param pt table<1, integer>", "pt[2]", true),
             ("---@param pt I1334", "pt.flag", true),
         ] {
             let source = format!(
@@ -2855,6 +2856,28 @@ return t
             assert_eq!(
                 ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
                 accepted,
+                "{source}"
+            );
+        }
+    }
+
+    /// #1334: the `{ [K]: V }` form (a `---@param` of it is still a plain `table`, so a typed local).
+    #[test]
+    fn test_object_index_signature_read_has_value_type() {
+        for read in ["pt.X", "pt[k]"] {
+            let source = format!(
+                r#"
+                ---@type {{ [string]: integer }}
+                local pt = {{}}
+                local k = tostring(1)
+                ---@type boolean
+                local a = {read}
+                return a
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
                 "{source}"
             );
         }
