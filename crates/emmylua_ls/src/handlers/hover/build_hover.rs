@@ -546,9 +546,6 @@ fn table_context_type_for_expr(
     (!matches!(ty, LuaType::Unknown)).then_some(ty)
 }
 
-/// Whether the member access (`x.foo` / `x:foo`) containing the current token is applied to an
-/// instantiated generic prefix (`local c ---@type MyTable<int>` -> `c.aaa`), in which case the member
-/// type must be projected through the prefix's generic arguments.
 /// Member declaration for `x.key` whose prefix is a union (`P?`, `P|Q`).
 ///
 /// `resolve_member` leaves union prefixes to flow narrowing, so the access has no declaration
@@ -566,6 +563,9 @@ fn union_member_at_token(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> O
     model.member_info(&prefix_ty, &key)?.id
 }
 
+/// Whether the member access (`x.foo` / `x:foo`) containing the current token is applied to an
+/// instantiated generic prefix (`local c ---@type MyTable<int>` -> `c.aaa`), in which case the member
+/// type must be projected through the prefix's generic arguments.
 fn member_prefix_is_generic_instance(model: &SemanticModel<'_>, token: &LuaSyntaxToken) -> bool {
     let Some(index_expr) = token.parent_ancestors().find_map(LuaIndexExpr::cast) else {
         return false;
