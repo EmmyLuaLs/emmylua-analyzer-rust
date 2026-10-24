@@ -243,4 +243,49 @@ world
 [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-arg"])"#;
         assert_eq!(description2.get_description_text(), expected2);
     }
+
+    #[test]
+    fn test_doc_type_continuing_after_nullable() {
+        use crate::{LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocTagParam, LuaDocType};
+
+        let errors = |code: &str| {
+            LuaParser::parse(code, ParserConfig::default())
+                .get_errors()
+                .iter()
+                .map(|error| error.message.to_string())
+                .collect::<Vec<_>>()
+        };
+        let continues = "a type can't continue after `?`: write `(A|B)?` or `(A?)[]`";
+
+        // Reported, and parsed as written: a union, not `string?` with the description `|number`.
+        let code = "---@type string?|number\nlocal x";
+        assert_eq!(errors(code), [continues]);
+        let binary = get_ast_node::<LuaDocBinaryType>(code);
+        assert!(matches!(
+            binary.get_types(),
+            Some((LuaDocType::Nullable(_), _))
+        ));
+
+        assert_eq!(errors("---@type string?[]\nlocal x"), [continues]);
+        assert_eq!(errors("---@type (string?|number)\nlocal x"), [continues]);
+
+        // `?` that ends a type is fine, including inside tuples, generics, objects and functions.
+        for code in [
+            "---@type (string|number)?\nlocal x",
+            "---@type table<string, string?>\nlocal x",
+            "---@type [number?, number, number]\nlocal x",
+            "---@type { a: string?, b: number }\nlocal x",
+            "---@type fun(a: string?, b: number): string?\nlocal x",
+            "---@type (string?)[]\nlocal x",
+        ] {
+            assert!(errors(code).is_empty(), "{code}: {:?}", errors(code));
+        }
+
+        // A description after `?` is still a description.
+        let code = "---@param x string? [default 1]\nlocal function f(x) end";
+        assert!(errors(code).is_empty());
+        let param = get_ast_node::<LuaDocTagParam>(code);
+        let description = param.get_description().unwrap().get_description_text();
+        assert_eq!(description.trim(), "[default 1]");
+    }
 }
