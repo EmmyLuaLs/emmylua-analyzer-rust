@@ -53,6 +53,51 @@ fn test_meta_file_checked_when_configured() {
     );
 }
 
+/// With `diagnostics.checkMetaFiles`, a `---@meta` file's stubs aren't reported as code: no
+/// `missing-return`, `duplicate-set-field` for a function defined twice (overloads), or `unused`.
+#[test]
+fn test_meta_file_stubs_are_not_reported() {
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let diagnostics = check_source_with_emmyrc(
+        r#"
+        ---@meta
+        T = {}
+
+        ---@class Point
+        ---@field x number
+        ---@field x string
+        local Point = {}
+
+        ---@param x integer
+        ---@return integer
+        function T.f(x) end
+
+        ---@param x string
+        ---@return integer
+        function T.f(x) end
+        "#,
+        emmyrc,
+    );
+    for code in [
+        DiagnosticCode::MissingReturn,
+        DiagnosticCode::DuplicateSetField,
+        DiagnosticCode::Unused,
+    ] {
+        assert_eq!(
+            count_by_code(&diagnostics, code),
+            0,
+            "{code:?} in a meta file: {diagnostics:?}"
+        );
+    }
+    // Still a mistake in a definition file.
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::DuplicateDocField),
+        2,
+        "{diagnostics:?}"
+    );
+}
+
 /// Library workspace files must not produce diagnostics.
 #[test]
 fn test_library_file_has_no_diagnostics() {

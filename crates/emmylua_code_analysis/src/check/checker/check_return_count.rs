@@ -425,7 +425,12 @@ fn check_missing_return(
     closure: &LuaClosureExpr,
     expectation: &ReturnExpectation,
 ) {
-    if expectation.min == 0 {
+    // A `---@meta` declaration has no body to return from.
+    if expectation.min == 0
+        || semantic_model
+            .file_facts()
+            .is_some_and(|facts| facts.is_meta)
+    {
         return;
     }
     let flow = closure_body_block(closure)
