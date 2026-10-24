@@ -373,8 +373,8 @@ impl<'db> SemanticModel<'db> {
         if self
             .type_def_of(generic.get_base_type_id_ref())
             .is_some_and(|def| def.kind == TypeDefKind::Alias)
+            && let Some(name) = index_expr.get_index_name_token()
         {
-            let name = index_expr.get_index_name_token()?;
             let key = LuaMemberKey::Name(name.text().into());
             return self.member_info(&prefix_ty, &key).map(|info| info.typ);
         }

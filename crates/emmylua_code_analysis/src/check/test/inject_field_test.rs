@@ -648,6 +648,7 @@ mod dictionary_constructor {
         }
     }
 }
+
 #[cfg(test)]
 mod test_issue_1318 {
     use crate::{DiagnosticCode, VirtualWorkspace};

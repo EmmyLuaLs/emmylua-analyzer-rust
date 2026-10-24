@@ -6,7 +6,9 @@ use hashbrown::HashMap;
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::semantic_model::type_eval::{map_type, substitute_named_refs, with_expanded_alias};
-use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaType};
+use crate::{
+    FileId, GenericTplId, InFiled, LuaAliasCallKind, LuaGenericType, LuaMemberKey, LuaType,
+};
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
@@ -313,7 +315,7 @@ fn direct_member_info(
 fn mapped_alias_source_member(
     model: &SemanticModel,
     def: &TypeDef,
-    generic: &crate::LuaGenericType,
+    generic: &LuaGenericType,
     key: &LuaMemberKey,
 ) -> Option<MemberInfo> {
     let LuaType::Mapped(mapped) = model.alias_target(def)? else {
@@ -322,7 +324,7 @@ fn mapped_alias_source_member(
     let LuaType::Call(call) = mapped.param.1.constraint.as_ref()? else {
         return None;
     };
-    if call.get_call_kind() != crate::LuaAliasCallKind::KeyOf {
+    if call.get_call_kind() != LuaAliasCallKind::KeyOf {
         return None;
     }
     let names: Vec<SmolStr> = def.generic_params.iter().map(|p| p.name.clone()).collect();
