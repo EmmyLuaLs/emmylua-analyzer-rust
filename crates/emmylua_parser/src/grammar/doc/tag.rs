@@ -98,12 +98,31 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
 
     if p.current_token() == LuaTokenKind::TkColon {
         p.bump();
-        parse_type_list(p)?;
+        parse_type_on_tag_line(p, parse_type_list)?;
     }
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))
+}
+
+/// The doc parser skips line breaks inside a tag so that a type can span lines, but each of a tag's
+/// types has to start on the tag's line. A `---|` union can start on the next line.
+fn parse_type_on_tag_line(
+    p: &mut LuaDocParser,
+    parse: fn(&mut LuaDocParser) -> DocParseResult,
+) -> DocParseResult {
+    let next_line =
+        p.current_token_starts_line() && p.current_token() != LuaTokenKind::TkDocContinueOr;
+    let range = p.current_token_range();
+    let type_marker = parse(p)?;
+    if next_line {
+        p.push_error(LuaParseError::doc_error_from(
+            &t!("expect type on the same line as the tag"),
+            range,
+        ));
+    }
+    Ok(type_marker)
 }
 
 // (partial, global, file)
@@ -258,7 +277,7 @@ fn parse_tag_alias(p: &mut LuaDocParser) -> DocParseResult {
 
     if_token_bump(p, LuaTokenKind::TkDocDetail);
 
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
@@ -316,7 +335,7 @@ fn parse_tag_field(p: &mut LuaDocParser) -> DocParseResult {
         }
     }
     if_token_bump(p, LuaTokenKind::TkDocQuestion);
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
@@ -329,10 +348,10 @@ fn parse_tag_type(p: &mut LuaDocParser) -> DocParseResult {
     p.set_lexer_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagType);
     p.bump();
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
-        parse_type(p)?;
+        parse_type_on_tag_line(p, parse_type)?;
     }
 
     p.set_lexer_state(LuaDocLexerState::Description);
@@ -364,7 +383,7 @@ fn parse_tag_param(p: &mut LuaDocParser) -> DocParseResult {
 
     if_token_bump(p, LuaTokenKind::TkDocQuestion);
 
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
@@ -379,14 +398,19 @@ fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTagReturn);
     p.bump();
 
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
 
-    if_token_bump(p, LuaTokenKind::TkName);
+    // A name on the next line is the start of a description, not this return's name.
+    if !p.current_token_starts_line() {
+        if_token_bump(p, LuaTokenKind::TkName);
+    }
 
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
-        parse_type(p)?;
-        if_token_bump(p, LuaTokenKind::TkName);
+        parse_type_on_tag_line(p, parse_type)?;
+        if !p.current_token_starts_line() {
+            if_token_bump(p, LuaTokenKind::TkName);
+        }
     }
 
     p.set_lexer_state(LuaDocLexerState::Description);
@@ -468,7 +492,7 @@ fn parse_tag_as(p: &mut LuaDocParser) -> DocParseResult {
     p.set_lexer_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagAs);
     p.bump();
-    parse_type(p)?;
+    parse_type_on_tag_line(p, parse_type)?;
 
     if_token_bump(p, LuaTokenKind::TkLongCommentEnd);
     p.set_lexer_state(LuaDocLexerState::Description);
@@ -482,7 +506,7 @@ fn parse_tag_overload(p: &mut LuaDocParser) -> DocParseResult {
     p.set_lexer_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagOverload);
     p.bump();
-    parse_fun_type(p)?;
+    parse_type_on_tag_line(p, parse_fun_type)?;
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))

@@ -79,6 +79,10 @@ expect name or [<number>] or [<string>]:
   en: expect name or [<number>] or [<string>]
   zh_CN: 需要名称或 [<数字>] 或 [<字符串>]
   zh_HK: 需要名稱或 [<數字>] 或 [<字符串>]
+expect type on the same line as the tag:
+  en: expect type on the same line as the tag
+  zh_CN: 类型需要与标签在同一行
+  zh_HK: 類型需要與標籤在同一行
 expect param name or '...', but get %{current}:
   en: expect param name or '...', but get %{current}
   zh_CN: 需要参数名或 '...', 但得到 %{current}
