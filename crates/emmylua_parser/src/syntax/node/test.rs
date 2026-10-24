@@ -267,7 +267,12 @@ world
         ));
 
         assert_eq!(errors("---@type string?[]\nlocal x"), [continues]);
+        assert_eq!(errors("---@type string?&number\nlocal x"), [continues]);
         assert_eq!(errors("---@type (string?|number)\nlocal x"), [continues]);
+        // Several continuations are one error, and the whole type is parsed as written.
+        assert_eq!(errors("---@type string?[]|number\nlocal x"), [continues]);
+        // A `[` directly after `?` continues the type; after a space it starts a description.
+        assert!(errors("---@type string? []\nlocal x").is_empty());
 
         // `?` that ends a type is fine, including inside tuples, generics, objects and functions.
         for code in [
