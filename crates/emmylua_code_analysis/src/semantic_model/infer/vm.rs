@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr, LuaIndexKey,
-    LuaReturnStat, LuaSyntaxId,
+    LuaReturnStat, LuaSyntaxId, LuaSyntaxKind,
 };
 
 use hashbrown::HashMap;
@@ -1447,7 +1447,9 @@ impl<'a> InferVm<'a> {
                     let Some(first) = args.first() else {
                         return Value::plain(LuaType::Unknown);
                     };
-                    if let Some(metatable) = args.get(1) {
+                    if let Some(metatable) = args.get(1)
+                        && !self.metatable_index_is_closure(&metatable.ty)
+                    {
                         let index_key = LuaMemberKey::Name(SmolStr::new("__index"));
                         if let Some(info) = self.model.member_info(&metatable.ty, &index_key) {
                             let index_ty = match &info.typ {
@@ -2446,6 +2448,26 @@ impl<'a> InferVm<'a> {
             }
         }
         candidates
+    }
+
+    /// Whether `mt` is a table literal with `__index = function ... end`. Such an `__index`
+    /// never gives the instance a named type, and typing the closure would infer its returns,
+    /// which can read back into the expression being inferred (a `k` param of that closure).
+    fn metatable_index_is_closure(&self, metatable: &LuaType) -> bool {
+        let LuaType::TableConst(table) = metatable else {
+            return false;
+        };
+        let owner = SemanticId::member(table.file_id, table.value);
+        self.model
+            .members_of_owner_named(&owner, "__index")
+            .iter()
+            .any(|member_ref| {
+                self.model
+                    .file_facts_of(member_ref.file_id)
+                    .and_then(|facts| facts.member_by_id(&member_ref.id))
+                    .and_then(|member| member.value_syntax)
+                    .is_some_and(|syntax| syntax.get_kind() == LuaSyntaxKind::ClosureExpr)
+            })
     }
 
     /// Resolve the `__call` candidate from a `setmetatable(t, mt)` initializer.
