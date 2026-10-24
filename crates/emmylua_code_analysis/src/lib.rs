@@ -48,7 +48,7 @@ pub use semantic_model::member::MemberInfo;
 pub use semantic_model::render::{
     humanize_type as humanize_semantic_type,
     humanize_type_detailed as humanize_semantic_type_detailed,
-    humanize_type_with_level as humanize_semantic_type_with_level,
+    humanize_type_with_level as humanize_semantic_type_with_level, union_member_rank,
 };
 pub use semantic_model::{ResolvedMember, SemanticInfo};
 use std::{path::PathBuf, sync::Arc};
