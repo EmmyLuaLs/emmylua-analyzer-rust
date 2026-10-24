@@ -1,4 +1,8 @@
 _version: 2
+a type can't continue after `?`:
+  en: "a type can't continue after `?`: write `(A|B)?` or `(A?)[]`"
+  zh_CN: "`?` 之后类型不能继续：请写成 `(A|B)?` 或 `(A?)[]`"
+  zh_HK: "`?` 之後類型不能繼續：請寫成 `(A|B)?` 或 `(A?)[]`"
 Invalid escape sequence '\%{char}':
   en: Invalid escape sequence '\%{char}'
   zh_CN: 无效的转义序列 '\%{char}'
