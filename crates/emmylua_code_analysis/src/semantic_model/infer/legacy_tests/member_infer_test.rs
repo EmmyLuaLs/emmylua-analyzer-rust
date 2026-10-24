@@ -44,16 +44,20 @@ mod test {
             r#"
         ---@class Light
         ---@field decay { red: number, green: number }
+        ---@field fade { red: number }?
 
         ---@type Light
         local light
 
         a = light.decay
+        b = light.fade
         "#,
         );
 
         let a = ws.expr_ty("a");
         assert_eq!(ws.humanize_type(a), "{ green: number, red: number }");
+        let b = ws.expr_ty("b");
+        assert_eq!(ws.humanize_type(b), "{ red: number }?");
     }
 
     #[test]
