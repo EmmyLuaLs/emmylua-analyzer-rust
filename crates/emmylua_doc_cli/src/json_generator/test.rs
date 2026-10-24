@@ -191,6 +191,23 @@ fn module_has_functions_declared_on_its_export() {
 }
 
 #[test]
+fn function_member_typed_with_a_named_type_keeps_the_name() {
+    let json = export_json(
+        r#"
+        ---@alias Callback fun(unitID: integer): boolean
+
+        T = {}
+
+        ---@type Callback
+        T.onUnit = function(unitID) end
+        "#,
+    );
+    let on_unit = member(find(&json, "globals", "T"), "onUnit");
+    assert_eq!(on_unit["type"], "field");
+    assert_eq!(on_unit["typ"], "Callback");
+}
+
+#[test]
 fn documented_unknown_return_is_kept() {
     let json = export_json(
         r#"

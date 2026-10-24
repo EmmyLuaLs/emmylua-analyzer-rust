@@ -703,11 +703,19 @@ fn project_member(
     signature: Option<&DocSignature>,
 ) -> DocMember {
     let file_id = member_file_id(&member.id);
+    // A `---@type` naming a type (`---@type Callback`) keeps the name, which has its own docs.
+    let named_type = member
+        .doc_type_syntax
+        .map(|syntax| model.doc_type_lua_in(file_id, syntax, &[]))
+        .filter(|ty| matches!(ty, LuaType::Ref(_) | LuaType::Def(_)));
     // A runtime function's member type is just `function`; its signature has the params and returns.
-    let ty = member
-        .value_syntax
-        .and_then(|syntax| model.type_of_signature(syntax))
-        .map(|func| LuaType::DocFunction(Rc::new(func)))
+    let ty = named_type
+        .or_else(|| {
+            member
+                .value_syntax
+                .and_then(|syntax| model.type_of_signature(syntax))
+                .map(|func| LuaType::DocFunction(Rc::new(func)))
+        })
         .or_else(|| model.type_of_member(&member.id))
         .unwrap_or(LuaType::Unknown);
     let key_range = member.id.member_key_range().unwrap_or_else(|| {
