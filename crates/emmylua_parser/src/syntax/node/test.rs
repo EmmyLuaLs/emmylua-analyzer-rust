@@ -67,6 +67,8 @@ mod tests {
             "---@class D :\n--- A\nlocal t",
             "---@overload\n--- fun(): integer\nlocal function g() end",
             "---@param x\r\n--- integer\r\nlocal function f(x) end",
+            "---@type integer,\n--- string\nlocal a, b",
+            "---@return integer a,\n--- string b\nlocal function f() end",
         ] {
             assert_eq!(errors(code), expected, "{code}");
         }
@@ -79,6 +81,8 @@ mod tests {
             "---@type {\n---   a: integer,\n--- }\nlocal o",
             "---@type integer\n---| string\nlocal v",
             "---@return fun(\n---   a: integer\n---): string\nlocal function f() end",
+            "---@type -1\nlocal c",
+            "---@return integer\n---  - the count\nlocal function h() end",
         ] {
             assert!(errors(code).is_empty(), "{code}");
         }

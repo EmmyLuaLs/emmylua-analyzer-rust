@@ -106,8 +106,8 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-/// The doc parser skips line breaks inside a tag so that a type can span lines, but a tag's type
-/// has to start on the tag's line. A `---|` union can start on the next line.
+/// The doc parser skips line breaks inside a tag so that a type can span lines, but each of a tag's
+/// types has to start on the tag's line. A `---|` union can start on the next line.
 fn parse_type_on_tag_line(
     p: &mut LuaDocParser,
     parse: fn(&mut LuaDocParser) -> DocParseResult,
@@ -351,7 +351,7 @@ fn parse_tag_type(p: &mut LuaDocParser) -> DocParseResult {
     parse_type_on_tag_line(p, parse_type)?;
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
-        parse_type(p)?;
+        parse_type_on_tag_line(p, parse_type)?;
     }
 
     p.set_lexer_state(LuaDocLexerState::Description);
@@ -407,7 +407,7 @@ fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
 
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
-        parse_type(p)?;
+        parse_type_on_tag_line(p, parse_type)?;
         if !p.current_token_starts_line() {
             if_token_bump(p, LuaTokenKind::TkName);
         }
