@@ -2820,4 +2820,66 @@ return t
             "{diagnostics:#?}"
         );
     }
+
+    /// #1334: a read through an index signature has the signature's value type.
+    #[test]
+    fn test_index_signature_read_has_value_type() {
+        for (decl, read, accepted) in [
+            ("---@param pt table<string, integer>", "pt.X", false),
+            ("---@param pt table<string, integer>", "pt['X']", false),
+            ("---@param pt table<string, integer>", "pt[k]", false),
+            ("---@param pt table<integer, integer>", "pt[1]", false),
+            ("---@param pt I1334", "pt.X", false),
+            ("---@param pt I1334", "pt[k]", false),
+            // The key must fit the index domain; a named field beats the signature.
+            ("---@param pt table<'X', integer>", "pt.Y", true),
+            ("---@param pt table<1, integer>", "pt[2]", true),
+            ("---@param pt I1334", "pt.flag", true),
+        ] {
+            let source = format!(
+                r#"
+                ---@class I1334
+                ---@field flag boolean
+                ---@field [string] integer
+
+                {decl}
+                ---@param k string
+                local function g(pt, k)
+                    ---@type boolean
+                    local a = {read}
+                    return a
+                end
+                return g
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
+
+    /// #1334: the `{ [K]: V }` form (a `---@param` of it is still a plain `table`, so a typed local).
+    #[test]
+    fn test_object_index_signature_read_has_value_type() {
+        for read in ["pt.X", "pt[k]"] {
+            let source = format!(
+                r#"
+                ---@type {{ [string]: integer }}
+                local pt = {{}}
+                local k = tostring(1)
+                ---@type boolean
+                local a = {read}
+                return a
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                "{source}"
+            );
+        }
+    }
 }

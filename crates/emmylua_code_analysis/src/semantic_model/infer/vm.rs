@@ -24,7 +24,9 @@ use crate::semantic_db::def::{
 };
 use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
-use crate::semantic_model::member::{MemberInfo, table_const_class_type, table_metatable_type};
+use crate::semantic_model::member::{
+    MemberInfo, index_signature_type, table_const_class_type, table_metatable_type,
+};
 use crate::semantic_model::type_eval::{
     class_generic_map, eval_conditionals, expand_alias_generic, expand_alias_head,
     sanitize_unresolved_generics, sanitize_unresolved_generics_with_model, substitute_named_refs,
@@ -802,6 +804,20 @@ impl<'a> InferVm<'a> {
     }
 
     fn index_member_dynamic(&mut self, owner: Value, key: Value) -> Value {
+        // A non-literal key (`t[k]` with `k: string`) reads the matching index signature;
+        // literal keys and unions of them take the named-member path below.
+        if !matches!(
+            &key.ty,
+            LuaType::StringConst(_)
+                | LuaType::DocStringConst(_)
+                | LuaType::IntegerConst(_)
+                | LuaType::DocIntegerConst(_)
+                | LuaType::Union(_)
+        ) && !matches!(&owner.ty, LuaType::TableConst(_) | LuaType::Array(_))
+            && let Some(ty) = index_signature_type(self.model, &owner.ty, &key.ty)
+        {
+            return Value::plain(ty);
+        }
         match &key.ty {
             LuaType::StringConst(s) | LuaType::DocStringConst(s) => {
                 self.index_member(owner, &LuaMemberKey::Name(SmolStr::new(s.as_str())))
@@ -1330,6 +1346,18 @@ impl<'a> InferVm<'a> {
                 closure_syntax: None,
                 receiver: receiver_ty,
             };
+        }
+        // No named member: an index signature covering the key (`table<string, V>`,
+        // `---@field [string] V`) types the read as `V`.
+        let key_ty = match key {
+            LuaMemberKey::Name(name) => Some(LuaType::StringConst(name.clone().into())),
+            LuaMemberKey::Integer(i) => Some(LuaType::IntegerConst(*i)),
+            LuaMemberKey::None => None,
+        };
+        if let Some(key_ty) = key_ty
+            && let Some(ty) = index_signature_type(self.model, &owner.ty, &key_ty)
+        {
+            return Value::plain(ty);
         }
         // Named table literals / declared class instances return nil for missing keys (Lua
         // member-index semantics), not Unknown; `t.missing` / `other.extra` should not

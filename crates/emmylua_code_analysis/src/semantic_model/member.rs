@@ -421,6 +421,44 @@ pub fn member_type(
     member_info(model, prefix_type, key).map(|info| info.typ)
 }
 
+/// Value type of the first index signature whose key domain accepts `key_type`:
+/// `table<K, V>`, `{ [K]: V }` and `---@field [K] V` (`t.x` / `t[k]` with no named member).
+pub(crate) fn index_signature_type(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key_type: &LuaType,
+) -> Option<LuaType> {
+    match prefix_type {
+        LuaType::Generic(generic) if generic.get_base_type_id().get_name() == "table" => {
+            let [index_key, value] = generic.get_params().as_slice() else {
+                return None;
+            };
+            model.type_check(key_type, index_key).then(|| value.clone())
+        }
+        LuaType::TableGeneric(params) => {
+            let [index_key, value] = params.as_slice() else {
+                return None;
+            };
+            model.type_check(key_type, index_key).then(|| value.clone())
+        }
+        LuaType::Object(object) => object
+            .get_index_access()
+            .iter()
+            .find(|(index_key, _)| model.type_check(key_type, index_key))
+            .map(|(_, value)| value.clone()),
+        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => model
+            .member_infos(prefix_type)
+            .into_iter()
+            .find(|info| {
+                info.index_key_type
+                    .as_ref()
+                    .is_some_and(|index_key| model.type_check(key_type, index_key))
+            })
+            .map(|info| info.typ),
+        _ => None,
+    }
+}
+
 /// Returns the second argument type of `setmetatable(t, mt)` for the given `t` table identity.
 /// Supports a table literal as the first argument, and also a local name indirection (`local t = {...}; setmetatable(t, mt)`).
 pub(crate) fn table_metatable_type(
