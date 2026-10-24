@@ -648,3 +648,33 @@ mod dictionary_constructor {
         }
     }
 }
+#[cfg(test)]
+mod test_issue_1318 {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+
+    const LINTER: &str = r#"
+        ---@class Linter
+        ---@field cmd string the command to run
+        ---@field stdin boolean pass content via stdin
+    "#;
+
+    /// #1318: a literal typed `Partial<T>` (or a class inheriting it) may set any field of `T`.
+    #[test]
+    fn test_partial_literal_accepts_fields_of_t() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def_file("linter.lua", LINTER);
+        for code in [
+            "---@type Partial<Linter>\nlocal b = { cmd = 'x' }",
+            "---@class SubPartial: Partial<Linter>\n---@field extra? integer\n\n---@type SubPartial\nlocal a = { cmd = 'x' }",
+        ] {
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::InjectField, code),
+                "{code}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingFields, code),
+                "{code}"
+            );
+        }
+    }
+}

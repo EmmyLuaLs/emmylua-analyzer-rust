@@ -357,6 +357,12 @@ pub fn expand_mapped(model: &SemanticModel, mapped: &LuaMappedType) -> Option<Lu
             mapped.param.1.name.as_str(),
             &key_ty,
         );
+        // `{ [P in keyof T]?: T[P] }` (`Partial<T>`): every produced field is optional.
+        let value = if mapped.is_optional && !value.is_nullable() {
+            LuaType::from_vec(vec![value, LuaType::Nil])
+        } else {
+            value
+        };
         fields.insert(key, value);
     }
     Some(LuaType::Object(Rc::new(LuaObjectType::new_with_fields(
