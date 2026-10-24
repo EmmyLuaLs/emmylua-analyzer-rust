@@ -141,11 +141,17 @@ fn check_index_assign(
             continue;
         };
         // Classes with a parent type or index signature (`[string]`) are handled broadly (M0).
+        // An index signature's member name is its key type (`string`), so test the flag.
         if !def.base_types.is_empty()
             || semantic_model
                 .members_of_owner(&target_id)
                 .iter()
-                .any(|member| member.name.starts_with('['))
+                .any(|member_ref| {
+                    semantic_model
+                        .file_facts_of(member_ref.file_id)
+                        .and_then(|facts| facts.member_by_id(&member_ref.id))
+                        .is_some_and(|member| member.is_index_signature)
+                })
             || is_mapped_alias(semantic_model, &def)
         {
             continue;

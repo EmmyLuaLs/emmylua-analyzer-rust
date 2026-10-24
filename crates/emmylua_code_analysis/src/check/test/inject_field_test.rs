@@ -460,6 +460,23 @@ mod test {
         ));
     }
 
+    /// A class with a `[string]` index signature accepts any name key.
+    #[test]
+    fn test_index_signature_class_allows_name_keys() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+            --- @class Accessor
+            --- @field [string] any
+
+            ---@type Accessor
+            local g = {}
+            g.aaa = true
+            "#,
+        ));
+    }
+
     #[test]
     fn test_alias_unknown_allows_field_injection() {
         let mut ws = VirtualWorkspace::new();
