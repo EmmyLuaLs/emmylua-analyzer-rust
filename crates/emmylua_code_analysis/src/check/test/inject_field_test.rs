@@ -461,6 +461,27 @@ mod test {
     }
 
     #[test]
+    fn test_index_signature_allows_injection_into_annotated_global() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+            ---@class Accessor
+            ---@field [string] any
+
+            ---@type Accessor
+            G = {}
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+            G.aaa = true
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_alias_unknown_allows_field_injection() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
