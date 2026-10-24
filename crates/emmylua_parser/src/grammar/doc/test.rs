@@ -3757,4 +3757,54 @@ Syntax(Chunk)@0..47
 
         assert!(errors.is_empty());
     }
+
+    /// #1320: a plain `---` line after a `---@field` with a same-line description is not
+    /// part of that field; it stays a standalone description attached to the next tag.
+    #[test]
+    fn test_field_line_description_does_not_continue() {
+        let code = "---@class B\n---@field b1 boolean trailing b1\n---Above b2.\n---@field b2 boolean\nlocal b\n";
+        let result = r#"
+Syntax(Chunk)@0..87
+  Syntax(Block)@0..87
+    Syntax(Comment)@0..78
+      Token(TkDocStart)@0..4 "---@"
+      Syntax(DocTagClass)@4..11
+        Token(TkTagClass)@4..9 "class"
+        Token(TkWhitespace)@9..10 " "
+        Token(TkName)@10..11 "B"
+      Token(TkEndOfLine)@11..12 "\n"
+      Token(TkDocStart)@12..16 "---@"
+      Syntax(DocTagField)@16..32
+        Token(TkTagField)@16..21 "field"
+        Token(TkWhitespace)@21..22 " "
+        Token(TkName)@22..24 "b1"
+        Token(TkWhitespace)@24..25 " "
+        Syntax(TypeName)@25..32
+          Token(TkName)@25..32 "boolean"
+      Token(TkWhitespace)@32..33 " "
+      Syntax(DocDescription)@33..44
+        Token(TkDocDetail)@33..44 "trailing b1"
+      Token(TkEndOfLine)@44..45 "\n"
+      Syntax(DocDescription)@45..57
+        Token(TkNormalStart)@45..48 "---"
+        Token(TkDocDetail)@48..57 "Above b2."
+      Token(TkEndOfLine)@57..58 "\n"
+      Token(TkDocStart)@58..62 "---@"
+      Syntax(DocTagField)@62..78
+        Token(TkTagField)@62..67 "field"
+        Token(TkWhitespace)@67..68 " "
+        Token(TkName)@68..70 "b2"
+        Token(TkWhitespace)@70..71 " "
+        Syntax(TypeName)@71..78
+          Token(TkName)@71..78 "boolean"
+    Token(TkEndOfLine)@78..79 "\n"
+    Syntax(LocalStat)@79..86
+      Token(TkLocal)@79..84 "local"
+      Token(TkWhitespace)@84..85 " "
+      Syntax(LocalName)@85..86
+        Token(TkName)@85..86 "b"
+    Token(TkEndOfLine)@86..87 "\n"
+        "#;
+        assert_ast_eq!(code, result);
+    }
 }

@@ -912,4 +912,71 @@ mod tests {
         ));
         Ok(())
     }
+
+    /// #1320: docs written above a `---@field` are that field's description.
+    #[gtest]
+    fn test_hover_field_doc_above_tag() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class A
+                ---Above a1.
+                ---@field a1 boolean
+
+                ---@type A
+                local a = {}
+                print(a.<??>a1)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) a1: boolean\n```\n\n---\n\nAbove a1.".to_string(),
+            },
+        ));
+        check!(
+            ws.check_hover(
+                r#"
+                ---@class C
+                ---Above c1.
+                ---@field c1 boolean same line c1
+
+                ---@type C
+                local c = {}
+                print(c.<??>c1)
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) c1: boolean\n```\n\n---\n\nAbove c1.\n\nsame line c1"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    /// #1320: plain `---` lines after a `---@field` with a same-line description belong to the
+    /// next field, not to the previous one.
+    #[gtest]
+    fn test_hover_field_doc_not_glued_to_previous_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let class = r#"
+                ---@class B
+                ---@field b1 boolean trailing b1
+                ---Above b2.
+                ---@field b2 boolean
+
+                ---@type B
+                local b = {}
+        "#;
+        check!(ws.check_hover(
+            &format!("{class}\nprint(b.<??>b1)"),
+            VirtualHoverResult {
+                value: "```lua\n(field) b1: boolean\n```\n\n---\n\ntrailing b1".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            &format!("{class}\nprint(b.<??>b2)"),
+            VirtualHoverResult {
+                value: "```lua\n(field) b2: boolean\n```\n\n---\n\nAbove b2.".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
