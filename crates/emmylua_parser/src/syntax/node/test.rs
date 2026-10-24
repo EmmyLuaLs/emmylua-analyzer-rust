@@ -48,6 +48,49 @@ mod tests {
     }
 
     #[test]
+    fn test_doc_type_on_the_tag_line() {
+        let errors = |code: &str| {
+            let tree = LuaParser::parse(code, ParserConfig::default());
+            tree.get_errors()
+                .iter()
+                .map(|error| error.message.clone())
+                .collect::<Vec<_>>()
+        };
+        let expected = vec!["expect type on the same line as the tag".to_string()];
+        for code in [
+            "---@param x\n--- integer\nlocal function f(x) end",
+            "---@return\n--- string name\nlocal function f() end",
+            "---@field x\n--- integer\nlocal t",
+            "---@type\n--- integer\nlocal t",
+            "---@alias B\n--- string\nlocal t",
+            "local u = t --[[@as\n--- integer]]",
+            "---@class D :\n--- A\nlocal t",
+            "---@overload\n--- fun(): integer\nlocal function g() end",
+            "---@param x\r\n--- integer\r\nlocal function f(x) end",
+        ] {
+            assert_eq!(errors(code), expected, "{code}");
+        }
+
+        // A type that starts on the tag's line can continue onto the next lines, and a `---|`
+        // union can start on the next line.
+        for code in [
+            "---@alias C\n---| \"a\"\n---| \"b\"\nlocal t",
+            "---@param y\n---| \"p\"\n---| \"q\"\nlocal function h(y) end",
+            "---@type {\n---   a: integer,\n--- }\nlocal o",
+            "---@type integer\n---| string\nlocal v",
+            "---@return fun(\n---   a: integer\n---): string\nlocal function f() end",
+        ] {
+            assert!(errors(code).is_empty(), "{code}");
+        }
+
+        // A missing type is still reported once.
+        assert_eq!(
+            errors("---@param x\n---@return string\nlocal function f(x) end"),
+            vec!["expect type".to_string()]
+        );
+    }
+
+    #[test]
     fn test_name_token() {
         let code = "local a<const> = 123";
         let local_stat = get_ast_node::<LuaLocalStat>(code);
