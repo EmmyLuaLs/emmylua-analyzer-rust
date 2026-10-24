@@ -912,4 +912,42 @@ mod tests {
         ));
         Ok(())
     }
+
+    /// #1320: docs written above a `---@field` are that field's description.
+    #[gtest]
+    fn test_hover_field_doc_above_tag() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class A
+                ---Above a1.
+                ---@field a1 boolean
+
+                ---@type A
+                local a = {}
+                print(a.<??>a1)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) a1: boolean\n```\n\n---\n\nAbove a1.".to_string(),
+            },
+        ));
+        check!(
+            ws.check_hover(
+                r#"
+                ---@class C
+                ---Above c1.
+                ---@field c1 boolean same line c1
+
+                ---@type C
+                local c = {}
+                print(c.<??>c1)
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) c1: boolean\n```\n\n---\n\nAbove c1.\n\nsame line c1"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
 }
