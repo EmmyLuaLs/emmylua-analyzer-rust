@@ -5,6 +5,11 @@ use emmylua_code_analysis::EmmyLuaAnalysis;
 mod export;
 mod json_types;
 
+pub fn export_value(analysis: &EmmyLuaAnalysis) -> Result<serde_json::Value, serde_json::Error> {
+    let model = DocModel::build(analysis);
+    serde_json::to_value(export::export(&model, analysis.emmyrc.clone()))
+}
+
 pub fn generate_json(
     analysis: &EmmyLuaAnalysis,
     output: OutputDestination,
