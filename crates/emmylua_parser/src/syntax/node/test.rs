@@ -190,6 +190,41 @@ mod tests {
     }
 
     #[test]
+    fn test_doc_return_name_is_on_the_tag_line() {
+        use crate::LuaDocTagReturn;
+        let names = |code: &str| {
+            get_ast_node::<LuaDocTagReturn>(code)
+                .get_info_list()
+                .into_iter()
+                .map(|(_, name)| name.map(|name| name.get_name_text().to_string()))
+                .collect::<Vec<_>>()
+        };
+        // A word on the next line starts a description, not the return's name.
+        assert_eq!(
+            names(
+                "---@return string
+--- The result.
+local function f() end"
+            ),
+            [None]
+        );
+        assert_eq!(
+            names(
+                "---@return string name The result.
+local function f() end"
+            ),
+            [Some("name".to_string())]
+        );
+        assert_eq!(
+            names(
+                "---@return integer a, string b Both.
+local function f() end"
+            ),
+            [Some("a".to_string()), Some("b".to_string())]
+        );
+    }
+
+    #[test]
     fn test_func_stat() {
         let code = r#"
         function f()
