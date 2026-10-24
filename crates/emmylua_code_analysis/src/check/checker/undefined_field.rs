@@ -217,9 +217,17 @@ fn is_valid_member(
         LuaType::Union(union) => union.into_vec().iter().any(|component| {
             is_valid_member(semantic_model, component, prefix, index_expr, index_key)
         }),
-        LuaType::Object(_) => {
+        LuaType::Object(object) => {
             let key_ty = key_type(semantic_model, index_key);
             if is_unknown_key(&key_ty) || matches!(index_key, LuaIndexKey::Expr(_)) {
+                return true;
+            }
+            // Index signatures: `{ [string]: V }` / `{ [integer]: V }`.
+            if object
+                .get_index_access()
+                .iter()
+                .any(|(table_key, _)| key_matches(semantic_model, &key_ty, table_key))
+            {
                 return true;
             }
             if let Some(key) = static_member_key(semantic_model, index_key) {
