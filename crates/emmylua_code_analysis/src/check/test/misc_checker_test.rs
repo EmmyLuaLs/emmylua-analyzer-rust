@@ -129,6 +129,39 @@ fn test_library_file_has_no_diagnostics() {
     );
 }
 
+/// `diagnostics.checkMetaFiles` checks the main workspace's meta files, not library files.
+#[test]
+fn test_library_meta_file_skipped_with_check_meta_files() {
+    use lsp_types::Uri;
+    use std::str::FromStr;
+    use std::sync::Arc;
+
+    let mut emmyrc = Emmyrc::default();
+    emmyrc.diagnostics.check_meta_files = true;
+    let emmyrc = Arc::new(emmyrc);
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    db.add_library_workspace(&WorkspaceFolder::new(
+        std::path::PathBuf::from("C:/libs/some-lib"),
+        true,
+    ));
+
+    let uri = Uri::from_str("file:///C:/libs/some-lib/def.lua").unwrap();
+    let fid = db.set_file_content(
+        &uri,
+        Some("---@meta\n---@param y integer\nfunction f(x) end".to_string()),
+    );
+
+    let model = SemanticModel::new(&db, fid);
+    let diagnostics = check_file(&model, Arc::new(CheckConfig::new(&emmyrc)));
+    assert_eq!(
+        diagnostics.len(),
+        0,
+        "library file must stay definition-only, got: {:?}",
+        diagnostics
+    );
+}
+
 /// `assert(true)` is always true → reported.
 #[test]
 fn test_unnecessary_assert_truthy() {
