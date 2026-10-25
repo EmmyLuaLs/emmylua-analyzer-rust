@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, VirtualWorkspace,
+        check::test::{check_source, count_by_code},
+    };
 
     #[test]
     fn test_duplicate_field() {
@@ -209,5 +212,62 @@ mod test {
                 end
         "#
         ));
+    }
+
+    #[test]
+    fn test_self_field_write_does_not_mask_direct_duplicates() {
+        let diagnostics = check_source(
+            r#"
+                local M = {}
+                function M:init()
+                    self.run = function() end
+                end
+                function M.run() end
+                M.run = function() end
+        "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::DuplicateSetField),
+            2,
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_repeated_self_field_writes_are_reported() {
+        let diagnostics = check_source(
+            r#"
+                local M = {}
+                function M:init()
+                    self.run = function() end
+                    self.run = function() end
+                end
+        "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::DuplicateSetField),
+            2,
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_cross_method_self_field_writes_are_not_duplicates() {
+        let diagnostics = check_source(
+            r#"
+                local M = {}
+                function M:init()
+                    self.run = function() end
+                end
+                function M:reset()
+                    self.run = function() end
+                end
+        "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::DuplicateSetField),
+            0,
+            "{diagnostics:?}"
+        );
     }
 }

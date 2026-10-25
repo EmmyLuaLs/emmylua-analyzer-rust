@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use crate::handlers::hover::hover;
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult, check};
     use googletest::prelude::*;
+    use lsp_types::HoverContents;
 
     fn dedent(input: &str) -> String {
         let lines: Vec<&str> = input.lines().collect();
@@ -911,5 +913,27 @@ mod tests {
             },
         ));
         Ok(())
+    }
+
+    #[test]
+    fn test_class_method_self_field_hover() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let (source, position) = ProviderVirtualWorkspace::handle_file_content(
+            r#"
+            ---@class <??>LinkedTableA
+            local M
+
+            function M:init()
+                self.a = 1
+            end
+            "#,
+        )
+        .unwrap();
+        let file_id = ws.def(&source);
+        let result = hover(&ws.analysis, file_id, position).expect("class hover");
+        let HoverContents::Markup(content) = result.contents else {
+            panic!("expected markup hover");
+        };
+        assert!(content.value.contains("a: integer"), "{}", content.value);
     }
 }

@@ -11,8 +11,8 @@ use emmylua_parser::{
     LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
     LuaDocTagAttributeUse, LuaDocTagDiagnostic, LuaDocTagField, LuaDocType, LuaDocTypeFlag,
     LuaExpr, LuaFuncStat, LuaIfClauseStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr,
-    LuaLiteralToken, LuaLocalStat, LuaNameToken, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaTableExpr,
-    LuaTableField, LuaVarExpr, LuaVersionCondition, NumberResult, UnaryOperator,
+    LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaNameToken, LuaStat, LuaSyntaxId, LuaSyntaxKind,
+    LuaTableExpr, LuaTableField, LuaVarExpr, LuaVersionCondition, NumberResult, UnaryOperator,
 };
 use rowan::{TextRange, TextSize, WalkEvent};
 use smol_str::SmolStr;
@@ -1885,7 +1885,8 @@ impl FactsBuilder {
             return;
         };
         let mut segments = Vec::new();
-        let Some(owner) = self.resolve_member_owner(prefix, &mut segments) else {
+        let Some((owner, implicit_self)) = self.resolve_member_owner_id(prefix, &mut segments)
+        else {
             return;
         };
         // `_G.name = value` / `_ENV.name = value` also defines a real global declaration.
@@ -1907,6 +1908,7 @@ impl FactsBuilder {
         );
         member.value_syntax = value_syntax;
         member.is_method = is_method;
+        member.implicit_self = implicit_self;
         member.deprecated = self.current_comment_deprecated;
         // A `---@type` annotation on the assignment statement is also attached to the runtime member, as a fallback annotation for flow member assignment.
         if member.doc_type_syntax.is_none()
@@ -1919,13 +1921,17 @@ impl FactsBuilder {
         self.members.push(member);
     }
 
-    /// Resolves a member owner's prefix into `SemanticId`.
-    /// Local root → `Decl(local)`; global root → `Name(full path "a.b")` (linked in phase 2).
+    /// Resolves a member owner's prefix into `(owner, implicit_self)`.
+    /// Local root → `Decl(local)`; global root → `Name(root)` with `segments` collected,
+    /// qualified exactly once by [`Self::resolve_member_owner_id`].
+    ///
+    /// `implicit_self` is the syntax id of the enclosing method closure when the chain is rooted at an
+    /// implicit `self`, so callers can keep per-method grouping (e.g. duplicate-field checks).
     fn resolve_member_owner(
         &self,
         expr: LuaExpr,
         segments: &mut Vec<SmolStr>,
-    ) -> Option<SemanticId> {
+    ) -> Option<(SemanticId, Option<LuaSyntaxId>)> {
         match expr {
             // `(t).x = v` is equivalent to `t.x = v`; the member belongs to the same underlying declaration.
             LuaExpr::ParenExpr(paren) => self.resolve_member_owner(paren.get_expr()?, segments),
@@ -1934,34 +1940,56 @@ impl FactsBuilder {
                     .get_index_key()
                     .map(|k| k.get_path_part())
                     .and_then(|p| (!p.is_empty()).then(|| SmolStr::new(p)))?;
-                let owner = self.resolve_member_owner(parent.get_prefix_expr()?, segments)?;
+                let (owner, implicit_self) =
+                    self.resolve_member_owner(parent.get_prefix_expr()?, segments)?;
                 segments.push(segment);
-                // Global root: rebuild the full path (root name + all segments, e.g. "M.N").
-                if let SemanticId::Name(root) = &owner {
-                    let mut path = root.as_str().to_string();
-                    for s in segments.iter() {
-                        path.push('.');
-                        path.push_str(s);
-                    }
-                    return Some(SemanticId::name(SmolStr::new(path)));
-                }
-                Some(owner)
+                Some((owner, implicit_self))
             }
             LuaExpr::NameExpr(name_expr) => {
                 let name = name_expr.get_name_text()?;
                 if name == "_ENV" || name == "_G" {
-                    return Some(SemanticId::name(SmolStr::new(&name)));
+                    return Some((SemanticId::name(SmolStr::new(&name)), None));
                 }
                 let offset = name_expr.get_position();
                 if let Some(decl) = self.find_visible_decl_before_offset(&name, offset)
                     && !matches!(decl.kind, DeclKind::Global)
                 {
-                    return Some(decl.id.clone());
+                    if decl.is_implicit_self {
+                        let closure = decl.owner_syntax;
+                        let resolved = implicit_self_receiver_prefix(decl, &name_expr)
+                            .and_then(|receiver| self.resolve_member_owner(receiver, segments));
+                        return match resolved {
+                            Some((owner, _)) => Some((owner, closure)),
+                            None => Some((decl.id.clone(), closure)),
+                        };
+                    }
+                    return Some((decl.id.clone(), None));
                 }
-                Some(SemanticId::name(SmolStr::new(name)))
+                Some((SemanticId::name(SmolStr::new(name)), None))
             }
             _ => None,
         }
+    }
+
+    ///  `M` + `["N", "O"]` → `Name("M.N.O")`
+    fn resolve_member_owner_id(
+        &self,
+        expr: LuaExpr,
+        segments: &mut Vec<SmolStr>,
+    ) -> Option<(SemanticId, Option<LuaSyntaxId>)> {
+        let (owner, implicit_self) = self.resolve_member_owner(expr, segments)?;
+        let owner = match &owner {
+            SemanticId::Name(root) => {
+                let mut path = root.as_str().to_string();
+                for segment in segments.iter() {
+                    path.push('.');
+                    path.push_str(segment);
+                }
+                SemanticId::name(SmolStr::new(path))
+            }
+            _ => owner,
+        };
+        Some((owner, implicit_self))
     }
 
     /// Direct fields of `{ foo = 1, ... }` → owner = the local declaring the table (`Decl`).
@@ -2663,4 +2691,19 @@ fn line_range(text: &str, line: usize) -> Option<TextRange> {
         TextSize::from(start as u32),
         TextSize::from(end as u32),
     ))
+}
+
+/// 获得隐式 `self` 引用的成员归属
+pub(crate) fn implicit_self_receiver_prefix(
+    self_decl: &Decl,
+    name_expr: &LuaNameExpr,
+) -> Option<LuaExpr> {
+    let closure = name_expr
+        .ancestors::<LuaClosureExpr>()
+        .find(|closure| Some(closure.get_syntax_id()) == self_decl.owner_syntax)?;
+    let LuaVarExpr::IndexExpr(method) = closure.get_parent::<LuaFuncStat>()?.get_func_name()?
+    else {
+        return None;
+    };
+    method.get_prefix_expr()
 }

@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaSyntaxNode, LuaVarExpr};
+use emmylua_parser::{
+    LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaSyntaxId, LuaSyntaxNode, LuaVarExpr,
+};
 
 use crate::DiagnosticCode;
 use crate::FileId;
@@ -32,14 +34,19 @@ impl Checker for DuplicateFieldChecker {
             let root = tree.get_red_root();
             check_cross_file_member_assign(context, semantic_model, &root);
         }
-        let mut by_owner: HashMap<&SemanticId, Vec<&Member>> = HashMap::new();
+
+        let mut by_owner: HashMap<(&SemanticId, Option<LuaSyntaxId>), Vec<&Member>> =
+            HashMap::new();
         for member in &facts.members {
-            by_owner.entry(&member.owner).or_default().push(member);
+            by_owner
+                .entry((&member.owner, member.implicit_self))
+                .or_default()
+                .push(member);
         }
-        for (owner, members) in by_owner {
+        for ((owner, _), members) in by_owner {
             // Group by key.
-            let mut by_key: HashMap<String, Vec<&&Member>> = HashMap::new();
-            for member in &members {
+            let mut by_key: HashMap<String, Vec<&Member>> = HashMap::new();
+            for member in members {
                 by_key.entry(member.key.to_path()).or_default().push(member);
             }
             let is_type_def = matches!(owner, SemanticId::TypeDef(_));

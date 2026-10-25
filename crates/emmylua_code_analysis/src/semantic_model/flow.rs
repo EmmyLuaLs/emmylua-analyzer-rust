@@ -576,13 +576,19 @@ pub(crate) fn type_of_expr_at_node(
                         return apply_casts(ty, All);
                     }
                 }
-                if let SemanticId::Decl(owner_decl) = &resolved.owner
-                    && let Some(facts) = model.file_facts_of(owner_decl.file_id)
-                {
-                    if !resolved_is_runtime
+                if !resolved_is_runtime {
+                    let runtime_owner_facts = match &resolved.owner {
+                        SemanticId::Decl(owner_decl) => model.file_facts_of(owner_decl.file_id),
+                        _ => model.file_facts(),
+                    };
+                    if let Some(facts) = runtime_owner_facts
                         && let Some(runtime_member) = facts
                             .members_of_owner(&resolved.owner)
                             .find(|m| m.key.name() == Some(resolved.name.as_str()))
+                        && runtime_member
+                                .id
+                                .member_key_range()
+                                .is_none_or(|range| range.start() <= offset)
                         // Table fields from a declared initializer are not "runtime overrides": `local b: B = { field = 1 }`
                         // field access is still governed by the class `@field` type, avoiding widening `integer` to `number`.
                         && !model.is_initializer_table_field(&runtime_member.id, runtime_member)
@@ -1798,12 +1804,14 @@ fn trace_decl(
     }
     let key = cache::TraceStateKey {
         file_id: model.file_id(),
-        decl: decl.clone(),
+        subject: cache::TraceSubject::Decl {
+            decl: decl.clone(),
+            guards: options.guards,
+            casts: options.casts,
+            assignments: options.assignments,
+            merge_branch: matches!(mode, TraceMode::MergeBranch),
+        },
         flow_id: flow_id.0,
-        guards: options.guards,
-        casts: options.casts,
-        assignments: options.assignments,
-        merge_branch: matches!(mode, TraceMode::MergeBranch),
     };
     {
         let cache = model.cache.borrow();
@@ -2113,6 +2121,46 @@ fn member_annotation_type(model: &SemanticModel, member: &SemanticId) -> Option<
 
 /// Backtrack along the CFG for the member's most recent assignment type.
 fn trace_member(
+    model: &SemanticModel,
+    member: &SemanticId,
+    access: Option<&emmylua_parser::LuaIndexExpr>,
+    tree: &FlowTree,
+    flow_id: FlowId,
+    visited: &mut HashSet<FlowId>,
+    path: &mut PathState,
+) -> Option<LuaType> {
+    if tree.is_loop_reachable(flow_id) || !path.casts.is_empty() || !path.narrowings.is_empty() {
+        return trace_member_uncached(model, member, access, tree, flow_id, visited, path);
+    }
+    let key = cache::TraceStateKey {
+        file_id: model.file_id(),
+        subject: cache::TraceSubject::Member {
+            member: member.clone(),
+            access: access.map(|access| access.get_syntax_id()),
+        },
+        flow_id: flow_id.0,
+    };
+    {
+        let cache = model.cache.borrow();
+        if let Some(entry) = cache.trace_state.get(&key) {
+            return entry.get(&cache).cloned().flatten();
+        }
+    }
+    let _query = cache::QueryCacheScope::new(&model.cache);
+    model
+        .cache
+        .borrow_mut()
+        .trace_state
+        .insert(key.clone(), cache::CacheEntry::InProgress);
+    let revision = model.cache.borrow().revision();
+    let result = trace_member_uncached(model, member, access, tree, flow_id, visited, path);
+    let mut cache = model.cache.borrow_mut();
+    let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+    cache.trace_state.insert(key, entry);
+    result
+}
+
+fn trace_member_uncached(
     model: &SemanticModel,
     member: &SemanticId,
     access: Option<&emmylua_parser::LuaIndexExpr>,

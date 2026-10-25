@@ -4777,4 +4777,26 @@ _ = a[2]
             "#,
         ));
     }
+
+    #[test]
+    fn test_global_field_read_before_later_assignment() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@class GReadFirst
+            ---@field x string
+            GReadFirst = {}
+            "#,
+        );
+        ws.def(
+            r#"
+            function read()
+                B = GReadFirst.x
+                GReadFirst.x = 1
+            end
+            "#,
+        );
+        let ty = ws.expr_ty("B");
+        assert_eq!(ws.humanize_type(ty), "string");
+    }
 }

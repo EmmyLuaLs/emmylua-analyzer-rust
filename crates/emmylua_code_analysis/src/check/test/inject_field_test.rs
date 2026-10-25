@@ -4,6 +4,48 @@ mod test {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
+    fn test_class_method_self_field_diagnostic() {
+        let diagnostics = check_source(
+            r#"
+            ---@class LinkedTableA
+            local M
+
+            function M:init()
+                self.a = 1
+            end
+            "#,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::InjectField),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_class_method_self_field_reference_is_rejected() {
+        let diagnostics = check_source(
+            r#"
+            ---@class LinkedTableA
+
+            ---@type LinkedTableA
+            local M
+
+            function M:init()
+                self.a = 1
+            end
+            "#,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::InjectField),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
     fn test_table_literal_integral_float_keys() {
         let diagnostics = check_source(
             r#"
@@ -497,10 +539,32 @@ mod test {
             "#
         ));
     }
+    #[test]
+    fn test_partial_class_redeclaration_keeps_self_field() {
+        let diagnostics = check_source(
+            r#"
+            ---@class (partial) Develop.AttrA
+            local M = {}
+
+            ---@class (partial) Develop.AttrA
+
+            function M:__init()
+                self.a = 1
+            end
+            "#,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::InjectField),
+            "{diagnostics:?}"
+        );
+    }
 }
 
 // These tests load the standard library because its `table` declaration is
 // what made dictionaries incorrectly look like closed records.
+
 mod dictionary_constructor {
     use crate::{DiagnosticCode, VirtualWorkspace};
     use googletest::prelude::*;

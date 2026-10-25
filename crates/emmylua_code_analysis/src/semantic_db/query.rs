@@ -17,7 +17,7 @@ use super::def::{
 use super::exports::{
     FileExports, GlobalExport, MemberExport, module_export_owner_file, owner_id_from_semantic_id,
 };
-use super::facts::{FactsBuilder, FileFacts};
+use super::facts::{FactsBuilder, FileFacts, implicit_self_receiver_prefix};
 use super::inputs::WorkspaceRoot;
 use super::types::{
     LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell, checked_integer_arithmetic,
@@ -1769,13 +1769,16 @@ fn push_type_associated_owner_ids(
                 push_unique_owner_id(out, OwnerId::Concrete(SemanticId::name(decl.name.clone())));
             }
         }
-        if let Some(facts) = db.file_facts_of(file_id)
-            && let Some(def) = facts.type_def_by_id(type_id)
-            && let Some(owner_syntax) = def.owner_syntax
-        {
-            for decl in facts.decls_by_owner_syntax(owner_syntax) {
-                if let Some(decl_owner) = canonical_owner_id(db, &decl.id) {
-                    push_unique_owner_id(out, decl_owner);
+        if let Some(facts) = db.file_facts_of(file_id) {
+            // 重复声明时需要合并
+            for def in facts.type_defs.iter().filter(|def| def.id == *type_id) {
+                let Some(owner_syntax) = def.owner_syntax else {
+                    continue;
+                };
+                for decl in facts.decls_by_owner_syntax(owner_syntax) {
+                    if let Some(decl_owner) = canonical_owner_id(db, &decl.id) {
+                        push_unique_owner_id(out, decl_owner);
+                    }
                 }
             }
         }
@@ -3631,12 +3634,11 @@ pub(crate) fn member_ref_from_index_expr(
 fn resolve_expr_root(
     facts: &FileFacts,
     expr: LuaExpr,
-    _segments: &mut Vec<SmolStr>,
+    segments: &mut Vec<SmolStr>,
 ) -> Option<SemanticId> {
     // Deep member chains: expand IndexExpr with an explicit task stack to avoid native stack recursion.
     let mut current = expr;
-    let mut segments = Vec::new();
-    loop {
+    let owner = loop {
         match current {
             LuaExpr::ParenExpr(paren) => {
                 current = paren.get_expr()?;
@@ -3645,26 +3647,26 @@ fn resolve_expr_root(
                 segments.push(SmolStr::new(parent.get_index_key()?.get_path_part()));
                 current = parent.get_prefix_expr()?;
             }
-            _ => break,
-        }
-    }
-    let owner = match current {
-        LuaExpr::NameExpr(name_expr) => {
-            let name = name_expr.get_name_text()?;
-            if name == "_ENV" || name == "_G" {
-                SemanticId::name(SmolStr::new(name))
-            } else {
+            LuaExpr::NameExpr(name_expr) => {
+                let name = name_expr.get_name_text()?;
+                if name == "_ENV" || name == "_G" {
+                    break SemanticId::name(SmolStr::new(name));
+                }
                 let offset = name_expr.get_position();
                 if let Some(decl) = facts.find_visible_decl_before_offset(&name, offset)
                     && !matches!(decl.kind, DeclKind::Global)
                 {
-                    decl.id.clone()
-                } else {
-                    SemanticId::name(SmolStr::new(name))
+                    if decl.is_implicit_self {
+                        return implicit_self_receiver_prefix(decl, &name_expr)
+                            .and_then(|receiver| resolve_expr_root(facts, receiver, segments))
+                            .or_else(|| Some(decl.id.clone()));
+                    }
+                    break decl.id.clone();
                 }
+                break SemanticId::name(SmolStr::new(name));
             }
+            _ => return None,
         }
-        _ => return None,
     };
     if let SemanticId::Name(root) = &owner {
         let mut path = root.as_str().to_string();

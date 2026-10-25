@@ -582,4 +582,20 @@ mod test {
 
         assert_eq!(ws.expr_ty("result"), ws.ty("integer?"));
     }
+
+    #[test]
+    fn test_self_member_with_unresolvable_receiver() {
+        let mut ws = VirtualWorkspace::new();
+        // `getTable()` 接收者无法静态解析时成员回退挂在隐式 self 声明上
+        ws.def(
+            r#"
+            function getTable():m()
+                self.x = 1
+                B = self.x
+            end
+            "#,
+        );
+        let ty = ws.expr_ty("B");
+        assert_eq!(ws.humanize_type(ty), "1");
+    }
 }

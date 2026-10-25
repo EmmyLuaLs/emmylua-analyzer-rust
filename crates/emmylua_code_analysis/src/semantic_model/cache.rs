@@ -162,7 +162,22 @@ impl<T> CacheEntry<T> {
     }
 }
 
-/// Memo key for one declaration-trace state: `(file, declaration, flow node, options, mode)`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum TraceSubject {
+    Decl {
+        decl: SemanticId,
+        guards: bool,
+        casts: bool,
+        assignments: bool,
+        merge_branch: bool,
+    },
+    Member {
+        member: SemanticId,
+        access: Option<LuaSyntaxId>,
+    },
+}
+
+/// Memo key for one flow-trace state on a loop-free graph: `(file, subject, flow node)`.
 ///
 /// The incoming path is deliberately absent. It is safe to omit only for flow
 /// graphs without loops, where every route to a flow node crosses the same
@@ -171,12 +186,8 @@ impl<T> CacheEntry<T> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TraceStateKey {
     pub(crate) file_id: FileId,
-    pub(crate) decl: SemanticId,
+    pub(crate) subject: TraceSubject,
     pub(crate) flow_id: u32,
-    pub(crate) guards: bool,
-    pub(crate) casts: bool,
-    pub(crate) assignments: bool,
-    pub(crate) merge_branch: bool,
 }
 
 #[derive(Default)]
@@ -212,7 +223,7 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
     /// Whole-function, syntax-only check for the local-table last-element proof.
     pub(crate) array_length_stable: HashMap<(FileId, SemanticId), bool>,
-    /// Memoized declaration-trace states for loop-free flow graphs. See
+    /// Memoized declaration/member-trace states for loop-free flow graphs. See
     /// [`TraceStateKey`] for why the path may be omitted from the key.
     pub(crate) trace_state: HashMap<TraceStateKey, CacheEntry<Option<LuaType>>>,
     /// Fast negative/positive cache for `---@return_cast` lookup by call syntax.
