@@ -840,14 +840,23 @@ impl<'db> SemanticModel<'db> {
         let ty = self
             .analysis()
             .type_shell_lua_in(member_file, &shell, &generic_names);
-        let ty = if let Some(facts) = self.file_facts_of(member_file)
-            && let Some(member_def) = facts.member_by_id(member)
-            && member_def.doc_type_syntax.is_none()
-            && let Some(value_syntax) = member_def.value_syntax
-        {
-            flow::apply_expr_casts(self, value_syntax, ty, flow::ExprCastMode::AsOnly)
-        } else {
-            ty
+        let Some(member_def) = self
+            .file_facts_of(member_file)
+            .and_then(|facts| facts.member_by_id(member).cloned())
+        else {
+            return Some(ty);
+        };
+        let ty = match (member_def.doc_type_syntax, member_def.value_syntax) {
+            // The shell lowers a structural doc type (`---@type { x: T }`) to a bare `table`;
+            // the rich projection keeps it, as for a declaration's `---@type`.
+            (Some(doc_syntax), _) if matches!(ty, LuaType::Table | LuaType::Unknown) => {
+                let rich = self.doc_type_lua_rich_in(member_file, doc_syntax);
+                if rich.is_unknown() { ty } else { rich }
+            }
+            (None, Some(value_syntax)) => {
+                flow::apply_expr_casts(self, value_syntax, ty, flow::ExprCastMode::AsOnly)
+            }
+            _ => ty,
         };
         Some(ty)
     }
