@@ -560,6 +560,41 @@ mod test {
             "{diagnostics:?}"
         );
     }
+    #[test]
+    fn test_cross_file_redeclaration_keeps_self_field() {
+        let meta = "---@meta
+
+---@class Ability
+";
+        let good = r#"
+            ---@class (partial) Ability
+            local M = {}
+
+            function M:__init(id)
+                self.id = id
+            end
+            "#;
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file("aaa_meta.lua", meta);
+        let good_id = ws.def_file("zzz_good.lua", good);
+
+        let inject_count = |ws: &VirtualWorkspace| {
+            ws.analysis
+                .diagnose_file(good_id, tokio_util::sync::CancellationToken::new())
+                .unwrap()
+                .into_iter()
+                .filter(|d| {
+                    matches!(&d.code, Some(lsp_types::NumberOrString::String(c)) if c == "inject-field")
+                })
+                .count()
+        };
+        assert_eq!(inject_count(&ws), 0);
+
+        // 重算结果应保持一致.
+        let uri = ws.analysis.get_uri(good_id).expect("uri");
+        ws.analysis.update_file_by_uri(&uri, Some(good.to_string()));
+        assert_eq!(inject_count(&ws), 0);
+    }
 }
 
 // These tests load the standard library because its `table` declaration is
