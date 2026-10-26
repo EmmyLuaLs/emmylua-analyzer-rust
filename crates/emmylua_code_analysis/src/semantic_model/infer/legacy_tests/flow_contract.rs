@@ -1,0 +1,130 @@
+use crate::{DiagnosticCode, test_lib::VirtualWorkspace};
+use lsp_types::NumberOrString;
+use tokio_util::sync::CancellationToken;
+
+fn check_contract(code: &str) -> Vec<String> {
+    check_contract_in(&mut VirtualWorkspace::new_with_init_std_lib(), code)
+}
+
+fn check_contract_in(ws: &mut VirtualWorkspace, code: &str) -> Vec<String> {
+    let mut failures = Vec::new();
+    ws.enable_check(DiagnosticCode::NeedCheckNil);
+    let file = ws.def(code);
+    let diagnostics = ws
+        .analysis
+        .diagnose_file(file, CancellationToken::new())
+        .unwrap_or_default();
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            [
+                DiagnosticCode::AssignTypeMismatch,
+                DiagnosticCode::ParamTypeMismatch,
+                DiagnosticCode::ReturnTypeMismatch,
+                DiagnosticCode::UndefinedField,
+                DiagnosticCode::MissingFields,
+                DiagnosticCode::NeedCheckNil,
+                DiagnosticCode::InjectField,
+            ]
+            .iter()
+            .any(|code| diagnostic.code == Some(NumberOrString::String(code.get_name().to_owned())))
+        })
+        .collect();
+    for (line, text) in code.lines().enumerate() {
+        let expected = text.contains("-- Error:") || text.contains("-- inject-field:");
+        let actual: Vec<_> = errors
+            .iter()
+            .filter(|diagnostic| diagnostic.range.start.line as usize == line)
+            .collect();
+        if expected != !actual.is_empty() {
+            failures.push(format!(
+                "line {}: {text}\n  expected error: {expected}; {actual:?}",
+                line + 1
+            ));
+        }
+    }
+    failures
+}
+
+fn assert_contract(code: &str) {
+    let failures = check_contract(code);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn error_paths_do_not_make_constructed_fields_optional() {
+    assert_contract(
+        r#"
+        ---@param stop boolean
+        local function build(stop)
+            local value = {}
+            if stop then error('stop') else value.text = 'hello' end
+            ---@type {text: string}
+            local record = value
+            return record
+        end
+        "#,
+    );
+}
+
+#[test]
+fn literal_true_loops_use_only_break_exits() {
+    assert_contract(
+        r#"
+        local value = {}
+        while true do
+            value.text = 'hello'
+            break
+        end
+        ---@type {text: string}
+        local record = value
+
+        ---@param done boolean
+        local function build(done)
+            local value = {}
+            while (true) do
+                if done then
+                    value.text = 'hello'
+                    break
+                end
+            end
+            ---@type {text: string}
+            local record = value
+            return record
+        end
+        "#,
+    );
+}
+
+#[test]
+fn field_assertions_do_not_disable_inferred_table() {
+    assert_contract(
+        r#"
+        local value = {count = 1 --[[@as integer]]}
+        ---@type {text: string}
+        local record = value -- The completed interface includes the later definition.
+        value.text = 'late' -- An earlier use does not restrict definitions.
+
+        local built = {text = 'hello' --[[@as string]]}
+        built.count = 1
+        ---@type {text: string, count: integer}
+        local record = built
+        built.extra = 1
+        "#,
+    );
+}
+
+#[test]
+fn tuple_writes_check_the_declared_slot_type() {
+    assert_contract(
+        r#"
+        ---@type [integer, string]
+        local value = {1, 'hello'}
+        value[1] = 2
+        value[2] = 'updated'
+        value[1] = 'bad' -- Error: the first slot accepts integers.
+        value[2] = 3 -- Error: the second slot accepts strings.
+        value[1] = nil
+        "#,
+    );
+}

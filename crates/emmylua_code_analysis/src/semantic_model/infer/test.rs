@@ -1338,6 +1338,37 @@ fn test_table_const_member_infos() {
     assert!(names.contains(&"name"), "members: {:?}", names);
 }
 
+#[test]
+fn test_table_const_member_infos_expand_final_results() {
+    let env = model_of(
+        r#"
+        ---@return string, integer...
+        local function results() error('stub') end
+        local function pack() return {results()} end
+        local packed = pack()
+        local tail = packed[4]
+        "#,
+    );
+    let model = env.model();
+    let typ = model.type_of_decl(&decl_of(&model, "packed")).unwrap();
+    let members: Vec<_> = model
+        .member_infos(&typ)
+        .into_iter()
+        .map(|info| (info.key, info.typ))
+        .collect();
+    assert_eq!(
+        members,
+        vec![
+            (LuaMemberKey::Integer(1), LuaType::String),
+            (LuaMemberKey::Integer(2), LuaType::Integer),
+        ]
+    );
+    assert_eq!(
+        model.type_of_decl(&decl_of(&model, "tail")),
+        Some(LuaType::Integer)
+    );
+}
+
 /// setmetatable: returns the first table arg and passes its identity through (`t.x`
 /// can be inferred).
 #[test]
