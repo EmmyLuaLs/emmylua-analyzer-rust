@@ -83,7 +83,7 @@ pub fn function_overloads_md(
             signature
                 .overloads
                 .iter()
-                .map(|overload| render_function_type(model, overload, func_name, false))
+                .map(|overload| render_function_type(model, overload, None, func_name, false))
                 .collect()
         })
         .unwrap_or_default()
@@ -105,34 +105,61 @@ pub fn render_const_type(model: &DocModel, typ: &LuaType) -> String {
 pub fn render_function_type(
     model: &DocModel,
     typ: &LuaType,
+    signature: Option<&DocSignature>,
     func_name: &str,
     is_local: bool,
 ) -> String {
     let local_prev = if is_local { "local " } else { "" };
-    let Some(func) = model.function_info(typ, None) else {
+    let Some(func) = model.function_info(typ, signature) else {
         return format!("```lua\n{}function {}\n```\n", local_prev, func_name);
     };
 
     let async_prev = if func.is_async { "async " } else { "" };
-    let params = func
-        .params
-        .iter()
-        .map(|param| match &param.ty {
-            Some(ty) => format!(
-                "{}: {}",
-                param.name,
-                render_typ(model, ty, RenderLevel::Documentation)
-            ),
-            None => param.name.clone(),
-        })
-        .collect::<Vec<_>>();
+    let params = if !func.params.is_empty() {
+        func.params
+            .iter()
+            .map(|param| match &param.ty {
+                Some(ty) => format!(
+                    "{}: {}",
+                    param.name,
+                    render_typ(model, ty, RenderLevel::Documentation)
+                ),
+                None => param.name.clone(),
+            })
+            .collect::<Vec<_>>()
+    } else if let Some(signature) = signature {
+        signature
+            .params
+            .iter()
+            .map(|param| match &param.ty {
+                Some(ty) => format!(
+                    "{}: {}",
+                    param.name,
+                    render_typ(model, ty, RenderLevel::Documentation)
+                ),
+                None => param.name.clone(),
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
-    let ret_strs = func
-        .returns
-        .iter()
-        .map(|ty| render_typ(model, ty, RenderLevel::Documentation))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let ret_strs = if !func.returns.is_empty() {
+        func.returns
+            .iter()
+            .map(|ty| render_typ(model, ty, RenderLevel::Documentation))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else if let Some(signature) = signature {
+        signature
+            .returns
+            .iter()
+            .map(|ret| render_typ(model, &ret.ty, RenderLevel::Documentation))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        String::new()
+    };
 
     let mut result = String::new();
     result.push_str("```lua\n");

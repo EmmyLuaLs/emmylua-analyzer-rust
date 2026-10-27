@@ -6,17 +6,21 @@
 
 mod common;
 
-const SOURCE: &str = r#"---@param a number @the first operand
+const SOURCE: &str = r#"local M = {}
+
+---@param a number @the first operand
 ---@return number @the sum
 ---@overload fun(text: string): string
-function add(a)
+function M.add(a)
     return a
 end
+
+return M
 "#;
 
 #[test]
 fn markdown_renders_overload_signatures() {
-    let md = common::generate_global_markdown("markdown_overloads", SOURCE);
+    let md = common::generate_module_markdown("markdown_overloads", SOURCE);
 
     assert!(
         md.contains("**Overloads**"),

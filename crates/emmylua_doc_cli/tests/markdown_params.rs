@@ -9,20 +9,40 @@
 
 mod common;
 
-const SOURCE: &str = r#"---@param a number @the first operand
+const SOURCE: &str = r#"local M = {}
+
+---@param a number @the first operand
 ---@param b number @the second operand
 ---@return number @the sum
-function check(a, b)
+function M.add(a, b)
     return a + b
 end
+
+return M
 "#;
 
-const TYPE_ONLY_SOURCE: &str = r#"---@param a number
+const TYPE_ONLY_SOURCE: &str = r#"local M = {}
+
+---@param a number
 ---@param b string
 ---@return boolean
-function check(a, b)
+function M.check(a, b)
     return true
 end
+
+return M
+"#;
+
+const TYPE_SOURCE: &str = r#"---@class demo
+local M = {}
+
+---@param a number @the first operand
+---@return number @the sum
+function M.add(a)
+    return a
+end
+
+return M
 "#;
 
 const DOC_FUNCTION_SOURCE: &str = r#"---@class demo
@@ -32,14 +52,18 @@ local exports = {}
 return exports
 "#;
 
-const UNDOCUMENTED_SOURCE: &str = r#"function identity(value)
+const UNDOCUMENTED_SOURCE: &str = r#"local M = {}
+
+function M.identity(value)
     return value
 end
+
+return M
 "#;
 
 #[test]
 fn markdown_renders_parameter_and_return_descriptions() {
-    let md = common::generate_global_markdown("markdown_params", SOURCE);
+    let md = common::generate_module_markdown("markdown_params", SOURCE);
 
     assert!(
         md.contains("**Parameters**"),
@@ -76,7 +100,7 @@ fn markdown_renders_parameter_and_return_descriptions() {
 
 #[test]
 fn markdown_renders_type_only_parameters() {
-    let md = common::generate_global_markdown("markdown_params_type_only", TYPE_ONLY_SOURCE);
+    let md = common::generate_module_markdown("markdown_params_type_only", TYPE_ONLY_SOURCE);
 
     assert!(
         md.contains("**Parameters**"),
@@ -95,6 +119,28 @@ fn markdown_renders_type_only_parameters() {
         "type-only return value was dropped:\n{md}"
     );
     assert!(md.contains("(*boolean*)"), "missing return type:\n{md}");
+}
+
+#[test]
+fn markdown_renders_class_type_member_details() {
+    let md = common::generate_type_markdown("markdown_params_type_page", TYPE_SOURCE, "demo");
+
+    assert!(
+        md.contains("**Parameters**"),
+        "missing `**Parameters**` section on the type page:\n{md}"
+    );
+    assert!(
+        md.contains("**Returns**"),
+        "missing `**Returns**` section on the type page:\n{md}"
+    );
+    assert!(
+        md.contains("the first operand"),
+        "missing parameter description on the type page:\n{md}"
+    );
+    assert!(
+        md.contains("the sum"),
+        "missing return-value description on the type page:\n{md}"
+    );
 }
 
 #[test]
@@ -122,7 +168,7 @@ fn markdown_renders_doc_function_details() {
 
 #[test]
 fn markdown_omits_empty_detail_tables() {
-    let md = common::generate_global_markdown("markdown_params_undocumented", UNDOCUMENTED_SOURCE);
+    let md = common::generate_module_markdown("markdown_params_undocumented", UNDOCUMENTED_SOURCE);
 
     assert!(
         !md.contains("**Parameters**"),

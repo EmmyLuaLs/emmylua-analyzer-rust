@@ -14,6 +14,37 @@ function greet(name)
 end
 "#;
 
+const TABLE_SOURCE: &str = r#"global_table = {}
+
+---@param x number @the value
+---@return number @the same value
+function global_table.foo(x)
+    return x
+end
+"#;
+
+#[test]
+fn markdown_renders_global_table_member_details() {
+    let md = common::generate_global_markdown("markdown_globals_table", TABLE_SOURCE);
+
+    assert!(
+        md.contains("**Parameters**"),
+        "global table members were dropped:\n{md}"
+    );
+    assert!(
+        md.contains("- **x** (*number*) - the value"),
+        "missing global table parameter details:\n{md}"
+    );
+    assert!(
+        md.contains("**Returns**"),
+        "missing global table return details:\n{md}"
+    );
+    assert!(
+        md.contains("the same value"),
+        "missing global table return description:\n{md}"
+    );
+}
+
 #[test]
 fn markdown_renders_global_function_details() {
     let md = common::generate_global_markdown("markdown_globals", SOURCE);

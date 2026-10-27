@@ -231,7 +231,13 @@ pub(crate) fn collect_owner_members(
             .function_info(&member.ty, member.signature.as_ref())
             .is_some()
         {
-            let display = render_function_type(model, &member.ty, &title_name, false);
+            let display = render_function_type(
+                model,
+                &member.ty,
+                member.signature.as_ref(),
+                &title_name,
+                false,
+            );
             let (params, returns) =
                 function_details_md(model, &member.ty, member.signature.as_ref())
                     .unwrap_or_default();

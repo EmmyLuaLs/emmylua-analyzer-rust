@@ -15,6 +15,17 @@ pub fn generate_global_markdown(fixture_name: &str, source: &str) -> String {
     read_single_page(&out.join("docs").join("globals"), "global")
 }
 
+/// Generates the markdown for a type-only fixture and returns its type page.
+pub fn generate_type_markdown(fixture_name: &str, source: &str, type_name: &str) -> String {
+    let out = generate_fixture(fixture_name, source);
+    let page = out
+        .join("docs")
+        .join("types")
+        .join(format!("{type_name}.md"));
+    std::fs::read_to_string(&page)
+        .unwrap_or_else(|err| panic!("read type page {}: {err}", page.display()))
+}
+
 fn generate_fixture(fixture_name: &str, source: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(fixture_name);
     let _ = std::fs::remove_dir_all(&dir);

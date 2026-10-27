@@ -178,6 +178,8 @@ pub struct DocModule {
     pub namespace: Option<String>,
     pub usings: Vec<String>,
     pub export_type: LuaType,
+    /// Owner of runtime members (`local M = {}` → `Decl(M)`).
+    pub owner: Option<SemanticId>,
     pub property: DocProperty,
 }
 
@@ -185,6 +187,8 @@ pub struct DocModule {
 pub struct DocGlobal {
     pub name: String,
     pub ty: LuaType,
+    /// Owner of runtime members (`global_table.foo` → `Name("global_table")`).
+    pub owner: Option<SemanticId>,
     pub property: DocProperty,
     pub loc: Option<DocLoc>,
     pub signature: Option<DocSignature>,
@@ -223,6 +227,7 @@ impl DocModel {
         let mut global_sources: Vec<(FileId, Decl)> = Vec::new();
         let mut module_sources: Vec<ModuleSource> = Vec::new();
         let mut properties: HashMap<DocOwner, DocProperty> = HashMap::new();
+        let mut decls_by_owner_syntax: HashMap<LuaSyntaxId, Vec<SemanticId>> = HashMap::new();
 
         for file_id in file_ids {
             let Some(path) = db.file_path(file_id) else {
@@ -282,6 +287,12 @@ impl DocModel {
                         deprecated: decl.deprecated,
                     },
                 );
+                if let Some(owner_syntax) = decl.owner_syntax {
+                    decls_by_owner_syntax
+                        .entry(owner_syntax)
+                        .or_default()
+                        .push(decl.id.clone());
+                }
                 if matches!(decl.kind, DeclKind::Global) && main_file_ids.contains(&file_id) {
                     global_sources.push((file_id, decl.clone()));
                 }
@@ -337,10 +348,19 @@ impl DocModel {
                 TypeDefKind::Enum => DocTypeKind::Enum,
                 TypeDefKind::Alias => DocTypeKind::Alias,
             };
+            let mut member_owners: Vec<SemanticId> =
+                defs.iter().map(|def| def.id.clone()).collect();
+            for def in &defs {
+                if let Some(owner_syntax) = def.owner_syntax
+                    && let Some(decls) = decls_by_owner_syntax.get(&owner_syntax)
+                {
+                    member_owners.extend(decls.iter().cloned());
+                }
+            }
             let mut members: Vec<DocMember> = Vec::new();
             let mut seen_members = HashSet::new();
-            for def in &defs {
-                if let Some(list) = members_by_owner.get(&def.id) {
+            for owner in &member_owners {
+                if let Some(list) = members_by_owner.get(owner) {
                     for member in list {
                         if seen_members.insert(member.name.clone()) {
                             members.push(member.clone());
@@ -410,6 +430,7 @@ impl DocModel {
                 signature: decl
                     .value_expr_syntax
                     .and_then(|syntax| signatures.get(&syntax).cloned()),
+                owner: Some(SemanticId::name(decl.name.clone())),
                 ty,
             });
         }
@@ -422,7 +443,11 @@ impl DocModel {
             let export = match &source.module_export {
                 ModuleExport::Decl { decl, .. } => {
                     let ty = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
-                    Some((slot0(ty), Some(DocOwner::Decl(decl.clone()))))
+                    Some((
+                        slot0(ty),
+                        Some(DocOwner::Decl(decl.clone())),
+                        Some(decl.clone()),
+                    ))
                 }
                 ModuleExport::Global { name } => {
                     let decl = global_sources
@@ -433,18 +458,23 @@ impl DocModel {
                         .as_ref()
                         .and_then(|decl| model.type_of_decl(decl))
                         .unwrap_or(LuaType::Unknown);
-                    Some((slot0(ty), decl.map(DocOwner::Decl)))
+                    Some((
+                        slot0(ty),
+                        decl.clone().map(DocOwner::Decl),
+                        Some(SemanticId::name(name.clone())),
+                    ))
                 }
                 ModuleExport::Expr { value_syntax } => {
                     let ty = slot0(model.type_of_expr(*value_syntax));
                     Some((
                         ty,
                         Some(DocOwner::Expr(source.file_id, value_syntax.get_range())),
+                        Some(SemanticId::member(source.file_id, value_syntax.get_range())),
                     ))
                 }
                 ModuleExport::None => None,
             };
-            let Some((export_type, export_owner)) = export else {
+            let Some((export_type, export_owner, member_owner)) = export else {
                 continue;
             };
 
@@ -466,6 +496,7 @@ impl DocModel {
                 namespace: source.namespace,
                 usings: source.usings,
                 export_type,
+                owner: member_owner,
                 property,
             });
         }
@@ -532,6 +563,41 @@ impl DocModel {
         }
         members.sort_by(|a, b| a.name.cmp(&b.name));
         members
+    }
+
+    /// Returns the members owned by an explicit semantic owner.
+    pub fn members_of_owner(&self, owner: &SemanticId) -> Vec<DocMember> {
+        let mut members = self
+            .members_by_owner
+            .get(owner)
+            .cloned()
+            .unwrap_or_default();
+        members.sort_by(|a, b| a.name.cmp(&b.name));
+        members
+    }
+
+    /// Members of a module: runtime members (`function M.add`) plus type members
+    /// (`---@field` on the exported class), deduplicated by name.
+    pub fn members_for_module(&self, module: &DocModule) -> Vec<DocMember> {
+        let mut members = module
+            .owner
+            .as_ref()
+            .map(|owner| self.members_of_owner(owner))
+            .unwrap_or_default();
+        members.extend(self.members_of_type(&module.export_type));
+        dedupe_members(members)
+    }
+
+    /// Members of a global table: runtime members (`function global_table.foo`)
+    /// plus table-literal members, deduplicated by name.
+    pub fn members_for_global(&self, global: &DocGlobal) -> Vec<DocMember> {
+        let mut members = global
+            .owner
+            .as_ref()
+            .map(|owner| self.members_of_owner(owner))
+            .unwrap_or_default();
+        members.extend(self.members_of_type(&global.ty));
+        dedupe_members(members)
     }
 
     /// Function view: uses the type's own params/returns, and signature facts fill overload/async/method/nodiscard.
@@ -771,8 +837,22 @@ fn doc_tag_description(
         None
     };
     description
-        .map(|desc| desc.get_description_text().trim().to_string())
+        .map(|desc| {
+            let text = desc.get_description_text();
+            let text = text.trim();
+            text.strip_prefix('@').unwrap_or(text).trim().to_string()
+        })
         .filter(|text| !text.is_empty())
+}
+
+fn dedupe_members(members: Vec<DocMember>) -> Vec<DocMember> {
+    let mut seen = HashSet::new();
+    let mut members: Vec<DocMember> = members
+        .into_iter()
+        .filter(|member| seen.insert(member.name.clone()))
+        .collect();
+    members.sort_by(|a, b| a.name.cmp(&b.name));
+    members
 }
 
 fn expand_returns(ret: &LuaType) -> Vec<LuaType> {
