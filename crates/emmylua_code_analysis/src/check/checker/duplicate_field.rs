@@ -30,7 +30,9 @@ impl Checker for DuplicateFieldChecker {
         let Some(facts) = semantic_model.file_facts() else {
             return;
         };
-        if let Some(tree) = semantic_model.syntax_tree() {
+        // In a `---@meta` file, defining a function more than once documents its overloads.
+        let allow_set_field_overloads = facts.is_meta;
+        if !allow_set_field_overloads && let Some(tree) = semantic_model.syntax_tree() {
             let root = tree.get_red_root();
             check_cross_file_member_assign(context, semantic_model, &root);
         }
@@ -68,6 +70,8 @@ impl Checker for DuplicateFieldChecker {
                 }
                 let code = if is_type_def {
                     DiagnosticCode::DuplicateDocField
+                } else if allow_set_field_overloads {
+                    continue;
                 } else {
                     DiagnosticCode::DuplicateSetField
                 };

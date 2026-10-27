@@ -132,7 +132,8 @@ This template is a good starting point for most Lua projects:
     "globals": [],
     "globalsRegex": [],
     "severity": {},
-    "diagnosticInterval": 500
+    "diagnosticInterval": 500,
+    "checkMetaFiles": false
   },
   "doc": {
     "privateName": [],
@@ -253,6 +254,7 @@ This template is a good starting point for most Lua projects:
 | `globalsRegex` | `string[]` | `[]` | Regex allowlist for global variables |
 | `severity` | `object` | `{}` | Per-rule severity overrides |
 | `diagnosticInterval` | `number | null` | `500` | Delay after file changes before diagnostics run, in milliseconds |
+| `checkMetaFiles` | `boolean` | `false` | Also report diagnostics in `---@meta` files, which are skipped by default (to check an API library itself) |
 
 Supported severities: `error`, `warning`, `information`, `hint`.
 

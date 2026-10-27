@@ -132,7 +132,8 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
     "globals": [],
     "globalsRegex": [],
     "severity": {},
-    "diagnosticInterval": 500
+    "diagnosticInterval": 500,
+    "checkMetaFiles": false
   },
   "doc": {
     "privateName": [],
@@ -253,6 +254,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 | `globalsRegex` | `string[]` | `[]` | 全局变量正则白名单 |
 | `severity` | `object` | `{}` | 自定义规则级别 |
 | `diagnosticInterval` | `number | null` | `500` | 文件变化后触发诊断的延迟，单位毫秒 |
+| `checkMetaFiles` | `boolean` | `false` | 同时诊断 `---@meta` 文件（默认跳过），用于检查 API 定义库本身 |
 
 严重程度可选值：`error`、`warning`、`information`、`hint`。
 
