@@ -1858,6 +1858,68 @@ fn test_signature_doc_generic_and_flags() {
 }
 
 #[test]
+fn test_signature_doc_overload_for_assigned_function_value() {
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "a.lua",
+        "---@class demo\n\
+         local M = {}\n\
+         \n\
+         ---@overload fun(x: string): number\n\
+         local f = function(x)\n\
+             return 1\n\
+         end\n\
+         \n\
+         return M",
+    );
+
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let sig = facts
+        .signatures
+        .iter()
+        .find(|sig| {
+            sig.docs
+                .as_ref()
+                .is_some_and(|docs| !docs.overloads.is_empty())
+        })
+        .expect("signature with @overload");
+    assert_eq!(sig.docs.as_ref().expect("docs").overloads.len(), 1);
+    let demo = facts.type_def_by_name("demo").expect("demo");
+    assert!(
+        demo.call_overloads.is_empty(),
+        "@overload of an assigned function value must not become a type call overload"
+    );
+}
+
+#[test]
+fn test_type_doc_overload_after_class() {
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "a.lua",
+        "---@class Callable\n\
+         ---@overload fun(x: number): string\n\
+         local Callable = {}\n\
+         \n\
+         return Callable",
+    );
+
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let callable = facts.type_def_by_name("Callable").expect("Callable");
+    assert_eq!(callable.call_overloads.len(), 1);
+    assert!(
+        facts.signatures.iter().all(|sig| sig
+            .docs
+            .as_ref()
+            .is_none_or(|docs| docs.overloads.is_empty())),
+        "@overload of a class must not become a signature overload"
+    );
+}
+
+#[test]
 fn test_signature_doc_return_overload() {
     let mut db = setup();
     let fid = set_test_file(

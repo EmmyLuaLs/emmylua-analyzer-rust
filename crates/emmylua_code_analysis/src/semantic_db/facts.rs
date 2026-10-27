@@ -43,6 +43,24 @@ pub struct DiagnosticDisable {
     pub code: Option<DiagnosticCode>,
 }
 
+/// Whether a doc-comment owner declares a function value (and therefore an
+/// `---@overload` tag belongs to its signature, not to a surrounding class).
+fn doc_owner_has_function_value(owner: &LuaAst) -> bool {
+    match owner {
+        LuaAst::LuaFuncStat(_) | LuaAst::LuaLocalFuncStat(_) => true,
+        LuaAst::LuaLocalStat(stat) => stat
+            .get_value_exprs()
+            .any(|expr| matches!(expr, LuaExpr::ClosureExpr(_))),
+        LuaAst::LuaAssignStat(stat) => {
+            let (_, exprs) = stat.get_var_and_expr_list();
+            exprs
+                .iter()
+                .any(|expr| matches!(expr, LuaExpr::ClosureExpr(_)))
+        }
+        _ => false,
+    }
+}
+
 /// Doc annotation usage error (consumed by analyze_error checker; currently only `@field` without a `@class` context).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotationError {
@@ -1110,7 +1128,8 @@ impl FactsBuilder {
     }
 
     fn collect_doc_comment(&mut self, comment: &LuaComment, text: &str) {
-        let owner_syntax = comment.get_owner().map(|owner| owner.get_syntax_id());
+        let owner = comment.get_owner();
+        let owner_syntax = owner.as_ref().map(|owner| owner.get_syntax_id());
         if let Some(owner_syntax) = owner_syntax {
             self.doc_comment_owners.insert(owner_syntax);
         }
@@ -1347,12 +1366,10 @@ impl FactsBuilder {
                     if let Some(doc_type) = overload_tag.get_type() {
                         // Comment block on a function statement → signature overload;
                         // `---@overload` immediately after `---@class X` → type call overload.
-                        let owner_is_function = owner_syntax.is_some_and(|owner| {
-                            matches!(
-                                owner.get_kind(),
-                                LuaSyntaxKind::FuncStat | LuaSyntaxKind::LocalFuncStat
-                            )
-                        });
+                        // Function values assigned in a local/assignment statement
+                        // (`local add = function(...)`) also document the signature.
+                        let owner_is_function =
+                            owner.as_ref().is_some_and(doc_owner_has_function_value);
                         if !owner_is_function
                             && let Some(type_def_id) = self.current_class.clone()
                             && let Some(def) =
