@@ -11,10 +11,12 @@ use emmylua_parser::{
 
 use crate::DiagnosticCode;
 use crate::FileId;
-use crate::LuaType;
 use crate::semantic_db::def::{Member, SemanticId};
 use crate::semantic_model::SemanticModel;
+use crate::semantic_model::render::humanize_type;
+use crate::semantic_model::type_eval::expand_alias_branches;
 use crate::semantic_model::type_eval::expand_alias_head;
+use crate::{LuaMemberKey, LuaType};
 
 use super::{CheckContext, Checker};
 
@@ -44,40 +46,65 @@ impl Checker for DuplicateFieldChecker {
                 .push(member);
         }
         for ((owner, _), members) in by_owner {
-            // Group by key.
-            let mut by_key: HashMap<String, Vec<&Member>> = HashMap::new();
+            let mut by_key: HashMap<LuaMemberKey, Vec<(Option<LuaType>, Vec<&Member>)>> =
+                HashMap::new();
             for member in members {
-                by_key.entry(member.key.to_path()).or_default().push(member);
+                let domain = if let Some(syntax) = member.index_key_syntax {
+                    let generics = facts
+                        .type_def_by_id(&member.owner)
+                        .map(|def| def.generic_params.as_slice())
+                        .unwrap_or_default();
+                    let key =
+                        semantic_model.doc_type_lua_in(semantic_model.file_id(), syntax, generics);
+                    let Some(key) = expand_alias_branches(semantic_model, &key) else {
+                        continue;
+                    };
+                    Some(key)
+                } else {
+                    None
+                };
+                let groups = by_key.entry(member.key.clone()).or_default();
+                if let Some((_, members)) = groups.iter_mut().find(|(key, _)| key == &domain) {
+                    members.push(member);
+                } else {
+                    groups.push((domain, vec![member]));
+                }
             }
             let is_type_def = matches!(owner, SemanticId::TypeDef(_));
-            for (name, dupes) in by_key {
-                if dupes.len() <= 1 {
-                    continue;
-                }
-                let all_function = dupes
-                    .iter()
-                    .all(|member| is_function_like(semantic_model, member));
-                // `@field a fun()` may be declared repeatedly (function overloads);
-                // ordinary repeated non-function field writes are also intentional
-                // (for example a global config table assigning the same key twice).
-                if is_type_def && all_function {
-                    continue;
-                }
-                if !is_type_def && !all_function {
-                    continue;
-                }
-                let code = if is_type_def {
-                    DiagnosticCode::DuplicateDocField
-                } else {
-                    DiagnosticCode::DuplicateSetField
-                };
-                for member in dupes {
-                    if let Some(range) = member.id.member_key_range() {
-                        context.add_diagnostic(
-                            code,
-                            range,
-                            t!("Duplicate field `%{name}`.", name = name),
-                        );
+            for (key, groups) in by_key {
+                for (domain, dupes) in groups {
+                    let name = domain.map_or_else(
+                        || key.to_path(),
+                        |ty| format!("[{}]", humanize_type(semantic_model, &ty)),
+                    );
+                    if dupes.len() <= 1 {
+                        continue;
+                    }
+                    let all_function = dupes
+                        .iter()
+                        .all(|member| is_function_like(semantic_model, member));
+                    // `@field a fun()` may be declared repeatedly (function overloads);
+                    // ordinary repeated non-function field writes are also intentional
+                    // (for example a global config table assigning the same key twice).
+                    if is_type_def && all_function {
+                        continue;
+                    }
+                    if !is_type_def && !all_function {
+                        continue;
+                    }
+                    let code = if is_type_def {
+                        DiagnosticCode::DuplicateDocField
+                    } else {
+                        DiagnosticCode::DuplicateSetField
+                    };
+                    for member in dupes {
+                        if let Some(range) = member.id.member_key_range() {
+                            context.add_diagnostic(
+                                code,
+                                range,
+                                t!("Duplicate field `%{name}`.", name = name),
+                            );
+                        }
                     }
                 }
             }

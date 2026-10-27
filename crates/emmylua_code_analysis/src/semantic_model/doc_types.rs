@@ -361,9 +361,9 @@ impl<'db> SemanticModel<'db> {
                     return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
                 };
                 let members: Vec<LuaType> = self
-                    .members_of_owner(&def.id)
+                    .member_infos(&self.type_def_ref(&def))
                     .into_iter()
-                    .map(|member| LuaType::StringConst(SmolStr::new(member.name.as_str()).into()))
+                    .filter_map(|member| member.key.to_index_type())
                     .collect();
                 if members.is_empty() {
                     self.analysis().doc_type_lua(file_id, type_syntax, &[])

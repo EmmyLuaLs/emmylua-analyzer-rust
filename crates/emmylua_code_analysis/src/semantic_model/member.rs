@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use emmylua_parser::{LuaAstNode, LuaDocFieldKey, LuaDocTagField, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
 use hashbrown::HashMap;
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
@@ -18,7 +18,7 @@ use crate::VariadicType;
 ///
 /// Normal class hierarchies are shallow. This cap prevents pathological/recursive parent
 /// chains from making `member_info` / `resolve_member` slow-path expansion unbounded.
-const MAX_MEMBER_INHERITANCE_DEPTH: usize = 16;
+const MAX_MEMBER_INHERITANCE_DEPTH: usize = 100;
 
 /// Member information (an entry from a prefix-type query).
 #[derive(Debug, Clone, PartialEq)]
@@ -27,8 +27,6 @@ pub struct MemberInfo {
     pub key: LuaMemberKey,
     /// Member type (after projection / generic substitution).
     pub typ: LuaType,
-    /// Declared index domain after generic substitution; absent for ordinary or synthesized members.
-    pub index_key_type: Option<LuaType>,
     /// Declaration identity (`SemanticId::Member`; `None` for synthesized members).
     pub id: Option<SemanticId>,
     /// Declaring file.
@@ -149,7 +147,7 @@ fn find_type_def_member(
 }
 
 /// 按各基类型的声明替换实参.
-fn inherited_base_types(
+pub(super) fn inherited_base_types(
     model: &SemanticModel,
     def: &TypeDef,
     bindings: Option<&TplBindings>,
@@ -286,12 +284,10 @@ fn direct_member_info(
         LuaType::Object(object) => object.get_fields().get(key).cloned().map(|typ| MemberInfo {
             key: key.clone(),
             typ,
-            index_key_type: None,
             id: None,
             file_id: None,
             is_method: false,
         }),
-        LuaType::Array(array) => direct_member_info(model, array.get_base(), key),
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
             let string_owner = SemanticId::name(SmolStr::new("string"));
             find_member_in_owner(model, &string_owner, key, None, None)
@@ -334,7 +330,6 @@ pub(crate) fn member_info_impl(
         return Some(MemberInfo {
             key: key.clone(),
             typ,
-            index_key_type: None,
             id: first.as_ref().and_then(|info| info.id.clone()),
             file_id: first.as_ref().and_then(|info| info.file_id),
             is_method: first.as_ref().is_some_and(|info| info.is_method),
@@ -360,7 +355,6 @@ pub(crate) fn member_info_impl(
         return Some(MemberInfo {
             key: key.clone(),
             typ: ret,
-            index_key_type: None,
             id: None,
             file_id: None,
             is_method: false,
@@ -683,18 +677,6 @@ fn collect_members(
                 filter,
             );
         }
-        // Array: base type members.
-        LuaType::Array(array) => {
-            collect_members(
-                model,
-                array.get_base(),
-                bindings,
-                name_bindings,
-                visited,
-                out,
-                filter,
-            );
-        }
         // Anonymous table literal: field members of the synthesized owner (file, range).
         LuaType::TableConst(table) => {
             let owner = SemanticId::member(table.file_id, table.value);
@@ -742,21 +724,6 @@ fn collect_members(
                     MemberInfo {
                         key: key.clone(),
                         typ: ty.clone(),
-                        index_key_type: None,
-                        id: None,
-                        file_id: None,
-                        is_method: false,
-                    },
-                );
-            }
-            for (_key, ty) in object.get_index_access() {
-                push_member_info(
-                    out,
-                    filter,
-                    MemberInfo {
-                        key: LuaMemberKey::Name("[index]".into()),
-                        typ: ty.clone(),
-                        index_key_type: None,
                         id: None,
                         file_id: None,
                         is_method: false,
@@ -875,7 +842,6 @@ fn expand_table_multi_return_member(
             .map(|(index, ty)| MemberInfo {
                 key: LuaMemberKey::Integer(start + index as i64),
                 typ: ty,
-                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
@@ -1007,12 +973,9 @@ fn is_class_table_member(
     }
 }
 
-/// Determines whether a file belongs to the STD workspace.
-fn is_std_file(model: &SemanticModel<'_>, file_id: FileId) -> bool {
-    model.is_std_file(file_id)
-}
-
-/// Member reference → member info (type projection + generic substitution).
+/// Member ref → `MemberInfo` (type projection + generic substitution).
+///
+/// index-signature members and version-hidden members are skipped.
 fn member_info_of(
     model: &SemanticModel,
     member_ref: &MemberRef,
@@ -1021,36 +984,33 @@ fn member_info_of(
 ) -> Option<MemberInfo> {
     let facts = model.file_facts_of(member_ref.file_id)?;
     let member = facts.member_by_id(&member_ref.id)?;
-    if !member_version_visible(model, facts, &member) {
+    if member.index_key_syntax.is_some() || !member_version_visible(model, facts, &member) {
         return None;
     }
+    let typ = projected_member_type(model, member_ref, member, bindings, name_bindings)?;
+
+    Some(MemberInfo {
+        key: member.key.clone(),
+        typ,
+        id: Some(member.id.clone()),
+        file_id: Some(member_ref.file_id),
+        is_method: member.is_method,
+    })
+}
+
+pub(super) fn projected_member_type(
+    model: &SemanticModel,
+    member_ref: &MemberRef,
+    member: &Member,
+    bindings: Option<&TplBindings>,
+    name_bindings: Option<&HashMap<String, LuaType>>,
+) -> Option<LuaType> {
     let mut typ = model.type_of_member(&member_ref.id)?;
-    let mut index_key_type = member.is_index_signature.then(|| {
-        (|| {
-            let tree = model.syntax_tree_of(member_ref.file_id)?;
-            let node = member
-                .value_syntax?
-                .to_node_from_root(&tree.get_red_root())?;
-            let field = node.ancestors().find_map(LuaDocTagField::cast)?;
-            let LuaDocFieldKey::Type(key) = field.get_field_key()? else {
-                return None;
-            };
-            let generics = facts
-                .type_def_by_id(&member.owner)
-                .map(|def| def.generic_params.as_slice())
-                .unwrap_or_default();
-            Some(model.doc_type_lua_in(member_ref.file_id, key.get_syntax_id(), generics))
-        })()
-        .unwrap_or_else(|| {
-            model.cache.borrow_mut().mark_incomplete();
-            LuaType::Unknown
-        })
-    });
     // Cross-file projection of runtime function members: `type_of_member` often returns a wide Function,
     // so look up the real signature in the member's declaring file to let `require(...).module.fn()` keep inferring.
     // Standard library members keep the wide Function behavior to avoid disturbing parameter checks / math library overloads.
     if matches!(typ, LuaType::Unknown | LuaType::Function)
-        && !is_std_file(model, member_ref.file_id)
+        && !model.is_std_file(member_ref.file_id)
         && !is_class_table_member(model, member_ref, &member)
         && let Some(value_syntax) = member.value_syntax
     {
@@ -1097,21 +1057,12 @@ fn member_info_of(
     });
     if let Some(bindings) = bindings {
         typ = unify::substitute(&typ, bindings);
-        index_key_type = index_key_type.map(|key| unify::substitute(&key, bindings));
     }
     if let Some(name_bindings) = name_bindings {
         typ = substitute_named_refs(&typ, name_bindings);
-        index_key_type = index_key_type.map(|key| substitute_named_refs(&key, name_bindings));
     }
 
-    Some(MemberInfo {
-        key: member_key_to_lua(&member.key),
-        typ,
-        index_key_type,
-        id: Some(member.id.clone()),
-        file_id: Some(member_ref.file_id),
-        is_method: member.is_method,
-    })
+    Some(typ)
 }
 
 /// Deduplicate by key (keep first: collection order = this class's @field → parent → runtime values).
@@ -1125,11 +1076,6 @@ pub(super) fn dedup_by_key(infos: Vec<MemberInfo>) -> Vec<MemberInfo> {
         }
     }
     out
-}
-
-/// `def::LuaMemberKey` → value-domain `LuaMemberKey` (already unified; passed through directly).
-fn member_key_to_lua(key: &LuaMemberKey) -> LuaMemberKey {
-    key.clone()
 }
 
 /// For test assertions: convert collected members to a map keyed by name.
@@ -1151,10 +1097,7 @@ mod tests {
 
     use lsp_types::Uri;
 
-    use crate::{
-        Emmyrc, LuaArrayType, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType,
-        SemanticDatabase,
-    };
+    use crate::{Emmyrc, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDatabase};
 
     use super::*;
     use crate::VirtualWorkspace;
@@ -1275,17 +1218,67 @@ mod tests {
         assert_eq!(map.get("value"), Some(&LuaType::Number), "T 代入 number");
     }
 
-    /// Array forwarding: `C[]` includes C's members.
+    /// 数组及其别名不暴露元素字段, 联合分支只贡献各自的成员.
     #[test]
-    fn test_member_infos_array_base() {
-        let env = model_of("---@class C\n---@field x number\nlocal C = {}");
-        let model = env.model();
-        let array = LuaType::Array(Rc::new(LuaArrayType::from_base_type(LuaType::Ref(
-            LuaTypeDeclId::global("C"),
-        ))));
-        let infos = model.member_infos(&array);
-        let map = member_map(&infos);
-        assert_eq!(map.get("x"), Some(&LuaType::Number));
+    fn test_array_members_do_not_include_element_fields() {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(
+            r#"
+---@class Other
+---@field label string
+
+---@class C
+---@field x number
+
+---@alias CArray C[]
+---@alias Array<T> T[]
+"#,
+        );
+        let element = ws.ty("C");
+        let array = ws.ty("C[]");
+        let alias = ws.ty("CArray");
+        let generic_alias = ws.ty("Array<C>");
+        let union = ws.ty("Other | C[]");
+        let model = ws.analysis.semantic_model(file);
+        let key = LuaMemberKey::from("x");
+        for (typ, has_label) in [
+            (&array, false),
+            (&alias, false),
+            (&generic_alias, false),
+            (&union, true),
+        ] {
+            let members = member_map(&model.member_infos(typ));
+            assert!(!members.contains_key("x"), "{typ:?}: {members:?}");
+            assert_eq!(members.contains_key("label"), has_label);
+            assert!(model.member_type(typ, &key).is_none(), "{typ:?}");
+        }
+        assert_eq!(model.member_type(&element, &key), Some(LuaType::Number));
+        assert_eq!(model.index_infos(&array)[0].value_type, element);
+    }
+
+    #[test]
+    fn test_array_inheritance_keeps_element_members_on_elements() {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(
+            r#"
+---@class Item
+---@field name string
+---@class Metadata
+---@field label string
+---@alias ItemArray Item[]
+---@class Items: ItemArray, Metadata
+"#,
+        );
+        let items = ws.ty("Items");
+        let item = ws.ty("Item");
+        let model = ws.analysis.semantic_model(file);
+        let name = LuaMemberKey::from("name");
+        let members = member_map(&model.member_infos(&items));
+        assert!(!members.contains_key("name"));
+        assert_eq!(members.get("label"), Some(&LuaType::String));
+        assert!(model.member_type(&items, &name).is_none());
+        assert_eq!(model.member_type(&item, &name), Some(LuaType::String));
+        assert_eq!(model.index_infos(&items)[0].value_type, item);
     }
 
     /// Query by key: `member_type(prefix, key)`.

@@ -1,5 +1,6 @@
 //! Additional value compatibility checks for named structural types.
 
+use crate::semantic_model::type_check::complex_type::applicable_index_infos;
 use crate::{LuaMemberKey, LuaType, SemanticId, TypeDef};
 
 use crate::semantic_model::SemanticModel;
@@ -27,35 +28,19 @@ fn check_object_index_against_class(
     source: &LuaType,
     target: &LuaType,
 ) -> Result<Option<()>, TypeCheckFailReason> {
-    let (LuaType::Object(source_object), LuaType::Ref(_) | LuaType::Def(_)) = (source, target)
+    let (LuaType::Object(source_object), LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_)) =
+        (source, target)
     else {
         return Ok(None);
     };
-    let Some(def) = named_def(context.model, target) else {
-        return Ok(None);
-    };
-    let mut index_signatures: Vec<(String, LuaType)> = Vec::new();
-    context.require_complete(|| {
-        collect_index_signatures(context.model, &def, &mut Vec::new(), &mut index_signatures);
-    })?;
-    if index_signatures.is_empty() {
-        return Ok(None);
-    }
     let mut matched = false;
     let mut checks = RequiredChecks::default();
     for (source_key, source_value) in source_object.get_index_access() {
-        let Some((_, expected)) = index_signatures.iter().find(|(signature, _)| {
-            matches!(
-                signature.as_str(),
-                "integer" | "number" | "int"
-                    if matches!(
-                        source_key,
-                        LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
-                    )
-            )
-        }) else {
+        let infos = applicable_index_infos(context, target, source_key)?;
+        let Some(info) = infos.first() else {
             continue;
         };
+        let expected = &info.value_type;
         matched = true;
         if !matches!(expected, LuaType::Any | LuaType::Unknown) {
             checks
@@ -155,6 +140,9 @@ fn collect_named_members(
         let Some(member) = facts.member_by_id(&member_ref.id) else {
             continue;
         };
+        if member.index_key_syntax.is_some() {
+            continue;
+        }
         let key = member.key.clone();
         if !out.iter().any(|(existing, _)| existing == &key) {
             let ty = model
@@ -165,41 +153,5 @@ fn collect_named_members(
     }
     for super_def in model.base_type_defs(&def.type_decl_id()) {
         collect_named_members(model, &super_def, visited, out);
-    }
-}
-
-fn collect_index_signatures(
-    model: &SemanticModel<'_>,
-    def: &TypeDef,
-    visited: &mut Vec<SemanticId>,
-    index_signatures: &mut Vec<(String, LuaType)>,
-) {
-    if visited.contains(&def.id) {
-        return;
-    }
-    visited.push(def.id.clone());
-    for member_ref in model.members_of_owner(&def.id).iter() {
-        let Some(facts) = model.file_facts_of(member_ref.file_id) else {
-            continue;
-        };
-        let Some(member) = facts.member_by_id(&member_ref.id) else {
-            continue;
-        };
-        if !member.is_index_signature {
-            continue;
-        }
-        let name = member_ref.name.to_string();
-        if !index_signatures
-            .iter()
-            .any(|(existing, _)| existing == &name)
-        {
-            let ty = model
-                .type_of_member(&member_ref.id)
-                .unwrap_or(LuaType::Unknown);
-            index_signatures.push((name, ty));
-        }
-    }
-    for super_def in model.base_type_defs(&def.type_decl_id()) {
-        collect_index_signatures(model, &super_def, visited, index_signatures);
     }
 }

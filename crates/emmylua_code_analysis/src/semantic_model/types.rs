@@ -676,36 +676,7 @@ impl<'db> SemanticModel<'db> {
                 (key_ty, value_ty)
             }
             LuaType::Ref(id) | LuaType::Def(id) => {
-                let def = self.type_def_of(id)?;
-                let mut values: Vec<LuaType> = Vec::new();
-                for member_ref in self.members_of_owner(&def.id).iter() {
-                    let Some(facts) = self.file_facts_of(member_ref.file_id) else {
-                        continue;
-                    };
-                    let Some(member) = facts.member_by_id(&member_ref.id) else {
-                        continue;
-                    };
-                    let is_integer_key = matches!(member.key, LuaMemberKey::Integer(_));
-                    let is_index_sig = member.is_index_signature;
-                    if !is_integer_key && !is_index_sig {
-                        continue;
-                    }
-                    let value = self
-                        .type_of_member(&member_ref.id)
-                        .unwrap_or(LuaType::Unknown);
-                    if !values.contains(&value) {
-                        values.push(value);
-                    }
-                }
-                if values.is_empty() {
-                    return None;
-                }
-                let value_ty = if values.len() == 1 {
-                    values.pop()?
-                } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(values)))
-                };
-                (LuaType::Integer, value_ty)
+                (LuaType::Integer, self.infer_iter_from_type_def(id, 1)?)
             }
             LuaType::Object(object) => {
                 let value = object
@@ -758,35 +729,26 @@ impl<'db> SemanticModel<'db> {
         id: &LuaTypeDeclId,
         index: usize,
     ) -> Option<LuaType> {
-        let mut members = member::member_infos_all(self, &LuaType::Ref(id.clone()));
-        // Filter before selecting overrides: an ordinary `integer` field and
-        // an `[integer]` index signature have the same text key.
+        let typ = LuaType::Ref(id.clone());
         let mut context = type_check::TypeCheckContext::new(self, false);
-        let mut incomplete = false;
-        members.retain(|info| {
-            if matches!(info.key, LuaMemberKey::Integer(_)) {
-                return true;
+        let mut values = Vec::new();
+        for info in self.member_infos(&typ) {
+            if info.key.is_integer() && !values.contains(&info.typ) {
+                values.push(info.typ);
             }
-            let Some(key) = &info.index_key_type else {
-                return false;
-            };
-            match type_check::integer_index_applies(&mut context, key) {
-                Ok(applies) => applies,
-                Err(_) => {
-                    incomplete = true;
-                    false
-                }
-            }
-        });
-        if incomplete {
-            self.cache.borrow_mut().mark_incomplete();
-            return None;
         }
-        let mut values: Vec<LuaType> = Vec::new();
-        for info in member::dedup_by_key(members) {
-            let value = info.typ;
-            if !values.contains(&value) {
-                values.push(value);
+        for info in self.index_infos(&typ) {
+            match type_check::integer_index_applies(&mut context, &info.key_type) {
+                Ok(true) => {
+                    if !values.contains(&info.value_type) {
+                        values.push(info.value_type);
+                    }
+                }
+                Ok(false) => {}
+                Err(_) => {
+                    self.cache.borrow().mark_incomplete();
+                    return None;
+                }
             }
         }
         if values.is_empty() {
@@ -1592,6 +1554,9 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
             }
             _ => {}
         }
+    }
+    if matches!(doc_type, LuaDocType::Object(_)) {
+        return model.doc_type_lua_rich_in(def.file_id, doc_type.get_syntax_id());
     }
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
 }

@@ -1569,6 +1569,7 @@ impl FactsBuilder {
         };
         // Integer keys in `@field [1]` are encoded as `LuaMemberKey::Integer` (matching index expression keys).
         let member_key = match &key {
+            LuaDocFieldKey::Type(_) => LuaMemberKey::None,
             LuaDocFieldKey::Integer(token) => match token.get_number_value() {
                 NumberResult::Int(i) => LuaMemberKey::Integer(i),
                 _ => LuaMemberKey::Name(doc_field_key_name(&key)),
@@ -1583,7 +1584,10 @@ impl FactsBuilder {
             member_key,
             type_def_id,
         );
-        member.is_index_signature = matches!(key, LuaDocFieldKey::Type(_));
+        member.index_key_syntax = match &key {
+            LuaDocFieldKey::Type(ty) => Some(ty.get_syntax_id()),
+            _ => None,
+        };
         member.is_nullable = field_tag.is_nullable();
         member.value_syntax = field_tag
             .get_type()

@@ -3267,7 +3267,6 @@ fn constructor_candidate(
                     id: Some(member.id.clone()),
                     file_id: Some(member.file_id),
                     is_method: true,
-                    index_key_type: None,
                 })
         })?;
     let member_file = member_info.file_id?;
@@ -4297,7 +4296,7 @@ fn class_has_required_named_field(model: &SemanticModel, def: &TypeDef) -> bool 
             let Some(member) = facts.member_by_id(&member_ref.id) else {
                 continue;
             };
-            if !member.is_index_signature && !member.is_nullable {
+            if member.index_key_syntax.is_none() && !member.is_nullable {
                 return true;
             }
         }

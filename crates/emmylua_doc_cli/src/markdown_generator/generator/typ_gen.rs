@@ -236,7 +236,7 @@ pub(crate) fn collect_owner_members(
             continue;
         }
 
-        let title_name = format!("{}.{}", owner_name, member.name);
+        let title_name = member.qualified_name(owner_name);
         let property = collect_property(&member.property);
         if model
             .function_info(&member.ty, member.signature.as_ref())
@@ -265,7 +265,7 @@ pub(crate) fn collect_owner_members(
             let display = render_const_type(model, &member.ty);
             field_members.push(MemberDoc {
                 name: title_name.clone(),
-                display: format!("```lua\n{}.{}: {}\n```\n", owner_name, member.name, display),
+                display: format!("```lua\n{title_name}: {display}\n```\n"),
                 property,
                 ..Default::default()
             });
@@ -273,10 +273,7 @@ pub(crate) fn collect_owner_members(
             let typ_display = model.render_type(&member.ty, RenderLevel::Detailed);
             field_members.push(MemberDoc {
                 name: title_name.clone(),
-                display: format!(
-                    "```lua\n{}.{} : {}\n```\n",
-                    owner_name, member.name, typ_display
-                ),
+                display: format!("```lua\n{title_name} : {typ_display}\n```\n"),
                 property,
                 ..Default::default()
             });

@@ -158,11 +158,16 @@ fn build_simple_global(ctx: &GenContext, global: &DocGlobal, doc: &mut HtmlDoc) 
 
 /// Renders a field path like `Vector.x` with syntax highlighting
 /// (`owner` as variable, `.` as operator, `name` as property).
-fn field_name_html(owner: &str, name: &str) -> String {
+fn field_name_html(owner: &str, member: &DocMember) -> String {
+    let separator = if member.key.is_name() {
+        "<span class=\"hl-op\">.</span>"
+    } else {
+        ""
+    };
     format!(
-        "<span class=\"hl-var\">{}</span><span class=\"hl-op\">.</span><span class=\"hl-prop\">{}</span>",
+        "<span class=\"hl-var\">{}</span>{separator}<span class=\"hl-prop\">{}</span>",
         html_escape(owner),
-        html_escape(name)
+        html_escape(&member.name)
     )
 }
 
@@ -185,7 +190,7 @@ pub fn collect_members(
             continue;
         }
 
-        let title_name = format!("{}.{}", owner_name, member.name);
+        let title_name = member.qualified_name(owner_name);
         let property = collect_property(&member.property);
 
         if let Some(func) = model.function_info(&member.ty, member.signature.as_ref()) {
@@ -196,7 +201,12 @@ pub fn collect_members(
                 false,
                 ctx.linker,
             ));
-            let mut html_member = HtmlMember::from_property(title_name.clone(), display, property);
+            let mut html_member = HtmlMember::from_property(
+                title_name.clone(),
+                member.name.clone(),
+                display,
+                property,
+            );
             html_member.params = func
                 .params
                 .iter()
@@ -233,18 +243,28 @@ pub fn collect_members(
             let const_type_display = render_const_type_html(model, &member.ty, ctx.linker);
             let display = signature_pre(format!(
                 "{}<span class=\"hl-op\">:</span> {}",
-                field_name_html(owner_name, &member.name),
+                field_name_html(owner_name, member),
                 const_type_display
             ));
-            fields.push(HtmlMember::from_property(title_name, display, property));
+            fields.push(HtmlMember::from_property(
+                title_name,
+                member.name.clone(),
+                display,
+                property,
+            ));
         } else {
             let typ_display = render_type_html(model, &member.ty, ctx.linker);
             let display = signature_pre(format!(
                 "{} <span class=\"hl-op\">:</span> {}",
-                field_name_html(owner_name, &member.name),
+                field_name_html(owner_name, member),
                 typ_display
             ));
-            fields.push(HtmlMember::from_property(title_name, display, property));
+            fields.push(HtmlMember::from_property(
+                title_name,
+                member.name.clone(),
+                display,
+                property,
+            ));
         }
     }
 

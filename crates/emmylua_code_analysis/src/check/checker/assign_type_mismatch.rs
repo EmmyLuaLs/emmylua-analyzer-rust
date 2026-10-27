@@ -629,12 +629,10 @@ fn check_table_fields(
                 continue;
             }
             let key_ty = index_key_type(semantic_model, &key);
-            if let Some((_, expected)) = object
-                .get_index_access()
-                .iter()
-                .find(|(signature_key, _)| is_compatible(semantic_model, &key_ty, signature_key))
+            if let Ok(infos) = semantic_model.applicable_index_infos(target, &key_ty)
+                && let Some(info) = infos.first()
             {
-                check_table_value(context, semantic_model, &value_expr, expected);
+                check_table_value(context, semantic_model, &value_expr, &info.value_type);
             }
         }
         return;
@@ -651,20 +649,26 @@ fn check_table_fields(
         return;
     }
 
-    let Some(target_def) = named_def(semantic_model, target) else {
+    if named_def(semantic_model, target).is_none() {
         return;
-    };
+    }
     let mut members = HashMap::new();
     let mut required_members: Vec<(String, LuaType)> = Vec::new();
-    let mut index_signatures: Vec<(String, LuaType)> = Vec::new();
-    collect_members_with_index_signatures(
-        semantic_model,
-        &target_def,
-        &mut Vec::new(),
-        &mut members,
-        &mut required_members,
-        &mut index_signatures,
-    );
+    for info in semantic_model.member_infos(target) {
+        let declaration = info.id.as_ref().and_then(|id| {
+            semantic_model
+                .file_facts_of(info.file_id?)
+                .and_then(|facts| facts.member_by_id(id))
+        });
+        if declaration.is_some_and(|member| !matches!(member.owner, SemanticId::TypeDef(_))) {
+            continue;
+        }
+        let required = declaration.is_some_and(|member| !member.is_nullable);
+        if required {
+            required_members.push((info.key.to_path(), info.typ.clone()));
+        }
+        members.insert(info.key, info.typ);
+    }
     let fields: Vec<_> = table
         .get_fields_with_keys()
         .into_iter()
@@ -685,12 +689,15 @@ fn check_table_fields(
             continue;
         }
         // Static member not found -> check against index signatures (`@field [integer] string`).
-        let Some((_, expected)) = index_signatures
-            .iter()
-            .find(|(signature, _)| signature_matches_key(semantic_model, signature, key))
+        let Ok(infos) =
+            semantic_model.applicable_index_infos(target, &index_key_type(semantic_model, key))
         else {
             continue;
         };
+        let Some(info) = infos.first() else {
+            continue;
+        };
+        let expected = &info.value_type;
         let Some(value_expr) = field.get_value_expr() else {
             continue;
         };
@@ -750,10 +757,19 @@ fn check_table_value(
     add_mismatch(context, value_expr.get_range(), expected, &value_ty);
 }
 
-fn index_key_type(semantic_model: &SemanticModel<'_>, key: &LuaIndexKey) -> LuaType {
+pub(super) fn index_key_type(semantic_model: &SemanticModel<'_>, key: &LuaIndexKey) -> LuaType {
+    if let Some(key) = static_member_key(semantic_model, key).and_then(|key| key.to_index_type()) {
+        return key;
+    }
     match key {
         LuaIndexKey::Name(_) | LuaIndexKey::String(_) => LuaType::String,
-        LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_) => LuaType::Integer,
+        LuaIndexKey::Integer(token) => match token.get_number_value() {
+            NumberResult::Float(value) => LuaType::FloatConst(value),
+            NumberResult::Int(value) => LuaType::IntegerConst(value),
+            NumberResult::Uint(value) => LuaType::FloatConst(value as f64),
+            NumberResult::Number => LuaType::Number,
+        },
+        LuaIndexKey::Idx(value) => LuaType::IntegerConst(*value as i64),
         LuaIndexKey::Expr(expr) => semantic_model.type_of_expr(expr.get_syntax_id()),
     }
 }
@@ -783,72 +799,6 @@ fn index_key_to_member_key(
             }
         }
         LuaIndexKey::Expr(_) => None,
-    }
-}
-
-pub(super) fn signature_matches_key(
-    semantic_model: &SemanticModel<'_>,
-    signature: &str,
-    key: &LuaIndexKey,
-) -> bool {
-    let key_ty = index_key_type(semantic_model, key);
-    match signature {
-        "integer" | "number" | "int" => {
-            matches!(key, LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_))
-                || is_compatible(semantic_model, &key_ty, &LuaType::Integer)
-        }
-        "string" => matches!(key, LuaIndexKey::Name(_) | LuaIndexKey::String(_)),
-        "any" | "unknown" => true,
-        _ => false,
-    }
-}
-
-fn collect_members_with_index_signatures(
-    semantic_model: &SemanticModel<'_>,
-    def: &TypeDef,
-    visited: &mut Vec<SemanticId>,
-    out: &mut HashMap<LuaMemberKey, LuaType>,
-    required_out: &mut Vec<(String, LuaType)>,
-    index_signatures: &mut Vec<(String, LuaType)>,
-) {
-    if visited.contains(&def.id) {
-        return;
-    }
-    visited.push(def.id.clone());
-    for member_ref in semantic_model.members_of_owner(&def.id).iter() {
-        let Some(member_file_facts) = semantic_model.file_facts_of(member_ref.file_id) else {
-            continue;
-        };
-        let Some(member) = member_file_facts.member_by_id(&member_ref.id) else {
-            continue;
-        };
-        let name = member_ref.name.to_string();
-        let ty = semantic_model
-            .type_of_member(&member_ref.id)
-            .unwrap_or(LuaType::Unknown);
-        if member.is_index_signature {
-            if !index_signatures
-                .iter()
-                .any(|(existing, _)| existing == &name)
-            {
-                index_signatures.push((name, ty));
-            }
-        } else {
-            out.entry(member.key.clone()).or_insert_with(|| ty.clone());
-            if !member.is_nullable && !required_out.iter().any(|(existing, _)| existing == &name) {
-                required_out.push((name, ty));
-            }
-        }
-    }
-    for super_def in semantic_model.base_type_defs(&def.type_decl_id()) {
-        collect_members_with_index_signatures(
-            semantic_model,
-            &super_def,
-            visited,
-            out,
-            required_out,
-            index_signatures,
-        );
     }
 }
 

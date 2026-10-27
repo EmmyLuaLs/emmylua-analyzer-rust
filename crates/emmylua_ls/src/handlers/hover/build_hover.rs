@@ -1204,24 +1204,17 @@ fn widen_decl_const(ty: &LuaType) -> LuaType {
 
 /// Rendered member list lines for a named type (`    field: number?,`; function members -> `function`).
 fn class_member_lines(model: &SemanticModel<'_>, ty: &LuaType) -> Option<Vec<String>> {
-    if !matches!(ty, LuaType::Ref(_) | LuaType::Def(_)) {
+    if !matches!(ty, LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_)) {
         return None;
     }
-    let lines = model
+    let mut lines = model
         .member_infos(ty)
         .into_iter()
         .filter_map(|info| {
-            let key_display = member_class_key_display(model, &info);
-            if key_display.as_deref() == Some("[nil]") {
-                return None;
-            }
-            let name = match key_display {
-                Some(raw) => raw,
-                None => match &info.key {
-                    LuaMemberKey::Name(name) => name.to_string(),
-                    LuaMemberKey::Integer(i) => format!("[{}]", i),
-                    _ => return None,
-                },
+            let name = match &info.key {
+                LuaMemberKey::Name(name) => name.to_string(),
+                LuaMemberKey::Integer(i) => format!("[{}]", i),
+                _ => return None,
             };
             let rendered = match &info.typ {
                 LuaType::DocFunction(_) => "function".to_string(),
@@ -1230,26 +1223,18 @@ fn class_member_lines(model: &SemanticModel<'_>, ty: &LuaType) -> Option<Vec<Str
             Some(format!("    {}: {},", name, rendered))
         })
         .collect::<Vec<_>>();
-    Some(lines)
-}
-
-/// Raw key text for `@field` index signatures in class expansion (`[integer]` / `[true]` / `[nil]`).
-fn member_class_key_display(model: &SemanticModel<'_>, info: &MemberInfo) -> Option<String> {
-    let id = info.id.as_ref()?;
-    let range = id.member_key_range()?;
-    let SemanticId::Member(key) = id else {
-        return None;
-    };
-    let member = model.file_facts_of(key.file_id)?.member_by_id(id)?;
-    if !member.is_index_signature {
-        return None;
+    for info in model.index_infos(ty) {
+        if matches!(info.key_type, LuaType::Nil) {
+            continue;
+        }
+        let key = humanize(model, &info.key_type);
+        let value = match &info.value_type {
+            LuaType::DocFunction(_) => "function".to_string(),
+            ty => render_member_typ_with_default(model, ty),
+        };
+        lines.push(format!("    [{key}]: {value},"));
     }
-    let document = model.document(key.file_id)?;
-    let raw = document.get_text_slice(range).trim().to_string();
-    Some(format!(
-        "[{}]",
-        raw.trim_start_matches('[').trim_end_matches(']')
-    ))
+    Some(lines)
 }
 
 fn member_is_nullable(model: &SemanticModel<'_>, id: &SemanticId) -> bool {
@@ -2220,29 +2205,7 @@ fn build_type_hover(
 
     // Class member list: `(class) A {\n    a: number,\n}`.
     let class_ty = LuaType::Ref(LuaTypeDeclId::global(def.full_name.as_str()));
-    let member_lines = model
-        .member_infos(&class_ty)
-        .into_iter()
-        .filter_map(|info| {
-            let key_display = member_class_key_display(model, &info);
-            if key_display.as_deref() == Some("[nil]") {
-                return None;
-            }
-            let name = match key_display {
-                Some(raw) => raw,
-                None => match &info.key {
-                    LuaMemberKey::Name(name) => name.to_string(),
-                    LuaMemberKey::Integer(i) => format!("[{}]", i),
-                    _ => return None,
-                },
-            };
-            Some(format!(
-                "    {}: {},",
-                name,
-                render_member_typ_with_default(model, &info.typ)
-            ))
-        })
-        .collect::<Vec<_>>();
+    let member_lines = class_member_lines(model, &class_ty).unwrap_or_default();
     let code = match def.kind {
         TypeDefKind::Alias => render_alias_hover(model, def),
         _ if member_lines.is_empty() => format!("{}{}", prefix, def.name),

@@ -20,6 +20,7 @@ use crate::{FileId, LuaFunctionType, LuaType, LuaTypeDeclId, LuaTypeNode};
 use super::infer::unify::TplBindings;
 use super::member::MemberInfo;
 use super::{CallSiteAnalysis, ResolvedMember};
+use crate::IndexInfo;
 
 /// Keep provisional memo entries while dependent queries still need them.
 /// Discard them at the outer query boundary so the next query can retry.
@@ -235,6 +236,7 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) call_site: HashMap<(FileId, LuaSyntaxId), CallSiteAnalysis>,
     pub(crate) call_site_signatures:
         HashMap<(FileId, LuaSyntaxId), Vec<(LuaFunctionType, TplBindings)>>,
+    pub(crate) index_infos: HashMap<(FileId, LuaType), CacheEntry<Vec<IndexInfo>>>,
     pub(crate) member_infos: HashMap<(FileId, LuaType), Vec<MemberInfo>>,
     pub(crate) members_of_owner: HashMap<SemanticId, MemberList>,
     pub(crate) members_of_owner_named: HashMap<(SemanticId, SmolStr), MemberList>,
@@ -259,6 +261,7 @@ impl SemanticLocalCache {
     fn discard_provisional(&mut self) {
         self.expr_type.retain(|_, entry| entry.is_ready());
         self.decl_type.retain(|_, entry| entry.is_ready());
+        self.index_infos.retain(|_, entry| entry.is_ready());
         self.member_type.retain(|_, entry| entry.is_ready());
         self.expr_type_at.retain(|_, entry| entry.is_ready());
         self.trace_state.retain(|_, entry| entry.is_ready());

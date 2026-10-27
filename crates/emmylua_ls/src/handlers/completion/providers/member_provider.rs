@@ -2,7 +2,7 @@
 
 use emmylua_code_analysis::{
     DeclKind, FileId, LuaAliasCallKind, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
-    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDefKind,
+    MemberInfo, SemanticId, SemanticModel, TypeDefKind,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
@@ -119,9 +119,6 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     }
     if members.is_empty() {
         members = match &prefix_type {
-            LuaType::Ref(id) | LuaType::Def(id) => {
-                type_def_member_infos_from_facts(&builder.semantic_model, id.clone())
-            }
             LuaType::Generic(generic) => {
                 let from_type = generic_keyof_member_infos(&builder.semantic_model, generic);
                 if from_type.is_empty() {
@@ -266,7 +263,6 @@ fn doc_generic_keyof_member_infos(
             LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
-                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
@@ -300,40 +296,11 @@ fn generic_keyof_member_infos(
             LuaMemberKey::Name(name) => Some(MemberInfo {
                 key: LuaMemberKey::Name(name),
                 typ: LuaType::Unknown,
-                index_key_type: None,
                 id: None,
                 file_id: None,
                 is_method: false,
             }),
             _ => None,
-        })
-        .collect()
-}
-
-/// When cross-file `member_infos` is empty, directly scan runtime members in the type definition file's facts.
-fn type_def_member_infos_from_facts(
-    model: &SemanticModel<'_>,
-    type_id: LuaTypeDeclId,
-) -> Vec<MemberInfo> {
-    let Some(def) = model.type_def_of(&type_id) else {
-        return Vec::new();
-    };
-    let Some(facts) = model.file_facts_of(def.file_id) else {
-        return Vec::new();
-    };
-    facts
-        .members
-        .iter()
-        .map(|member| {
-            let key = member.key.clone();
-            MemberInfo {
-                key,
-                typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
-                index_key_type: None,
-                id: Some(member.id.clone()),
-                file_id: Some(def.file_id),
-                is_method: member.is_method,
-            }
         })
         .collect()
 }
@@ -390,6 +357,9 @@ fn associated_type_member_infos(
             let Some(member) = member_facts.member_by_id(&member_ref.id) else {
                 continue;
             };
+            if member.index_key_syntax.is_some() {
+                continue;
+            }
             let key = member.key.clone();
             if seen_keys.contains(&key) {
                 continue;
@@ -398,7 +368,6 @@ fn associated_type_member_infos(
             out.push(MemberInfo {
                 key,
                 typ: model.type_of_member(&member.id).unwrap_or(LuaType::Unknown),
-                index_key_type: None,
                 id: Some(member.id.clone()),
                 file_id: Some(member_ref.file_id),
                 is_method: member.is_method,

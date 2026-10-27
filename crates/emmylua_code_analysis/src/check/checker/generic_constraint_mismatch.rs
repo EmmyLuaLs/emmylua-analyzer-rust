@@ -899,6 +899,13 @@ fn collect_key_names(
     }
     visited.push(def.id.clone());
     for member in semantic_model.members_of_owner(&def.id).iter() {
+        if semantic_model
+            .file_facts_of(member.file_id)
+            .and_then(|facts| facts.member_by_id(&member.id))
+            .is_some_and(|declaration| declaration.index_key_syntax.is_some())
+        {
+            continue;
+        }
         if !keys.iter().any(|key| key == member.name.as_str()) {
             keys.push(member.name.to_string());
         }

@@ -150,11 +150,23 @@ pub struct DocFunctionInfo {
 #[derive(Debug, Clone)]
 pub struct DocMember {
     pub name: String,
+    pub key: LuaMemberKey,
     pub ty: LuaType,
     pub property: DocProperty,
     pub is_method: bool,
     pub loc: Option<DocLoc>,
     pub signature: Option<DocSignature>,
+}
+
+impl DocMember {
+    /// Named fields use dot access; integer keys and index signatures use bracket access.
+    pub fn qualified_name(&self, owner_name: &str) -> String {
+        if self.key.is_name() {
+            format!("{owner_name}.{}", self.name)
+        } else {
+            format!("{owner_name}{}", self.name)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -339,7 +351,10 @@ impl DocModel {
                     .value_syntax
                     .as_ref()
                     .and_then(|syntax| signatures.get(syntax));
-                let doc = project_member(&model, member, &file_paths, signature, &signatures);
+                let Some(doc) = project_member(&model, member, &file_paths, signature, &signatures)
+                else {
+                    continue;
+                };
                 member_by_id.insert(member.id.clone(), doc.clone());
                 members_by_owner.entry(owner.clone()).or_default().push(doc);
             }
@@ -376,7 +391,7 @@ impl DocModel {
             for owner in &member_owners {
                 if let Some(list) = members_by_owner.get(owner) {
                     for member in list {
-                        if seen_members.insert(member.name.clone()) {
+                        if seen_members.insert((member.key.clone(), member.name.clone())) {
                             members.push(member.clone());
                         }
                     }
@@ -575,7 +590,7 @@ impl DocModel {
         for owner in owners {
             if let Some(list) = self.members_by_owner.get(&owner) {
                 for member in list {
-                    if seen.insert(member.name.clone()) {
+                    if seen.insert((member.key.clone(), member.name.clone())) {
                         members.push(member.clone());
                     }
                 }
@@ -745,8 +760,18 @@ fn project_member(
     file_paths: &HashMap<FileId, PathBuf>,
     signature: Option<&DocSignature>,
     signatures: &HashMap<LuaSyntaxId, DocSignature>,
-) -> DocMember {
+) -> Option<DocMember> {
     let file_id = member_file_id(&member.id);
+    let name = if let Some(syntax) = member.index_key_syntax {
+        let document = model.document(file_id)?;
+        format!("[{}]", document.get_text_slice(syntax.get_range()).trim())
+    } else {
+        match &member.key {
+            LuaMemberKey::Name(name) => name.to_string(),
+            LuaMemberKey::Integer(index) => format!("[{index}]"),
+            LuaMemberKey::None => return None,
+        }
+    };
     let mut ty = model.type_of_member(&member.id).unwrap_or(LuaType::Unknown);
     let mut signature = signature.cloned();
     let mut description = member_description(model, member);
@@ -783,12 +808,9 @@ fn project_member(
             .map(|syntax| syntax.get_range())
             .unwrap_or_default()
     });
-    DocMember {
-        name: match &member.key {
-            LuaMemberKey::Name(name) => name.to_string(),
-            LuaMemberKey::Integer(index) => format!("[{index}]"),
-            LuaMemberKey::None => String::new(),
-        },
+    Some(DocMember {
+        name,
+        key: member.key.clone(),
         ty,
         property: DocProperty {
             visibility: Some(member.visibility),
@@ -798,7 +820,7 @@ fn project_member(
         is_method: member.is_method,
         loc: make_loc(model, file_paths, file_id, key_range),
         signature,
-    }
+    })
 }
 
 fn member_file_id(id: &SemanticId) -> FileId {

@@ -5,6 +5,25 @@ mod tests {
     use googletest::prelude::*;
     use lsp_types::HoverContents;
 
+    #[gtest]
+    fn test_hover_generic_index_signature_and_named_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class Base<K, V>
+            ---@field [K] V
+            ---@class Record: Base<integer, string>
+            ---@field integer boolean
+
+            ---@type Record
+            local <??>value"#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: Record {\n    integer: boolean,\n    [integer]: string,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
     fn dedent(input: &str) -> String {
         let lines: Vec<&str> = input.lines().collect();
         let mut min_indent = usize::MAX;

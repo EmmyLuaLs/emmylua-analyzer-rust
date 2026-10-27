@@ -6,6 +6,28 @@ mod test {
     };
 
     #[test]
+    fn test_index_signature_duplicates_use_key_domains() {
+        for (fields, count) in [
+            (
+                "---@field [integer] string\n---@field [string] boolean\n---@field integer boolean",
+                0,
+            ),
+            ("---@field [integer] string\n---@field [integer] boolean", 2),
+            (
+                "---@field [integer | boolean] string\n---@field [string | boolean] number",
+                0,
+            ),
+        ] {
+            let diagnostics = check_source(&format!("---@class Record\n{fields}"));
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::DuplicateDocField),
+                count,
+                "{fields}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_duplicate_field() {
         let mut ws = VirtualWorkspace::new();
 

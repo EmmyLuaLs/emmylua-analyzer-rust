@@ -1,7 +1,7 @@
 //! Complex type checks: Array/TableGeneric/Tuple/Object/Call/MultiLineUnion.
 
 use crate::semantic_model::type_eval::expand_alias_branches;
-use crate::{LuaMemberKey, LuaObjectType, LuaType};
+use crate::{IndexInfo, LuaMemberKey, LuaObjectType, LuaType};
 
 use super::context::TypeCheckContext;
 use super::{
@@ -235,4 +235,22 @@ pub(crate) fn integer_index_applies(
         Err(err) if err.is_type_not_match() => Ok(false),
         Err(err) => Err(err),
     }
+}
+
+/// Index signatures of `typ` whose key type accepts `key_type`.
+pub(super) fn applicable_index_infos(
+    context: &mut TypeCheckContext,
+    typ: &LuaType,
+    key_type: &LuaType,
+) -> Result<Vec<IndexInfo>, TypeCheckFailReason> {
+    let infos = context.require_complete(|| context.model.index_infos(typ))?;
+    let mut applicable = Vec::new();
+    for info in infos {
+        match check_general_type_compact(context, key_type, &info.key_type) {
+            Ok(()) => applicable.push(info),
+            Err(err) if err.is_type_not_match() => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(applicable)
 }

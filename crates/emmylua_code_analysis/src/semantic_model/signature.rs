@@ -1,4 +1,5 @@
-use crate::{MemberList, OperatorDef};
+use crate::semantic_model::type_check::TypeCheckFailReason;
+use crate::{IndexInfo, MemberList, OperatorDef};
 
 use super::prelude::*;
 
@@ -212,6 +213,7 @@ impl<'db> SemanticModel<'db> {
     pub fn eval_conditionals_for_hover(&self, ty: &LuaType) -> LuaType {
         type_eval::eval_conditionals(self, ty)
     }
+
     /// Whether a value of `source` can be used where `target` is expected.
     pub fn type_check(&self, source: &LuaType, target: &LuaType) -> bool {
         self.type_check_cached(source, target, false)
@@ -262,6 +264,42 @@ impl<'db> SemanticModel<'db> {
         );
         result
     }
+
+    /// Index signatures of `typ` whose key type accepts `key_type`.
+    pub fn applicable_index_infos(
+        &self,
+        typ: &LuaType,
+        key_type: &LuaType,
+    ) -> Result<Vec<IndexInfo>, TypeCheckFailReason> {
+        let _query = cache::QueryCacheScope::new(&self.cache);
+        let revision = self.cache.borrow().revision();
+        let infos = self.index_infos(typ);
+        {
+            let cache = self.cache.borrow();
+            if cache.evaluation_exhausted {
+                return Err(TypeCheckFailReason::TooComplex);
+            }
+            if !cache.is_complete(revision) {
+                return Err(TypeCheckFailReason::Unresolved);
+            }
+        }
+        // 收集必须完整, 每个比较是否已有确定结论则由类型检查器判断.
+        infos
+            .into_iter()
+            .filter_map(
+                |info| match self.type_check_cached(key_type, &info.key_type, false) {
+                    Some(true) => Some(Ok(info)),
+                    Some(false) => None,
+                    None => Some(Err(if self.cache.borrow().evaluation_exhausted {
+                        TypeCheckFailReason::TooComplex
+                    } else {
+                        TypeCheckFailReason::Unresolved
+                    })),
+                },
+            )
+            .collect()
+    }
+
     /// Multi-value expression list types (mirrors old `infer_expr_list_types`; trailing multi-returns expand according to var_count).
     pub fn infer_expr_list_types(
         &self,

@@ -4,6 +4,7 @@
 //! otherwise pick the candidate with the fewest mismatches and report `ParamTypeMismatch` per argument. Colon calls:
 //! strip one slot for the self parameter; plain functions treat the receiver as the first argument.
 
+use crate::semantic_model::type_check::{TypeCheckContext, integer_index_applies};
 use std::rc::Rc;
 
 use emmylua_parser::{
@@ -884,7 +885,7 @@ fn generic_table_required_mismatch(
         let Some(member) = facts.member_by_id(&member_ref.id) else {
             continue;
         };
-        if member.is_nullable || member.is_index_signature {
+        if member.is_nullable || member.index_key_syntax.is_some() {
             continue;
         }
         if !provided.contains(&member_ref.name.to_string()) {
@@ -932,12 +933,11 @@ fn object_array_compatible(
             return true;
         }
     }
-    for (key_ty, value_ty) in object.get_index_access() {
-        let numeric = matches!(
-            key_ty,
-            LuaType::Integer | LuaType::Number | LuaType::IntegerConst(_)
-        );
-        if numeric && try_value(value_ty, bindings) {
+    let mut context = TypeCheckContext::new(semantic_model, false);
+    for info in semantic_model.index_infos(arg_ty) {
+        if integer_index_applies(&mut context, &info.key_type).unwrap_or(false)
+            && try_value(&info.value_type, bindings)
+        {
             return true;
         }
     }

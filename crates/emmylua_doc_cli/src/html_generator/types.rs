@@ -156,10 +156,10 @@ impl HtmlDoc {
 impl HtmlMember {
     pub fn from_property(
         name: String,
+        short_name: String,
         display: String,
         property: markdown_types::Property,
     ) -> HtmlMember {
-        let short_name = name.rsplit('.').next().unwrap_or(&name).to_string();
         let description = property.description.map(|s| render_markdown(&s));
         // The summary is the rendered first paragraph of the description.
         let summary = description.as_deref().and_then(|html| {

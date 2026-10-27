@@ -112,6 +112,86 @@ mod tests {
     }
 
     #[gtest]
+    fn test_array_completion_keeps_fields_on_elements() -> Result<()> {
+        for (expression, has_name) in [("items", false), ("items[1]", true)] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            ws.def_file(
+                "item.lua",
+                r#"
+---@class Item
+---@field name string
+"#,
+            );
+            let items = get_completion_items(
+                &mut ws,
+                &format!(
+                    r#"
+---@type Item[]
+local items
+{expression}.<??>
+"#
+                ),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            assert_eq!(
+                items.iter().any(|item| item.label == "name"),
+                has_name,
+                "{expression}: {items:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_named_array_completion_only_includes_container_fields() -> Result<()> {
+        for (typ, has_label) in [
+            ("ItemArray", false),
+            ("Array<Item>", false),
+            ("Items", false),
+            ("GenericItems<Item>", false),
+            ("DerivedItems", false),
+            ("LabeledItems", true),
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            ws.def_file(
+                "item.lua",
+                r#"
+---@class Item
+---@field name string
+---@alias ItemArray Item[]
+---@alias Array<T> T[]
+---@class Items: Item[]
+---@class GenericItems<T>: T[]
+---@class DerivedItems: Items
+---@class LabeledItems: Item[]
+---@field label string
+"#,
+            );
+            let items = get_completion_items(
+                &mut ws,
+                &format!(
+                    r#"
+---@type {typ}
+local items
+items.<??>
+"#
+                ),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            assert!(
+                !items.iter().any(|item| item.label == "name"),
+                "{typ}: {items:?}"
+            );
+            assert_eq!(
+                items.iter().any(|item| item.label == "label"),
+                has_label,
+                "{typ}: {items:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_array_append_index_completion_after_len_operator() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         let items = get_completion_items(

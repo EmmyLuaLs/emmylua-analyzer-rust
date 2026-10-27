@@ -3,6 +3,214 @@ mod test {
     use crate::check::test::check_source;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
+    #[test]
+    fn test_array_parent_accepts_empty_and_valid_elements() {
+        for parent in ["Item[]", "ItemArray", "ItemArrayAlias", "ArrayBase<Item>"] {
+            for value in ["{}", "{{name = 'ok'}}"] {
+                let diagnostics = check_source(&format!(
+                    r#"
+---@class Item
+---@field name string
+---@class ItemArray: Item[]
+---@alias ItemArrayAlias Item[]
+---@class ArrayBase<T>: T[]
+---@class Items: {parent}
+---@type Items
+local items = {value}
+---@param values Items
+local function accept(values) return values end
+accept({value})
+return items
+"#
+                ));
+                assert!(diagnostics.is_empty(), "{parent}, {value}: {diagnostics:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_array_parent_checks_container_fields_separately() {
+        for (value, expected) in [
+            ("{name = 1, label = 'items', {name = 'ok'}}", vec![]),
+            ("{name = 1, label = 'items'}", vec![]),
+            ("{label = 'items'}", vec![DiagnosticCode::MissingFields]),
+            ("{name = 1}", vec![DiagnosticCode::MissingFields]),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+---@class Item
+---@field name string
+---@class Metadata
+---@field label string
+---@class Items: Item[], Metadata
+---@field name number
+---@type Items
+local items = {value}
+return items
+"#
+            ));
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{value}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_array_parent_reports_missing_field_on_element() {
+        for (parent, value) in [
+            ("Item[]", "{{}}"),
+            ("Item[]", "{{name = 'ok'}, {}}"),
+            ("Item[][]", "{{{}}}"),
+        ] {
+            let source = format!(
+                r#"
+---@class Item
+---@field name string
+---@class Items: {parent}
+---@type Items
+local items = {value}
+return items
+"#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{value}: {diagnostics:?}");
+            let diagnostic = &diagnostics[0];
+            assert_eq!(diagnostic.code, DiagnosticCode::MissingFields);
+            assert_eq!(diagnostic.message, "Missing required fields: `name`");
+            assert_eq!(&source[diagnostic.range], "{}");
+        }
+    }
+
+    #[test]
+    fn test_array_parent_checks_elements_in_calls_and_reassignments() {
+        for statement in ["accept({{}})", "items = {{}}"] {
+            let source = format!(
+                r#"
+---@class Item
+---@field name string
+---@class Items: Item[]
+---@type Items
+local items
+---@param values Items
+local function accept(values) return values end
+{statement}
+return items, accept
+"#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{statement}: {diagnostics:?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::MissingFields);
+            assert_eq!(&source[diagnostics[0].range], "{}");
+        }
+    }
+
+    #[test]
+    fn test_array_parent_rejects_invalid_element_value() {
+        let diagnostics = check_source(
+            r#"
+---@class Item
+---@field name string
+---@class Items: Item[]
+---@type Items
+local items = {{name = 123}}
+return items
+"#,
+        );
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            vec![DiagnosticCode::AssignTypeMismatch],
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_generic_index_signature_contracts() {
+        for (value, expected) in [
+            ("{integer = true, [1] = 'ok'}", vec![]),
+            (
+                "{integer = true, [1] = false}",
+                vec![DiagnosticCode::AssignTypeMismatch],
+            ),
+            (
+                "{integer = true, ['1'] = 'ok'}",
+                vec![DiagnosticCode::InjectField],
+            ),
+            (
+                "{[1] = 'ok'}",
+                vec![
+                    DiagnosticCode::AssignTypeMismatch,
+                    DiagnosticCode::MissingFields,
+                ],
+            ),
+        ] {
+            let diagnostics = check_source(&format!(
+                "
+                ---@class Base<K, V>
+                ---@field [K] V
+
+                ---@class Record: Base<integer, string>
+                ---@field integer boolean
+                ---@type Record
+                local value = {value}
+                return value"
+            ));
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{value}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_generic_index_signature_on_call_argument() {
+        let diagnostics = check_source(
+            "---@class Dictionary<K, V>
+            ---@field [K] V
+            ---@param value Dictionary<string, boolean>
+            local function accept(value) return value end
+            accept({name = true})
+            accept({name = 'bad'})",
+        );
+        assert!(
+            diagnostics.iter().any(|d| matches!(
+                d.code,
+                DiagnosticCode::AssignTypeMismatch | DiagnosticCode::ParamTypeMismatch
+            )),
+            "{diagnostics:?}"
+        );
+        assert!(
+            !diagnostics.iter().any(|d| matches!(
+                d.code,
+                DiagnosticCode::InjectField | DiagnosticCode::MissingFields
+            )),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_index_signature_float_keys_use_numeric_domain() {
+        for (domain, expected) in [
+            ("integer", vec![DiagnosticCode::InjectField]),
+            ("number", vec![]),
+        ] {
+            let diagnostics = check_source(&format!(
+                "---@class Record
+                ---@field [{domain}] string
+                ---@type Record
+                local value = {{[1.5] = 'ok'}}
+                return value"
+            ));
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{domain}: {diagnostics:?}"
+            );
+        }
+    }
+
     mod generic_tables {
         use super::*;
 

@@ -173,7 +173,7 @@ pub(crate) fn build_deprecated_file(db: &SemanticDatabase, file_id: FileId) -> D
         }
     }
     for member in &facts.members {
-        if member.deprecated {
+        if member.deprecated && member.index_key_syntax.is_none() {
             let key: SmolStr = member.key.to_path().into();
             data.member_keys.push((member.owner.clone(), key));
         }

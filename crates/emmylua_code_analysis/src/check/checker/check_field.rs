@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{
@@ -11,9 +9,9 @@ use crate::DiagnosticCode;
 use crate::semantic_db::def::{SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_branches;
-use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType};
+use crate::{LuaMemberKey, LuaType, LuaTypeDeclId};
 
-use super::assign_type_mismatch::signature_matches_key;
+use super::assign_type_mismatch::index_key_type;
 use super::param_type_check::callable_candidates;
 use super::{CheckContext, Checker};
 use crate::semantic_model::render::humanize_type;
@@ -115,10 +113,9 @@ fn check_index_assign(
         // `---@type { [number]: number }`: keys outside the object's index signature report injection errors.
         if let LuaType::Object(object) = &prefix_ty {
             if object.get_field(&key).is_none()
-                && !object
-                    .get_index_access()
-                    .iter()
-                    .any(|(key_ty, _)| index_key_type_accepts(key_ty, &key))
+                && semantic_model
+                    .applicable_index_infos(&prefix_ty, &index_key_type(semantic_model, &index_key))
+                    .is_ok_and(|infos| infos.is_empty())
             {
                 context.add_diagnostic(
                     DiagnosticCode::InjectField,
@@ -141,17 +138,17 @@ fn check_index_assign(
             continue;
         };
         // Classes with a parent type or index signature (`[string]`) are handled broadly (M0).
-        if !def.base_types.is_empty()
-            || semantic_model
-                .members_of_owner(&target_id)
-                .iter()
-                .any(|member| member.name.starts_with('['))
-            || is_mapped_alias(semantic_model, &def)
-        {
+        if !def.base_types.is_empty() || is_mapped_alias(semantic_model, &def) {
             continue;
         }
         if semantic_model.member_info(&prefix_ty, &key).is_some() {
             continue;
+        }
+        match semantic_model
+            .applicable_index_infos(&prefix_ty, &index_key_type(semantic_model, &index_key))
+        {
+            Ok(infos) if infos.is_empty() => {}
+            _ => continue,
         }
         context.add_diagnostic(
             DiagnosticCode::InjectField,
@@ -230,64 +227,6 @@ pub(super) fn static_member_key(
     }
 }
 
-/// Whether an object index-signature key type accepts this member key (`{[number]: ...}` does not accept string keys).
-fn index_key_type_accepts(key_ty: &LuaType, member_key: &LuaMemberKey) -> bool {
-    match member_key {
-        LuaMemberKey::Name(_) => key_type_contains(key_ty, &LuaType::String),
-        LuaMemberKey::Integer(_) => key_type_contains(key_ty, &LuaType::Integer),
-        _ => true,
-    }
-}
-
-fn key_type_contains(key_ty: &LuaType, expected: &LuaType) -> bool {
-    match key_ty {
-        LuaType::Any | LuaType::Unknown => true,
-        LuaType::Union(union) => union
-            .into_vec()
-            .iter()
-            .any(|ty| key_type_contains(&ty, expected)),
-        _ => key_ty == expected || (expected == &LuaType::Integer && key_ty == &LuaType::Number),
-    }
-}
-
-/// `---@class C: { a: number }`: when the parent type is an object literal, complete the field surface.
-fn collect_object_super_fields(
-    semantic_model: &SemanticModel<'_>,
-    def: &TypeDef,
-    out: &mut HashMap<LuaMemberKey, LuaType>,
-) {
-    let Some(tree) = semantic_model.syntax_tree_of(def.file_id) else {
-        return;
-    };
-    let root = tree.get_red_root();
-    for syntax in &def.base_types {
-        let Some(LuaDocType::Object(object)) =
-            syntax.to_node_from_root(&root).and_then(LuaDocType::cast)
-        else {
-            continue;
-        };
-        for field in object.get_fields() {
-            let Some(key) = field.get_field_key() else {
-                continue;
-            };
-            let key = match &key {
-                emmylua_parser::LuaDocObjectFieldKey::Name(name) => {
-                    LuaMemberKey::Name(name.get_name_text().into())
-                }
-                emmylua_parser::LuaDocObjectFieldKey::String(str) => {
-                    LuaMemberKey::Name(str.get_value().into())
-                }
-                _ => continue,
-            };
-            let ty = field
-                .get_type()
-                .map(|ty| semantic_model.doc_type_lua_rich_in(def.file_id, ty.get_syntax_id()))
-                .unwrap_or(LuaType::Unknown);
-            out.entry(key).or_insert(ty);
-        }
-    }
-}
-
 /// Whether the alias target is a mapped type.
 fn is_mapped_alias(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> bool {
     let Some(syntax) = def.alias_type else {
@@ -362,6 +301,18 @@ fn check_against_type(
         return;
     }
     match target {
+        LuaType::Array(array) => {
+            for (field, key) in table.get_fields_with_keys() {
+                if let Some(LuaExpr::TableExpr(value)) = field.get_value_expr()
+                    && semantic_model
+                        .applicable_index_infos(target, &index_key_type(semantic_model, &key))
+                        .is_ok_and(|infos| !infos.is_empty())
+                {
+                    check_against_type(context, semantic_model, array.get_base(), &value);
+                }
+            }
+            return;
+        }
         LuaType::Intersection(intersection) => {
             for component in intersection.get_types() {
                 check_against_type(context, semantic_model, component, table);
@@ -438,25 +389,33 @@ fn check_against_type(
     }
 
     // Target type's @field members (including inheritance).
-    let mut members = HashMap::new();
-    let mut index_signatures = Vec::new();
-    let mut visited = Vec::new();
-    collect_fields(
-        semantic_model,
-        &target_id,
-        &mut visited,
-        &mut members,
-        &mut index_signatures,
-    );
-    if let Some(def) = find_type_def(semantic_model, &target_id) {
-        collect_object_super_fields(semantic_model, &def, &mut members);
-    }
-
+    let members: HashMap<_, _> = semantic_model
+        .member_infos(target)
+        .into_iter()
+        .filter_map(|info| {
+            let declaration = info.id.as_ref().and_then(|id| {
+                semantic_model
+                    .file_facts_of(info.file_id?)
+                    .and_then(|facts| facts.member_by_id(id))
+            });
+            if declaration.is_some_and(|member| !matches!(member.owner, SemanticId::TypeDef(_))) {
+                return None;
+            }
+            let typ = if declaration.is_some_and(|member| member.is_nullable)
+                && !info.typ.is_nullable()
+            {
+                LuaType::from_vec(vec![info.typ, LuaType::Nil])
+            } else {
+                info.typ
+            };
+            Some((info.key, typ))
+        })
+        .collect();
     let fields = table.get_fields_with_keys();
     let mut field_keys = HashSet::with_capacity(fields.len());
 
     // InjectField: table field is not in the target members.
-    for (_, key) in &fields {
+    for (field, key) in &fields {
         // Expression keys still need the index-signature checks for their values.
         let member_key = match key {
             LuaIndexKey::Expr(_) => None,
@@ -465,18 +424,23 @@ fn check_against_type(
         if !member_key
             .as_ref()
             .is_some_and(|key| members.contains_key(key))
-            && !index_signatures
-                .iter()
-                .any(|signature| signature_matches_key(semantic_model, signature, key))
+            && let Ok(infos) =
+                semantic_model.applicable_index_infos(target, &index_key_type(semantic_model, key))
         {
-            context.add_diagnostic(
-                DiagnosticCode::InjectField,
-                table.get_range(),
-                format!(
-                    "Field `{}` cannot be injected into the target type.",
-                    key.get_path_part()
-                ),
-            );
+            if let Some(info) = infos.first() {
+                if let Some(LuaExpr::TableExpr(value)) = field.get_value_expr() {
+                    check_against_type(context, semantic_model, &info.value_type, &value);
+                }
+            } else {
+                context.add_diagnostic(
+                    DiagnosticCode::InjectField,
+                    table.get_range(),
+                    format!(
+                        "Field `{}` cannot be injected into the target type.",
+                        key.get_path_part()
+                    ),
+                );
+            }
         }
         if let Some(key) = member_key {
             field_keys.insert(key);
@@ -514,57 +478,6 @@ fn resolve_target(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<Se
             .type_def_of(&generic.get_base_type_id())
             .map(|def| def.id),
         _ => None,
-    }
-}
-
-/// Type definition's `@field` members (including the inheritance chain; `visited` prevents cycles).
-fn collect_fields(
-    semantic_model: &SemanticModel<'_>,
-    type_def_id: &SemanticId,
-    visited: &mut Vec<SemanticId>,
-    out: &mut HashMap<LuaMemberKey, LuaType>,
-    index_signatures: &mut Vec<String>,
-) {
-    if visited.contains(type_def_id) {
-        return;
-    }
-    visited.push(type_def_id.clone());
-    for member_ref in semantic_model.members_of_owner(type_def_id).iter() {
-        let Some(facts) = semantic_model.file_facts_of(member_ref.file_id) else {
-            continue;
-        };
-        let Some(member) = facts.member_by_id(&member_ref.id) else {
-            continue;
-        };
-        if member.is_index_signature {
-            index_signatures.push(member_ref.name.to_string());
-            continue;
-        }
-        let mut ty = semantic_model
-            .type_of_member(&member_ref.id)
-            .unwrap_or(LuaType::Unknown);
-        if let LuaType::Ref(id) | LuaType::Def(id) = &ty
-            && let Some(def) = semantic_model.type_def_of(id)
-            && let Some(alias_target) = semantic_model.alias_target(&def)
-        {
-            ty = alias_target;
-        }
-        if member.is_nullable && !ty.is_nullable() {
-            ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
-        }
-        out.entry(member.key.clone()).or_insert(ty);
-    }
-    // Inheritance chain: locate the type definition; needs def info.
-    if let Some(def) = find_type_def(semantic_model, type_def_id) {
-        for super_def in semantic_model.base_type_defs(&def.type_decl_id()) {
-            collect_fields(
-                semantic_model,
-                &super_def.id,
-                visited,
-                out,
-                index_signatures,
-            );
-        }
     }
 }
 

@@ -32,13 +32,15 @@ pub(crate) struct OwnerMembers {
 }
 
 impl OwnerMembers {
-    fn insert(&mut self, member_id: SemanticId, member: MemberRef, name: SmolStr) -> bool {
+    fn insert(&mut self, member_id: SemanticId, member: MemberRef, name: Option<SmolStr>) -> bool {
         if self.by_id.contains_key(&member_id) {
             return false;
         }
         self.by_id.insert(member_id.clone(), member);
         self.order.push(member_id.clone());
-        self.by_name_ids.entry(name).or_default().push(member_id);
+        if let Some(name) = name {
+            self.by_name_ids.entry(name).or_default().push(member_id);
+        }
         true
     }
 
@@ -186,7 +188,11 @@ impl WorkspaceMemberIndex {
             };
 
             let bucket = self.owners.entry(owner.clone()).or_default();
-            if bucket.insert(member_id.clone(), member_ref.clone(), name.clone()) {
+            if bucket.insert(
+                member_id.clone(),
+                member_ref.clone(),
+                (!member.key.is_none()).then(|| name.clone()),
+            ) {
                 keys.push((owner.clone(), member_id.clone()));
                 touched_raw.insert(owner);
             }
@@ -196,7 +202,11 @@ impl WorkspaceMemberIndex {
                 .owners_by_id
                 .entry(canonical_owner.clone())
                 .or_default();
-            if canonical_bucket.insert(member_id.clone(), member_ref, name) {
+            if canonical_bucket.insert(
+                member_id.clone(),
+                member_ref,
+                (!member.key.is_none()).then_some(name),
+            ) {
                 canonical_keys.push((canonical_owner.clone(), member_id));
                 touched_canonical.insert(canonical_owner);
             }

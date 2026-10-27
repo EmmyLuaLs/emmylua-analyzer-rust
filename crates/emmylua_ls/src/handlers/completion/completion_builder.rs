@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use emmylua_code_analysis::{Emmyrc, LuaDocument, LuaType, SemanticModel};
+use emmylua_code_analysis::{Emmyrc, LuaDocument, LuaType, SemanticId, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionTriggerKind};
 use rowan::TextSize;
@@ -168,7 +168,7 @@ impl<'a> CompletionBuilder<'a> {
             if let Some(resolved) = self.semantic_model.resolve_member(&callee_index) {
                 // Cross-file `B:one` may have no member declaration id; fall back to the owner type name.
                 if resolved.member_id.is_none() {
-                    if let emmylua_code_analysis::SemanticId::Name(owner_name) = &resolved.owner
+                    if let SemanticId::Name(owner_name) = &resolved.owner
                         && let Some(def) = self.semantic_model.resolve_type_def(owner_name)
                     {
                         let receiver = self.semantic_model.type_def_ref(&def);
@@ -192,9 +192,27 @@ impl<'a> CompletionBuilder<'a> {
                         }
                     }
                 }
-                let receiver_ty = callee_index
-                    .get_prefix_expr()
-                    .map(|expr| self.semantic_model.type_of_expr(expr.get_syntax_id()));
+                let receiver_ty = callee_index.get_prefix_expr().map(|expr| {
+                    if let SemanticId::Name(name) = &resolved.owner
+                        && let Some(decl_id @ SemanticId::Decl(_)) =
+                            self.semantic_model.global_decl(name)
+                        && let SemanticId::Decl(key) = &decl_id
+                        && let Some(value_syntax) = self
+                            .semantic_model
+                            .file_facts_of(key.file_id)
+                            .and_then(|facts| facts.decl_by_id(&decl_id))
+                            .and_then(|decl| decl.value_expr_syntax)
+                    {
+                        let value_type = self
+                            .semantic_model
+                            .model_for(key.file_id)
+                            .type_of_expr(value_syntax);
+                        if matches!(value_type, LuaType::TableConst(_)) {
+                            return value_type;
+                        }
+                    }
+                    self.semantic_model.type_of_expr(expr.get_syntax_id())
+                });
                 let receiver_ty = match receiver_ty {
                     Some(ty) if !matches!(ty, LuaType::Unknown) => Some(ty),
                     _ => {
@@ -283,7 +301,7 @@ impl<'a> CompletionBuilder<'a> {
             for member_ref in self.semantic_model.members_of_owner(&owner).iter() {
                 let member_facts = self.semantic_model.file_facts_of(member_ref.file_id)?;
                 let member = member_facts.member_by_id(&member_ref.id)?;
-                if member.key.to_path() == key_text {
+                if member.index_key_syntax.is_none() && member.key.to_path() == key_text {
                     if let Some(ty) = self.semantic_model.type_of_member(&member_ref.id)
                         && !matches!(ty, LuaType::Unknown)
                     {

@@ -41,7 +41,7 @@ pub struct Member {
     /// `---@readonly` (annotation owned by this member).
     pub readonly: bool,
     /// `---@field [string] any` index signature.
-    pub is_index_signature: bool,
+    pub index_key_syntax: Option<LuaSyntaxId>,
     /// `---@field x? string` nullable field.
     pub is_nullable: bool,
 }
@@ -65,7 +65,7 @@ impl Member {
             deprecated: false,
             visibility: VisibilityKind::Public,
             readonly: false,
-            is_index_signature: false,
+            index_key_syntax: None,
             is_nullable: false,
         }
     }

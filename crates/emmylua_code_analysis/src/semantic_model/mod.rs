@@ -1,5 +1,6 @@
 pub(crate) mod cache;
 pub mod flow;
+pub mod index_signature;
 pub mod infer;
 pub mod member;
 pub mod render;

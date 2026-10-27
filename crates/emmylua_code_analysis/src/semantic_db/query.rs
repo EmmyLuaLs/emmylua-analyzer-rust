@@ -671,6 +671,13 @@ pub(crate) fn member_keys_of_owner(db: &SemanticDatabase, owner: SemanticId) -> 
         keys.extend(
             members_of_owner(db, resolved)
                 .iter()
+                .filter(|&member| {
+                    db.file_facts_of(member.file_id).is_some_and(|facts| {
+                        facts
+                            .member_by_id(&member.id)
+                            .is_some_and(|decl| !decl.key.is_none())
+                    })
+                })
                 .cloned()
                 .map(|member| member.name),
         );
@@ -2413,6 +2420,7 @@ pub(crate) fn member_keys_of_decl(
     let facts = file_facts(db, file);
     let mut keys = facts
         .members_of_owner(&decl)
+        .filter(|member| member.index_key_syntax.is_none())
         .map(|member| member.key.to_path().into())
         .collect::<Vec<_>>();
     keys.sort();
@@ -2488,7 +2496,7 @@ fn collect_type_keys(
     for member in facts
         .members
         .iter()
-        .filter(|member| member.owner == type_def)
+        .filter(|member| member.owner == type_def && member.index_key_syntax.is_none())
     {
         out.push(member.key.to_path().into());
     }

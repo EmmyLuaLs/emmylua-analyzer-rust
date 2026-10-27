@@ -2727,7 +2727,7 @@ fn class_has_required_named_field(model: &SemanticModel, def: &TypeDef) -> bool 
             let Some(member) = facts.member_by_id(&member_ref.id) else {
                 continue;
             };
-            if !member.is_index_signature && !member.is_nullable {
+            if member.index_key_syntax.is_none() && !member.is_nullable {
                 return true;
             }
         }

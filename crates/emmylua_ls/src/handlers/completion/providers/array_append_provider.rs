@@ -1,6 +1,6 @@
 //! Array append completion: `arr[#<??>]` → `#arr + 1` append position.
 
-use emmylua_code_analysis::{LuaMemberKey, LuaType};
+use emmylua_code_analysis::LuaType;
 use emmylua_parser::{LuaAstNode, LuaIndexExpr, LuaKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionTextEdit, InsertTextFormat, TextEdit};
 use rowan::TextRange;
@@ -121,13 +121,11 @@ fn can_use_as_array(builder: &CompletionBuilder, typ: &LuaType) -> bool {
                     .semantic_model
                     .member_infos(typ)
                     .iter()
-                    .any(|member| match &member.key {
-                        LuaMemberKey::Integer(_) => true,
-                        LuaMemberKey::Name(name) => {
-                            name.as_str() == "[int]" || name.as_str() == "int"
-                        }
-                        _ => false,
-                    })
+                    .any(|member| member.key.is_integer())
+                || builder
+                    .semantic_model
+                    .applicable_index_infos(typ, &LuaType::Integer)
+                    .is_ok_and(|infos| !infos.is_empty())
         }
     }
 }
