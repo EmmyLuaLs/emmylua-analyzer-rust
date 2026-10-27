@@ -33,7 +33,7 @@ pub fn generate_global_markdown(
     let mut template_name = "lua_global_template.tl";
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
-            let members = model.members_of_type(&global.ty);
+            let members = global.members.clone();
             let (methods, fields) = collect_owner_members(model, &members, &global.name);
             doc.methods = if methods.is_empty() {
                 None
