@@ -15,8 +15,8 @@ use emmylua_code_analysis::{
     TypeDef, TypeDefKind, TypeVisibility, VariadicType,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaDocDescriptionOwner, LuaDocTagParam, LuaDocTagReturn, LuaSyntaxId,
-    VisibilityKind,
+    LuaAstNode, LuaCommentOwner, LuaDocDescriptionOwner, LuaDocTagField, LuaDocTagParam,
+    LuaDocTagReturn, LuaExpr, LuaStat, LuaSyntaxId, LuaTableField, VisibilityKind,
 };
 use rowan::TextRange;
 
@@ -77,11 +77,13 @@ pub struct DocLoc {
     pub line: usize,
 }
 
-/// Property annotations (Semantic facts only carry visibility and deprecated; description text is not in facts yet).
+/// Property annotations attached to a declaration, type or member.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocProperty {
     pub visibility: Option<VisibilityKind>,
     pub deprecated: bool,
+    /// Doc-comment text attached to the owner (prose before the `---@` tags).
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -257,6 +259,9 @@ impl DocModel {
                     DocProperty {
                         visibility: type_visibility(def.visibility),
                         deprecated: def.deprecated,
+                        description: def
+                            .owner_syntax
+                            .and_then(|owner| doc_comment_description(&model, file_id, owner)),
                     },
                 );
             }
@@ -271,6 +276,7 @@ impl DocModel {
                     DocProperty {
                         visibility: Some(member.visibility),
                         deprecated: member.deprecated,
+                        description: member_description(&model, member),
                     },
                 );
             }
@@ -285,6 +291,9 @@ impl DocModel {
                     DocProperty {
                         visibility: None,
                         deprecated: decl.deprecated,
+                        description: decl
+                            .owner_syntax
+                            .and_then(|owner| doc_comment_description(&model, file_id, owner)),
                     },
                 );
                 if let Some(owner_syntax) = decl.owner_syntax {
@@ -330,7 +339,7 @@ impl DocModel {
                     .value_syntax
                     .as_ref()
                     .and_then(|syntax| signatures.get(syntax));
-                let doc = project_member(&model, member, &file_paths, signature);
+                let doc = project_member(&model, member, &file_paths, signature, &signatures);
                 member_by_id.insert(member.id.clone(), doc.clone());
                 members_by_owner.entry(owner.clone()).or_default().push(doc);
             }
@@ -354,7 +363,12 @@ impl DocModel {
                 if let Some(owner_syntax) = def.owner_syntax
                     && let Some(decls) = decls_by_owner_syntax.get(&owner_syntax)
                 {
-                    member_owners.extend(decls.iter().cloned());
+                    member_owners.extend(
+                        decls
+                            .iter()
+                            .filter(|decl| decl_belongs_to_type(&model, decl, &defs))
+                            .cloned(),
+                    );
                 }
             }
             let mut members: Vec<DocMember> = Vec::new();
@@ -478,10 +492,16 @@ impl DocModel {
                 continue;
             };
 
-            let property = export_owner
+            let mut property = export_owner
                 .as_ref()
                 .and_then(|owner| properties.get(owner).cloned())
                 .unwrap_or_default();
+            if property.description.is_none()
+                && let ModuleExport::Expr { value_syntax } = &source.module_export
+            {
+                property.description =
+                    value_owner_description(&model, source.file_id, *value_syntax);
+            }
             let module_name = module_name_by_file
                 .get(&source.file_id)
                 .cloned()
@@ -724,9 +744,39 @@ fn project_member(
     member: &Member,
     file_paths: &HashMap<FileId, PathBuf>,
     signature: Option<&DocSignature>,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
 ) -> DocMember {
     let file_id = member_file_id(&member.id);
-    let ty = model.type_of_member(&member.id).unwrap_or(LuaType::Unknown);
+    let mut ty = model.type_of_member(&member.id).unwrap_or(LuaType::Unknown);
+    let mut signature = signature.cloned();
+    let mut description = member_description(model, member);
+
+    let unresolved = matches!(
+        ty,
+        LuaType::Unknown | LuaType::TplRef(_) | LuaType::Generic(_) | LuaType::TableGeneric(_)
+    ) || match &ty {
+        LuaType::Ref(id) | LuaType::Def(id) => model.type_def_of(id).is_none(),
+        _ => false,
+    };
+    if ty.is_function() || unresolved {
+        let resolved = resolve_member_docs(model, member, signatures);
+        if signature.is_none() {
+            signature = resolved.signature;
+        }
+        // Aliases (`exports.every = exports.all`) infer as a type parameter;
+        // adopt the documented closure behind the alias. Bare `function` types
+        // carry no parameter list, so prefer the resolved closure there too.
+        if let Some(resolved_ty) = resolved.ty
+            && resolved_ty.is_function()
+            && (!ty.is_function() || matches!(ty, LuaType::Function))
+        {
+            ty = resolved_ty;
+        }
+        if description.is_none() {
+            description = resolved.description;
+        }
+    }
+
     let key_range = member.id.member_key_range().unwrap_or_else(|| {
         member
             .value_syntax
@@ -743,10 +793,11 @@ fn project_member(
         property: DocProperty {
             visibility: Some(member.visibility),
             deprecated: member.deprecated,
+            description,
         },
         is_method: member.is_method,
         loc: make_loc(model, file_paths, file_id, key_range),
-        signature: signature.cloned(),
+        signature,
     }
 }
 
@@ -757,6 +808,284 @@ fn member_file_id(id: &SemanticId) -> FileId {
         SemanticId::Signature(key) => key.file_id,
         _ => FileId::new(0),
     }
+}
+
+/// Documentation recovered for a member whose function signature is not stored
+/// directly on the member value (export wrappers, aliases, `@field` functions).
+#[derive(Debug, Default)]
+struct ResolvedDocs {
+    signature: Option<DocSignature>,
+    ty: Option<LuaType>,
+    description: Option<String>,
+}
+
+/// Recovers the signature/description of a documented function behind a member.
+///
+/// A member value is often a wrapper call (`exports.each = export1(each)`) or a
+/// reference to a local function, while the `---@param`/`---@return` tags live
+/// on the local function. Follow one or two levels of names, members and call
+/// arguments to find the documented closure.
+fn resolve_member_docs(
+    model: &SemanticModel<'_>,
+    member: &Member,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
+) -> ResolvedDocs {
+    let Some(value_syntax) = member.value_syntax else {
+        return ResolvedDocs::default();
+    };
+    // A direct function literal carries its own signature; the caller already
+    // has it.
+    if signatures.contains_key(&value_syntax) {
+        return ResolvedDocs::default();
+    }
+
+    // `---@field add fun(...)` has no runtime value; fall back to a
+    // same-named declaration with a documented closure.
+    if member_field_tag(model, member).is_some() {
+        return resolve_field_member_fallback(model, member, signatures).unwrap_or_default();
+    }
+
+    resolve_syntax_docs(model, value_syntax, signatures, 3).unwrap_or_default()
+}
+
+fn resolve_field_member_fallback(
+    model: &SemanticModel<'_>,
+    member: &Member,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
+) -> Option<ResolvedDocs> {
+    let LuaMemberKey::Name(name) = &member.key else {
+        return None;
+    };
+    resolve_named_docs(model, name, signatures, 2)
+}
+
+/// Finds a documented function by name in the current file. Used for aliases
+/// (`exports.every = exports.all` → `all`) and for `@field fun(...)` members
+/// that mirror a local function declaration.
+fn resolve_named_docs(
+    model: &SemanticModel<'_>,
+    name: &str,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
+    depth: usize,
+) -> Option<ResolvedDocs> {
+    if depth == 0 {
+        return None;
+    }
+    let facts = model.file_facts()?;
+    for decl in &facts.decls {
+        if decl.name == name
+            && let Some(docs) = resolve_id_docs(model, &decl.id, signatures, depth - 1)
+        {
+            return Some(docs);
+        }
+    }
+    for member in &facts.members {
+        if let LuaMemberKey::Name(member_name) = &member.key
+            && member_name == name
+            && let Some(docs) = resolve_id_docs(model, &member.id, signatures, depth - 1)
+        {
+            return Some(docs);
+        }
+    }
+    None
+}
+
+fn resolve_syntax_docs(
+    model: &SemanticModel<'_>,
+    syntax: LuaSyntaxId,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
+    depth: usize,
+) -> Option<ResolvedDocs> {
+    if depth == 0 {
+        return None;
+    }
+    if let Some(signature) = signatures.get(&syntax).cloned() {
+        return Some(ResolvedDocs {
+            signature: Some(signature),
+            ..Default::default()
+        });
+    }
+
+    let tree = model.syntax_tree_of(model.file_id())?;
+    let node = syntax.to_node_from_root(&tree.get_red_root())?;
+    let expr = LuaExpr::cast(node)?;
+    match expr {
+        LuaExpr::NameExpr(name) => {
+            let id = model.resolve_name(name.get_range().start())?;
+            resolve_id_docs(model, &id, signatures, depth - 1)
+        }
+        LuaExpr::IndexExpr(index) => {
+            if let Some(resolved) = model.resolve_member(&index)
+                && let Some(id) = resolved.member_id
+                && let Some(docs) = resolve_id_docs(model, &id, signatures, depth - 1)
+            {
+                return Some(docs);
+            }
+            // Aliases such as `exports.every = exports.all` may resolve to a
+            // class member without a value; fall back to the name after the dot.
+            let key = index.get_index_key()?;
+            let name = key.get_path_part();
+            resolve_named_docs(model, &name, signatures, depth - 1)
+        }
+        LuaExpr::CallExpr(call) => {
+            let args = call.get_args_list()?;
+            for arg in args.get_args() {
+                if let Some(docs) =
+                    resolve_syntax_docs(model, arg.get_syntax_id(), signatures, depth - 1)
+                {
+                    return Some(docs);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn resolve_id_docs(
+    model: &SemanticModel<'_>,
+    id: &SemanticId,
+    signatures: &HashMap<LuaSyntaxId, DocSignature>,
+    depth: usize,
+) -> Option<ResolvedDocs> {
+    let file_id = member_file_id(id);
+    let model = model.model_for(file_id);
+    let facts = model.file_facts()?;
+    let (value_syntax, owner_syntax, ty) = match id {
+        SemanticId::Decl(_) => {
+            let decl = facts.decl_by_id(id)?;
+            (
+                decl.value_expr_syntax,
+                decl.owner_syntax,
+                model.type_of_decl(id),
+            )
+        }
+        SemanticId::Member(_) => {
+            let member = facts.member_by_id(id)?;
+            (member.value_syntax, None, model.type_of_member(id))
+        }
+        _ => return None,
+    };
+    let value_syntax = value_syntax?;
+    if let Some(signature) = signatures.get(&value_syntax).cloned() {
+        let description = owner_syntax
+            .and_then(|owner| doc_comment_description(&model, file_id, owner))
+            .or_else(|| value_owner_description(&model, file_id, value_syntax));
+        return Some(ResolvedDocs {
+            signature: Some(signature),
+            ty,
+            description,
+        });
+    }
+    resolve_syntax_docs(&model, value_syntax, signatures, depth.saturating_sub(1))
+}
+
+/// Returns the `@field` tag that owns a member value, when the member is
+/// declared with `---@field name type`.
+fn member_field_tag(model: &SemanticModel<'_>, member: &Member) -> Option<LuaDocTagField> {
+    let file_id = member_file_id(&member.id);
+    let tree = model.syntax_tree_of(file_id)?;
+    let node = member
+        .value_syntax?
+        .to_node_from_root(&tree.get_red_root())?;
+    node.ancestors().find_map(LuaDocTagField::cast)
+}
+
+/// Doc comment attached to the statement that owns a member.
+fn member_description(model: &SemanticModel<'_>, member: &Member) -> Option<String> {
+    let file_id = member_file_id(&member.id);
+    let tree = model.syntax_tree_of(file_id)?;
+    let node = member
+        .value_syntax?
+        .to_node_from_root(&tree.get_red_root())?;
+
+    // `---@field gen fun.Generator @The underlying generator function`
+    if let Some(field_tag) = node.ancestors().find_map(LuaDocTagField::cast) {
+        return field_tag
+            .get_description()
+            .map(|desc| preprocess_description(&desc.get_description_text()))
+            .filter(|text| !text.is_empty());
+    }
+
+    for ancestor in node.ancestors().skip(1) {
+        // A table-field key/value does not own a doc comment of its own.
+        if LuaTableField::cast(ancestor.clone()).is_some() {
+            return None;
+        }
+        if let Some(stat) = LuaStat::cast(ancestor) {
+            let comment = stat.get_left_comment()?;
+            return comment
+                .get_description()
+                .map(|desc| preprocess_description(&desc.get_description_text()))
+                .filter(|text| !text.is_empty());
+        }
+    }
+    None
+}
+
+fn value_owner_description(
+    model: &SemanticModel<'_>,
+    file_id: FileId,
+    value_syntax: LuaSyntaxId,
+) -> Option<String> {
+    let tree = model.syntax_tree_of(file_id)?;
+    let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
+    for ancestor in node.ancestors().skip(1) {
+        if LuaTableField::cast(ancestor.clone()).is_some() {
+            return None;
+        }
+        if let Some(stat) = LuaStat::cast(ancestor) {
+            let comment = stat.get_left_comment()?;
+            return comment
+                .get_description()
+                .map(|desc| preprocess_description(&desc.get_description_text()))
+                .filter(|text| !text.is_empty());
+        }
+    }
+    None
+}
+
+/// Docs attached to a statement owner (declaration / type definition).
+fn doc_comment_description(
+    model: &SemanticModel<'_>,
+    file_id: FileId,
+    owner_syntax: LuaSyntaxId,
+) -> Option<String> {
+    let tree = model.syntax_tree_of(file_id)?;
+    let node = owner_syntax.to_node_from_root(&tree.get_red_root())?;
+    let stat = LuaStat::cast(node)?;
+    let comment = stat.get_left_comment()?;
+    comment
+        .get_description()
+        .map(|desc| preprocess_description(&desc.get_description_text()))
+        .filter(|text| !text.is_empty())
+}
+
+/// Mirrors the old analyzer `preprocess_description`: drops a leading `#`/`@`
+/// and a single space of doc-comment indentation.
+fn preprocess_description(description: &str) -> String {
+    let description = description.trim_start_matches(['#', '@']);
+    let mut result = String::new();
+    let mut start_with_one_space = None;
+    for mut line in description.lines() {
+        let indent_count = line.chars().take_while(|c| c.is_whitespace()).count();
+        if indent_count == line.len() {
+            result.push('\n');
+            continue;
+        }
+        if start_with_one_space.is_none() {
+            start_with_one_space = Some(indent_count == 1);
+        }
+        if let Some(true) = start_with_one_space
+            && let Some(c) = line.chars().next()
+            && c.is_whitespace()
+        {
+            line = &line[c.len_utf8()..];
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.trim_end().to_string()
 }
 
 fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSignature {
@@ -845,14 +1174,58 @@ fn doc_tag_description(
         .filter(|text| !text.is_empty())
 }
 
+/// Determines whether runtime members of `decl` belong on the page of the
+/// annotated class. A `---@type` annotation on the declaration overrides the
+/// `---@class` instance, so members of an unrelated table (for example
+/// `---@class Iterator` above `---@type table<string, any> local methods = {}`)
+/// must not leak onto the class page.
+fn decl_belongs_to_type(model: &SemanticModel<'_>, decl: &SemanticId, defs: &[TypeDef]) -> bool {
+    let file_id = member_file_id(decl);
+    let model = model.model_for(file_id);
+    let Some(facts) = model.file_facts() else {
+        return false;
+    };
+    let Some(decl) = facts.decl_by_id(decl) else {
+        return false;
+    };
+    if decl.doc_type_syntax.is_none() {
+        return true;
+    }
+    model
+        .type_of_decl(&decl.id)
+        .is_some_and(|ty| type_matches_decl(&ty, defs))
+}
+
+fn type_matches_decl(ty: &LuaType, defs: &[TypeDef]) -> bool {
+    match ty {
+        LuaType::Ref(id) | LuaType::Def(id) => defs.iter().any(|def| def.type_decl_id() == *id),
+        LuaType::Instance(instance) => type_matches_decl(instance.get_base(), defs),
+        _ => false,
+    }
+}
+
 fn dedupe_members(members: Vec<DocMember>) -> Vec<DocMember> {
-    let mut seen = HashSet::new();
-    let mut members: Vec<DocMember> = members
-        .into_iter()
-        .filter(|member| seen.insert(member.name.clone()))
-        .collect();
-    members.sort_by(|a, b| a.name.cmp(&b.name));
-    members
+    let mut result: Vec<DocMember> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    for member in members {
+        if let Some(&idx) = index.get(&member.name) {
+            let existing = &mut result[idx];
+            if existing.signature.is_none() && member.signature.is_some() {
+                existing.signature = member.signature;
+            }
+            if matches!(existing.ty, LuaType::Function) && !matches!(member.ty, LuaType::Function) {
+                existing.ty = member.ty;
+            }
+            if existing.property.description.is_none() {
+                existing.property.description = member.property.description;
+            }
+            continue;
+        }
+        index.insert(member.name.clone(), result.len());
+        result.push(member);
+    }
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    result
 }
 
 fn expand_returns(ret: &LuaType) -> Vec<LuaType> {

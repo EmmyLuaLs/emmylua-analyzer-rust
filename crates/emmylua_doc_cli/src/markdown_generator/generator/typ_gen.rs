@@ -17,7 +17,7 @@ pub fn generate_type_markdown(
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
     let mut context = tera::Context::new();
-    let typ_name = doc_type.name.clone();
+    let typ_name = simple_type_name(doc_type);
     let mut doc = Doc {
         name: typ_name,
         ..Default::default()
@@ -70,7 +70,7 @@ fn generate_class_type_markdown(
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    let typ_name = doc_type.name.clone();
+    let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
@@ -123,7 +123,7 @@ fn generate_enum_type_markdown(
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    let typ_name = doc_type.name.clone();
+    let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
@@ -173,7 +173,7 @@ fn generate_alias_type_markdown(
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    let typ_name = doc_type.name.clone();
+    let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
@@ -206,6 +206,17 @@ fn generate_alias_type_markdown(
     log::info!("Writing alias file: {}", outpath.display());
     std::fs::write(outpath, render_text).ok()?;
     Some(())
+}
+
+/// A human-readable type name without namespace/qualification (`Iterator` for
+/// `fun.Iterator`); page file names still use the full name.
+fn simple_type_name(doc_type: &DocType) -> String {
+    doc_type
+        .full_name
+        .rsplit('.')
+        .next()
+        .unwrap_or(&doc_type.full_name)
+        .to_string()
 }
 
 pub(crate) fn collect_owner_members(
