@@ -163,6 +163,32 @@ fn generate_enum_type_markdown(
     Some(())
 }
 
+/// `(alias) Name = T`, or for a multi-line union, one `| option # description` line per option, as
+/// the HTML output lays it out.
+fn alias_display(model: &DocModel, doc_type: &DocType) -> Option<String> {
+    let name = &doc_type.name;
+    if !doc_type.variants.is_empty() {
+        let options = doc_type
+            .variants
+            .iter()
+            .map(|(ty, description)| {
+                let ty = model.render_type(ty, RenderLevel::Documentation);
+                match description {
+                    Some(description) => format!("| {ty} # {description}"),
+                    None => format!("| {ty}"),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Some(format!("```lua\n(alias) {name} =\n{options}\n```\n"));
+    }
+    let origin_typ = doc_type.alias_type.as_ref()?;
+    let origin_type_display = model.render_type(origin_typ, RenderLevel::Documentation);
+    Some(format!(
+        "```lua\n(alias) {name} = {origin_type_display}\n```\n"
+    ))
+}
+
 fn generate_alias_type_markdown(
     model: &DocModel,
     tl: &Tera,
@@ -178,13 +204,7 @@ fn generate_alias_type_markdown(
     }
     doc.property = collect_property(&doc_type.property);
 
-    if let Some(origin_typ) = &doc_type.alias_type {
-        let origin_type_display = model.render_type(origin_typ, RenderLevel::Documentation);
-        doc.display = Some(format!(
-            "```lua\n(alias) {} = {}\n```\n",
-            typ_name, origin_type_display
-        ));
-    }
+    doc.display = alias_display(model, doc_type);
 
     context.insert("doc", &doc);
     let render_text = match tl.render("lua_alias_template.tl", context) {
@@ -257,4 +277,35 @@ pub(crate) fn collect_owner_members(
     }
 
     (method_members, field_members)
+}
+
+#[cfg(test)]
+mod tests {
+    use emmylua_code_analysis::VirtualWorkspace;
+
+    use super::alias_display;
+    use crate::doc_model::DocModel;
+
+    #[test]
+    fn multi_line_union_alias_shows_its_options() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias EventPhase
+            ---| 0 # None
+            ---| 1 # Capture
+            ---| "bubble"
+            "#,
+        );
+        let model = DocModel::build(&ws.analysis);
+        let phase = model
+            .types
+            .iter()
+            .find(|ty| ty.name == "EventPhase")
+            .expect("alias");
+        assert_eq!(
+            alias_display(&model, phase).as_deref(),
+            Some("```lua\n(alias) EventPhase =\n| 0 # None\n| 1 # Capture\n| \"bubble\"\n```\n")
+        );
+    }
 }

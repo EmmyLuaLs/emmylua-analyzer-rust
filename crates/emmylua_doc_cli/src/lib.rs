@@ -6,6 +6,7 @@ pub use cmd_args::*;
 mod cmd_args;
 mod common;
 mod doc_model;
+mod doc_text;
 mod html_generator;
 mod init;
 mod json_generator;
