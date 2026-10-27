@@ -57,24 +57,20 @@ pub(super) fn get_var_decl_ids(
 
 /// Converts an `IndexExpr` assignment lvalue into a member effect (owner + key + member identity).
 /// Only accepts members already registered in facts; undefined fields are handled by `type_of_expr` as a fallback during backtracking.
-pub(super) fn get_var_member_ids(
+pub(super) fn get_var_member_id(
     binder: &FlowBinder<'_>,
-    vars: &[LuaVarExpr],
-) -> Vec<Option<(SemanticId, LuaMemberKey, SemanticId)>> {
-    vars.iter()
-        .map(|var| {
-            let LuaVarExpr::IndexExpr(index_expr) = var else {
-                return None;
-            };
-            let key = index_expr.get_index_key()?;
-            let key_offset = key
-                .get_range()
-                .unwrap_or_else(|| index_expr.get_range())
-                .start();
-            let member = binder.facts.member_at_offset(key_offset)?;
-            Some((member.owner.clone(), member.key.clone(), member.id.clone()))
-        })
-        .collect()
+    var: &LuaVarExpr,
+) -> Option<(SemanticId, LuaMemberKey, SemanticId)> {
+    let LuaVarExpr::IndexExpr(index_expr) = var else {
+        return None;
+    };
+    let key = index_expr.get_index_key()?;
+    let key_offset = key
+        .get_range()
+        .unwrap_or_else(|| index_expr.get_range())
+        .start();
+    let member = binder.facts.member_at_offset(key_offset)?;
+    Some((member.owner.clone(), member.key.clone(), member.id.clone()))
 }
 
 /// Converts `LuaIndexKey` into a file-agnostic member key (matching the facts collection rules).
@@ -142,7 +138,7 @@ pub(super) fn finish_entered_loop_post_flow(
     after_loop_label: FlowId,
     block_flow: FlowId,
 ) -> FlowId {
-    // Use pessimistic merging: only merge the loop body flow after the loop when the body is statically known to execute.
+    // Keep the label so break nodes do not terminate the enclosing block.
     binder.add_antecedent(after_loop_label, block_flow);
     if binder
         .get_flow(after_loop_label)

@@ -5,7 +5,7 @@ use hashbrown::{HashMap, HashSet};
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaExpr, LuaSyntaxId};
 use rowan::{TextRange, TextSize};
 
-use super::{FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind};
+use super::{FlowAntecedent, FlowEffect, FlowId, FlowNode, FlowNodeKind, LuaClosureId};
 use crate::semantic_db::def::SemanticId;
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -14,6 +14,7 @@ pub struct FlowTree {
     decl_multi_return_ref: HashMap<SemanticId, Vec<DeclMultiReturnRefAt>>,
     flow_nodes: Vec<FlowNode>,
     node_effects: HashMap<FlowId, Vec<FlowEffect>>,
+    exits: HashMap<LuaClosureId, Vec<FlowId>>,
     has_tag_cast: bool,
     multiple_antecedents: Vec<Vec<FlowId>>,
     // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
@@ -52,13 +53,24 @@ pub struct FlowTree {
 }
 
 impl FlowTree {
+    pub fn nodes(&self) -> &[FlowNode] {
+        &self.flow_nodes
+    }
+
+    pub fn normal_exits(&self, closure: LuaClosureId) -> &[FlowId] {
+        self.exits
+            .get(&closure)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
     pub fn new(
         decl_bind_expr_ref: HashMap<SemanticId, LuaAstPtr<LuaExpr>>,
         decl_multi_return_ref: HashMap<SemanticId, Vec<DeclMultiReturnRefAt>>,
         flow_nodes: Vec<FlowNode>,
         node_effects: HashMap<FlowId, Vec<FlowEffect>>,
         multiple_antecedents: Vec<Vec<FlowId>>,
-        // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
+        exits: HashMap<LuaClosureId, Vec<FlowId>>,
         bindings: HashMap<LuaSyntaxId, FlowId>,
     ) -> Self {
         let mut decl_assignments: HashMap<SemanticId, Vec<(TextSize, FlowId)>> = HashMap::new();
@@ -156,6 +168,7 @@ impl FlowTree {
             decl_multi_return_ref,
             flow_nodes,
             node_effects,
+            exits,
             has_tag_cast,
             multiple_antecedents,
             bindings,

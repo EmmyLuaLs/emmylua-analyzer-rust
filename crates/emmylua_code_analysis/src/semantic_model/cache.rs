@@ -28,6 +28,25 @@ pub(crate) enum BuiltinKey {
     Flow(SemanticId, FlowId),
 }
 
+impl super::SemanticModel<'_> {
+    /// An unfinished semantic dependency cannot prove either outcome.
+    pub(crate) fn require_complete<T>(
+        &self,
+        query: impl FnOnce() -> T,
+    ) -> Result<T, super::type_check::TypeCheckFailReason> {
+        let revision = self.cache.borrow().revision();
+        let result = query();
+        let cache = self.cache.borrow();
+        if cache.evaluation_exhausted {
+            Err(super::type_check::TypeCheckFailReason::TooComplex)
+        } else if cache.is_complete(revision) {
+            Ok(result)
+        } else {
+            Err(super::type_check::TypeCheckFailReason::Unresolved)
+        }
+    }
+}
+
 /// Keep provisional memo entries while dependent queries still need them.
 /// Discard them at the outer query boundary so the next query can retry.
 #[must_use = "keep the scope alive until the query finishes"]
@@ -181,6 +200,9 @@ pub(crate) enum TraceSubject {
     Member {
         member: SemanticId,
         access: Option<LuaSyntaxId>,
+        guards: bool,
+        casts: bool,
+        assignments: bool,
     },
 }
 
@@ -195,6 +217,7 @@ pub(crate) struct TraceStateKey {
     pub(crate) file_id: FileId,
     pub(crate) subject: TraceSubject,
     pub(crate) flow_id: u32,
+    pub(crate) base: Option<LuaType>,
 }
 
 #[derive(Default)]
@@ -248,6 +271,10 @@ pub(crate) struct SemanticLocalCache {
         HashMap<(FileId, LuaSyntaxId), Vec<(LuaFunctionType, TplBindings)>>,
     pub(crate) index_infos: HashMap<(FileId, LuaType), CacheEntry<Vec<IndexInfo>>>,
     pub(crate) member_infos: HashMap<(FileId, LuaType), Vec<MemberInfo>>,
+    pub(crate) inferred_tables:
+        HashMap<crate::InFiled<rowan::TextRange>, Option<Rc<super::inferred_table::InferredTable>>>,
+    pub(crate) contracts:
+        HashMap<super::flow::contract::Key, CacheEntry<super::flow::contract::States>>,
     pub(crate) members_of_owner: HashMap<SemanticId, MemberList>,
     pub(crate) members_of_owner_named: HashMap<(SemanticId, SmolStr), MemberList>,
     pub(crate) member_info: HashMap<(FileId, LuaType, LuaMemberKey), Option<MemberInfo>>,
@@ -274,6 +301,7 @@ impl SemanticLocalCache {
         self.index_infos.retain(|_, entry| entry.is_ready());
         self.member_type.retain(|_, entry| entry.is_ready());
         self.expr_type_at.retain(|_, entry| entry.is_ready());
+        self.contracts.retain(|_, entry| entry.is_ready());
         self.trace_state.retain(|_, entry| entry.is_ready());
         self.type_check.retain(|_, entry| entry.is_ready());
         self.alias_targets.retain(|_, entry| entry.is_ready());

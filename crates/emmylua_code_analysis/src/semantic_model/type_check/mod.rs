@@ -26,6 +26,7 @@ pub(crate) use complex_type::integer_index_applies;
 pub use context::TypeCheckContext;
 pub use fail_reason::TypeCheckFailReason;
 pub(crate) use func_type::function_param_pairs;
+pub(crate) use simple_type::table_index_accepts;
 
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_head;
@@ -92,7 +93,13 @@ fn check_alternatives(
     for result in checks {
         match result {
             Ok(()) => return Ok(()),
-            Err(err) if err.is_type_not_match() => {}
+            Err(err) if err.is_type_not_match() => {
+                if matches!(err, TypeCheckFailReason::TypeNotMatchAtField(_))
+                    && matches!(failure, TypeCheckFailReason::TypeNotMatchWithReason(_))
+                {
+                    failure = err;
+                }
+            }
             Err(err) if err.is_unresolved() => failure = err,
             Err(err) => return Err(err),
         }
@@ -107,6 +114,19 @@ pub fn check_type_detail(
     target: &LuaType,
 ) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, true);
+    check_general_type_compact(&mut context, source, target)
+}
+
+/// Check an expression without using later writes to validate its constructors.
+pub(crate) fn check_type_at(
+    model: &SemanticModel,
+    source: &LuaType,
+    target: &LuaType,
+    range: rowan::TextRange,
+    detail: bool,
+) -> TypeCheckResult {
+    let mut context = TypeCheckContext::new(model, detail);
+    context.source_range = Some(InFiled::new(model.file_id(), range));
     check_general_type_compact(&mut context, source, target)
 }
 
@@ -271,6 +291,14 @@ fn check_general_type_compact_inner(
 
     // `compact` is an intersection: source satisfies all components.
     if let LuaType::Intersection(compact_intersection) = compact_type {
+        if matches!(source, LuaType::TableConst(_)) {
+            return check_all(
+                compact_intersection
+                    .get_types()
+                    .iter()
+                    .map(|component| check_general_type_compact(context, source, component)),
+            );
+        }
         if !matches!(source, LuaType::Intersection(_)) {
             return check_alternatives(
                 context.mismatch(source, compact_type),
@@ -389,7 +417,15 @@ fn table_associated_type_def(
 ) -> Option<TypeDef> {
     let facts = model.file_facts_of(table.file_id)?;
     let decl = facts.decl_by_value_range(table.value)?;
-    facts.type_def_by_owner_syntax(decl.owner_syntax?).cloned()
+    // An explicit value annotation supplies the contract, even when the same
+    // comment block contains class definitions used by that annotation.
+    if decl.doc_type_syntax.is_some() {
+        return None;
+    }
+    facts
+        .type_defs_by_owner_syntax(decl.owner_syntax?)
+        .last()
+        .cloned()
 }
 
 fn defs_related_ctx(

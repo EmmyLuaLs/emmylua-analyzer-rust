@@ -20,6 +20,29 @@ mod tests {
     }
 
     #[test]
+    fn test_returned_tables_use_stable_inferred_field_types() {
+        let diagnostics = check_source(
+            r#"
+            ---@return {text: 'ok'}
+            local function fresh()
+                return {text = 'ok'}
+            end
+            ---@return {text: 'ok'}
+            local function inferred()
+                local value = {text = 'ok'}
+                return value
+            end
+            return fresh, inferred
+            "#,
+        );
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [DiagnosticCode::ReturnTypeMismatch],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn test_parenthesized_member_guards_narrow_return_value() {
         for (guard, access) in [
             ("(box).value", "box.value"),

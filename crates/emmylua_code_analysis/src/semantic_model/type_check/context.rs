@@ -18,6 +18,10 @@ pub struct TypeCheckContext<'db> {
     pub model: &'db SemanticModel<'db>,
     /// Subtype proofs also check object fields and generic inheritance arguments.
     pub strict_subtype: bool,
+    /// Constructor entries must prove literal key and value types.
+    pub(super) strict_literals: bool,
+    /// Constructors inside the checked expression exclude later writes.
+    pub(super) source_range: Option<crate::InFiled<rowan::TextRange>>,
     pub(super) comparisons: std::rc::Rc<std::cell::RefCell<super::comparison::Comparisons>>,
 }
 
@@ -27,6 +31,8 @@ impl<'db> TypeCheckContext<'db> {
             detail,
             model,
             strict_subtype: false,
+            strict_literals: false,
+            source_range: None,
             comparisons: Default::default(),
         }
     }
@@ -36,16 +42,7 @@ impl<'db> TypeCheckContext<'db> {
         &self,
         query: impl FnOnce() -> T,
     ) -> Result<T, TypeCheckFailReason> {
-        let revision = self.model.cache.borrow().revision();
-        let result = query();
-        let cache = self.model.cache.borrow();
-        if cache.evaluation_exhausted {
-            Err(TypeCheckFailReason::TooComplex)
-        } else if cache.is_complete(revision) {
-            Ok(result)
-        } else {
-            Err(TypeCheckFailReason::Unresolved)
-        }
+        self.model.require_complete(query)
     }
 
     /// Build the failure reason for the current context: when `detail` is enabled, return human-readable type mismatch info.

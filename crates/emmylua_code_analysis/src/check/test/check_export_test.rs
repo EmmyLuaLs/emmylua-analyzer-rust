@@ -106,9 +106,9 @@ fn test_export_direct_require() {
     assert_eq!(count_by_code(&diags, DiagnosticCode::InjectField), 1);
 }
 
-/// Non-require local tables are unrestricted.
+/// An inferred local can define fields but cannot read missing fields.
 #[test]
-fn test_local_table_not_limited() {
+fn test_inferred_table_checks_reads() {
     let diags = check_source(
         r#"
         local t = {}
@@ -117,5 +117,5 @@ fn test_local_table_not_limited() {
         "#,
     );
     assert_eq!(count_by_code(&diags, DiagnosticCode::InjectField), 0);
-    assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedField), 0);
+    assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedField), 1);
 }

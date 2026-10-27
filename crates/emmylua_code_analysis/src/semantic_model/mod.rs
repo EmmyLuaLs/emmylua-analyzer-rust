@@ -2,8 +2,11 @@ pub(crate) mod cache;
 pub mod flow;
 pub mod index_signature;
 pub mod infer;
+pub(crate) mod inferred_table;
 pub mod member;
 pub mod render;
+pub(crate) mod table_constructor;
+pub(crate) mod table_value;
 pub mod type_check;
 pub mod type_eval;
 

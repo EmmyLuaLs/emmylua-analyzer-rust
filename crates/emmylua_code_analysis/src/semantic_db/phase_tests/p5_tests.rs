@@ -91,7 +91,8 @@ fn p5_require_alias_chain_attaches_mutation_to_module_owner() {
     assert_eq!(extra.owner_id, OwnerId::Module(mod_file));
 
     let ty = ws.expr_ty("require('mod').extra()");
-    assert!(integer_like(&ty), "alias chain return type: {ty:?}");
+    // Owner indexing retains the contribution, but an alias cannot define exports.
+    assert!(ty.is_unknown(), "alias must not define an export: {ty:?}");
 }
 
 #[test]
@@ -140,7 +141,10 @@ fn p5_require_alias_contribution_survives_batch_rebuild() {
     assert_eq!(extra.owner_id, OwnerId::Module(mod_file));
 
     let ty = ws.expr_ty("require('mod').extra()");
-    assert!(integer_like(&ty), "batch rebuild alias chain: {ty:?}");
+    assert!(
+        ty.is_unknown(),
+        "alias must not define an export after rebuild: {ty:?}"
+    );
 }
 
 fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
