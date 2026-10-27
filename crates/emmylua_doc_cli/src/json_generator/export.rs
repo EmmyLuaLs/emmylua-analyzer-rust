@@ -23,10 +23,9 @@ fn export_modules(model: &DocModel) -> Vec<Module> {
         .iter()
         .map(|module| {
             let (members, typ) = match &module.export_type {
-                LuaType::TableConst(_) | LuaType::Instance(_) => (
-                    export_members(model, &model.members_of_type(&module.export_type)),
-                    None,
-                ),
+                LuaType::TableConst(_) | LuaType::Instance(_) => {
+                    (export_members(model, &module.members), None)
+                }
                 typ => (
                     Vec::new(),
                     Some(render_typ(model, typ, RenderLevel::Simple)),
@@ -70,7 +69,7 @@ fn export_globals(model: &DocModel) -> Vec<Global> {
                     name: global.name.clone(),
                     property,
                     loc,
-                    members: export_members(model, &model.members_of_type(&global.ty)),
+                    members: export_members(model, &global.members),
                 }),
                 typ => Global::Field(GlobalField {
                     name: global.name.clone(),
@@ -191,16 +190,20 @@ fn export_function(
                     .ty
                     .as_ref()
                     .map(|ty| render_typ(model, ty, RenderLevel::Simple)),
-                desc: None,
+                desc: param.description.clone(),
             })
             .collect(),
         returns: func
             .returns
             .iter()
-            .map(|ty| FnParam {
-                name: None,
-                typ: Some(render_typ(model, ty, RenderLevel::Simple)),
-                desc: None,
+            .enumerate()
+            .map(|(index, ty)| {
+                let doc = func.return_docs.get(index).cloned().unwrap_or_default();
+                FnParam {
+                    name: doc.name,
+                    typ: Some(render_typ(model, ty, RenderLevel::Simple)),
+                    desc: doc.description,
+                }
             })
             .collect(),
         overloads: func
@@ -233,14 +236,23 @@ fn export_field(
 
 fn property_json(property: &DocProperty) -> Property {
     Property {
-        description: None,
+        description: property.description.clone(),
         visibility: match property.visibility {
             Some(VisibilityKind::Public) | None => None,
             Some(visibility) => Some(visibility.to_str().unwrap_or_default().to_string()),
         },
         deprecated: property.deprecated,
-        deprecation_reason: None,
-        tag_content: None,
+        deprecation_reason: property.deprecation_reason.clone(),
+        tag_content: (!property.tags.is_empty()).then(|| {
+            property
+                .tags
+                .iter()
+                .map(|(tag_name, content)| TagNameContent {
+                    tag_name: tag_name.clone(),
+                    content: content.clone(),
+                })
+                .collect()
+        }),
     }
 }
 

@@ -4,6 +4,8 @@ use emmylua_code_analysis::EmmyLuaAnalysis;
 
 mod export;
 mod json_types;
+#[cfg(test)]
+mod test;
 
 pub fn generate_json(
     analysis: &EmmyLuaAnalysis,
