@@ -1,3 +1,4 @@
+{% import "member_details.tl" as member_details %}
 # class {{ doc.name }}
 
 {% if doc.supers %}
@@ -31,6 +32,7 @@
 ---
 {{ method.display }}
 
+{{ member_details::details(member=method) }}
 {% if method.property.description %}
 {{ method.property.description }}
 {% endif %}
@@ -57,6 +59,7 @@
 ---
 {{ field.display }}
 
+{{ member_details::details(member=field) }}
 {% if field.property.description %}
 {{ field.property.description }}
 {% endif %}

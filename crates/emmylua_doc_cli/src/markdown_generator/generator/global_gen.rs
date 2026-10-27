@@ -5,7 +5,7 @@ use crate::markdown_generator::{
     escape_type_name,
     generator::typ_gen::collect_owner_members,
     markdown_types::{Doc, IndexStruct, MkdocsIndex},
-    render::{render_const_type, render_function_type},
+    render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
 use emmylua_code_analysis::{LuaType, RenderLevel};
 use tera::Tera;
@@ -81,6 +81,11 @@ fn generate_simple_global(model: &DocModel, doc: &mut Doc, global: &DocGlobal) {
         .is_some()
     {
         doc.display = Some(render_function_type(model, &global.ty, name, false));
+        let (params, returns) =
+            function_details_md(model, &global.ty, global.signature.as_ref()).unwrap_or_default();
+        doc.params = params;
+        doc.returns = returns;
+        doc.overloads = function_overloads_md(model, global.signature.as_ref(), name);
     } else if global.ty.is_const() {
         let typ_display = render_const_type(model, &global.ty);
         doc.display = Some(format!("```lua\n{name}: {typ_display}\n```\n"));

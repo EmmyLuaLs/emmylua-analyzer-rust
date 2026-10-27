@@ -14,7 +14,10 @@ use emmylua_code_analysis::{
     LuaTypeDeclId, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel, Signature,
     TypeDef, TypeDefKind, TypeVisibility, VariadicType,
 };
-use emmylua_parser::{LuaSyntaxId, VisibilityKind};
+use emmylua_parser::{
+    LuaAstNode, LuaDocDescriptionOwner, LuaDocTagParam, LuaDocTagReturn, LuaSyntaxId,
+    VisibilityKind,
+};
 use rowan::TextRange;
 
 /// Type definition kind (used for doc page categorization).
@@ -102,11 +105,31 @@ pub struct DocFnParam {
     pub ty: Option<LuaType>,
 }
 
+/// A documented parameter of a function signature.
+#[derive(Debug, Clone)]
+pub struct DocSignatureParam {
+    pub name: String,
+    pub ty: Option<LuaType>,
+    pub description: Option<String>,
+}
+
+/// A documented return value of a function signature.
+#[derive(Debug, Clone)]
+pub struct DocSignatureReturn {
+    pub name: Option<String>,
+    pub ty: LuaType,
+    pub description: Option<String>,
+}
+
 /// Additional function info projected from Semantic `Signature`/`SignatureDoc`.
 #[derive(Debug, Clone)]
 pub struct DocSignature {
     pub overloads: Vec<LuaType>,
     pub nodiscard: Option<String>,
+    /// Parameters in declaration order (types and descriptions only when documented).
+    pub params: Vec<DocSignatureParam>,
+    /// Explicit `---@return` rows (never inferred returns).
+    pub returns: Vec<DocSignatureReturn>,
 }
 
 /// Directly renderable function view (prefers the type's own `DocFunction`, then fills in signature details).
@@ -675,11 +698,49 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
         return DocSignature {
             overloads: Vec::new(),
             nodiscard: None,
+            params: Vec::new(),
+            returns: Vec::new(),
         };
     };
 
     let file_id = signature.file_id;
     let generics = docs.generic_params.clone();
+    let params = signature
+        .param_names
+        .iter()
+        .map(|name| {
+            let documented = docs
+                .param_types
+                .iter()
+                .find(|(param_name, _)| param_name == name);
+            match documented {
+                Some((_, syntax)) => DocSignatureParam {
+                    name: name.to_string(),
+                    ty: Some(model.doc_type_lua_in(file_id, *syntax, &generics)),
+                    description: doc_tag_description(model, file_id, *syntax),
+                },
+                None => DocSignatureParam {
+                    name: name.to_string(),
+                    ty: None,
+                    description: None,
+                },
+            }
+        })
+        .collect();
+    let returns = docs
+        .returns
+        .iter()
+        .map(|syntax| DocSignatureReturn {
+            name: docs
+                .named_returns
+                .iter()
+                .find(|(_, named_syntax)| named_syntax == syntax)
+                .map(|(name, _)| name.to_string()),
+            ty: model.doc_type_lua_in(file_id, *syntax, &generics),
+            description: doc_tag_description(model, file_id, *syntax),
+        })
+        .collect();
+
     DocSignature {
         overloads: docs
             .overloads
@@ -687,7 +748,31 @@ fn project_signature(model: &SemanticModel<'_>, signature: &Signature) -> DocSig
             .map(|syntax| model.doc_type_lua_in(file_id, *syntax, &generics))
             .collect(),
         nodiscard: docs.nodiscard.as_ref().map(|msg| msg.to_string()),
+        params,
+        returns,
     }
+}
+
+/// Reads the description attached to the doc tag that owns a `---@param` /
+/// `---@return` type node (`---@param a number @the value`).
+fn doc_tag_description(
+    model: &SemanticModel<'_>,
+    file_id: FileId,
+    syntax: LuaSyntaxId,
+) -> Option<String> {
+    let tree = model.syntax_tree_of(file_id)?;
+    let node = syntax.to_node_from_root(&tree.get_red_root())?;
+    let parent = node.parent()?;
+    let description = if let Some(param) = LuaDocTagParam::cast(parent.clone()) {
+        param.get_description()
+    } else if let Some(ret) = LuaDocTagReturn::cast(parent) {
+        ret.get_description()
+    } else {
+        None
+    };
+    description
+        .map(|desc| desc.get_description_text().trim().to_string())
+        .filter(|text| !text.is_empty())
 }
 
 fn expand_returns(ret: &LuaType) -> Vec<LuaType> {

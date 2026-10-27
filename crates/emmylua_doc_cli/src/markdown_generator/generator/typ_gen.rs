@@ -3,7 +3,7 @@ use crate::markdown_generator::{
     escape_type_name,
     generator::collect_property,
     markdown_types::{Doc, IndexStruct, MemberDoc, MkdocsIndex},
-    render::{render_const_type, render_function_type},
+    render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
 use emmylua_code_analysis::RenderLevel;
 use std::path::Path;
@@ -136,6 +136,7 @@ fn generate_enum_type_markdown(
             name: member.name.clone(),
             display: model.render_type(&member.ty, RenderLevel::Simple),
             property: collect_property(&member.property),
+            ..Default::default()
         })
         .collect();
     if !field_members.is_empty() {
@@ -231,10 +232,17 @@ pub(crate) fn collect_owner_members(
             .is_some()
         {
             let display = render_function_type(model, &member.ty, &title_name, false);
+            let (params, returns) =
+                function_details_md(model, &member.ty, member.signature.as_ref())
+                    .unwrap_or_default();
+            let overloads = function_overloads_md(model, member.signature.as_ref(), &title_name);
             method_members.push(MemberDoc {
                 name: title_name,
                 display,
                 property,
+                params,
+                returns,
+                overloads,
             });
         } else if member.ty.is_const() {
             let display = render_const_type(model, &member.ty);
@@ -242,6 +250,7 @@ pub(crate) fn collect_owner_members(
                 name: title_name.clone(),
                 display: format!("```lua\n{}.{}: {}\n```\n", owner_name, member.name, display),
                 property,
+                ..Default::default()
             });
         } else {
             let typ_display = model.render_type(&member.ty, RenderLevel::Detailed);
@@ -252,6 +261,7 @@ pub(crate) fn collect_owner_members(
                     owner_name, member.name, typ_display
                 ),
                 property,
+                ..Default::default()
             });
         }
     }
