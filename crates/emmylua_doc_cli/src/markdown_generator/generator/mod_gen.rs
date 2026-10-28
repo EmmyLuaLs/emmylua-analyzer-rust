@@ -24,9 +24,9 @@ pub fn generate_module_markdown(
     };
     doc.property = collect_property(&module.property);
 
-    let members = model.members_of_type(&module.export_type);
+    let members = model.members_for_module(module);
     if !members.is_empty() {
-        let (methods, fields) = collect_owner_members(model, &members, "M");
+        let (methods, fields) = collect_owner_members(model, &members, &module.name);
         doc.methods = if methods.is_empty() {
             None
         } else {

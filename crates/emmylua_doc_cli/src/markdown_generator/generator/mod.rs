@@ -13,6 +13,7 @@ use super::markdown_types::Property;
 
 pub(crate) fn collect_property(doc_property: &DocProperty) -> Property {
     Property {
+        description: doc_property.description.clone(),
         deprecated: doc_property.deprecated.then(|| "Deprecated".to_string()),
         ..Default::default()
     }

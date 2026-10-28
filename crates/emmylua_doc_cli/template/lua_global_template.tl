@@ -1,3 +1,4 @@
+{% import "member_details.tl" as member_details %}
 # global {{ doc.name }}
 
 {% if doc.property.description %}
@@ -23,6 +24,7 @@
 ### {{ method.name }}
 ---
 {{ method.display }}
+{{ member_details::details(member=method) }}
 
 {% if method.property.description %}
 {{ method.property.description }}
@@ -49,6 +51,7 @@
 ### {{ field.name }}
 ---
 {{ field.display }}
+{{ member_details::details(member=field) }}
 
 {% if field.property.description %}
 {{ field.property.description }}

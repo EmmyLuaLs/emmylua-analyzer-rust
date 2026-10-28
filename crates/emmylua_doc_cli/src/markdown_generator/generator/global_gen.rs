@@ -5,7 +5,7 @@ use crate::markdown_generator::{
     escape_type_name,
     generator::typ_gen::collect_owner_members,
     markdown_types::{Doc, IndexStruct, MkdocsIndex},
-    render::{render_const_type, render_function_type},
+    render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
 use emmylua_code_analysis::{LuaType, RenderLevel};
 use tera::Tera;
@@ -33,7 +33,7 @@ pub fn generate_global_markdown(
     let mut template_name = "lua_global_template.tl";
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
-            let members = model.members_of_type(&global.ty);
+            let members = model.members_for_global(global);
             let (methods, fields) = collect_owner_members(model, &members, &global.name);
             doc.methods = if methods.is_empty() {
                 None
@@ -80,7 +80,18 @@ fn generate_simple_global(model: &DocModel, doc: &mut Doc, global: &DocGlobal) {
         .function_info(&global.ty, global.signature.as_ref())
         .is_some()
     {
-        doc.display = Some(render_function_type(model, &global.ty, name, false));
+        doc.display = Some(render_function_type(
+            model,
+            &global.ty,
+            global.signature.as_ref(),
+            name,
+            false,
+        ));
+        let (params, returns) =
+            function_details_md(model, &global.ty, global.signature.as_ref()).unwrap_or_default();
+        doc.params = params;
+        doc.returns = returns;
+        doc.overloads = function_overloads_md(model, global.signature.as_ref(), name);
     } else if global.ty.is_const() {
         let typ_display = render_const_type(model, &global.ty);
         doc.display = Some(format!("```lua\n{name}: {typ_display}\n```\n"));
