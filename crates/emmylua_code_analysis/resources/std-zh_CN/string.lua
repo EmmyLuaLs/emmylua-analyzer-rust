@@ -176,7 +176,7 @@ function string.gmatch(s, pattern, init) end
 --- x = string.gsub("home = $HOME, user = $USER", "%$(%w+)", os.getenv)
 --- -- > x="home = /home/roberto, user = roberto"
 --- x = string.gsub("4+5 = $return 4+5$", "%$(.-)%$", function (s)
----     return loadstring(s)()
+---     return load(s)()
 --- end)
 --- -- > x="4+5 = 9"
 --- local t = {name="lua", version="5.3"}

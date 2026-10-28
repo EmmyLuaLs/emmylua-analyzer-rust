@@ -1224,6 +1224,36 @@ function coroutine.status(co) end
     }
 
     #[test]
+    fn test_apply_generated_meta_to_string_source() {
+        let meta_file = STD_I18N_DIR
+            .get_file("string/meta.yaml")
+            .expect("generated string meta exists");
+        let meta: MetaFile =
+            serde_yaml_ng::from_str(meta_file.contents_utf8().expect("meta is utf8")).unwrap();
+        let translations_file = STD_I18N_DIR
+            .get_file("string/zh_CN.yaml")
+            .expect("string zh_CN translations exist");
+        let translations: HashMap<String, String> = serde_yaml_ng::from_str(
+            translations_file
+                .contents_utf8()
+                .expect("translations are utf8"),
+        )
+        .unwrap();
+        let source = emmylua_code_analysis::load_resource_from_include_dir()
+            .into_iter()
+            .find(|file| file.path == "std/string.lua")
+            .expect("string std source exists")
+            .content;
+
+        let translated = apply_meta_translations(&source, &meta, &translations);
+
+        assert!(translated.contains("格式字符串遵循 ISO C"));
+        assert!(translated.contains("返回 `s` 的一个副本"));
+        assert!(translated.contains("下面的循环会遍历字符串"));
+        assert!(!translated.contains("Returns a formatted version of its variable number"));
+    }
+
+    #[test]
     fn test_apply_generated_meta_to_std_source() {
         let file = STD_I18N_DIR
             .get_file("coroutine/meta.yaml")
