@@ -176,9 +176,13 @@ fn is_valid_member(
             }
             match def.kind {
                 TypeDefKind::Enum => enum_table_access(semantic_model, &decl, &def, index_key),
+                // An alias owns no members, so this dispatch is what expands it to its target
+                // (`---@alias List {string}` must behave like `{string}`). Calling
+                // `valid_named_member` directly would look up members on the alias itself and
+                // reject every access.
                 TypeDefKind::Class | TypeDefKind::Alias => {
                     let class_ty = class_lua_type(&def);
-                    valid_named_member(semantic_model, &class_ty, prefix, index_expr, index_key)
+                    is_valid_member(semantic_model, &class_ty, prefix, index_expr, index_key)
                 }
             }
         }
@@ -341,7 +345,7 @@ fn enum_table_access(
     accepted.iter().any(|text| text == &key_text)
 }
 
-/// Finds the declaration and same-named type definition bound to a TableConst.
+/// Finds the declaration and the type definition bound to a TableConst.
 fn table_binding(
     semantic_model: &SemanticModel<'_>,
     file_id: FileId,
@@ -350,12 +354,8 @@ fn table_binding(
     let facts = semantic_model.file_facts_of(file_id)?;
     let decl = facts.decl_by_value_range(range)?;
     let def = facts
-        .type_defs_named_case_insensitive(decl.name.as_str())
-        .next()
-        .or_else(|| {
-            // `---@enum K3` + `local apiAlias = {...}`: when names differ, associate with the nearest preceding type definition by position.
-            facts.nearest_type_def_before(decl.name_range.start())
-        })?
+        .type_defs_by_owner_syntax(decl.owner_syntax?)
+        .next()?
         .clone();
     Some((decl.clone(), def))
 }

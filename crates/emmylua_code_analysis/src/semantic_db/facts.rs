@@ -135,7 +135,6 @@ pub struct FileFacts {
     members_by_name: HashMap<SmolStr, Vec<usize>>,
     type_def_by_full_name: HashMap<SmolStr, usize>,
     type_def_by_name: HashMap<SmolStr, usize>,
-    type_defs_by_lower_name: HashMap<SmolStr, Vec<usize>>,
     type_defs_by_name_end: Vec<(TextSize, usize)>,
     type_defs_by_owner_syntax: HashMap<LuaSyntaxId, Vec<usize>>,
     decl_by_value_syntax: HashMap<LuaSyntaxId, usize>,
@@ -297,21 +296,8 @@ impl FileFacts {
             .filter(|def| def.name_range == range)
     }
 
-    /// Type definitions whose own name or full-name tail matches `name` case-insensitively.
-    pub fn type_defs_named_case_insensitive(&self, name: &str) -> impl Iterator<Item = &TypeDef> {
-        let key = SmolStr::new(name.to_ascii_lowercase());
-        self.type_defs_by_lower_name
-            .get(&key)
-            .into_iter()
-            .flat_map(move |indices| {
-                indices
-                    .iter()
-                    .filter_map(|&index| self.type_defs.get(index))
-            })
-    }
-
-    /// Nearest type definition whose name ends before `start` (used to associate
-    /// differently-named runtime tables with their preceding `---@enum`/`---@class`).
+    /// Nearest type definition whose name ends before `start` (positional lookup only; it is
+    /// not a binding relation, use [`Self::type_defs_by_owner_syntax`] for that).
     pub fn nearest_type_def_before(&self, start: TextSize) -> Option<&TypeDef> {
         let index = self
             .type_defs_by_name_end
@@ -987,21 +973,6 @@ impl FactsBuilder {
             .enumerate()
             .map(|(i, def)| (def.name.clone(), i))
             .collect::<HashMap<_, _>>();
-        let mut type_defs_by_lower_name: HashMap<SmolStr, Vec<usize>> = HashMap::new();
-        for (index, def) in self.type_defs.iter().enumerate() {
-            type_defs_by_lower_name
-                .entry(SmolStr::new(def.name.to_ascii_lowercase()))
-                .or_default()
-                .push(index);
-            if let Some(bare_name) = def.full_name.rsplit('.').next()
-                && bare_name != def.name.as_str()
-            {
-                type_defs_by_lower_name
-                    .entry(SmolStr::new(bare_name.to_ascii_lowercase()))
-                    .or_default()
-                    .push(index);
-            }
-        }
         let mut type_defs_by_name_end = self
             .type_defs
             .iter()
@@ -1114,7 +1085,6 @@ impl FactsBuilder {
             members_by_name,
             type_def_by_full_name,
             type_def_by_name,
-            type_defs_by_lower_name,
             type_defs_by_name_end,
             type_defs_by_owner_syntax,
             decl_by_value_syntax,

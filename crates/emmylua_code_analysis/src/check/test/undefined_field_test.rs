@@ -1278,6 +1278,86 @@ fn enum_runtime_same_file_local_members() {
 }
 
 #[googletest::gtest]
+fn array_append_after_unrelated_declarations() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let sources = [
+        // No declaration at all: the baseline must stay clean.
+        r#"
+        local info = {}
+        info[#info + 1] = ''
+    "#,
+        // A class declared earlier must not leak onto later table literals.
+        r#"
+        ---@class SomeClass
+        ---@field name string
+        local SomeClass = {}
+        local function new() return SomeClass end
+
+        local info = {}
+        info[#info + 1] = ''
+    "#,
+        // An alias declared earlier must not leak either.
+        r#"
+        ---@alias NameList string[]
+        local function names() return {} end
+
+        local info = {}
+        info[#info + 1] = ''
+    "#,
+        // The reported real-world shape: alias declared right above an unrelated table.
+        r#"
+        ---@alias Hint string
+        local Hints = {}
+
+        local info = {}
+        info[#info + 1] = ''
+        local _ = info[#info]
+    "#,
+    ];
+    for source in sources {
+        let mut ws = VirtualWorkspace::new();
+        assert_that!(
+            ws.has_no_diagnostic(DiagnosticCode::UndefinedField, source),
+            eq(true),
+            "{source}"
+        );
+    }
+}
+
+#[googletest::gtest]
+fn class_binds_by_doc_comment_ownership_not_name() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        ---@class Item
+        ---@field a number
+        local unit = {}
+        local _ = unit.typo
+    "#
+        ),
+        eq(false)
+    );
+    let mut ws = VirtualWorkspace::new();
+    assert_that!(
+        ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+        ---@class Item
+        ---@field a number
+        local unit = {}
+        local _ = unit.a
+    "#
+        ),
+        eq(true)
+    );
+}
+
+#[googletest::gtest]
 fn enum_runtime_cross_file_dynamic_and_conditional_keys() {
     use crate::{DiagnosticCode, VirtualWorkspace};
     use googletest::prelude::*;
