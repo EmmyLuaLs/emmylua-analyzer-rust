@@ -8,7 +8,6 @@ use lsp_types::{
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     path::{Path, PathBuf},
-    sync::mpsc::channel,
     time::Duration,
 };
 
@@ -165,7 +164,7 @@ async fn register_files_watch_use_fsnotify(
     watch_roots: Vec<PathBuf>,
     match_file_pattern: WorkspaceFileMatcher,
 ) -> bool {
-    let (tx, rx) = channel();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = Config::default().with_poll_interval(Duration::from_secs(5));
     let mut watcher = match RecommendedWatcher::new(
         move |res| {
@@ -205,39 +204,33 @@ async fn register_files_watch_use_fsnotify(
     drop(workspace_manager);
 
     tokio::spawn(async move {
-        loop {
-            match rx.recv() {
-                Ok(event) => {
-                    let typ = match event.kind {
-                        notify::event::EventKind::Create(_) => lsp_types::FileChangeType::CREATED,
-                        notify::event::EventKind::Modify(_) => lsp_types::FileChangeType::CHANGED,
-                        notify::event::EventKind::Remove(_) => lsp_types::FileChangeType::DELETED,
-                        _ => {
-                            continue;
-                        }
-                    };
-                    let mut file_events = vec![];
-                    for path in event.paths.iter() {
-                        if is_watched_path(&match_file_pattern, path) {
-                            if let Some(uri) = file_path_to_uri(path) {
-                                file_events.push(FileEvent { uri, typ });
-                            }
-                        }
-                    }
-
-                    if file_events.is_empty() {
-                        continue;
-                    }
-                    let params = DidChangeWatchedFilesParams {
-                        changes: file_events,
-                    };
-                    on_did_change_watched_files(context.clone(), params).await;
+        // Native callbacks send synchronously; this consumer must await the next
+        // event so the runtime worker remains available to requests and updates.
+        while let Some(event) = rx.recv().await {
+            let typ = match event.kind {
+                notify::event::EventKind::Create(_) => lsp_types::FileChangeType::CREATED,
+                notify::event::EventKind::Modify(_) => lsp_types::FileChangeType::CHANGED,
+                notify::event::EventKind::Remove(_) => lsp_types::FileChangeType::DELETED,
+                _ => {
+                    continue;
                 }
-                Err(e) => {
-                    warn!("watch files notify error: {:?}", e);
-                    break;
+            };
+            let mut file_events = vec![];
+            for path in event.paths.iter() {
+                if is_watched_path(&match_file_pattern, path) {
+                    if let Some(uri) = file_path_to_uri(path) {
+                        file_events.push(FileEvent { uri, typ });
+                    }
                 }
             }
+
+            if file_events.is_empty() {
+                continue;
+            }
+            let params = DidChangeWatchedFilesParams {
+                changes: file_events,
+            };
+            on_did_change_watched_files(context.clone(), params).await;
         }
     });
 
@@ -280,4 +273,69 @@ where
     }
 
     reduced_roots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::ServerContext;
+    use lsp_server::Connection;
+    use lsp_types::ClientCapabilities;
+    use std::sync::{Arc, mpsc::channel as signal_channel};
+
+    struct WatchDirectory(PathBuf);
+
+    impl Drop for WatchDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn idle_native_watcher_does_not_block_runtime_tasks() {
+        let root = std::env::temp_dir().join(format!(
+            "emmylua-watch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let _root_cleanup = WatchDirectory(root.clone());
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (server, _client) = Connection::memory();
+        let context = runtime.block_on(async {
+            let context = ServerContext::new(Arc::new(server), ClientCapabilities::default());
+            assert!(
+                register_files_watch_use_fsnotify(
+                    context.snapshot(),
+                    vec![root.clone()],
+                    WorkspaceFileMatcher::default(),
+                )
+                .await
+            );
+            context
+        });
+        let (ready, completed) = signal_channel();
+        runtime.spawn(async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let _ = ready.send(());
+        });
+        // A wall-clock timeout outside Tokio still fires if the only worker is blocked.
+        let result = completed.recv_timeout(Duration::from_secs(5));
+        // Release the native sender even on failure, so the old blocking loop can exit.
+        runtime.block_on(context.close());
+        drop(context);
+        runtime.shutdown_timeout(Duration::from_secs(2));
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.is_ok(),
+            "an idle native watcher must yield to other tasks"
+        );
+    }
 }
