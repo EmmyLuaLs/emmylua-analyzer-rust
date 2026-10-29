@@ -3630,4 +3630,20 @@ mod test {
             diagnostics
         );
     }
+
+    /// A callback with fewer params than the expected function's fixed prefix, where a variadic
+    /// follows that prefix. The variadic's slice of the callback's params started past their end
+    /// and panicked.
+    #[test]
+    fn test_short_callback_against_variadic_tail_does_not_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param f fun(x: integer, ...: string)
+            local function g(f) end
+            g(function() end)
+        "#
+        ));
+    }
 }
