@@ -97,12 +97,16 @@ function string.find(s, pattern, init, plain) end
 --- quotes, using escape sequences when necessary to ensure that it can safely
 --- be read back by the Lua interpreter. For instance, the call
 ---
---- string.format('%q', 'a string with "quotes" and \n new line') may produce
---- the string:
+--- ```lua
+--- string.format('%q', 'a string with "quotes" and \n new line')
+--- ```
 ---
---- > "a string with \"quotes\" and \
---- > new line"
+--- may produce the string:
 ---
+--- ```
+--- "a string with \"quotes\" and \
+--- new line"
+--- ```
 --- The options `A`, `a`, `E`, `e`, `f`, `g`, `G` and `g` all expect a number as
 --- argument. Options `c`, `d`, `i`, `o`, `u`, `X`, and `x` expect an integer.
 --- When Lua is compiled with a C89 compiler, options `A` and `a` (hexadecimal
@@ -126,19 +130,23 @@ function string.format(fmt, ...) end
 --- As an example, the following loop will iterate over all the words from
 --- string `s`, printing one per line:
 ---
---- `s = "hello world from Lua"`
---- `for w in string.gmatch(s, "%a+") do`
----  > `print(w)`
---- `end`
+--- ```lua
+--- s = "hello world from Lua"
+--- for w in string.gmatch(s, "%a+") do
+---     print(w)
+--- end
+--- ```
 ---
---- The next example collects all pairs `key=value` from the given string into a
---- table:
+--- The next example collects all pairs `key=value` from the given string into
+--- a table:
 ---
---- `t = {}`
----  s = "from=world, to=Lua"`
---- `for k, v in string.gmatch(s, "(%w+)=(%w+)") do`
----  > `t[k] = v`
---- `end`
+--- ```lua
+--- t = {}
+--- s = "from=world, to=Lua"
+--- for k, v in string.gmatch(s, "(%w+)=(%w+)") do
+---     t[k] = v
+--- end
+--- ```
 ---
 --- For this function, a caret '`^`' at the start of a pattern does not work as
 --- an anchor, as this would prevent the iteration.
@@ -157,19 +165,23 @@ function string.gmatch(s, pattern) end
 --- As an example, the following loop will iterate over all the words from
 --- string `s`, printing one per line:
 ---
---- `s = "hello world from Lua"`
---- `for w in string.gmatch(s, "%a+") do`
----  > `print(w)`
---- `end`
+--- ```lua
+--- s = "hello world from Lua"
+--- for w in string.gmatch(s, "%a+") do
+---     print(w)
+--- end
+--- ```
 ---
---- The next example collects all pairs `key=value` from the given string into a
---- table:
+--- The next example collects all pairs `key=value` from the given string into
+--- a table:
 ---
---- `t = {}`
----  s = "from=world, to=Lua"`
---- `for k, v in string.gmatch(s, "(%w+)=(%w+)") do`
----  > `t[k] = v`
---- `end`
+--- ```lua
+--- t = {}
+--- s = "from=world, to=Lua"
+--- for k, v in string.gmatch(s, "(%w+)=(%w+)") do
+---     t[k] = v
+--- end
+--- ```
 ---
 --- For this function, a caret '`^`' at the start of a pattern does not work as
 --- an anchor, as this would prevent the iteration.
@@ -208,21 +220,30 @@ function string.gmatch(s, pattern, init) end
 --- match is kept in the string).
 ---
 --- Here are some examples:
---- `x = string.gsub("hello world", "(%w+)", "%1 %1")`
---- `-- > x="hello hello world world"`
---- `x = string.gsub("hello world", "%w+", "%0 %0", 1)`
---- `-- > x="hello hello world"`
---- `x = string.gsub("hello world from Lua", "(%w+)%s*(%w+)", "%2 %1")`
---- `-- > x="world hello Lua from"`
---- `x = string.gsub("home = $HOME, user = $USER", "%$(%w+)", os.getenv)`
---- `-- > x="home = /home/roberto, user = roberto"`
---- `x = string.gsub("4+5 = $return 4+5$", "%$(.-)%$", function (s)`
----  >> return loadstring(s)()
----  > end)
---- `-- > x="4+5 = 9"`
---- `local t = {name="lua", version="5.3"}`
---- `x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)`
---- > x="lua-5.3.tar.gz"
+---
+--- ```lua
+--- x = string.gsub("hello world", "(%w+)", "%1 %1")
+--- -- > x="hello hello world world"
+---
+--- x = string.gsub("hello world", "%w+", "%0 %0", 1)
+--- -- > x="hello hello world"
+---
+--- x = string.gsub("hello world from Lua", "(%w+)%s*(%w+)", "%2 %1")
+--- -- > x="world hello Lua from"
+---
+--- x = string.gsub("home = $HOME, user = $USER", "%$(%w+)", os.getenv)
+--- -- > x="home = /home/roberto, user = roberto"
+---
+--- x = string.gsub("4+5 = $return 4+5$", "%$(.-)%$", function (s)
+---     return load(s)()
+--- end)
+--- -- > x="4+5 = 9"
+---
+--- local t = {name="lua", version="5.3"}
+--- x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)
+--- -- > x="lua-5.3.tar.gz"
+--- ```
+---
 --- @param s       string | number
 --- @param pattern string | number
 --- @param repl    string | number | table | fun(param: string)
