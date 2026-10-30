@@ -25,9 +25,9 @@ use super::types::{
 use crate::Emmyrc;
 use crate::FileId;
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr, LuaIndexExpr,
-    LuaLiteralExpr, LuaLiteralToken, LuaReturnStat, LuaSyntaxId, LuaSyntaxTree,
-    LuaTypeBinaryOperator, LuaVersionCondition, UnaryOperator,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr,
+    LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaReturnStat, LuaSyntaxId, LuaSyntaxTree,
+    LuaTypeBinaryOperator, LuaVarExpr, LuaVersionCondition, UnaryOperator,
 };
 use rowan::{TextRange, TextSize};
 
@@ -1805,9 +1805,45 @@ fn push_type_associated_owner_ids(
                     }
                 }
             }
+            // `---@class Foo` + `M.Foo = { ... }`: the assigned member and its table, like a
+            // declaration and its initializer.
+            for owner in assigned_member_owners(db, file_id, owner_syntax) {
+                if let Some(owner_id) = canonical_owner_id(db, &owner) {
+                    push_unique_owner_id(out, owner_id);
+                }
+            }
         }
         break;
     }
+}
+
+/// For an assignment statement, each assigned member and the value assigned to it, as owners.
+fn assigned_member_owners(
+    db: &SemanticDatabase,
+    file_id: FileId,
+    owner_syntax: LuaSyntaxId,
+) -> Vec<SemanticId> {
+    let tree = syntax_tree(db, file_id);
+    let Some(assign) = owner_syntax
+        .to_node_from_root(&tree.get_red_root())
+        .and_then(LuaAssignStat::cast)
+    else {
+        return Vec::new();
+    };
+    let (vars, exprs) = assign.get_var_and_expr_list();
+    let mut owners = Vec::new();
+    for (var, expr) in vars.iter().zip(exprs.iter()) {
+        let LuaVarExpr::IndexExpr(index_expr) = var else {
+            continue;
+        };
+        let key_range = index_expr
+            .get_index_key()
+            .and_then(|key| key.get_range())
+            .unwrap_or_else(|| index_expr.get_range());
+        owners.push(SemanticId::member(file_id, key_range));
+        owners.push(SemanticId::member(file_id, expr.get_range()));
+    }
+    owners
 }
 
 /// Deterministic identity-level owner resolution.

@@ -184,6 +184,43 @@ mod test {
     }
 
     #[test]
+    fn test_class_on_member_assignment() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        Ns = {}
+
+        ---@class Ns.Point
+        Ns.Point = { x = 1 }
+
+        local t = {}
+        ---@class Local.Thing
+        t.thing = {}
+
+        ---@enum Ns.Kind
+        Ns.Kind = {
+            ONE = 1,
+        }
+
+        a = Ns.Point
+        b = t.thing
+        c = Ns.Kind.ONE
+        d = Ns.Point.x
+        "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let b = ws.expr_ty("b");
+        let c = ws.expr_ty("c");
+        let d = ws.expr_ty("d");
+        assert_eq!(ws.humanize_type(a), "Ns.Point");
+        assert_eq!(ws.humanize_type(b), "Local.Thing");
+        assert_eq!(ws.humanize_type(c), "1");
+        assert_eq!(ws.humanize_type(d), "1");
+    }
+
+    #[test]
     fn test_local_shadow_global_member_owner() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

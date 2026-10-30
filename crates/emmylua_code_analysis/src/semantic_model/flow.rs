@@ -2135,6 +2135,16 @@ fn member_annotation_type(model: &SemanticModel, member: &SemanticId) -> Option<
     Some(model.doc_type_lua_in(member_file, syntax, &[]))
 }
 
+/// `---@class Foo` on the assignment that defines a member (`M.Foo = {}`): the class type.
+fn member_class_type(model: &SemanticModel, member: &SemanticId) -> Option<LuaType> {
+    let member_file = match member {
+        SemanticId::Member(key) => key.file_id,
+        _ => model.file_id(),
+    };
+    let def = model.member_class_def(member_file, member)?;
+    Some(model.type_def_ref(&def))
+}
+
 /// Backtrack along the CFG for the member's most recent assignment type.
 fn trace_member(
     model: &SemanticModel,
@@ -2224,6 +2234,9 @@ fn trace_member_uncached(
                             narrowings: Vec::new(),
                             casts: path.casts.clone(),
                         };
+                        if let Some(class_ty) = member_class_type(model, member) {
+                            return Some(finalize(model, class_ty, &assign_path));
+                        }
                         let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly);
                         if let Some(annotation) = member_annotation_type(model, member) {
                             if model.type_check(&value_ty, &annotation) {
