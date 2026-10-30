@@ -609,6 +609,50 @@ a=1,
         );
     }
 
+    // Issue #1300: a block comment before the comma (e.g. an `--[[@as T]]`
+    // cast) must stay before the comma, or it attaches to the next item.
+    #[test]
+    fn test_block_comment_before_comma_stays_on_call_arg() {
+        assert_format!(
+            "g(a --[[@as T]], b)\n",
+            r#"
+g(
+    a --[[@as T]],
+    b
+)
+"#
+        );
+    }
+
+    #[test]
+    fn test_block_comment_before_comma_stays_on_table_field() {
+        assert_format!(
+            "local t = { path = x --[[@as string]], other = 1 }\n",
+            r#"
+local t = {
+    path = x --[[@as string]],
+    other = 1
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_block_comment_before_comma_is_idempotent() {
+        use emmylua_parser::LuaLanguageLevel;
+
+        let config = crate::config::LuaFormatConfig::default();
+        for source in [
+            "g(a --[[@as T]], b)\n",
+            "local t = { path = x --[[@as string]], other = 1 }\n",
+            "g(a, b --[[@as T]])\n",
+        ] {
+            let first = crate::format_text(source, LuaLanguageLevel::default(), &config).formatted;
+            let second = crate::format_text(&first, LuaLanguageLevel::default(), &config).formatted;
+            assert_eq!(second, first, "not idempotent for {source:?}");
+        }
+    }
+
     #[test]
     fn test_call_expr_formats_after_open_comment_attachment() {
         assert_format!(
