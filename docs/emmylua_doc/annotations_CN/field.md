@@ -111,3 +111,53 @@ local scores = {
 3. **索引签名**
 4. **复杂类型支持**
 5. **嵌套结构**
+
+
+## 不同的读取与写入类型
+
+如果属性的 setter 接受的类型与 getter 返回的类型不同，可以声明一对互补字段：
+
+```lua
+---@class Burner
+---@field (read) fuel? Fuel
+---@field (write) fuel? string|Fuel
+
+---@type Burner
+local burner
+burner.fuel = "coal" -- 按 string|Fuel|nil 检查赋值
+local fuel = burner.fuel -- 即使刚写入字符串，读取类型仍为 Fuel|nil
+```
+
+不带方向修饰符的字段继续对读写使用同一个类型。每个方向可以分别设置可选标记，
+也支持泛型。支持具名字段、字符串字面量键和整数字面量键；不支持带方向的索引签名，
+也不建模 `__newindex`。在同一个字段上同时指定两种方向，或重复同一种修饰符，
+会产生注解错误。重复声明同一方向的字段仍会产生重复字段错误（已有的函数重载规则仍然适用）。
+重复的 `(write)` 函数声明允许赋入匹配任意一个 setter 签名的回调。
+回调的上下文推断保留现有重载顺序；普通、不带方向修饰符的函数字段不受影响。
+
+对于 `A|B` 这样的联合类型接收者，读取结果合并各分支的 getter 类型，赋值则接受
+任一分支的 setter 类型，与普通联合类型字段的赋值行为一致。联合类型中的普通字段
+提供其共同的读写类型。接收者收窄到某一分支后，可用的 setter 类型也随之收窄。
+
+给成对声明的属性赋值会使先前的控制流类型收窄失效，恢复其声明的 getter 类型。
+后续条件判断可以再次收窄该类型。嵌套赋值中的接收者始终按读取处理：
+`object.property.child = x` 对 `property` 使用 getter 类型，对 `child` 使用 setter 类型。
+
+这些注解描述类型，而不是访问权限。如果只声明一个方向，则读写都使用该类型，
+不会引入只读或只写诊断。悬停提示和补全文档会同时显示一对字段的读写类型。
+
+子类声明会整体覆盖继承的属性。因此，只声明一个方向的覆盖也会同时决定读写类型：
+
+```lua
+---@class Parent
+---@field (read) value number
+---@field (write) value string
+
+---@class Child: Parent
+---@field (read) value boolean
+
+---@type Child
+local child
+child.value = true -- Child 接受 boolean；Parent 接受 string
+local value = child.value -- boolean
+```
