@@ -169,13 +169,37 @@ impl<T> CacheEntry<T> {
     }
 }
 
+/// Immutable signature projection supplied by the caller. Equality includes the
+/// generic bindings and whether the caller included the main signature.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct OriginalSignatures {
+    pub(super) closure: LuaSyntaxId,
+    pub(super) signatures: Rc<Vec<LuaFunctionType>>,
+}
+
+/// The three declaration queries supported by the shared flow walk.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum DeclTracePurpose {
+    ReadValue,
+    /// Use the declaration type and casts, without assignments or branch guards.
+    AssignTarget,
+    OriginalSignatures(OriginalSignatures),
+}
+
+/// Syntax facts used to choose a safe return-type query for a local function.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LocalCallableFlow {
+    Reassigned,
+    Unchanged,
+    /// The value is unchanged, but a named cast can change its exposed type.
+    Cast,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum TraceSubject {
     Decl {
         decl: SemanticId,
-        guards: bool,
-        casts: bool,
-        assignments: bool,
+        purpose: DeclTracePurpose,
         merge_branch: bool,
     },
     Member {
@@ -185,6 +209,8 @@ pub(crate) enum TraceSubject {
 }
 
 /// Memo key for one flow-trace state on a loop-free graph: `(file, subject, flow node)`.
+/// Original-signature traces keep incoming PathState empty and memoize each
+/// node's transfer during unwind, so a cached node never contains later casts.
 ///
 /// The incoming path is deliberately absent. It is safe to omit only for flow
 /// graphs without loops, where every route to a flow node crosses the same
@@ -229,6 +255,7 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) builtin_function: HashMap<(FileId, BuiltinKey), Option<SmolStr>>,
     /// Whether all writes to a local occur in its own closure.
     pub(crate) builtin_local_writes: HashMap<(FileId, SemanticId), bool>,
+    pub(crate) callable_local_flow: HashMap<(FileId, SemanticId), LocalCallableFlow>,
     pub(crate) resolve_owner_set: HashMap<SemanticId, Vec<SemanticId>>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,

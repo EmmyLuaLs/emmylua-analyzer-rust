@@ -134,6 +134,56 @@ impl VirtualWorkspace {
         model.type_of_decl(&decl).expect("type must exist")
     }
 
+    /// Read callable types at each matching Lua call in both source orders.
+    /// Measure original-signature tracing, including nested flow and branch scans.
+    #[cfg(test)]
+    pub(crate) fn callable_types_with_work(
+        &mut self,
+        source: &str,
+        callee: &str,
+    ) -> (Vec<Vec<String>>, u64) {
+        use crate::semantic_model::flow::flow_metrics;
+        use emmylua_parser::LuaCallExpr;
+        use std::rc::Rc;
+
+        let file = self.def(source);
+        let model = self.analysis.semantic_model(file);
+        flow_metrics::reset();
+        let prefixes: Vec<_> = model
+            .chunk()
+            .expect("chunk")
+            .descendants::<LuaCallExpr>()
+            .filter_map(|call| call.get_prefix_expr())
+            .filter(|prefix| prefix.syntax().text() == callee)
+            .collect();
+        let read_types = |model: &crate::SemanticModel, prefix: &emmylua_parser::LuaExpr| {
+            model
+                .callable_candidates_for_expr(prefix)
+                .into_iter()
+                .map(|fun| render::humanize_type(model, &LuaType::DocFunction(Rc::new(fun))))
+                .collect::<Vec<_>>()
+        };
+        let types: Vec<_> = prefixes
+            .iter()
+            .map(|prefix| read_types(&model, prefix))
+            .collect();
+        let work = flow_metrics::original_trace_work() + flow_metrics::callable_stability_checks();
+
+        // A fresh request reads later casts first. Its cache must give the same
+        // result at each call as the request that reads in source order.
+        let reverse_model = self.analysis.semantic_model(file);
+        let reverse_types: Vec<_> = prefixes
+            .iter()
+            .rev()
+            .map(|prefix| read_types(&reverse_model, prefix))
+            .collect();
+        assert_eq!(
+            reverse_types,
+            types.iter().rev().cloned().collect::<Vec<_>>()
+        );
+        (types, work)
+    }
+
     pub fn humanize_type(&self, ty: LuaType) -> String {
         let Some(file_id) = self.last_file_id else {
             return format!("{ty:?}");

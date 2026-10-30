@@ -48,6 +48,12 @@ use crate::{
     LuaMultiLineUnion,
 };
 
+/// Signatures from one function definition, before candidate ordering or flow filtering.
+pub(crate) struct SignatureProjection {
+    pub(crate) main: Option<LuaFunctionType>,
+    pub(crate) overloads: Vec<LuaFunctionType>,
+}
+
 /// The operand determines both the index metadata and the stack shape.
 #[derive(Debug, Clone)]
 pub enum IndexKey {
@@ -2515,14 +2521,6 @@ impl<'a> InferVm<'a> {
         self.model.constructor_attribute_of_type(&def.id)
     }
 
-    /// Cross-file callable candidate projection for an owner identity.
-    pub(crate) fn callable_candidates_for_owner(
-        &self,
-        owner: &SemanticId,
-    ) -> Option<Vec<LuaFunctionType>> {
-        self.signature_candidates(owner)
-    }
-
     /// Single-identity candidate projection (no cross-file global expansion).
     pub(crate) fn callable_candidates_for_owner_single(
         &self,
@@ -2560,27 +2558,16 @@ impl<'a> InferVm<'a> {
 
     /// Single-identity signature projection: main signature + `---@overload`.
     fn signature_candidates_single(&self, owner: &SemanticId) -> Option<Vec<LuaFunctionType>> {
-        let (file_id, value_syntax, overload_syntaxes) = match owner {
+        let (file_id, value_syntax) = match owner {
             SemanticId::Decl(key) => {
                 let facts = self.model.file_facts_of(key.file_id)?;
                 let decl = facts.decl_by_id(owner)?;
-                let overloads = facts
-                    .signature_by_closure(decl.value_expr_syntax?)
-                    .and_then(|sig| sig.docs.as_ref())
-                    .map(|docs| docs.overloads.clone())
-                    .unwrap_or_default();
-                (key.file_id, decl.value_expr_syntax?, overloads)
+                (key.file_id, decl.value_expr_syntax?)
             }
             SemanticId::Member(key) => {
                 let facts = self.model.file_facts_of(key.file_id)?;
                 let member = facts.member_by_id(owner)?;
-                let mut overload_syntaxes: Vec<LuaSyntaxId> = Vec::new();
-                if let Some(signature) = facts.signature_by_closure(member.value_syntax?)
-                    && let Some(docs) = signature.docs.as_ref()
-                {
-                    overload_syntaxes = docs.overloads.clone();
-                }
-                (key.file_id, member.value_syntax?, overload_syntaxes)
+                (key.file_id, member.value_syntax?)
             }
             SemanticId::Name(name) => {
                 // Cross-file global overloads: a global call owns `Name("f")`, but
@@ -2615,21 +2602,32 @@ impl<'a> InferVm<'a> {
             }
             return None;
         }
-        let docs = signature.docs.as_ref()?;
-        let generic_params = docs.generic_params.clone();
+        let projection = self.signature_projection(file_id, signature)?;
+        let mut out = projection.overloads;
+        out.extend(projection.main);
+        Some(out)
+    }
 
-        let mut out = Vec::new();
-        for overload_syntax in &overload_syntaxes {
+    /// Project one definition, keeping its main signature separate from overloads.
+    pub(crate) fn signature_projection(
+        &self,
+        file_id: FileId,
+        signature: &Signature,
+    ) -> Option<SignatureProjection> {
+        let docs = signature.docs.as_ref()?;
+        let generic_params = &docs.generic_params;
+        let mut overloads = Vec::new();
+        for overload_syntax in &docs.overloads {
             if let Some(fun) =
-                self.doc_func_from_syntax(file_id, *overload_syntax, &generic_params, false)
+                self.doc_func_from_syntax(file_id, *overload_syntax, generic_params, false)
             {
-                out.push(fun);
+                overloads.push(fun);
             }
         }
-        if let Some(main_fun) = self.main_signature_function(file_id, signature, &generic_params) {
-            out.push(main_fun);
-        }
-        Some(out)
+        Some(SignatureProjection {
+            main: self.main_signature_function(file_id, signature, generic_params),
+            overloads,
+        })
     }
 
     /// Build `GenericTpl`s with default/constraint metadata from `DocGenericParam`.

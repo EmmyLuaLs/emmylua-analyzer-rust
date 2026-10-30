@@ -607,15 +607,39 @@ impl<'db> SemanticModel<'db> {
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
-        let mut out = callable_candidates_uncached(self, callee);
-        // The diagnostic path may only project the callee value type; append the
-        // full signature candidates (main + `---@overload`) for name callees.
+        let mut out = self.callable_candidates_cached(callee);
+        // The value type may omit `---@overload` signatures. Keep its richer
+        // generic projection when there are no overloads to add.
         if let LuaExpr::NameExpr(name_expr) = callee
             && let Some(owner) = self.resolve_name(name_expr.get_position())
+            && let SemanticId::Decl(key) = &owner
+            && let Some(facts) = self.file_facts_of(key.file_id)
+            && let Some(decl) = facts.decl_by_id(&owner)
+            && let Some(original) = decl.value_expr_syntax
+            && let Some(signature) = facts.signature_by_closure(original)
+            && signature
+                .docs
+                .as_ref()
+                .is_some_and(|docs| !docs.overloads.is_empty())
         {
             let vm = infer::vm::InferVm::new(self, &[]);
-            if let Some(candidates) = vm.callable_candidates_for_owner(&owner) {
-                for candidate in candidates {
+            if let Some(projection) = vm.signature_projection(key.file_id, signature) {
+                let mut candidates = projection.overloads;
+                // Keep the value's richer projection if the original main is present.
+                // A replacement does not cover a main on another live path.
+                if !self
+                    .type_of_signature_in_file(key.file_id, original)
+                    .is_some_and(|main| out.contains(&main))
+                {
+                    candidates.extend(projection.main);
+                }
+                for candidate in flow::original_decl_signatures_at(
+                    self,
+                    &owner,
+                    original,
+                    name_expr.get_position(),
+                    candidates,
+                ) {
                     if !out.contains(&candidate) {
                         out.push(candidate);
                     }
