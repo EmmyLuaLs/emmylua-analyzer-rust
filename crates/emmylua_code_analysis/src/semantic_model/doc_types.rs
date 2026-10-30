@@ -326,6 +326,24 @@ impl<'db> SemanticModel<'db> {
                     _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
                 }
             }
+            // `{ x: number }?`: the inner type's rich projection, plus `nil`.
+            LuaDocType::Nullable(nullable) => {
+                let inner = nullable
+                    .get_type()
+                    .map(|inner| self.doc_type_lua_rich_in(file_id, inner.get_syntax_id()))
+                    .unwrap_or(LuaType::Unknown);
+                if matches!(inner, LuaType::Unknown) {
+                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                }
+                let mut types = match inner {
+                    LuaType::Union(union) => union.into_vec(),
+                    other => vec![other],
+                };
+                if !types.contains(&LuaType::Nil) {
+                    types.push(LuaType::Nil);
+                }
+                LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+            }
             LuaDocType::Literal(literal) => match literal.get_literal() {
                 Some(LuaLiteralToken::String(str_token)) => {
                     LuaType::StringConst(SmolStr::new(str_token.get_value()).into())
