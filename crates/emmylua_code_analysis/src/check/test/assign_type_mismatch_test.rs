@@ -5,6 +5,136 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     #[test]
+    fn test_constructor_errors_point_to_the_invalid_value() {
+        for (target, constructor, invalid_value) in [
+            (
+                "{item: {count: integer}}",
+                "{item = {count = 'bad'}}",
+                "'bad'",
+            ),
+            ("integer[]", "{1, 'bad'}", "'bad'"),
+            ("table<integer, integer>", "{1, 'bad'}", "'bad'"),
+            ("{item: integer}|{other: string}", "{item = 'bad'}", "'bad'"),
+            ("{[1]: string, [2]: integer}", "{pair()}", "pair()"),
+        ] {
+            let source = format!(
+                "local function pair() return 'ok', false end\n---@type {target}\nlocal value = ({constructor})\nreturn value, pair"
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| (d.code, &source[d.range]))
+                    .collect::<Vec<_>>(),
+                [(DiagnosticCode::AssignTypeMismatch, invalid_value)],
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_class_initializers_can_omit_instance_fields() {
+        for (setup, scope) in [("", "local "), ("", ""), ("local Record, Broken", "")] {
+            for (initializers, valid, invalid) in [
+                ("", "{}", "{count = 'bad'}"),
+                ("", "({})", "({count = 'bad'})"),
+                (
+                    "local valid = {}; local invalid = {count = 'bad'}",
+                    "valid",
+                    "invalid",
+                ),
+                (
+                    "local function valid() return {} end; local function invalid() return {count = 'bad'} end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid() return {}, 1 end; local function invalid() return {count = 'bad'}, 1 end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid(flag) if flag then return {} end return {count = 1} end; local function invalid(flag) if flag then return {} end return {count = 'bad'} end",
+                    "valid(true)",
+                    "invalid(false)",
+                ),
+            ] {
+                let source = format!(
+                    r#"
+                    {setup}
+                    {initializers}
+                    ---@class Record
+                    ---@field count integer
+                    {scope}Record = {valid}
+                    ---@class Broken
+                    ---@field count integer
+                    {scope}Broken = {invalid}
+                    ---@type Record
+                    local instance = {{}}
+                    instance = {{}}
+                    return Record, Broken, instance
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(
+                    diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                    [
+                        DiagnosticCode::AssignTypeMismatch,
+                        DiagnosticCode::MissingFields,
+                        DiagnosticCode::MissingFields,
+                    ],
+                    "{source}\n{diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_class_factory_initializers_check_nested_fields_across_files() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def_file(
+            "class_factory.lua",
+            r#"
+            local factory = {}
+            function factory.empty() return {} end
+            function factory.valid() return {child = {count = 1}} end
+            function factory.invalid() return {child = {}} end
+            return factory
+            "#,
+        );
+        let source = r#"
+            local factory = require('class_factory')
+            ---@class Child
+            ---@field count integer
+            local _Child = {}
+            ---@class Empty
+            ---@field child Child
+            local Empty = factory.empty()
+            ---@class Valid
+            ---@field child Child
+            local Valid = factory.valid()
+            ---@class Invalid
+            ---@field child Child
+            local Invalid = factory.invalid()
+            return Empty, Valid, Invalid
+        "#;
+        let file = ws.def(source);
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file, CancellationToken::new())
+            .unwrap();
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                DiagnosticCode::AssignTypeMismatch.get_name().into()
+            )),
+            "{diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].range.start.line, 13, "{diagnostics:?}");
+    }
+
+    #[test]
     fn test_numeric_member_guards_use_equivalent_integer_keys() {
         for (key, write, accepted) in [
             ("1.0", "", true),
@@ -29,121 +159,6 @@ mod tests {
             let mut ws = VirtualWorkspace::new();
             assert_eq!(
                 ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
-                accepted,
-                "{source}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_child_alias_guards_keep_captured_object_identity() {
-        for (setup, guard, write, read, accepted) in [
-            ("", "t.child.value", "", "b.value", true),
-            ("", "b.value", "", "t.child.value", true),
-            ("local c = (b)", "c.value", "", "t.child.value", true),
-            ("", "b.value", "t.child = other", "b.value", true),
-            ("", "b.value", "t.child = other", "t.child.value", false),
-            ("t.child = other", "b.value", "", "t.child.value", false),
-            ("", "t.child.value", "b.value = nil", "t.child.value", false),
-            ("", "t.child.value", "t.child.value = nil", "b.value", false),
-            (
-                "local a = t",
-                "b.value",
-                "a.child = other",
-                "t.child.value",
-                false,
-            ),
-            (
-                "local a = t; a = t",
-                "b.value",
-                "a.child = other",
-                "t.child.value",
-                false,
-            ),
-            (
-                "local a = t; local d = a; a = t",
-                "b.value",
-                "d.child = other",
-                "t.child.value",
-                false,
-            ),
-            (
-                "",
-                "b.value",
-                "if flag then t.child = other end",
-                "t.child.value",
-                false,
-            ),
-            ("", "b.value", "t[key] = other", "t.child.value", false),
-            ("", "b.value", "other.value = nil", "t.child.value", true),
-        ] {
-            let source = format!(
-                r#"
-                ---@class Child
-                ---@field value string?
-                ---@class Holder
-                ---@field child Child
-                ---@param t Holder
-                ---@param other Child
-                ---@param flag boolean
-                ---@param key string
-                local function read(t, other, flag, key)
-                    local b = t.child
-                    {setup}
-                    if {guard} then
-                        {write}
-                        ---@type string
-                        local value = {read}
-                        return value
-                    end
-                end
-                return read
-                "#
-            );
-            let mut ws = VirtualWorkspace::new();
-            assert_eq!(
-                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
-                accepted,
-                "{source}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_alias_guards_ignore_only_later_straight_line_assignments() {
-        for (body, accepted) in [
-            ("if b.value then consume(t.value) end; b = other", true),
-            ("if b.value then consume(t.value) end; t = other", true),
-            ("b = other; if b.value then consume(t.value) end", false),
-            ("if b.value then b = other; consume(b.value) end", false),
-            (
-                "while flag do if b.value then consume(t.value) end; b = other end",
-                false,
-            ),
-            (
-                "local inner = function() if b.value then consume(t.value) end end; t = other; return inner",
-                false,
-            ),
-        ] {
-            let source = format!(
-                r#"
-                ---@class Holder
-                ---@field value string?
-                ---@param value string
-                local function consume(value) end
-                ---@param t Holder
-                ---@param other Holder
-                ---@param flag boolean
-                local function read(t, other, flag)
-                    local b = t
-                    {body}
-                end
-                return read
-                "#
-            );
-            let mut ws = VirtualWorkspace::new();
-            assert_eq!(
-                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, &source),
                 accepted,
                 "{source}"
             );
@@ -489,129 +504,6 @@ mod tests {
                     "{source}\n{diagnostics:#?}"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn test_member_guards_follow_stable_local_aliases() {
-        for (setup, guarded, read, accepted) in [
-            ("local b = a", "b", "a", true),
-            ("local b = a", "a", "b", true),
-            ("local b = (a); local c = b", "c", "a", true),
-            ("local b = _other", "b", "a", false),
-            ("local b = a; b = _other", "b", "a", false),
-            ("local b = a; a = _other", "b", "a", false),
-            ("a = _other; local b = a; a = _third", "b", "a", false),
-        ] {
-            let source = format!(
-                r#"
-                ---@class Node
-                ---@field value string?
-                ---@param a Node
-                ---@param _other Node
-                ---@param _third Node
-                local function read(a, _other, _third)
-                    {setup}
-                    if {guarded}.value then
-                        ---@type string
-                        local _text = {read}.value
-                    end
-                end
-                return read
-                "#
-            );
-            let diagnostics = check_source(&source);
-            assert_eq!(
-                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
-                if accepted {
-                    vec![]
-                } else {
-                    vec![DiagnosticCode::AssignTypeMismatch]
-                },
-                "{source}\n{diagnostics:#?}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_member_guards_stop_after_alias_field_writes() {
-        for (write, accepted) in [
-            ("a.value = nil", false),
-            ("b.value = nil", false),
-            ("if _flag then b.value = nil end", false),
-            ("_other.value = nil", true),
-        ] {
-            let source = format!(
-                r#"
-                ---@class Node
-                ---@field value string?
-                ---@param a Node
-                ---@param _other Node
-                ---@param _flag boolean
-                local function read(a, _other, _flag)
-                    local b = a
-                    if b.value then
-                        {write}
-                        ---@type string
-                        local _text = a.value
-                    end
-                end
-                return read
-                "#
-            );
-            let diagnostics = check_source(&source);
-            assert_eq!(
-                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
-                if accepted {
-                    vec![]
-                } else {
-                    vec![DiagnosticCode::AssignTypeMismatch]
-                },
-                "{source}\n{diagnostics:#?}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_member_guards_stop_after_alias_owner_writes() {
-        for (write, accepted) in [
-            ("b.child = {value = nil}", false),
-            ("b.child = {value = 'safe'}", true),
-            ("if _flag then b.child = {value = nil} end", false),
-            ("b[_key] = {value = nil}", false),
-            ("_other.child = {value = nil}", true),
-        ] {
-            let source = format!(
-                r#"
-                ---@class Leaf
-                ---@field value string?
-                ---@class Tree
-                ---@field child Leaf
-                ---@param a Tree
-                ---@param _other Tree
-                ---@param _flag boolean
-                ---@param _key string
-                local function read(a, _other, _flag, _key)
-                    local b = a
-                    if b.child.value then
-                        {write}
-                        ---@type string
-                        local _text = a.child.value
-                    end
-                end
-                return read
-                "#
-            );
-            let diagnostics = check_source(&source);
-            assert_eq!(
-                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
-                if accepted {
-                    vec![]
-                } else {
-                    vec![DiagnosticCode::AssignTypeMismatch]
-                },
-                "{source}\n{diagnostics:#?}"
-            );
         }
     }
 
@@ -1505,6 +1397,31 @@ mod tests {
     }
 
     #[test]
+    fn test_table_constructor_intersection_checks_all_fields() {
+        let source = r#"
+            ---@type {a: string} & {b: integer}
+            local valid = {a = 'ok', b = 1}
+            ---@type {a: string} & {b: integer}
+            local wrong = {a = 'ok', b = false}
+            ---@type {a: string} & {b: integer}
+            local missing = {a = 'ok'}
+            return valid, wrong, missing
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| (d.code, &source[d.range]))
+                .collect::<Vec<_>>(),
+            [
+                (DiagnosticCode::AssignTypeMismatch, "false"),
+                (DiagnosticCode::MissingFields, "{a = 'ok'}"),
+            ],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn test_intersection_assign_tableconst_conflict() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1636,7 +1553,8 @@ t.x = {}
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        // Test cases that should fail (type mismatch)
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -1649,7 +1567,6 @@ t.x = {}
             "#
         ));
 
-        // Test cases that should fail (type mismatch)
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -1764,7 +1681,7 @@ t = nil
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local t = { true }
@@ -1931,7 +1848,7 @@ b.x = a.x
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local mt = {}
@@ -2405,7 +2322,7 @@ return t
     fn test_param_tbale() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class ability
                 ---@field t abilityType
@@ -2454,7 +2371,7 @@ return t
         "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             name({
                 toBe = 1,
@@ -2854,7 +2771,59 @@ return t
             "{diagnostics:#?}"
         );
     }
+    #[test]
+    fn test_aliases_keep_separate_field_refinements() {
+        let source = r#"
+            ---@class Node
+            ---@field value string?
+            ---@param a Node
+            local function read(a)
+                local b = a
+                if b.value then
+                    ---@type string
+                    local _own = b.value
+                    ---@type string
+                    local _other = a.value
+                end
+                if a.value then
+                    b.value = nil
+                    ---@type string
+                    local _own = a.value
+                end
+            end
+            return read
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert!(source[usize::from(diagnostics[0].range.start())..].starts_with("a.value"));
+    }
 
+    #[test]
+    fn test_parent_writes_clear_only_their_reference_facts() {
+        let source = r#"
+            ---@class Leaf
+            ---@field value string?
+            ---@class Tree
+            ---@field child Leaf
+            ---@param a Tree
+            local function read(a)
+                local b = a
+                if a.child.value then
+                    b.child = {}
+                    ---@type string
+                    local _own = a.child.value
+                    a.child = {}
+                    ---@type string
+                    local _replaced = a.child.value
+                end
+            end
+            return read
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+    }
     #[test]
     fn test_cross_file_runtime_member_priority_survives_reload() {
         let meta = r#"

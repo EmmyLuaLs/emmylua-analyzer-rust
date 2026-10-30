@@ -219,12 +219,9 @@ fn p0_deep_require_member_chain() {
     assert!(is_integer_like(&ty), "deep require member type: {ty:?}");
 }
 
-/// Correct behavior for a module table mutated from another file.
-///
-/// `extra.lua` adds a member to the table returned by `mod.lua`; a consumer must see
-/// that member through the module export identity, not through `extra.lua`'s local alias.
+/// An imported alias cannot define members on the original module binding.
 #[test]
-fn p0_cross_file_module_mutation_visible_through_require() {
+fn p0_cross_file_module_writes_do_not_define_inferred_exports() {
     let mut ws = VirtualWorkspace::new();
     ws.def_file(
         "mod.lua",
@@ -245,8 +242,8 @@ fn p0_cross_file_module_mutation_visible_through_require() {
 
     let ty = ws.expr_ty("require('mod').extra()");
     assert!(
-        is_integer_like(&ty),
-        "cross-file module mutation return type: {ty:?}"
+        ty.is_unknown(),
+        "a cross-file write must not add an inferred export: {ty:?}"
     );
 }
 

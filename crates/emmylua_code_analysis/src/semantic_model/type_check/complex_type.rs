@@ -82,7 +82,7 @@ pub fn check_complex_type_compact(
             LuaType::Table | LuaType::TableGeneric(_) | LuaType::Ref(_) | LuaType::Def(_) => Ok(()),
             _ => Err(context.mismatch(source, compact_type)),
         },
-        LuaType::Object(source_object) if context.strict_subtype => match compact_type {
+        LuaType::Object(source_object) => match compact_type {
             LuaType::Object(compact_object) => {
                 let mut checks = RequiredChecks::default();
                 for (key, expected) in compact_object.get_fields() {
@@ -91,7 +91,7 @@ pub fn check_complex_type_compact(
                 }
                 checks.finish()
             }
-            LuaType::Tuple(tuple) => {
+            LuaType::Tuple(tuple) if context.strict_subtype => {
                 let mut checks = RequiredChecks::default();
                 for (index, element_ty) in tuple.get_types().iter().enumerate() {
                     let key = LuaMemberKey::Integer(index as i64 + 1);
@@ -102,7 +102,7 @@ pub fn check_complex_type_compact(
                 }
                 checks.finish()
             }
-            LuaType::TableConst(_) => {
+            LuaType::TableConst(_) if context.strict_subtype => {
                 let table_infos =
                     context.require_complete(|| context.model.member_infos(compact_type))?;
                 let mut checks = RequiredChecks::default();
@@ -118,14 +118,6 @@ pub fn check_complex_type_compact(
                 checks.finish()
             }
             LuaType::Table | LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => Ok(()),
-            _ => Err(context.mismatch(source, compact_type)),
-        },
-        LuaType::Object(_) => match compact_type {
-            LuaType::Object(_)
-            | LuaType::Table
-            | LuaType::Ref(_)
-            | LuaType::Def(_)
-            | LuaType::Generic(_) => Ok(()),
             _ => Err(context.mismatch(source, compact_type)),
         },
         LuaType::Call(source_call) => {

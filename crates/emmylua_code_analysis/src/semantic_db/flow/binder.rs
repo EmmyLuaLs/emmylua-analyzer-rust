@@ -27,6 +27,7 @@ pub struct FlowBinder<'a> {
     pub false_target: FlowId,
     flow_nodes: Vec<FlowNode>,
     node_effects: HashMap<FlowId, Vec<FlowEffect>>,
+    exits: HashMap<LuaClosureId, Vec<FlowId>>,
     multiple_antecedents: Vec<Vec<FlowId>>,
     labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
     goto_stats: Vec<GotoCache>,
@@ -40,6 +41,7 @@ impl<'a> FlowBinder<'a> {
             file_id,
             flow_nodes: Vec::new(),
             node_effects: HashMap::new(),
+            exits: HashMap::new(),
             multiple_antecedents: Vec::new(),
             decl_bind_expr_ref: HashMap::new(),
             decl_multi_return_ref: HashMap::new(),
@@ -196,6 +198,12 @@ impl<'a> FlowBinder<'a> {
         self.node_effects.entry(flow_id).or_default().push(effect);
     }
 
+    pub fn record_exit(&mut self, closure: LuaClosureId, flow: FlowId) {
+        if flow != self.unreachable {
+            self.exits.entry(closure).or_default().push(flow);
+        }
+    }
+
     pub fn finish(mut self) -> FlowTree {
         // Post-process goto edges: the flow recorded for `goto label` becomes the
         // antecedent of the NamedLabel node, so type backtracking after the label
@@ -212,7 +220,7 @@ impl<'a> FlowBinder<'a> {
             self.flow_nodes,
             self.node_effects,
             self.multiple_antecedents,
-            // self.labels,
+            self.exits,
             self.bindings,
         )
     }
