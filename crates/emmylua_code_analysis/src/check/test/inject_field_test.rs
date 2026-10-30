@@ -864,6 +864,35 @@ return items
         ws.analysis.update_file_by_uri(&uri, Some(good.to_string()));
         assert_eq!(inject_count(&ws), 0);
     }
+
+    #[test]
+    fn test_record_fields_distinguish_optional_and_required_values() {
+        let source = r#"
+            ---@param opts {label?: string, values?: table<string, string>}
+            local function optional(opts) return opts end
+            ---@type table<string, string>?
+            local values
+            optional({})
+            optional({label = nil, values = nil})
+            optional({values = values})
+            optional({values = {name = 'ok'}})
+
+            ---@param opts {label: string, values: table<string, string>}
+            local function required(opts) return opts end
+            required({label = 'ok', values = {}})
+            required({label = nil, values = {}})
+            required({label = 'ok', values = nil})
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [
+                DiagnosticCode::ParamTypeMismatch,
+                DiagnosticCode::ParamTypeMismatch,
+            ],
+            "{source}\n{diagnostics:?}"
+        );
+    }
 }
 
 // These tests load the standard library because its `table` declaration is

@@ -1,7 +1,8 @@
 //! # param_type_check - call argument type does not match parameter type
 //!
 //! M0+: callee candidates = primary signature + `---@overload`; if any candidate accepts all arguments, don't report,
-//! otherwise pick the candidate with the fewest mismatches and report `ParamTypeMismatch` per argument. Colon calls:
+//! otherwise pick the candidate with the fewest mismatches. Table fields retain
+//! `AssignTypeMismatch`; other arguments use `ParamTypeMismatch`. Colon calls:
 //! strip one slot for the self parameter; plain functions treat the receiver as the first argument.
 
 use crate::semantic_model::type_check::{TypeCheckContext, integer_index_applies};
@@ -29,7 +30,10 @@ use super::{CheckContext, Checker};
 pub struct ParamTypeChecker;
 
 impl Checker for ParamTypeChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::ParamTypeMismatch];
+    const CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::ParamTypeMismatch,
+        DiagnosticCode::AssignTypeMismatch,
+    ];
 
     fn check(context: &mut CheckContext<'_>, semantic_model: &SemanticModel<'_>) {
         let Some(tree) = semantic_model.syntax_tree() else {
@@ -46,6 +50,7 @@ impl Checker for ParamTypeChecker {
 }
 
 struct Mismatch {
+    code: DiagnosticCode,
     range: rowan::TextRange,
     message: String,
 }
@@ -88,11 +93,7 @@ fn check_pcall_forward(
     }
     if let Some(mismatches) = best {
         for mismatch in mismatches {
-            context.add_diagnostic(
-                DiagnosticCode::ParamTypeMismatch,
-                mismatch.range,
-                mismatch.message,
-            );
+            context.add_diagnostic(mismatch.code, mismatch.range, mismatch.message);
         }
     }
     true
@@ -244,6 +245,7 @@ fn check_call(
             }
         }
     }
+
     let args = call_expr
         .get_args_list()
         .map(|list| list.get_args().collect::<Vec<_>>())
@@ -266,7 +268,7 @@ fn check_call(
     // Cheap candidate ordering: check likely overloads first so the common
     // “one candidate matches” case returns before running the expensive
     // parameter-by-parameter check on every other overload.
-    let mut ordered: Vec<&LuaFunctionType> = candidates.iter().collect();
+    let mut ordered = candidates_for_arg_count(semantic_model, &candidates, &args, colon_call);
     ordered.sort_by_key(|func| {
         quick_candidate_score(func, &analysis.arg_types, colon_call, &receiver_ty)
     });
@@ -295,19 +297,40 @@ fn check_call(
     if let Some(mismatches) = best {
         let literal_names = doc_overload_literal_names(semantic_model, &callee);
         for mismatch in mismatches {
-            let message = if literal_names.len() >= 2 {
-                let found = mismatch
-                    .message
-                    .split_once("but found")
-                    .map(|(_, found)| format!("but found{found}"))
-                    .unwrap_or_else(|| mismatch.message.clone());
-                format!("expected `{}` {found}", literal_names.join(" | "))
-            } else {
-                mismatch.message
-            };
-            context.add_diagnostic(DiagnosticCode::ParamTypeMismatch, mismatch.range, message);
+            let message =
+                if mismatch.code == DiagnosticCode::ParamTypeMismatch && literal_names.len() >= 2 {
+                    let found = mismatch
+                        .message
+                        .split_once("but found")
+                        .map(|(_, found)| format!("but found{found}"))
+                        .unwrap_or_else(|| mismatch.message.clone());
+                    format!("expected `{}` {found}", literal_names.join(" | "))
+                } else {
+                    mismatch.message
+                };
+            context.add_diagnostic(mismatch.code, mismatch.range, message);
         }
     }
+}
+
+/// Check fields against a signature that accepts this argument count when possible.
+fn candidates_for_arg_count<'a>(
+    semantic_model: &SemanticModel<'_>,
+    candidates: &'a [LuaFunctionType],
+    args: &[LuaExpr],
+    colon_call: bool,
+) -> Vec<&'a LuaFunctionType> {
+    if candidates.len() > 1 {
+        let range = super::param_count::expanded_arg_range(semantic_model, args);
+        let matching = candidates
+            .iter()
+            .filter(|candidate| range.accepts(semantic_model, candidate, colon_call))
+            .collect::<Vec<_>>();
+        if !matching.is_empty() {
+            return matching;
+        }
+    }
+    candidates.iter().collect()
 }
 
 /// String literal overload names for a local `---@type fun(name: "A") | fun(name: "B")`.
@@ -373,6 +396,7 @@ fn table_literal_mismatch(
                     continue;
                 }
                 return Some(Mismatch {
+                    code: DiagnosticCode::ParamTypeMismatch,
                     range: value_expr.get_range(),
                     message: mismatch_message(semantic_model, &value_ty, expected, &path),
                 });
@@ -527,6 +551,7 @@ fn check_candidate(
             let _ = unify_call_bindings(semantic_model, &param_ty, receiver_ty, &mut bindings);
             if !is_compatible(semantic_model, receiver_ty, &param_ty) {
                 mismatches.push(Mismatch {
+                    code: DiagnosticCode::ParamTypeMismatch,
                     range: receiver_range(args),
                     message: mismatch_message(semantic_model, receiver_ty, &param_ty, name),
                 });
@@ -603,6 +628,24 @@ fn cached_arg_type(
         .unwrap_or(LuaType::Unknown)
 }
 
+fn table_field_mismatches(
+    semantic_model: &SemanticModel<'_>,
+    param_ty: &LuaType,
+    arg: &LuaExpr,
+) -> Vec<Mismatch> {
+    let LuaExpr::TableExpr(table) = arg else {
+        return Vec::new();
+    };
+    super::assign_type_mismatch::table_field_mismatches(semantic_model, param_ty, table)
+        .into_iter()
+        .map(|mismatch| Mismatch {
+            code: DiagnosticCode::AssignTypeMismatch,
+            range: mismatch.range,
+            message: mismatch.message,
+        })
+        .collect()
+}
+
 fn check_arg_pairs(
     semantic_model: &SemanticModel<'_>,
     params: &[(String, Option<LuaType>)],
@@ -675,6 +718,7 @@ fn check_arg_pairs(
                             && !unify_call_bindings(semantic_model, &slot_ty, &arg_ty, bindings)
                         {
                             out.push(Mismatch {
+                                code: DiagnosticCode::ParamTypeMismatch,
                                 range: arg.get_range(),
                                 message: mismatch_message(semantic_model, &arg_ty, &slot_ty, name),
                             });
@@ -682,10 +726,12 @@ fn check_arg_pairs(
                         }
                         slot_ty = unify::substitute(&slot_ty, bindings);
                         slot_ty = type_eval::expand_alias_generic(semantic_model, &slot_ty);
+                        out.extend(table_field_mismatches(semantic_model, &slot_ty, arg));
                         if arg_ty == slot_ty || is_compatible(semantic_model, &arg_ty, &slot_ty) {
                             continue;
                         }
                         out.push(Mismatch {
+                            code: DiagnosticCode::ParamTypeMismatch,
                             range: arg.get_range(),
                             message: mismatch_message(semantic_model, &arg_ty, &slot_ty, name),
                         });
@@ -700,6 +746,7 @@ fn check_arg_pairs(
                             unify_call_bindings(semantic_model, &param_ty_orig, &arg_ty, bindings);
                         if param_ty_orig.contains_tpl_node() && !unified {
                             out.push(Mismatch {
+                                code: DiagnosticCode::ParamTypeMismatch,
                                 range: arg.get_range(),
                                 message: mismatch_message(
                                     semantic_model,
@@ -711,6 +758,8 @@ fn check_arg_pairs(
                             continue;
                         }
                         let param_ty = unify::substitute(&param_ty_orig, bindings);
+                        let param_ty = type_eval::expand_alias_generic(semantic_model, &param_ty);
+                        out.extend(table_field_mismatches(semantic_model, &param_ty, arg));
                         if arg_ty == param_ty
                             || param_generic_base_match(semantic_model, &arg_ty, &param_ty)
                             || is_compatible(semantic_model, &arg_ty, &param_ty)
@@ -718,6 +767,7 @@ fn check_arg_pairs(
                             continue;
                         }
                         out.push(Mismatch {
+                            code: DiagnosticCode::ParamTypeMismatch,
                             range: arg.get_range(),
                             message: mismatch_message(semantic_model, &arg_ty, &param_ty, name),
                         });
@@ -745,6 +795,7 @@ fn check_arg_pairs(
             && semantic_model.member_missing_in_union(index_expr)
         {
             out.push(Mismatch {
+                code: DiagnosticCode::ParamTypeMismatch,
                 range: arg.get_range(),
                 message: mismatch_message(semantic_model, &LuaType::Nil, &param_ty, name),
             });
@@ -752,6 +803,7 @@ fn check_arg_pairs(
         }
         // Table literals targeting object / intersection: check field by field and then fully take over.
         if let LuaExpr::TableExpr(table) = arg {
+            out.extend(table_field_mismatches(semantic_model, &param_ty, arg));
             if has_table_literal_shape(&param_ty) {
                 if let Some(mismatch) = table_literal_mismatch(semantic_model, &param_ty, table) {
                     out.push(mismatch);
@@ -775,6 +827,7 @@ fn check_arg_pairs(
         {
             if !is_compatible(semantic_model, &call_arg_ty, &param_ty) {
                 out.push(Mismatch {
+                    code: DiagnosticCode::ParamTypeMismatch,
                     range: arg.get_range(),
                     message: mismatch_message(semantic_model, &call_arg_ty, &param_ty, name),
                 });
@@ -842,6 +895,7 @@ fn check_arg_pairs(
             continue;
         }
         out.push(Mismatch {
+            code: DiagnosticCode::ParamTypeMismatch,
             range: arg.get_range(),
             message: mismatch_message(semantic_model, &arg_ty, &param_ty, name),
         });
@@ -893,6 +947,7 @@ fn generic_table_required_mismatch(
                 .type_of_member(&member_ref.id)
                 .unwrap_or(LuaType::Unknown);
             return Some(Mismatch {
+                code: DiagnosticCode::ParamTypeMismatch,
                 range: table.get_range(),
                 message: mismatch_message(
                     semantic_model,

@@ -50,6 +50,221 @@ fn test_param_count_ok() {
     );
 }
 
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_assigned_function_overloads_keep_optional_and_variadic_counts() {
+    for definition in [
+        "local accept = function(first, second) return first, second end",
+        "accept = function(first, second) return first, second end",
+    ] {
+        for (overload, arguments, expected) in [
+            ("fun(value?: string)", "", None),
+            ("fun(value?: string)", "'text'", None),
+            ("fun(value?: string)", "1, 2", None),
+            (
+                "fun(value?: string)",
+                "1, 2, 3",
+                Some(DiagnosticCode::RedundantParameter),
+            ),
+            ("fun(...: string)", "'a', 'b', 'c'", None),
+            (
+                "fun(...: string)",
+                "42, 'a', 'b'",
+                Some(DiagnosticCode::ParamTypeMismatch),
+            ),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Module
+                local module = {{}}
+                ---@param first number
+                ---@param second number
+                ---@overload {overload}
+                {definition}
+                accept({arguments})
+                return module
+                "#,
+            ));
+            let codes = diagnostics.iter().map(|d| d.code).collect::<Vec<_>>();
+            assert_eq!(
+                codes,
+                expected.into_iter().collect::<Vec<_>>(),
+                "{definition}, {overload}, {arguments}: {diagnostics:?}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_declared_function_counts_take_precedence_over_implementation_overloads() {
+    for (call, missing) in [
+        ("accept()", true),
+        ("accept(42)", false),
+        ("alias()", true),
+        ("alias(42)", false),
+        ("pcall(accept)", true),
+        ("pcall(accept, 42)", false),
+    ] {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert_eq!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::MissingParameter,
+                &format!(
+                    r#"
+                    ---@type fun(value: number)
+                    ---@overload fun()
+                    local accept = function(value) end
+                    local alias = accept
+                    {call}
+                    "#,
+                ),
+            ),
+            !missing,
+            "{call}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_forwarded_varargs_reject_impossible_overload_counts() {
+    for (annotation, call, redundant) in [
+        ("", "accept(...)", false),
+        ("", "accept({value = 2}, ...)", false),
+        ("", "accept({value = 2}, true, ...)", true),
+        ("", "accept({value = 'text'}, true, ...)", true),
+        ("", "accept(..., {value = 2})", true),
+        ("", "accept({value = 2}, (...))", true),
+        ("---@param ... [boolean, boolean]...", "accept(...)", true),
+    ] {
+        let diagnostics = check_source(&format!(
+            r#"
+            ---@type fun() | fun(fields: {{value: number}})
+            local accept
+            {annotation}
+            local function forward(...)
+                {call}
+            end
+            return forward
+            "#,
+        ));
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::RedundantParameter) > 0,
+            redundant,
+            "{annotation}, {call}: {diagnostics:?}"
+        );
+        if !redundant {
+            assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_pcall_forwarded_varargs_reject_impossible_overload_counts() {
+    for (annotation, call, redundant) in [
+        ("", "pcall(accept, ...)", false),
+        ("", "pcall(accept, {value = 2}, ...)", false),
+        ("", "pcall(accept, {value = 2}, true, ...)", true),
+        ("", "pcall(accept, {value = 'text'}, true, ...)", true),
+        ("", "pcall(accept, ..., {value = 2})", true),
+        ("", "pcall(accept, {value = 2}, (...))", true),
+        (
+            "---@param ... [boolean, boolean]...",
+            "pcall(accept, ...)",
+            true,
+        ),
+    ] {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert_eq!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::RedundantParameter,
+                &format!(
+                    r#"
+                    ---@type fun() | fun(fields: {{[string]: number}})
+                    local accept
+                    {annotation}
+                    local function forward(...)
+                        {call}
+                    end
+                    return forward
+                    "#,
+                ),
+            ),
+            !redundant,
+            "{annotation}, {call}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_pcall_callback_counts_keep_method_receivers() {
+    for (call, missing) in [
+        ("pcall(mod.accept, mod, 42)", false),
+        ("pcall(mod.accept, mod)", true),
+    ] {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert_eq!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::MissingParameter,
+                &format!(
+                    r#"
+                    local mod = {{}}
+                    ---@param value number
+                    function mod:accept(value) return self, value end
+                    {call}
+                    "#,
+                ),
+            ),
+            !missing,
+            "{call}"
+        );
+    }
+}
+
+#[test]
+fn test_local_pcall_uses_its_own_parameters() {
+    let diagnostics = check_source(
+        r#"
+        local function pcall(callback, value) return callback, value end
+        pcall(function() end, 42)
+        "#,
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+#[ignore = "Known bug before ef507415: argument counts and forwarded variadic arguments"]
+fn test_variadic_tuple_tails_keep_unbounded_argument_counts() {
+    for callee in ["accept(", "pcall(accept, "] {
+        for (pack, values, redundant) in [
+            ("[number, string...]...", "42", false),
+            ("[number, string...]...", "42, 'a', 'b'", false),
+            ("[number, string...]...", "42, 'a', 'b', 'c'", false),
+            ("[number, string]...", "42, 'a'", false),
+            ("[number, string]...", "42, 'a', 'b'", true),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::RedundantParameter,
+                    &format!(
+                        r#"
+                        ---@param ... {pack}
+                        local function accept(...) return ... end
+                        {callee}{values})
+                        "#,
+                    ),
+                ),
+                !redundant,
+                "{pack}, {callee}{values})"
+            );
+        }
+    }
+}
+
 /// Colon method call: the `self` slot is implicitly supplied by the receiver and does not count as an argument → not reported.
 #[test]
 fn test_param_count_colon_call_self_slot() {

@@ -2,6 +2,30 @@ use super::check_source;
 use crate::DiagnosticCode;
 
 #[test]
+#[ignore = "Known bug before ef507415: self-indexed class bases remain unresolved"]
+fn object_class_base_can_index_its_own_fields() {
+    for (target, expected) in [
+        ("string", vec![]),
+        ("integer", vec![DiagnosticCode::ReturnTypeMismatch]),
+    ] {
+        let diagnostics = check_source(&format!(
+            r#"
+            ---@class Config: {{value: string, mirror: Config['value']}}
+            ---@param config Config
+            ---@return {target}
+            local function read(config) return config.mirror end
+            return read
+            "#,
+        ));
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            expected,
+            "{target}: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
 fn recursive_type_queries_keep_unrelated_assignment_error() {
     for definitions in [
         r#"

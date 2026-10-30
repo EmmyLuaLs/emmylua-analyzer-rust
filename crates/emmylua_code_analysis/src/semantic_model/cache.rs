@@ -22,6 +22,12 @@ use super::member::MemberInfo;
 use super::{CallSiteAnalysis, ResolvedMember};
 use crate::IndexInfo;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum BuiltinKey {
+    Expression(LuaSyntaxId),
+    Flow(SemanticId, FlowId),
+}
+
 /// Keep provisional memo entries while dependent queries still need them.
 /// Discard them at the outer query boundary so the next query can retry.
 #[must_use = "keep the scope alive until the query finishes"]
@@ -219,6 +225,10 @@ pub(crate) struct SemanticLocalCache {
     /// Cast-bearing flow bindings on the node and its ancestors, nearest first.
     pub(crate) expr_cast_flows: HashMap<(FileId, LuaSyntaxId), Rc<Vec<FlowId>>>,
     pub(crate) resolve_name: HashMap<(FileId, TextSize), Option<SemanticId>>,
+    /// Builtin identity at each read and declaration/flow state.
+    pub(crate) builtin_function: HashMap<(FileId, BuiltinKey), Option<SmolStr>>,
+    /// Whether all writes to a local occur in its own closure.
+    pub(crate) builtin_local_writes: HashMap<(FileId, SemanticId), bool>,
     pub(crate) resolve_owner_set: HashMap<SemanticId, Vec<SemanticId>>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,

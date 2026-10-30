@@ -42,7 +42,7 @@ use crate::semantic_model::infer::infer_call_with_bindings;
 use crate::semantic_model::infer::unify::substitute;
 use crate::semantic_model::infer::vm::{binary_type, widen_const};
 use crate::signature::LuaSignatureId;
-use guards::{guarded_on_all_paths, literal_comparison, normalize_condition};
+use guards::{guarded_on_all_paths, literal_comparison, normalize_condition, unparenthesized};
 
 /// Backtracking options: independently collect condition guards, cast widening, and assignment hits.
 #[derive(Clone, Copy)]
@@ -791,19 +791,35 @@ fn narrow_index_condition(
     let (cond, branch_is_true) = normalize_condition(cond, branch_is_true)?;
     if let LuaExpr::BinaryExpr(binary) = &cond {
         let (left, right) = binary.get_exprs()?;
-        let (value, literal, op) =
-            literal_comparison(left, right, binary.get_op_token()?.get_op())?;
-        if literal.is_nil()
-            && matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe)
-            && branch_is_true == (op == BinaryOperator::OpNe)
-            && stable_access_path_at(model, &value, access)
-                .or_else(|| index_access_path(model, &value))
-                .as_ref()
-                == Some(target)
-        {
-            return Some(Narrowing::NotNil);
+        let (value, literal, op) = literal_comparison(
+            unparenthesized(left)?,
+            unparenthesized(right)?,
+            binary.get_op_token()?.get_op(),
+        )?;
+        if !matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe) {
+            return None;
         }
-        return None;
+        let keep_matching = branch_is_true == (op == BinaryOperator::OpEq);
+        let value = match literal {
+            LuaType::Nil if !keep_matching => value,
+            LuaType::StringConst(name) | LuaType::DocStringConst(name) => {
+                let primitive = primitive_type_from_name(name.as_str())?;
+                if keep_matching == primitive.is_nil() {
+                    return None;
+                }
+                let LuaExpr::CallExpr(call) = value else {
+                    return None;
+                };
+                model.resolves_to_builtin(call.get_prefix_expr()?, "type")?;
+                call.get_args_list()?.get_args().next()?
+            }
+            _ => return None,
+        };
+        return (stable_access_path_at(model, &value, access)
+            .or_else(|| index_access_path(model, &value))
+            .as_ref()
+            == Some(target))
+        .then_some(Narrowing::NotNil);
     }
     (branch_is_true
         && stable_access_path_at(model, &cond, access)

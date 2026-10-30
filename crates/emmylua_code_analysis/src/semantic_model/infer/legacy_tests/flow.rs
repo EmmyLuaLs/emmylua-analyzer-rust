@@ -389,6 +389,150 @@ mod test {
     }
 
     #[test]
+    fn test_optional_callback_type_guards() {
+        let mut ws = VirtualWorkspace::new();
+        for (body, safe) in [
+            (
+                "if type(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "if 'function' == type(props.bar) then props.bar() end",
+                true,
+            ),
+            ("if type(props.bar) ~= 'nil' then props.bar() end", true),
+            (
+                "if type(props.bar) ~= 'function' then return end; props.bar()",
+                true,
+            ),
+            (
+                "if type(props.bar) ~= 'function' then props.bar() end",
+                false,
+            ),
+            ("if type(props.bar) == 'nil' then props.bar() end", false),
+            (
+                "local function type() return 'function' end; if type(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::NeedCheckNil,
+                    &format!(
+                        r#"
+                        ---@type {{bar?: fun():string}}
+                        local props
+                        {body}
+                        "#
+                    ),
+                ),
+                safe,
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_optional_callback_type_guard_aliases_and_parentheses() {
+        for (body, safe) in [
+            (
+                "if (type(props.bar)) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "if (type)(props.bar) == ('function') then props.bar() end",
+                true,
+            ),
+            (
+                "local type = type; if type(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind = type; if kind(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind = type; function kind(_value) return 'function' end; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = type; if kind(props.bar) == 'function' then props.bar() end; function kind(_value) return 'function' end",
+                true,
+            ),
+            (
+                "local kind = type; local function replace() function kind(_value) return 'function' end end; replace(); if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = type; if props.bar then function kind(_value) return 'function' end end; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = type; function kind(_value) return 'function' end; kind = type; if kind(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind = type; if kind(props.bar) == 'function' then props.bar() end; kind = function() return 'function' end",
+                true,
+            ),
+            (
+                "local kind; kind = type; if kind(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind = type; kind = kind; if kind(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind; if props.bar then kind = type else kind = type end; if kind(props.bar) == 'function' then props.bar() end",
+                true,
+            ),
+            (
+                "local kind = type; if props.bar then kind = function() return 'function' end end; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = function() return 'function' end; if props.bar then kind = type end; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = type; local function replace() kind = function() return 'function' end end; replace(); if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local kind = type; local function check() if kind(props.bar) == 'function' then props.bar() end end; kind = function() return 'function' end; check()",
+                false,
+            ),
+            (
+                "local kind = type; for _ = 1, 2 do if kind(props.bar) == 'function' then props.bar() end; kind = function() return 'function' end end",
+                false,
+            ),
+            (
+                "local kind = type; while props do if kind(props.bar) == 'function' then props.bar() end; kind = function() return 'function' end end",
+                false,
+            ),
+            (
+                "local kind = type; kind = function() return 'function' end; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+            (
+                "local function type() return 'function' end; local kind = type; if kind(props.bar) == 'function' then props.bar() end",
+                false,
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            assert_eq!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::NeedCheckNil,
+                    &format!("---@type {{bar?: fun():string}}\nlocal props\n{body}"),
+                ),
+                safe,
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
     fn test_stacked_same_var_truthiness_guards_build_semantic_model() {
         let mut ws = VirtualWorkspace::new();
         let repeated_guards = "if not value then return end\n".repeat(STACKED_TYPE_GUARDS);

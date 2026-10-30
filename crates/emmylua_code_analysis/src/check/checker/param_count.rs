@@ -563,12 +563,33 @@ fn doc_func_from_syntax(
 /// Call-side argument slot count range: trailing multi-return calls expand per `Variadic`;
 /// `max = None` means the upper bound is unknown (`T...` / `table.unpack`).
 #[derive(Debug, Clone, Copy)]
-struct ArgCountRange {
+pub(super) struct ArgCountRange {
     min: usize,
     max: Option<usize>,
 }
 
-fn expanded_arg_range(semantic_model: &SemanticModel<'_>, args: &[LuaExpr]) -> ArgCountRange {
+impl ArgCountRange {
+    pub(super) fn accepts(
+        self,
+        semantic_model: &SemanticModel<'_>,
+        func: &LuaFunctionType,
+        colon_call: bool,
+    ) -> bool {
+        let range = param_count_range(semantic_model, func, colon_call);
+        let colon_extra =
+            usize::from(colon_call && !func.is_colon_define() && !first_param_is_self(func));
+        let call_min = self.min + colon_extra;
+        let call_max = self.max.map(|max| max + colon_extra);
+        let enough = call_max.is_none_or(|max| max >= range.min);
+        let not_too_many = range.max.is_none_or(|max| call_min <= max);
+        enough && not_too_many
+    }
+}
+
+pub(super) fn expanded_arg_range(
+    semantic_model: &SemanticModel<'_>,
+    args: &[LuaExpr],
+) -> ArgCountRange {
     let base = args.len().saturating_sub(1);
     if let Some(last) = args.last()
         && let Some(variadic) = last_arg_variadic(semantic_model, last)

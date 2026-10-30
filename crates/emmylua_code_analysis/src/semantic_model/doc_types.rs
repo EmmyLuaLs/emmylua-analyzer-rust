@@ -218,7 +218,7 @@ impl<'db> SemanticModel<'db> {
                     return LuaType::Unknown;
                 }
                 let param = (
-                    GenericTplId::Type(0),
+                    GenericTplId::Mapped(mapped.get_range().start().into()),
                     GenericParam::new(
                         SmolStr::new(param_name),
                         if matches!(key_ty, LuaType::Unknown) {
@@ -248,31 +248,32 @@ impl<'db> SemanticModel<'db> {
                     let Some(value_ty) = field.get_type() else {
                         continue;
                     };
+                    let mut value_ty = self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id());
+                    if field.is_nullable() && !value_ty.is_nullable() {
+                        value_ty = LuaType::from_vec(vec![value_ty, LuaType::Nil]);
+                    }
                     match key {
                         LuaDocObjectFieldKey::Name(name) => {
                             fields.insert(
                                 LuaMemberKey::Name(SmolStr::new(name.get_name_text())),
-                                self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id()),
+                                value_ty,
                             );
                         }
                         LuaDocObjectFieldKey::String(str) => {
                             fields.insert(
                                 LuaMemberKey::Name(SmolStr::new(str.get_value())),
-                                self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id()),
+                                value_ty,
                             );
                         }
                         LuaDocObjectFieldKey::Integer(num) => {
                             if let NumberResult::Int(i) = num.get_number_value() {
-                                fields.insert(
-                                    LuaMemberKey::Integer(i),
-                                    self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id()),
-                                );
+                                fields.insert(LuaMemberKey::Integer(i), value_ty);
                             }
                         }
                         LuaDocObjectFieldKey::Type(key_ty) => {
                             index_access.push((
                                 self.doc_type_lua_rich_in(file_id, key_ty.get_syntax_id()),
-                                self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id()),
+                                value_ty,
                             ));
                         }
                     };
@@ -546,37 +547,27 @@ impl<'db> SemanticModel<'db> {
                     let Some(value_ty) = field.get_type() else {
                         continue;
                     };
+                    let mut value_ty =
+                        self.doc_type_lua_rich_scoped(file_id, value_ty.get_syntax_id(), state);
+                    if field.is_nullable() && !value_ty.is_nullable() {
+                        value_ty = LuaType::from_vec(vec![value_ty, LuaType::Nil]);
+                    }
                     match key {
                         LuaDocObjectFieldKey::Name(name) => {
                             fields.insert(
                                 LuaMemberKey::Name(SmolStr::new(name.get_name_text())),
-                                self.doc_type_lua_rich_scoped(
-                                    file_id,
-                                    value_ty.get_syntax_id(),
-                                    state,
-                                ),
+                                value_ty,
                             );
                         }
                         LuaDocObjectFieldKey::String(str) => {
                             fields.insert(
                                 LuaMemberKey::Name(SmolStr::new(str.get_value())),
-                                self.doc_type_lua_rich_scoped(
-                                    file_id,
-                                    value_ty.get_syntax_id(),
-                                    state,
-                                ),
+                                value_ty,
                             );
                         }
                         LuaDocObjectFieldKey::Integer(num) => {
                             if let NumberResult::Int(i) = num.get_number_value() {
-                                fields.insert(
-                                    LuaMemberKey::Integer(i),
-                                    self.doc_type_lua_rich_scoped(
-                                        file_id,
-                                        value_ty.get_syntax_id(),
-                                        state,
-                                    ),
-                                );
+                                fields.insert(LuaMemberKey::Integer(i), value_ty);
                             }
                         }
                         LuaDocObjectFieldKey::Type(key_ty) => {
@@ -586,11 +577,7 @@ impl<'db> SemanticModel<'db> {
                                     key_ty.get_syntax_id(),
                                     state,
                                 ),
-                                self.doc_type_lua_rich_scoped(
-                                    file_id,
-                                    value_ty.get_syntax_id(),
-                                    state,
-                                ),
+                                value_ty,
                             ));
                         }
                     };

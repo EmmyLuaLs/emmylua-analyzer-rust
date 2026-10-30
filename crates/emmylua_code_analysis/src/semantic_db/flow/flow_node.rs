@@ -96,6 +96,15 @@ pub enum FlowNodeKind {
 
 #[allow(unused)]
 impl FlowNodeKind {
+    /// Statements that replace a declaration's value.
+    pub(crate) fn assignment_syntax(&self) -> Option<emmylua_parser::LuaSyntaxId> {
+        match self {
+            Self::Assignment(ptr) => Some(ptr.get_syntax_id()),
+            Self::ImplFunc(ptr) => Some(ptr.get_syntax_id()),
+            _ => None,
+        }
+    }
+
     pub fn is_branch_label(&self) -> bool {
         matches!(self, FlowNodeKind::BranchLabel)
     }

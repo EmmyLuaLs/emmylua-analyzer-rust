@@ -92,32 +92,30 @@ impl FlowTree {
                     None => unpositioned_branch = true,
                 }
             }
+            if let Some(syntax) = node.kind.assignment_syntax() {
+                let assign_pos = syntax.get_range().start();
+                for effect in node_effects.get(&flow_id).into_iter().flatten() {
+                    match effect {
+                        FlowEffect::AssignDecl { decl, .. } => {
+                            decl_assignments
+                                .entry(decl.clone())
+                                .or_default()
+                                .push((assign_pos, flow_id));
+                        }
+                        FlowEffect::AssignMember { member, .. } => {
+                            member_assignments
+                                .entry(member.clone())
+                                .or_default()
+                                .push((assign_pos, flow_id));
+                        }
+                        _ => {}
+                    }
+                }
+            }
             match &node.kind {
                 FlowNodeKind::Assignment(assign_ptr) => {
                     let range = assign_ptr.get_syntax_id().get_range();
                     assignments.push((range, flow_id));
-                    let assign_pos = range.start();
-                    for effect in node_effects
-                        .get(&flow_id)
-                        .map(|v| v.as_slice())
-                        .unwrap_or(&[])
-                    {
-                        match effect {
-                            FlowEffect::AssignDecl { decl, .. } => {
-                                decl_assignments
-                                    .entry(decl.clone())
-                                    .or_default()
-                                    .push((assign_pos, flow_id));
-                            }
-                            FlowEffect::AssignMember { member, .. } => {
-                                member_assignments
-                                    .entry(member.clone())
-                                    .or_default()
-                                    .push((assign_pos, flow_id));
-                            }
-                            _ => {}
-                        }
-                    }
                 }
                 FlowNodeKind::DeclPosition(pos) => decl_positions.push((*pos, flow_id)),
                 FlowNodeKind::TrueCondition(cond) | FlowNodeKind::FalseCondition(cond) => {
@@ -355,6 +353,17 @@ impl FlowTree {
     /// Whether any assignment to `decl` occurs in the flow tree.
     pub fn has_decl_assignment(&self, decl: &SemanticId) -> bool {
         self.decl_assignments.contains_key(decl)
+    }
+
+    pub(crate) fn decl_assignment_flows(
+        &self,
+        decl: &SemanticId,
+    ) -> impl Iterator<Item = FlowId> + '_ {
+        self.decl_assignments
+            .get(decl)
+            .into_iter()
+            .flatten()
+            .map(|(_, flow_id)| *flow_id)
     }
 
     /// Whether any assignment to `member` occurs in the flow tree.

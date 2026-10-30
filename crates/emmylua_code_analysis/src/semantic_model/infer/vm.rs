@@ -44,8 +44,8 @@ use super::overload::{
 use super::unify;
 use crate::semantic_model::SemanticModel;
 use crate::{
-    GenericParam, LuaAliasCallType, LuaConditionalType, LuaInstanceType, LuaIntersectionType,
-    LuaMappedType, LuaMultiLineUnion,
+    LuaAliasCallType, LuaConditionalType, LuaInstanceType, LuaIntersectionType, LuaMappedType,
+    LuaMultiLineUnion,
 };
 
 /// The operand determines both the index metadata and the stack shape.
@@ -2686,6 +2686,11 @@ impl<'a> InferVm<'a> {
             );
         }
         let generic_tpls = self.generic_tpls_with_metadata(file_id, generic_params);
+        for (_, ty) in &mut params {
+            if let Some(ty) = ty {
+                *ty = bind_signature_generics(ty, &generic_tpls);
+            }
+        }
         ret = bind_signature_generics(&ret, &generic_tpls);
         let async_state = if docs.is_async {
             AsyncState::Async
@@ -4683,6 +4688,8 @@ pub(crate) fn reassign_function_generics_to_func_ids(fun: LuaFunctionType) -> Lu
 /// (recursively through Object structures).
 pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> LuaType {
     match ty {
+        // Conditional `infer` references already have their own scope.
+        LuaType::TplRef(tpl) if tpl.get_tpl_id().is_conditional_infer() => ty.clone(),
         LuaType::TplRef(tpl) => {
             if let Some(generic) = generics.iter().find(|generic| {
                 generic.get_tpl_id() == tpl.get_tpl_id() || generic.get_name() == tpl.get_name()
@@ -4694,19 +4701,8 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
         }
         LuaType::Ref(id) | LuaType::Def(id) => {
             let name = id.get_name();
-            if let Some((index, generic)) = generics
-                .iter()
-                .enumerate()
-                .find(|(_, generic)| generic.get_name() == name)
-            {
-                return LuaType::TplRef(Rc::new(GenericTpl::new(
-                    GenericTplId::Type(index as u32),
-                    SmolStr::new(name),
-                    generic.get_constraint().cloned(),
-                    generic.get_default_type().cloned(),
-                    generic.is_const(),
-                    None,
-                )));
+            if let Some(generic) = generics.iter().find(|generic| generic.get_name() == name) {
+                return LuaType::TplRef(Rc::new(generic.clone()));
             }
             ty.clone()
         }
@@ -4717,31 +4713,36 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .map(|t| bind_signature_generics(t, generics))
                 .collect(),
         ))),
-        LuaType::Mapped(mapped) => LuaType::Mapped(Rc::new(LuaMappedType::new(
-            (
+        LuaType::Mapped(mapped) => {
+            let key = GenericTpl::new(
                 mapped.param.0,
-                GenericParam::new(
-                    mapped.param.1.name.clone(),
-                    mapped
-                        .param
-                        .1
-                        .constraint
-                        .as_ref()
-                        .map(|t| bind_signature_generics(t, generics)),
-                    mapped
-                        .param
-                        .1
-                        .default
-                        .as_ref()
-                        .map(|t| bind_signature_generics(t, generics)),
-                    mapped.param.1.is_const,
-                    mapped.param.1.attributes.clone(),
-                ),
-            ),
-            bind_signature_generics(&mapped.value, generics),
-            mapped.is_readonly,
-            mapped.is_optional,
-        ))),
+                mapped.param.1.name.clone(),
+                mapped
+                    .param
+                    .1
+                    .constraint
+                    .as_ref()
+                    .map(|ty| bind_signature_generics(ty, generics)),
+                mapped
+                    .param
+                    .1
+                    .default
+                    .as_ref()
+                    .map(|ty| bind_signature_generics(ty, generics)),
+                mapped.param.1.is_const,
+                mapped.param.1.attributes.clone(),
+            );
+            // The mapped key shadows an outer name only in the value type.
+            let mut scoped = generics.to_vec();
+            scoped.retain(|generic| generic.get_name() != key.get_name());
+            scoped.push(key.clone());
+            LuaType::Mapped(Rc::new(LuaMappedType::new(
+                (key.get_tpl_id(), key.get_param().clone()),
+                bind_signature_generics(&mapped.value, &scoped),
+                mapped.is_readonly,
+                mapped.is_optional,
+            )))
+        }
         LuaType::Generic(generic) => LuaType::Generic(Rc::new(LuaGenericType::new(
             generic.get_base_type_id(),
             generic
@@ -4783,7 +4784,16 @@ pub(crate) fn bind_signature_generics(ty: &LuaType, generics: &[GenericTpl]) -> 
                 .collect();
             LuaType::Object(Rc::new(LuaObjectType::new_with_fields(
                 fields,
-                object.get_index_access().to_vec(),
+                object
+                    .get_index_access()
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            bind_signature_generics(key, generics),
+                            bind_signature_generics(value, generics),
+                        )
+                    })
+                    .collect(),
             )))
         }
         LuaType::Union(union) => LuaType::Union(Rc::new(LuaUnionType::from_vec(

@@ -350,13 +350,16 @@ pub fn expand_mapped(model: &SemanticModel, mapped: &LuaMappedType) -> Option<Lu
     }
     let mut fields = HashMap::new();
     for (key, key_ty) in keys {
-        let value = eval_mapped_value(
+        let mut value = eval_mapped_value(
             model,
             &mapped.value,
             mapped.param.0,
             mapped.param.1.name.as_str(),
             &key_ty,
         );
+        if mapped.is_optional && !value.is_nullable() {
+            value = LuaType::from_vec(vec![value, LuaType::Nil]);
+        }
         fields.insert(key, value);
     }
     Some(LuaType::Object(Rc::new(LuaObjectType::new_with_fields(
