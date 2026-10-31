@@ -955,4 +955,25 @@ mod tests {
         };
         assert!(content.value.contains("a: integer"), "{}", content.value);
     }
+
+    /// #1318: a field read through `Partial<T>` hovers with `T`'s declaration and docs.
+    #[gtest]
+    fn test_hover_partial_field_keeps_source_docs() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_hover(
+            r#"
+                ---@class Linter
+                ---@field cmd string the command to run
+                ---@field stdin boolean pass content via stdin
+
+                ---@type Partial<Linter>
+                local p = {}
+                print(p.<??>cmd)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) cmd: string?\n```\n\n---\n\nthe command to run".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
