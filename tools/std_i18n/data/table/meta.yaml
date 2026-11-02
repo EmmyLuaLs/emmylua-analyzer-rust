@@ -1,0 +1,63 @@
+v: 2
+f: 'table.lua'
+b:
+- a: 'function table.concat(list, sep, i, j) end'
+  g: 'Given a list where all elements are strings or numbers, returns the string'
+  r: [18, 0, 28, 14]
+  e:
+  - ['tablelib.concat', 'd', doc, [18, 0, 23, 0], 'd53b8e74f0c9c79f']
+- a: 'function table.insert(list, pos, value) end'
+  g: 'Inserts element `value` at position `pos` in `list`, shifting up the'
+  r: [31, 0, 39, 20]
+  e:
+  - ['tablelib.insert', 'd', doc, [31, 0, 36, 0], '5968d875039dd2d7']
+- a: 'function table.move(a1, f, e, t, a2) end'
+  g: '@version >5.3'
+  r: [42, 0, 56, 17]
+  e:
+  - ['tablelib.move', 'd', doc, [43, 0, 50, 0], 'ba705faeea12db6c']
+- a: 'function table.maxn(table) end'
+  g: '@version 5.1, JIT'
+  r: [59, 0, 65, 14]
+  e:
+  - ['tablelib.maxn', 'd', doc, [60, 0, 63, 0], '22e824a2c0c252ca']
+- a: 'function table.remove(list, pos) end'
+  g: 'Removes from `list` the element at position `pos`, returning the value of'
+  r: [68, 0, 81, 13]
+  e:
+  - ['tablelib.remove', 'd', doc, [68, 0, 78, 0], '48d54bbc2bac088e']
+- a: 'function table.sort(list, comp) end'
+  g: 'Sorts list elements in a given order, *in-place*, from `list[1]` to'
+  r: [84, 0, 100, 41]
+  e:
+  - ['tablelib.sort', 'd', doc, [84, 0, 98, 0], 'a33af1aaa85f7025']
+- a: 'function table.unpack(list, i, j) end'
+  g: '@version >5.2, JIT'
+  r: [103, 0, 112, 37]
+  e:
+  - ['tablelib.unpack', 'd', doc, [104, 0, 108, 0], 'e2c56a521bb3756e']
+- a: 'function table.pack(...) end'
+  g: '@version >5.2, JIT'
+  r: [115, 0, 122, 14]
+  e:
+  - ['tablelib.pack', 'd', doc, [116, 0, 119, 0], 'b1194403727f181c']
+- a: 'function table.foreach(list, callback) end'
+  g: '@version 5.1, JIT'
+  r: [125, 0, 134, 15]
+  e:
+  - ['tablelib.foreach', 'd', doc, [126, 0, 130, 0], 'df90280fb5f2d59a']
+- a: 'function table.foreachi(list, callback) end'
+  g: '@version 5.1, JIT'
+  r: [137, 0, 145, 15]
+  e:
+  - ['tablelib.foreachi', 'd', doc, [138, 0, 141, 0], '8f3069cf2a72811a']
+- a: 'function table.getn(list) end'
+  g: '@version 5.1, JIT'
+  r: [148, 0, 157, 15]
+  e:
+  - ['tablelib.getn', 'd', doc, [149, 0, 153, 0], 'af255b207f5674a3']
+- a: 'function table.create(nseq, nrec) end'
+  g: 'Creates a new empty table, preallocating memory. This preallocation may help'
+  r: [160, 0, 168, 14]
+  e:
+  - ['tablelib.create', 'd', doc, [160, 0, 164, 0], 'aeaa8a0b42aeb48d']

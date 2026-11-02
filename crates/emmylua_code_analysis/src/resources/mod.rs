@@ -21,10 +21,10 @@ pub fn load_resource_std(
         } else {
             PathBuf::from(&create_resources_dir)
         };
-        // i18n resources exist; switch to the std dir for the current locale.
-        let std_dir = get_std_dir(&resource_path);
         let result = load_resource_from_file_system(&resource_path);
         if let Some(mut files) = result {
+            // i18n resources exist; switch to the std dir for the current locale.
+            let std_dir = get_std_dir(&resource_path);
             if !is_jit {
                 remove_jit_resource(&mut files);
             }
@@ -78,7 +78,6 @@ fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
 }
 
 fn load_resource_from_file_system(resources_dir: &Path) -> Option<Vec<LuaFileInfo>> {
-    // LSP i18n resources were written to the filesystem earlier in crates\emmylua_ls\src\handlers\initialized\std_i18n.rs.
     if check_need_dump_to_file_system() {
         log::info!("Creating resources dir: {:?}", resources_dir);
         let files = load_resource_from_include_dir();

@@ -16,6 +16,13 @@ repos:
         language: system
         files: ^tools/schema_json_gen/src/main\.rs$
         pass_filenames: false
+      - id: std-i18n
+        name: regenerate std i18n resources
+        description: regenerate tools/std_i18n data and resources/std-zh_CN
+        entry: cargo run --package std_i18n
+        language: system
+        files: ^(crates/emmylua_code_analysis/resources/std/|tools/std_i18n/)
+        pass_filenames: false
       - id: prettier
         name: prettier
         entry: prettier
@@ -28,9 +35,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: '^crates/emmylua_ls/std_i18n/.*\.yaml$'
+        exclude: '^tools/std_i18n/data/.*\.yaml$'
       - id: end-of-file-fixer
-        exclude: '^crates/emmylua_ls/std_i18n/.*\.yaml$'
+        exclude: '^tools/std_i18n/data/.*\.yaml$'
       - id: fix-byte-order-marker
       - id: mixed-line-ending
         args: [--fix=lf]

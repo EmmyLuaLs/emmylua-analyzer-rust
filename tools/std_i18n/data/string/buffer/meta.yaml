@@ -1,0 +1,112 @@
+v: 2
+f: 'string/buffer.lua'
+b:
+- a: 'local buffer = {}'
+  g: '@version JIT'
+  r: [4, 0, 119, 464]
+  e:
+  - ['buffer', 'd', doc, [5, 0, 52, 0], 'c50aaa2e382f7351']
+- a: 'local buf = {}'
+  g: 'A buffer object is a garbage-collected Lua object. After creation with `buffer.new()`, it can (and should) be reused for many operations. When the last reference to a buffer object is gone, it will eventually be freed by the garbage collector, along with the allocated buffer space.'
+  r: [122, 0, 131, 31]
+  e:
+  - ['buf', 'd', doc, [122, 0, 130, 0], 'b876ec9e1fe5d76e']
+- a: '--- Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.'
+  g: 'A string, number, or any object obj with a __tostring metamethod to the buffer.'
+  r: [134, 0, 136, 53]
+  e:
+  - ['string.buffer.data', 'd', doc, [134, 0, 136, 0], '4921c42ac9b4e6ba']
+- a: 'function buf:put(data, ...) end'
+  g: 'Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.'
+  r: [138, 0, 144, 25]
+  e:
+  - ['buf.put', 'd', doc, [138, 0, 142, 0], '6759e329f138d41c']
+- a: 'function buf:putf(format, ...) end'
+  g: 'Appends the formatted arguments to the buffer. The format string supports the same options as string.format().'
+  r: [147, 0, 151, 25]
+  e:
+  - ['buf.putf', 'd', doc, [147, 0, 149, 0], '134720a52ebbce50']
+- a: 'function buf:putcdata(cdata, len) end'
+  g: 'Appends the given len number of bytes from the memory pointed to by the FFI cdata object to the buffer. The object needs to be convertible to a (constant) pointer.'
+  r: [154, 0, 158, 25]
+  e:
+  - ['buf.putcdata', 'd', doc, [154, 0, 156, 0], '8d9ba1e277b6ffd1']
+- a: 'function buf:set(str) end'
+  g: 'This method allows zero-copy consumption of a string or an FFI cdata object as a buffer. It stores a reference to the passed string str or the FFI cdata object in the buffer. Any buffer space originally allocated is freed. This is not an append operation, unlike the `buf:put*()` methods.'
+  r: [161, 0, 171, 86]
+  e:
+  - ['buf.set', 'd', doc, [161, 0, 169, 0], 'baf4bbe32512a07f']
+- a: 'function buf:reset() end'
+  g: 'Reset (empty) the buffer. The allocated buffer space is not freed and may be reused.'
+  r: [174, 0, 175, 25]
+  e:
+  - ['buf.reset', 'd', doc, [174, 0, 175, 0], '6383ef1d75c1fbd4']
+- a: 'function buf:free() end'
+  g: 'The buffer space of the buffer object is freed. The object itself remains intact, empty and may be reused.'
+  r: [178, 0, 180, 222]
+  e:
+  - ['buf.free', 'd', doc, [178, 0, 180, 222], 'b79f21749a622ecf']
+- a: 'function buf:reserve(size) end'
+  g: 'The reserve method reserves at least size bytes of write space in the buffer. It returns an uint8_t * FFI cdata pointer ptr that points to this space.'
+  r: [183, 0, 203, 90]
+  e:
+  - ['buf.reserve', 'd', doc, [183, 0, 201, 0], '5b5a385de244ace2']
+  - ['buf.reserve.return.1', 'r:1', tail, [202, 27, 202, 85], '606a76765af0a5fe']
+  - ['buf.reserve.return.2', 'r:2', tail, [203, 27, 203, 90], 'd32adfadef7993c7']
+- a: 'function buf:commit(used) end'
+  g: 'Appends the used bytes of the previously returned write space to the buffer data.'
+  r: [206, 0, 208, 25]
+  e:
+  - ['buf.commit', 'd', doc, [206, 0, 207, 0], '6f6b683663e06a74']
+- a: 'function buf:skip(len) end'
+  g: 'Skips (consumes) len bytes from the buffer up to the current length of the buffer data.'
+  r: [211, 0, 213, 25]
+  e:
+  - ['buf.skip', 'd', doc, [211, 0, 212, 0], '2baf988594a98193']
+- a: 'function buf:get(len, ...) end'
+  g: 'Consumes the buffer data and returns one or more strings. If called without arguments, the whole buffer data is consumed. If called with a number, up to `len` bytes are consumed. A `nil` argument consumes the remaining buffer space (this only makes sense as the last argument). Multiple arguments consume the buffer data in the given order.'
+  r: [216, 0, 222, 22]
+  e:
+  - ['buf.get', 'd', doc, [216, 0, 220, 0], 'b695a85360eb9976']
+- a: 'function buf:tostring() end'
+  g: 'Creates a string from the buffer data, but doesn''t consume it. The buffer remains unchanged.'
+  r: [225, 0, 228, 18]
+  e:
+  - ['buf.tostring', 'd', doc, [225, 0, 228, 0], 'be09e35cc640a966']
+- a: 'function buf:ref() end'
+  g: 'Returns an uint8_t * FFI cdata pointer ptr that points to the buffer data. The length of the buffer data in bytes is returned in len.'
+  r: [231, 0, 250, 94]
+  e:
+  - ['buf.ref', 'd', doc, [231, 0, 249, 0], 'ec59ac6395339033']
+  - ['buf.ref.return.1', 'r:1', tail, [249, 27, 249, 91], '14518ff520084405']
+  - ['buf.ref.return.2', 'r:2', tail, [250, 27, 250, 94], '71b35f4504ca8538']
+- a: 'function buf:encode(obj) end'
+  g: 'Serializes (encodes) the Lua object to the buffer'
+  r: [253, 0, 257, 25]
+  e:
+  - ['buf.encode', 'd', doc, [253, 0, 256, 0], 'a38b8742aae7dbe7']
+- a: 'function buf:decode() end'
+  g: 'De-serializes one object from the buffer.'
+  r: [260, 0, 270, 38]
+  e:
+  - ['buf.decode', 'd', doc, [260, 0, 270, 0], '4e30c26d847cb8a9']
+- a: 'function buffer.encode(obj) end'
+  g: 'Serializes (encodes) the Lua object obj'
+  r: [273, 0, 277, 18]
+  e:
+  - ['buffer.encode', 'd', doc, [273, 0, 276, 0], 'cc0765fe93da76b2']
+- a: 'function buffer.decode(str) end'
+  g: 'De-serializes (decodes) the string to a Lua object'
+  r: [280, 0, 290, 38]
+  e:
+  - ['buffer.decode', 'd', doc, [280, 0, 289, 0], '33e0c0c0e0812524']
+- a: 'function buffer.new(size, options) end'
+  g: 'Creates a new buffer object.'
+  r: [293, 0, 301, 25]
+  e:
+  - ['buffer.new', 'd', doc, [293, 0, 299, 0], '570e5bee37744a67']
+- a: 'return buffer'
+  g: 'Serialization Options'
+  r: [304, 0, 337, 28]
+  e:
+  - ['string.buffer.serialization.opts', 'd', doc, [304, 0, 335, 0], 'e021fbee65992fe5']

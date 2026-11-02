@@ -1,0 +1,185 @@
+v: 2
+f: 'math.lua'
+b:
+- a: 'function math.abs(x) end'
+  g: 'Returns the maximum value between `x` and `-x`. (integer/float)'
+  r: [18, 0, 22, 18]
+  e:
+  - ['mathlib.abs', 'd', doc, [18, 0, 20, 0], 'fd5c3975077d71f8']
+- a: 'function math.acos(x) end'
+  g: 'Returns the arc cosine of `x` (in radians).'
+  r: [25, 0, 28, 18]
+  e:
+  - ['mathlib.acos', 'd', doc, [25, 0, 27, 0], 'a5dd11d2e52d92bb']
+- a: 'function math.asin(x) end'
+  g: 'Returns the arc sine of `x` (in radians).'
+  r: [31, 0, 34, 18]
+  e:
+  - ['mathlib.asin', 'd', doc, [31, 0, 33, 0], 'a66e0fb56f556f39']
+- a: 'function math.atan(y, x) end'
+  g: 'Returns the arc tangent of `y/x` (in radians), but uses the signs of both'
+  r: [37, 0, 46, 18]
+  e:
+  - ['mathlib.atan', 'd', doc, [37, 0, 44, 0], 'eb7d38ca6a36d7e4']
+- a: 'function math.ceil(x) end'
+  g: 'Returns the smallest integer larger than or equal to `x`.'
+  r: [49, 0, 52, 19]
+  e:
+  - ['mathlib.ceil', 'd', doc, [49, 0, 51, 0], '27f3c017a9d3c924']
+- a: 'function math.cos(x) end'
+  g: 'Returns the cosine of `x` (assumed to be in radians).'
+  r: [55, 0, 58, 18]
+  e:
+  - ['mathlib.cos', 'd', doc, [55, 0, 57, 0], '3dcf75884877dfdf']
+- a: 'function math.deg(x) end'
+  g: 'Converts the angle `x` from radians to degrees.'
+  r: [61, 0, 64, 18]
+  e:
+  - ['mathlib.deg', 'd', doc, [61, 0, 63, 0], 'f054a9819e67ad41']
+- a: 'function math.exp(x) end'
+  g: 'Returns the value *e^x* (where e is the base of natural logarithms).'
+  r: [67, 0, 70, 18]
+  e:
+  - ['mathlib.exp', 'd', doc, [67, 0, 69, 0], '0ba32fcbfe06e7ac']
+- a: 'function math.floor(x) end'
+  g: 'Returns the largest integer smaller than or equal to `x`.'
+  r: [73, 0, 76, 19]
+  e:
+  - ['mathlib.floor', 'd', doc, [73, 0, 75, 0], '0217672176f9061c']
+- a: 'function math.fmod(x, y) end'
+  g: 'Returns the remainder of the division of `x` by `y` that rounds the'
+  r: [79, 0, 84, 18]
+  e:
+  - ['mathlib.fmod', 'd', doc, [79, 0, 82, 0], 'af18ff844942e1a1']
+- a: 'math.huge = nil'
+  g: 'The float value `HUGE_VAL`, a value larger than any other numeric value.'
+  r: [87, 0, 90, 16]
+  e:
+  - ['mathlib.huge', 'd', doc, [87, 0, 90, 0], 'b6cee43c3c9752e4']
+- a: 'function math.log(x, base) end'
+  g: 'Returns the logarithm of `x` in the given base. The default for `base` is'
+  r: [93, 0, 98, 18]
+  e:
+  - ['mathlib.log', 'd', doc, [93, 0, 96, 0], '4c3d322fa253de6d']
+- a: 'function math.max(x, ...) end'
+  g: 'Returns the argument with the maximum value, according to the Lua operator'
+  r: [101, 0, 107, 18]
+  e:
+  - ['mathlib.max', 'd', doc, [101, 0, 104, 0], '03a9e9e4fef2c659']
+- a: 'math.maxinteger = nil'
+  g: '@version >5.3'
+  r: [110, 0, 113, 17]
+  e:
+  - ['mathlib.maxinteger', 'd', doc, [111, 0, 113, 0], '28ba2ba24ff4a272']
+- a: 'function math.min(x, ...) end'
+  g: 'Returns the argument with the minimum value, according to the Lua operator'
+  r: [116, 0, 122, 18]
+  e:
+  - ['mathlib.min', 'd', doc, [116, 0, 119, 0], 'b3b85d0ea6475cef']
+- a: 'math.mininteger = nil'
+  g: '@version >5.3'
+  r: [125, 0, 128, 17]
+  e:
+  - ['mathlib.mininteger', 'd', doc, [126, 0, 128, 0], 'a57b428c91d0e758']
+- a: 'function math.modf(x) end'
+  g: 'Returns the integral part of `x` and the fractional part of `x`. Its second'
+  r: [131, 0, 136, 18]
+  e:
+  - ['mathlib.modf', 'd', doc, [131, 0, 134, 0], '91b7162d1bad4494']
+- a: 'math.pi = 3.1415'
+  g: 'The value of π.'
+  r: [139, 0, 140, 20]
+  e:
+  - ['mathlib.pi', 'd', doc, [139, 0, 140, 20], 'a3cd679841b59bc3']
+- a: 'function math.rad(x) end'
+  g: 'Converts the angle `x` from degrees to radians.'
+  r: [143, 0, 146, 18]
+  e:
+  - ['mathlib.rad', 'd', doc, [143, 0, 145, 0], 'd221083d438800ff']
+- a: 'function math.random(m, n) end'
+  g: 'When called without arguments, returns a pseudo-random float with uniform'
+  r: [149, 0, 159, 19]
+  e:
+  - ['mathlib.random', 'd', doc, [149, 0, 155, 0], 'b1cc3cd05011681a']
+- a: 'function math.randomseed(x) end'
+  g: 'Sets `x` as the "seed" for the pseudo-random generator: equal seeds'
+  r: [162, 0, 164, 20]
+  e:
+  - ['mathlib.randomseed@@1', 'd', doc, [162, 0, 164, 0], '40ab75a8c75f43ca']
+- a: 'function math.randomseed(x, y) end'
+  g: '@version > 5.4'
+  r: [167, 0, 181, 28]
+  e:
+  - ['mathlib.randomseed@>5.4', 'd', doc, [168, 0, 179, 0], '27175c00274bc801']
+- a: 'function math.sin(x)'
+  g: 'Returns the sine of `x` (assumed to be in radians).'
+  r: [184, 0, 187, 18]
+  e:
+  - ['mathlib.sin', 'd', doc, [184, 0, 186, 0], 'f3156b9eee524b75']
+- a: 'function math.sqrt(x)'
+  g: 'Returns the square root of `x`. (You can also use the expression `x^0.5` to'
+  r: [192, 0, 196, 18]
+  e:
+  - ['mathlib.sqrt', 'd', doc, [192, 0, 195, 0], '9c47f0e74f561c41']
+- a: 'function math.tan(x)'
+  g: 'Returns the tangent of `x` (assumed to be in radians).'
+  r: [201, 0, 204, 18]
+  e:
+  - ['mathlib.tan', 'd', doc, [201, 0, 203, 0], '4e92d05f5d7eea2f']
+- a: 'function math.tointeger(x) end'
+  g: '@version >5.3'
+  r: [209, 0, 214, 20]
+  e:
+  - ['mathlib.tointeger', 'd', doc, [210, 0, 213, 0], 'e006425ac24cd772']
+- a: 'function math.type(x) end'
+  g: '@version >5.3'
+  r: [217, 0, 222, 33]
+  e:
+  - ['mathlib.type', 'd', doc, [218, 0, 221, 0], '963bb5a28f874620']
+- a: 'function math.ult(m, n) end'
+  g: '@version >5.3'
+  r: [225, 0, 231, 19]
+  e:
+  - ['mathlib.ult', 'd', doc, [226, 0, 229, 0], '2fa6304df1df9a20']
+- a: 'function math.pow(x, y) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [234, 0, 239, 18]
+  e:
+  - ['mathlib.pow', 'd', doc, [235, 0, 237, 0], '42724ba1a56090e7']
+  - ['mathlib.pow.param.x', 'p:x', tail, [237, 20, 237, 28], 'fa1421b96f3eabc1']
+  - ['mathlib.pow.param.y', 'p:y', tail, [238, 20, 238, 32], '5e06156f6c04648b']
+- a: 'function math.atan2(y, x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [242, 0, 251, 18]
+  e:
+  - ['mathlib.atan2', 'd', doc, [243, 0, 249, 0], '97077dd764611e12']
+- a: 'function math.log10(x) end'
+  g: '@version 5.1, JIT'
+  r: [254, 0, 258, 18]
+  e:
+  - ['mathlib.log10', 'd', doc, [255, 0, 257, 0], '7eeb848cac8c5c80']
+- a: 'function math.cosh(x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [261, 0, 265, 18]
+  e:
+  - ['mathlib.cosh', 'd', doc, [262, 0, 264, 0], '3f0d7a29939c3308']
+- a: 'function math.sinh(x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [268, 0, 272, 18]
+  e:
+  - ['mathlib.sinh', 'd', doc, [269, 0, 271, 0], '16630a06699d002a']
+- a: 'function math.tanh(x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [275, 0, 279, 18]
+  e:
+  - ['mathlib.tanh', 'd', doc, [276, 0, 278, 0], '05129308e84b8d36']
+- a: 'function math.frexp(x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [282, 0, 287, 27]
+  e:
+  - ['mathlib.frexp', 'd', doc, [283, 0, 286, 0], '03448afbb8de9e62']
+- a: 'function math.ldexp(m, e) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [290, 0, 295, 18]
+  e:
+  - ['mathlib.ldexp', 'd', doc, [291, 0, 293, 0], 'fdabbcfb70f65661']

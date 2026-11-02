@@ -137,33 +137,30 @@
 --- @class deprecated: Attribute
 --- @overload fun(message?: string)
 
+--- 语言服务器优化项。
 ---
---- Language Server Optimization Items.
+--- ### 参数
 ---
---- Parameters:
---- - `delayed_definition`: Indicates that the type of the variable is determined by the first assignment.
----    Only valid for `local` declarations with no initial value.
+--- - `delayed_definition`: 表示变量类型由第一次赋值决定，仅对没有初始值的 `local` 声明有效。
 --- @class lsp_optimization: Attribute
 --- @overload fun(code: "delayed_definition")
 
+--- 为 `[int]` 字段设置一个字符串别名，这个别名仅在 `hint` 与 `completion` 中生效。
 ---
---- Index field alias, will be displayed in `hint` and `completion`.
----
---- Receives a string parameter for the alias name.
+--- 接收一个字符串参数作为别名名称。
 --- @class index_alias: Attribute
 --- @overload fun(name: string)
 
+--- 用于指定类的默认构造函数。
+--- 此属性必须应用于函数参数，且函数参数类型必须是字符串模板泛型。
 ---
---- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
---- used to specify the default constructor of a class.
+--- ### 参数
 ---
---- Parameters:
---- - `name`: The name of the method as a constructor.
---- - `root_class`: Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
---- - `strip_self`: Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
---- - `return_mode`: Constructor return strategy. `"self"` forces `self`, `"doc"` uses the documented return type,
----                 and `"default"` prefers the documented return type and falls back to `self`.
----                 Defaults to `"default"`
+--- - `name`: 作为构造函数的方法名。
+--- - `root_class`: 用于标记根类，以本特性创建的类会隐式继承此类，例如 C# 中的 `System.Object`。默认为空。
+--- - `strip_self`: 调用构造函数时是否可以省略 `self` 参数，默认为 `true`。
+--- - `return_mode`: 构造函数返回策略。`"self"` 强制返回 `self`，`"doc"` 使用注解的返回类型，
+--- `"default"` 优先使用注解的返回类型，并在没有声明注解时回退到 `self`。默认为 `"default"`。
 --- @class constructor: Attribute
 --- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self" | "doc" | "default")
 

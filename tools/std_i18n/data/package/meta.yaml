@@ -1,0 +1,48 @@
+v: 2
+f: 'package.lua'
+b:
+- a: 'package.config = [['
+  g: 'A string describing some compile-time configurations for packages. This'
+  r: [18, 0, 31, 43]
+  e:
+  - ['packagelib.config', 'd', doc, [18, 0, 31, 43], '0ff3e65a205705c3']
+- a: 'package.cpath = ""'
+  g: 'The path used by `require` to search for a C loader.'
+  r: [39, 0, 45, 16]
+  e:
+  - ['packagelib.cpath', 'd', doc, [39, 0, 45, 16], '3a906cf99c83cff4']
+- a: 'package.loaded = {}'
+  g: 'A table used by `require` to control which modules are already'
+  r: [48, 0, 54, 55]
+  e:
+  - ['packagelib.loaded', 'd', doc, [48, 0, 54, 55], 'e6028a784835c581']
+- a: 'function package.loadlib(libname, funcname) end'
+  g: 'Dynamically links the host program with the C library `libname`.'
+  r: [57, 0, 78, 30]
+  e:
+  - ['packagelib.loadlib', 'd', doc, [57, 0, 76, 0], '40fae44e79614e3b']
+- a: 'package.path = ""'
+  g: 'The path used by `require` to search for a Lua loader.'
+  r: [81, 0, 88, 21]
+  e:
+  - ['packagelib.path', 'd', doc, [81, 0, 88, 21], '8c297cdb5caeedc7']
+- a: 'package.preload = {}'
+  g: 'A table to store loaders for specific modules (see `require`).'
+  r: [91, 0, 95, 55]
+  e:
+  - ['packagelib.preload', 'd', doc, [91, 0, 95, 55], 'e2e9d0fd82f3f4f6']
+- a: 'package.searchers = {}'
+  g: '@version >5.2'
+  r: [101, 0, 144, 46]
+  e:
+  - ['packagelib.searchers', 'd', doc, [102, 0, 144, 46], '0360eb19a0f8f67d']
+- a: 'function package.searchpath(name, path, sep, rep) end'
+  g: '@version >5.2, JIT'
+  r: [147, 0, 170, 36]
+  e:
+  - ['packagelib.searchpath', 'd', doc, [148, 0, 165, 0], 'f3760126fe89a214']
+- a: 'function package.seeall(module) end'
+  g: '@version 5.1, JIT'
+  r: [173, 0, 177, 23]
+  e:
+  - ['packagelib.seeall', 'd', doc, [174, 0, 177, 0], 'fdd856db4eed5042']

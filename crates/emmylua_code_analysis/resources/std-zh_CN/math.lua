@@ -132,8 +132,7 @@ function math.rad(x) end
 --- @return integer
 function math.random(m, n) end
 
---- Sets `x` as the "seed" for the pseudo-random generator: equal seeds
---- produce equal sequences of numbers.
+--- 将 `x` 设置为伪随机生成器的“种子”：相同的种子产生相同的数字序列。
 --- @param x integer
 function math.randomseed(x) end
 
