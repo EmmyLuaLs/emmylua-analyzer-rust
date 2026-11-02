@@ -281,4 +281,45 @@ mod tests {
         let ty = ws.expr_ty("require('b').get()");
         assert_eq!(ws.humanize_type(ty), "integer");
     }
+
+    /// A generic factory in another file: the call's shell does not bind the callee's `V`, so a
+    /// local holding the result must not read as `Box<V>` with `V` a stray name.
+    #[test]
+    fn test_cross_file_generic_factory_does_not_leak_its_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "box.lua",
+            r#"
+            ---@class Box<T>
+            ---@field v T
+            local Box = {}
+            ---@generic V
+            ---@param v V
+            ---@return Box<V>
+            function Box.from(v) return setmetatable({ v = v }, { __index = Box }) end
+            return Box
+        "#,
+        );
+        // The shell is what a caller falls back to when the VM cannot type the call (luagnd's
+        // `Seq.from`), so check the shell itself.
+        let file_id = ws.def_file(
+            "use.lua",
+            "local Box = require 'box'\nlocal b = Box.from(1)\n",
+        );
+        let model = ws.analysis.semantic_model(file_id);
+        let decl = model
+            .file_facts()
+            .expect("facts")
+            .decls
+            .iter()
+            .find(|d| d.name == "b")
+            .expect("decl b")
+            .id
+            .clone();
+        let shell = model.analysis().decl_type(file_id, decl).expect("shell");
+        assert!(
+            !format!("{shell:?}").contains("Generic(\"V\")"),
+            "leaked the callee's generic: {shell:?}"
+        );
+    }
 }

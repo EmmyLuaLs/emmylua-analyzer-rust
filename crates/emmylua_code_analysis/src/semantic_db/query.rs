@@ -3672,6 +3672,21 @@ fn substitute_generics(
                     fun.is_variadic,
                 ));
             }
+            // `Box<V>`: the instance's arguments name the generics too.
+            TypeCandidate::GenericInstance(instance) => {
+                out.merge(&TypeShell {
+                    candidates: vec![TypeCandidate::GenericInstance(Arc::new(
+                        super::types::GenericInstanceRef {
+                            name: instance.name.clone(),
+                            args: instance
+                                .args
+                                .iter()
+                                .map(|arg| substitute_generics(arg, params, args))
+                                .collect(),
+                        },
+                    ))],
+                });
+            }
             _ => out.merge(&TypeShell {
                 candidates: vec![candidate.clone()],
             }),
