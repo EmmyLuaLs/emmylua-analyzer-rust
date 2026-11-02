@@ -26,7 +26,7 @@ pub fn generate_type_markdown(fixture_name: &str, source: &str, type_name: &str)
         .unwrap_or_else(|err| panic!("read type page {}: {err}", page.display()))
 }
 
-fn generate_fixture(fixture_name: &str, source: &str) -> PathBuf {
+pub fn generate_fixture(fixture_name: &str, source: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(fixture_name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create fixture dir");
