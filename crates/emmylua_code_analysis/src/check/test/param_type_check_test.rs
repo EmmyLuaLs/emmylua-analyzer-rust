@@ -1443,6 +1443,75 @@ mod test {
     }
 
     #[test]
+    fn test_protected_call_sync_callback_with_vararg_alias() {
+        for declaration in [
+            "---@alias OnTimer fun(timer: Timer, ...)",
+            r#"
+            ---@alias TimerCallback fun(timer: Timer, ...)
+            ---@alias OnTimer TimerCallback
+            "#,
+            r#"
+            ---@alias Callback<T> fun(value: T, ...)
+            ---@alias OnTimer Callback<Timer>
+            "#,
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!(
+                    r#"
+                    ---@class Timer
+                    {declaration}
+                    ---@type OnTimer
+                    local on_timer
+                    ---@type Timer
+                    local timer
+                    local protected = pcall
+                    xpcall(on_timer)
+                    pcall(on_timer, timer, 1, 'text')
+                    protected(on_timer, timer, 1, 'text')
+                    xpcall(on_timer, tostring, timer, 1, 'text')
+                    "#
+                ),
+            );
+
+            assert!(diagnostics.is_empty(), "{declaration}: {diagnostics:?}");
+        }
+    }
+
+    #[test]
+    fn test_protected_call_sync_callback_checks_vararg_tail() {
+        for call in [
+            "xpcall(on_timer, tostring, timer, 1, 'wrong')",
+            "protected(on_timer, timer, 1, 'wrong')",
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!(
+                    r#"
+                    ---@class Timer
+                    ---@alias OnTimer fun(timer: Timer, ...: number)
+                    ---@type OnTimer
+                    local on_timer
+                    ---@type Timer
+                    local timer
+                    local protected = pcall
+                    pcall(on_timer, timer, 1, 2, 3)
+                    protected(on_timer, timer, 1, 2, 3)
+                    xpcall(on_timer, tostring, timer, 1, 2, 3)
+                    {call}
+                    "#
+                ),
+            );
+
+            assert_eq!(diagnostics.len(), 1, "{call}: {diagnostics:?}");
+            assert!(diagnostics[0].message.contains("number"), "{diagnostics:?}");
+            assert!(diagnostics[0].message.contains("wrong"), "{diagnostics:?}");
+        }
+    }
+
+    #[test]
     fn test_issue_75() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
