@@ -227,4 +227,58 @@ mod tests {
         let required = "local reg = require 'reg'\nreg.out.to = function(line) return line end\n";
         assert_eq!(param_type(&mut ws, "r.lua", required), "string");
     }
+
+    /// An undocumented function that forwards a call into a `require`d module returns what that
+    /// call returns, seen from any file: `delay` forwards `sleep`, which forwards `suspend`.
+    #[test]
+    fn test_cross_file_forwarded_variadic_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "susp.lua",
+            "local S = {}\n---@return integer ...\nfunction S.suspend() return 1 end\nreturn S\n",
+        );
+        ws.def_file(
+            "slp.lua",
+            "local susp = require 'susp'\nlocal V = {}\nfunction V.sleep() return susp.suspend() end\nreturn V\n",
+        );
+        ws.def_file(
+            "dly.lua",
+            "local slp = require 'slp'\nlocal D = {}\nfunction D.delay() return slp.sleep() end\nreturn D\n",
+        );
+        let ty = ws.expr_ty("require('dly').delay()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
+
+    /// The same forward, typed: a caller in a third file sees the forwarded `integer`.
+    #[test]
+    fn test_cross_file_forwarded_call_return_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "one.lua",
+            "local O = {}\n---@return integer\nfunction O.get() return 1 end\nreturn O\n",
+        );
+        ws.def_file(
+            "fwd.lua",
+            "local one = require 'one'\nlocal F = {}\nfunction F.get() return one.get() end\nreturn F\n",
+        );
+        let ty = ws.expr_ty("require('fwd').get()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
+
+    /// A forward through a value of a class from another file: `o:get()` is found on `A`, the
+    /// prefix's type, not on the local `o`.
+    #[test]
+    fn test_cross_file_forwarded_call_on_class_value() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            "---@class A\nlocal A = {}\n---@return A\nfunction A.new() return setmetatable({}, { __index = A }) end\n---@return integer\nfunction A:get() return 1 end\nreturn A\n",
+        );
+        ws.def_file(
+            "b.lua",
+            "local A = require 'a'\nlocal B = {}\nfunction B.get() local o = A.new() return o:get() end\nreturn B\n",
+        );
+        let ty = ws.expr_ty("require('b').get()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
 }
