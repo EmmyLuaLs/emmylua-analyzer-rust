@@ -62,6 +62,37 @@ mod tests {
         assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 0);
     }
 
+    /// 文件级 disable 不带 code 时应压制整个文件的全部诊断, 而非个别 code
+    #[test]
+    fn test_file_level_disable_all_codes() {
+        let body = r#"local unused_local = 1
+local a = missing_global
+---@param s string
+local function f(s) end
+f(1)
+local b = a .. "x""#;
+        let baseline = check_source(body);
+        assert!(!baseline.is_empty(), "diagnostics: {baseline:#?}");
+
+        let diags = check_source(&format!("---@diagnostic disable\n{body}"));
+        assert!(diags.is_empty(), "diagnostics: {diags:#?}");
+    }
+
+    /// 文件级 disable 全部后再 enable 全部应恢复诊断
+    #[test]
+    fn test_file_level_disable_all_then_enable_all() {
+        let diags = check_source(
+            r#"---@diagnostic disable
+---@diagnostic enable
+local a = missing_global"#,
+        );
+        assert_eq!(
+            count_by_code(&diags, DiagnosticCode::UndefinedGlobal),
+            1,
+            "diagnostics: {diags:#?}"
+        );
+    }
+
     /// File-level `---@diagnostic enable: undefined-global` overrides a global config disable.
     #[test]
     fn test_file_level_enable_overrides_config() {
