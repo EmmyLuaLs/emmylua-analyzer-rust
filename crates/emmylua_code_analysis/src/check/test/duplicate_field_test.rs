@@ -318,4 +318,21 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn test_setting_a_nil_field_of_a_required_module_is_not_duplicate() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "reg.lua",
+            "local M = { a = { to = nil }, b = { to = nil } }\nreturn M\n",
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::DuplicateSetField,
+            r#"
+            local reg = require("reg")
+            reg.a.to = function() end
+            reg.b.to = function() end
+        "#
+        ));
+    }
 }

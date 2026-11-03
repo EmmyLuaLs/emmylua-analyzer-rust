@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaSyntaxId, LuaSyntaxNode,
-    LuaVarExpr, PathTrait,
+    LuaSyntaxTree, LuaVarExpr, PathTrait,
 };
 
 use crate::DiagnosticCode;
@@ -33,7 +33,8 @@ impl Checker for DuplicateFieldChecker {
         let Some(facts) = semantic_model.file_facts() else {
             return;
         };
-        let root = semantic_model.syntax_tree().map(|tree| tree.get_red_root());
+        let tree = semantic_model.syntax_tree();
+        let root = tree.map(|tree| tree.get_red_root());
         if let Some(root) = &root {
             check_cross_file_member_assign(context, semantic_model, root);
         }
@@ -88,7 +89,7 @@ impl Checker for DuplicateFieldChecker {
                     }
                     let all_function = dupes
                         .iter()
-                        .all(|member| is_function_like(semantic_model, member));
+                        .all(|member| is_function_like(semantic_model, tree, member));
                     // `@field a fun()` may be declared repeatedly (function overloads);
                     // ordinary repeated non-function field writes are also intentional
                     // (for example a global config table assigning the same key twice).
@@ -151,9 +152,11 @@ fn check_cross_file_member_assign(
             let Some(module_facts) = semantic_model.file_facts_of(module_file) else {
                 continue;
             };
+            // A field set to `nil` in the module (`{ to = nil }`) holds no function to reimplement.
+            let module_tree = semantic_model.syntax_tree_of(module_file);
             if !module_facts
                 .members_named(resolved.name.as_str())
-                .any(|member| member.value_syntax.is_some())
+                .any(|member| is_function_like(semantic_model, module_tree, member))
             {
                 continue;
             }
@@ -217,10 +220,15 @@ fn set_table_path(root: &LuaSyntaxNode, member: &Member) -> Option<String> {
     }
 }
 
-/// Whether a member resolves to a function or has a closure value.
-fn is_function_like(semantic_model: &SemanticModel<'_>, member: &Member) -> bool {
+/// Whether a member resolves to a function or has a closure value. `tree` is the syntax tree of
+/// the file declaring `member`.
+fn is_function_like(
+    semantic_model: &SemanticModel<'_>,
+    tree: Option<&LuaSyntaxTree>,
+    member: &Member,
+) -> bool {
     if let Some(value_syntax) = member.value_syntax
-        && let Some(tree) = semantic_model.syntax_tree()
+        && let Some(tree) = tree
         && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
         && LuaClosureExpr::cast(node).is_some()
     {
