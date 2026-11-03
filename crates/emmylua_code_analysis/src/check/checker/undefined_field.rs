@@ -25,7 +25,7 @@ use super::{CheckContext, Checker};
 pub struct UndefinedFieldChecker;
 
 impl Checker for UndefinedFieldChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::UndefinedField];
+    const CODES: &[DiagnosticCode] = &[DiagnosticCode::UndefinedField, DiagnosticCode::InjectField];
 
     fn check(context: &mut CheckContext<'_>, semantic_model: &SemanticModel<'_>) {
         let Some(tree) = semantic_model.syntax_tree() else {
@@ -43,12 +43,47 @@ fn check_index(
     semantic_model: &SemanticModel<'_>,
     index_expr: &LuaIndexExpr,
 ) {
+    if let Some(inferred) =
+        crate::semantic_model::inferred_table::access(semantic_model, index_expr)
+    {
+        let is_write = index_expr.syntax().parent().is_some_and(|parent| {
+            emmylua_parser::LuaAssignStat::cast(parent.clone()).is_some_and(|stat| {
+                stat.get_var_and_expr_list()
+                    .0
+                    .iter()
+                    .any(|var| var.get_syntax_id() == index_expr.get_syntax_id())
+            }) || emmylua_parser::LuaFuncStat::cast(parent).is_some_and(|stat| {
+                stat.get_func_name()
+                    .is_some_and(|name| name.get_syntax_id() == index_expr.get_syntax_id())
+            })
+        });
+        let valid = if is_write {
+            inferred.write_targets().is_some()
+        } else {
+            inferred.has_field()
+        };
+        if !valid {
+            let key = index_expr.get_index_key();
+            context.add_diagnostic(
+                if is_write {
+                    DiagnosticCode::InjectField
+                } else {
+                    DiagnosticCode::UndefinedField
+                },
+                key.as_ref()
+                    .and_then(|key| key.get_range())
+                    .unwrap_or_else(|| index_expr.get_range()),
+                t!(
+                    "Undefined field: `%{name}`",
+                    name = key.map(|key| key.get_path_part()).unwrap_or_default()
+                ),
+            );
+        }
+        return;
+    }
     let Some(resolved) = semantic_model.resolve_member(index_expr) else {
         return;
     };
-    if resolved.member_id.is_some() {
-        return;
-    }
     let Some(prefix) = index_expr.get_prefix_expr() else {
         return;
     };
@@ -69,6 +104,9 @@ fn check_index(
             .unwrap_or_else(|| semantic_model.type_of_expr(prefix.get_syntax_id())),
         _ => semantic_model.type_of_expr(prefix.get_syntax_id()),
     };
+    if resolved.member_id.is_some() && !matches!(prefix_ty, LuaType::Object(_)) {
+        return;
+    }
     if is_invalid_prefix_type(&prefix_ty) {
         return;
     }

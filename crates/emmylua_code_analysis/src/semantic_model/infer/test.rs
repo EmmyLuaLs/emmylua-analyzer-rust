@@ -275,7 +275,7 @@ fn test_vm_name_binary() {
 
 #[test]
 fn test_vm_member_access() {
-    // VM：LoadName(t) + IndexMember(a) → Integer。
+    // A field read keeps its assigned literal flow type.
     let env = model_of("local t = {}\nt.a = 5\nlocal y = t.a");
     let model = env.model();
     let y = model
@@ -286,7 +286,7 @@ fn test_vm_member_access() {
         .expect("y");
     let init = y.value_expr_syntax.expect("init");
     let ty = infer_expr_vm(&model, init);
-    assert_eq!(ty, LuaType::Integer);
+    assert_eq!(ty, LuaType::IntegerConst(5));
 }
 
 #[test]

@@ -281,6 +281,12 @@ impl<'db> SemanticModel<'db> {
                 }
             }
 
+            if decl.doc_type_syntax.is_none()
+                && decl.value_expr_syntax.is_none()
+                && matches!(decl.kind, DeclKind::Local { is_iter: false, .. })
+            {
+                return Some(LuaType::Nil);
+            }
             // Value is a closure -> function signature structure.
             if let Some(value_syntax) = decl.value_expr_syntax
                 && let Some(tree) = self.syntax_tree()
@@ -1298,14 +1304,87 @@ impl<'db> SemanticModel<'db> {
             target
         }
     }
-    /// Member assignment contract, keeping explicit field annotations exact.
-    pub(crate) fn member_assignment_type(&self, member: &SemanticId, target: LuaType) -> LuaType {
+    /// Stable contracts for a field write. Read guards and previous field values
+    /// do not change these contracts; named casts are applied after widening.
+    pub(crate) fn index_assignment_targets(&self, index: &LuaIndexExpr) -> Option<Vec<LuaType>> {
+        let mut targets = if let Some(inferred) = super::inferred_table::access(self, index) {
+            inferred
+                .write_targets()
+                .map(|targets| targets.collect())
+                .unwrap_or_default()
+        } else {
+            let prefix = index.get_prefix_expr()?;
+            let prefix_type = if let LuaExpr::NameExpr(name) = &prefix {
+                let decl = self.resolve_name(name.get_position())?;
+                self.type_of_decl_assign_target_at(&decl, name.get_position())
+            } else {
+                self.type_of_expr_at(prefix.get_syntax_id(), prefix.get_position())
+            };
+            if let LuaType::Array(array) = &prefix_type {
+                // Elements can be deleted, but other writes must match the array's base type.
+                vec![LuaType::from_vec(vec![
+                    array.get_base().clone(),
+                    LuaType::Nil,
+                ])]
+            } else {
+                let key = super::table_constructor::member_key(
+                    &super::table_constructor::key_type(self, index.get_index_key()?).ok()?,
+                )?;
+                let target = self
+                    .member_infos_with_key(&prefix_type, &key)
+                    .into_iter()
+                    .next()
+                    .map(|info| match info.id {
+                        Some(id) => self.member_contract_type(Some(&id), info.typ),
+                        None => info.typ,
+                    })
+                    .or_else(|| {
+                        let member = self.resolve_member(index)?.member_id?;
+                        Some(
+                            self.member_contract_type(Some(&member), self.type_of_member(&member)?),
+                        )
+                    })?;
+                // Class/module nil placeholders do not establish a value contract.
+                if target.is_nil() {
+                    return Some(Vec::new());
+                }
+                // Tuple elements can be deleted, but other writes must match their slot.
+                vec![if matches!(prefix_type, LuaType::Tuple(_)) {
+                    LuaType::from_vec(vec![target, LuaType::Nil])
+                } else {
+                    target
+                }]
+            }
+        };
+        if let Some(annotation) = self
+            .file_facts()
+            .and_then(|facts| facts.member_at_offset(index.get_index_key()?.get_range()?.start()))
+            .filter(|member| !matches!(member.owner, SemanticId::TypeDef(_)))
+            .and_then(|member| member.doc_type_syntax)
+        {
+            targets.push(self.doc_type_lua(annotation));
+        }
+        Some(
+            targets
+                .into_iter()
+                .map(|target| flow::index_assignment_type(self, index, target))
+                .collect(),
+        )
+    }
+
+    /// Stable field type for writes and whole-table checks. Inferred literals
+    /// widen; explicit field annotations keep their declared types.
+    pub(crate) fn member_contract_type(
+        &self,
+        member: Option<&SemanticId>,
+        target: LuaType,
+    ) -> LuaType {
         let inferred = match member {
-            SemanticId::Member(key) => self.file_facts_of(key.file_id),
+            Some(SemanticId::Member(key)) => self.file_facts_of(key.file_id),
             _ => None,
         }
-        .and_then(|facts| facts.member_by_id(member))
-        .is_some_and(|member| {
+        .and_then(|facts| facts.member_by_id(member?))
+        .is_none_or(|member| {
             member.doc_type_syntax.is_none() && !matches!(member.owner, SemanticId::TypeDef(_))
         });
         if inferred {
@@ -1561,7 +1640,7 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
 }
 
-fn widen_assignment_type(ty: LuaType) -> LuaType {
+pub(super) fn widen_assignment_type(ty: LuaType) -> LuaType {
     match ty {
         LuaType::Union(union) => {
             LuaType::from_vec(union.iter().cloned().map(widen_assignment_type).collect())
@@ -1572,7 +1651,7 @@ fn widen_assignment_type(ty: LuaType) -> LuaType {
 }
 
 /// Removes nil from a type (used for generic for loop keys: the loop stops when the first value is nil).
-fn remove_nil_from_type(ty: LuaType) -> LuaType {
+pub(super) fn remove_nil_from_type(ty: LuaType) -> LuaType {
     match ty {
         LuaType::Union(union) => {
             let types: Vec<LuaType> = union

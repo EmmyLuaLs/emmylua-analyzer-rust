@@ -97,6 +97,22 @@ fn collect_index_infos(
                 collect_named_indexes(model, typ, &id, params, path, out);
             }
         }
+        LuaType::TableConst(table) => {
+            if let Some(inferred) = super::inferred_table::of(model, table) {
+                out.extend(
+                    inferred
+                        .entries(model)
+                        .into_iter()
+                        .filter(|(key, _)| super::table_constructor::member_key(key).is_none())
+                        .map(|(key_type, value_type)| IndexInfo {
+                            key_type,
+                            value_type,
+                            id: None,
+                            file_id: Some(table.file_id),
+                        }),
+                );
+            }
+        }
         LuaType::Object(object) => {
             out.extend(
                 object

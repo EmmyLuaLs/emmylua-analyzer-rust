@@ -13,7 +13,7 @@ mod flow_node;
 mod flow_tree;
 mod stats;
 
-use emmylua_parser::LuaChunk;
+use emmylua_parser::{LuaChunk, LuaExpr};
 
 use crate::FileId;
 
@@ -23,6 +23,20 @@ use super::query::file_facts;
 pub use binder::FlowBinder;
 pub use flow_node::*;
 pub use flow_tree::*;
+
+/// Match targets to RHS expressions. Only the final expression supplies extra results.
+pub(crate) fn assignment_sources<T>(
+    targets: impl IntoIterator<Item = T>,
+    values: &[LuaExpr],
+) -> impl Iterator<Item = (T, &LuaExpr, usize)> {
+    targets
+        .into_iter()
+        .enumerate()
+        .filter_map(move |(i, target)| {
+            let value = values.get(i).or_else(|| values.last())?;
+            Some((target, value, (i + 1).saturating_sub(values.len())))
+        })
+}
 
 /// Merges a label's incoming flow (folds back predecessors), matching the old `bind_analyze::finish_flow_label`.
 fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) -> FlowId {

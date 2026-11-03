@@ -214,7 +214,8 @@ pub(super) fn expand(model: &SemanticModel, ty: &LuaType) -> Option<LuaType> {
                     .and_then(|id| model.type_def_of(&id))
                     .filter(|def| def.kind == TypeDefKind::Alias);
                 if let Some(def) = def {
-                    let target = model.alias_target(&def)?;
+                    let target =
+                        simplify_recursive_arguments(model, &def, model.alias_target(&def)?);
                     let (bindings, names) = match &current {
                         LuaType::Generic(generic) => (
                             generic
@@ -279,6 +280,103 @@ pub(super) fn expand(model: &SemanticModel, ty: &LuaType) -> Option<LuaType> {
         }
     }
     value
+}
+
+/// Stabilize unused recursive arguments without changing arguments that affect data.
+fn simplify_recursive_arguments(model: &SemanticModel, def: &TypeDef, target: LuaType) -> LuaType {
+    if def.generic_params.is_empty() {
+        return target;
+    }
+    let id = def.type_decl_id();
+    let parameter_index = |ty: &LuaType| {
+        let name = match ty {
+            LuaType::TplRef(tpl) => tpl.get_name(),
+            LuaType::StrTplRef(tpl) => tpl.get_name(),
+            LuaType::Ref(id) | LuaType::Def(id) => id.get_name(),
+            _ => return None,
+        };
+        def.generic_params
+            .iter()
+            .position(|param| param.name == name)
+    };
+    let mut used = vec![false; def.generic_params.len()];
+    loop {
+        let previous = used.clone();
+        let mut pending = vec![(&target, false)];
+        let mut recursive = false;
+        while let Some((ty, guarded)) = pending.pop() {
+            if let LuaType::Generic(generic) = ty
+                && generic.get_base_type_id() == id
+            {
+                // Forwarding cycles and incomplete argument lists retain their
+                // original evaluation and default-argument behavior.
+                if !guarded || generic.get_params().len() != used.len() {
+                    return target;
+                }
+                recursive = true;
+                for (argument, used) in generic.get_params().iter().zip(&used) {
+                    if *used {
+                        pending.push((argument, guarded));
+                    }
+                }
+                continue;
+            }
+            if let Some(index) = parameter_index(ty) {
+                used[index] = true;
+            }
+            let guarded = guarded
+                || matches!(
+                    ty,
+                    LuaType::Object(_)
+                        | LuaType::Array(_)
+                        | LuaType::Tuple(_)
+                        | LuaType::TableGeneric(_)
+                        | LuaType::DocFunction(_)
+                )
+                || matches!(ty, LuaType::Generic(generic)
+                    if generic.get_base_type_id() == crate::LuaTypeDeclId::global("table")
+                        && model.type_def_of(&generic.get_base_type_id())
+                            .is_none_or(|def| model.is_std_file(def.file_id)));
+            let mut children = Vec::new();
+            ty.push_direct_children(&mut children);
+            // Function constraints can also refer to the alias parameters.
+            if let LuaType::DocFunction(function) = ty {
+                for param in function.get_generic_params() {
+                    children.extend(param.get_constraint());
+                    children.extend(param.get_default_type());
+                }
+            }
+            pending.extend(children.into_iter().map(|child| (child, guarded)));
+        }
+        if !recursive || used.iter().all(|used| *used) {
+            return target;
+        }
+        if used == previous {
+            break;
+        }
+        // A parameter used by a field can depend on another parameter through
+        // a recursive argument, such as Tree<T, U> -> Tree<U, T>.
+    }
+    map_type(&target, &mut |ty| match ty {
+        LuaType::Generic(generic) if generic.get_base_type_id() == id => {
+            Some(LuaType::Generic(Rc::new(LuaGenericType::new(
+                id.clone(),
+                generic
+                    .get_params()
+                    .iter()
+                    .zip(&used)
+                    .map(|(argument, used)| {
+                        if *used {
+                            argument.clone()
+                        } else {
+                            LuaType::Unknown
+                        }
+                    })
+                    .collect(),
+            ))))
+        }
+        _ => None,
+    })
 }
 
 pub(super) fn needs_reduction(model: &SemanticModel, ty: &LuaType) -> bool {

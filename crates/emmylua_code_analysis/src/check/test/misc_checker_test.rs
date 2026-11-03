@@ -324,13 +324,13 @@ fn test_defined_field_ok() {
     );
 }
 
-/// Anonymous table fields → not reported (lenient).
+/// Inferred tables report missing fields.
 #[test]
-fn test_undefined_field_table_skipped() {
+fn test_undefined_field_inferred_table() {
     let diagnostics = check_source("local t = { a = 1 }\nlocal v = t.missing");
     assert_eq!(
         count_by_code(&diagnostics, DiagnosticCode::UndefinedField),
-        0
+        1
     );
 }
 

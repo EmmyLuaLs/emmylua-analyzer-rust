@@ -11,17 +11,18 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaCallExprStat,
     LuaElseIfClauseStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIfStat,
-    LuaIndexExpr, LuaLocalStat, LuaRepeatStat, LuaVarExpr, LuaWhileStat, UnaryOperator,
+    LuaIndexExpr, LuaLocalStat, LuaRepeatStat, LuaWhileStat, UnaryOperator,
 };
 
 use super::comment::bind_comment;
 use super::{FlowEffect, FlowId, FlowNodeKind, LuaClosureId, binder::FlowBinder};
 use super::{
+    assignment_sources,
     exprs::is_binary_logical,
     finish_flow_label,
     stats::{
         bind_multi_return_refs, check_local_immutable, check_value_expr_is_check_expr,
-        finish_entered_loop_post_flow, get_local_decl_ids, get_var_decl_ids, get_var_member_ids,
+        finish_entered_loop_post_flow, get_local_decl_ids, get_var_decl_ids, get_var_member_id,
         static_literal_truthiness, static_number_value,
     },
 };
@@ -46,7 +47,9 @@ enum Task {
 /// Suspended parent task state
 enum Continuation {
     /// Execute the remaining tasks in order, passing the result through
-    Seq { pending: Vec<Task> },
+    Seq {
+        pending: Vec<Task>,
+    },
     /// Condition node creation phase (restore the targets, then create True/False condition nodes)
     CondNodes {
         expr: LuaExpr,
@@ -68,11 +71,18 @@ enum Continuation {
         false_target: FlowId,
     },
     /// Create a Block task after receiving a value
-    ThenBlock { block: LuaBlock },
+    ThenBlock {
+        block: LuaBlock,
+    },
     /// Safe index: bind child nodes after the prefix condition completes
-    SafeIndexDone { index_expr: LuaIndexExpr },
+    SafeIndexDone {
+        index_expr: LuaIndexExpr,
+    },
     /// Unary not: restore the condition targets
-    UnaryNotDone { old_true: FlowId, old_false: FlowId },
+    UnaryNotDone {
+        old_true: FlowId,
+        old_false: FlowId,
+    },
     /// assert args: condition binding completed
     AssertCond {
         args: Vec<LuaExpr>,
@@ -98,7 +108,18 @@ enum Continuation {
         current: FlowId,
     },
     /// return statement completed
-    ReturnDone { current: FlowId },
+    ReturnDone {
+        current: FlowId,
+        closure: LuaClosureId,
+    },
+    FunctionExit {
+        closure: LuaClosureId,
+    },
+    ClosureDone {
+        current: FlowId,
+        old_loop: FlowId,
+        old_break: FlowId,
+    },
     /// call statement completed
     CallStatDone {
         call_expr_stat: LuaCallExprStat,
@@ -111,13 +132,12 @@ enum Continuation {
         current: FlowId,
     },
     /// local function statement completed
-    LocalFuncDone { current: FlowId },
+    LocalFuncDone {
+        current: FlowId,
+    },
     /// while loop: post-process after the loop body completes
     WhileDone {
         after_label: FlowId,
-        loop_enters: bool,
-        has_block: bool,
-        current: FlowId,
         old_loop_label: FlowId,
         old_break_target_label: FlowId,
     },
@@ -138,6 +158,7 @@ enum Continuation {
     },
     /// for range: post-process after completion
     ForRangeDone {
+        post_label: FlowId,
         current: FlowId,
         old_loop_label: FlowId,
         old_break_target_label: FlowId,
@@ -164,7 +185,10 @@ enum Continuation {
         else_block: Option<LuaBlock>,
     },
     /// if statement: finalize after the else block completes
-    IfFinal { post_if: FlowId, else_label: FlowId },
+    IfFinal {
+        post_if: FlowId,
+        else_label: FlowId,
+    },
     /// block: bind child nodes in order
     BlockIter {
         children: Vec<LuaAst>,
@@ -238,6 +262,17 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             }
             Task::Node(node, current) => self.evaluate_node(node, current),
             Task::Block(block, current) => {
+                if block.syntax().parent().is_some_and(|parent| {
+                    matches!(
+                        parent.kind().into(),
+                        emmylua_parser::LuaSyntaxKind::Chunk
+                            | emmylua_parser::LuaSyntaxKind::ClosureExpr
+                    )
+                }) {
+                    self.stack.push(Continuation::FunctionExit {
+                        closure: LuaClosureId::from_node(block.syntax()),
+                    });
+                }
                 let children = block.children::<LuaAst>().collect::<Vec<_>>();
                 if children.is_empty() {
                     Step::Done(current)
@@ -268,6 +303,15 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 None => Step::Done(current),
             },
             LuaExpr::ClosureExpr(closure_expr) => {
+                let old_loop = self.binder.loop_label;
+                let old_break = self.binder.break_target_label;
+                self.binder.loop_label = self.binder.unreachable;
+                self.binder.break_target_label = self.binder.unreachable;
+                self.stack.push(Continuation::ClosureDone {
+                    current,
+                    old_loop,
+                    old_break,
+                });
                 self.spawn_children(LuaAst::LuaClosureExpr(closure_expr), current)
             }
             LuaExpr::CallExpr(call_expr) => {
@@ -483,7 +527,10 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             }
             LuaAst::LuaReturnStat(return_stat) => {
                 let exprs = return_stat.get_expr_list().collect::<Vec<_>>();
-                self.stack.push(Continuation::ReturnDone { current });
+                self.stack.push(Continuation::ReturnDone {
+                    current,
+                    closure: LuaClosureId::from_node(return_stat.syntax()),
+                });
                 self.spawn_expr_sequence(&exprs, current)
             }
             LuaAst::LuaCallExprStat(call_expr_stat) => {
@@ -663,7 +710,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
         self.binder.loop_label = pre_while_label;
         self.binder.break_target_label = after_while_label;
 
-        let has_block = while_stat.get_block().is_some();
         match static_literal_truthiness(&condition_expr) {
             Some(false) => {
                 self.binder.loop_label = old_loop_label;
@@ -673,23 +719,17 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             Some(true) => {
                 self.stack.push(Continuation::WhileDone {
                     after_label: after_while_label,
-                    loop_enters: true,
-                    has_block,
-                    current,
                     old_loop_label,
                     old_break_target_label,
                 });
                 match while_stat.get_block() {
-                    Some(block) => Step::Task(Task::Block(block, current)),
-                    None => Step::Task(Task::Pass(current)),
+                    Some(block) => Step::Task(Task::Block(block, pre_while_label)),
+                    None => Step::Task(Task::Pass(pre_while_label)),
                 }
             }
             None => {
                 self.stack.push(Continuation::WhileDone {
                     after_label: after_while_label,
-                    loop_enters: false,
-                    has_block,
-                    current,
                     old_loop_label,
                     old_break_target_label,
                 });
@@ -702,7 +742,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 });
                 Step::Task(Task::Cond(
                     condition_expr,
-                    current,
+                    pre_while_label,
                     pre_block_label,
                     after_while_label,
                 ))
@@ -837,6 +877,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
 
         let exprs = for_range_stat.get_expr_list().collect::<Vec<_>>();
         self.stack.push(Continuation::ForRangeDone {
+            post_label: post_for_range_label,
             current,
             old_loop_label,
             old_break_target_label,
@@ -970,6 +1011,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                             FlowEffect::AssignDecl {
                                 decl: decl_id.clone(),
                                 value_syntax: value.get_syntax_id(),
+                                result_slot: 0,
                             },
                         );
                     }
@@ -992,31 +1034,28 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 self.binder.add_antecedent(flow_id, current);
                 let (vars, values) = assign_stat.get_var_and_expr_list();
                 let decl_ids = get_var_decl_ids(self.binder, &vars);
-                for (i, decl_id) in decl_ids.iter().enumerate() {
-                    if let Some(decl_id) = decl_id
-                        && let Some(value) = values.get(i).or_else(|| values.last())
-                    {
+                for (decl_id, value, result_slot) in assignment_sources(&decl_ids, &values) {
+                    if let Some(decl_id) = decl_id {
                         self.binder.add_effect(
                             flow_id,
                             FlowEffect::AssignDecl {
                                 decl: decl_id.clone(),
                                 value_syntax: value.get_syntax_id(),
+                                result_slot,
                             },
                         );
                     }
                 }
-                let member_ids = get_var_member_ids(self.binder, &vars);
-                for (i, member_id) in member_ids.iter().enumerate() {
-                    if let Some((owner, key, member)) = member_id
-                        && let Some(value) = values.get(i).or_else(|| values.last())
-                    {
+                for (var, value, result_slot) in assignment_sources(&vars, &values) {
+                    if let Some((owner, key, member)) = get_var_member_id(self.binder, var) {
                         self.binder.add_effect(
                             flow_id,
                             FlowEffect::AssignMember {
-                                owner: owner.clone(),
-                                key: key.clone(),
-                                member: member.clone(),
+                                owner,
+                                key,
+                                member,
                                 value_syntax: value.get_syntax_id(),
+                                result_slot,
                             },
                         );
                     }
@@ -1030,9 +1069,29 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 );
                 Step::Done(flow_id)
             }
-            Continuation::ReturnDone { current } => {
+            Continuation::FunctionExit { closure } => {
+                if !self
+                    .binder
+                    .get_flow(value)
+                    .is_some_and(|flow| flow.kind.is_change_flow())
+                {
+                    self.binder.record_exit(closure, value);
+                }
+                Step::Done(value)
+            }
+            Continuation::ClosureDone {
+                current,
+                old_loop,
+                old_break,
+            } => {
+                self.binder.loop_label = old_loop;
+                self.binder.break_target_label = old_break;
+                Step::Done(current)
+            }
+            Continuation::ReturnDone { current, closure } => {
                 let return_flow_id = self.binder.create_return();
                 self.binder.add_antecedent(return_flow_id, current);
+                self.binder.record_exit(closure, return_flow_id);
                 Step::Done(return_flow_id)
             }
             Continuation::CallStatDone {
@@ -1054,10 +1113,24 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 }
             },
             Continuation::FuncDone { func_stat, current } => match func_stat.get_func_name() {
-                Some(var @ LuaVarExpr::NameExpr(_)) => {
+                Some(var) => {
                     let func_kind = FlowNodeKind::ImplFunc(func_stat.to_ptr());
                     let flow_id = self.binder.create_node(func_kind);
                     self.binder.add_antecedent(flow_id, current);
+                    if let Some(closure) = func_stat.get_closure()
+                        && let Some((owner, key, member)) = get_var_member_id(self.binder, &var)
+                    {
+                        self.binder.add_effect(
+                            flow_id,
+                            FlowEffect::AssignMember {
+                                owner,
+                                key,
+                                member,
+                                value_syntax: closure.get_syntax_id(),
+                                result_slot: 0,
+                            },
+                        );
+                    }
                     if let Some(Some(decl)) = get_var_decl_ids(self.binder, &[var]).first()
                         && let Some(closure) = func_stat.get_closure()
                     {
@@ -1066,6 +1139,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                             FlowEffect::AssignDecl {
                                 decl: decl.clone(),
                                 value_syntax: closure.get_syntax_id(),
+                                result_slot: 0,
                             },
                         );
                     }
@@ -1076,23 +1150,23 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             Continuation::LocalFuncDone { current } => Step::Done(current),
             Continuation::WhileDone {
                 after_label,
-                loop_enters,
-                has_block,
-                current,
                 old_loop_label,
                 old_break_target_label,
             } => {
+                self.binder.add_antecedent(self.binder.loop_label, value);
                 self.binder.loop_label = old_loop_label;
                 self.binder.break_target_label = old_break_target_label;
-                if loop_enters && has_block {
-                    Step::Done(finish_entered_loop_post_flow(
-                        self.binder,
-                        after_label,
-                        value,
-                    ))
-                } else {
-                    Step::Done(current)
-                }
+                Step::Done(
+                    if self
+                        .binder
+                        .get_flow(after_label)
+                        .is_some_and(|node| node.antecedent.is_some())
+                    {
+                        after_label
+                    } else {
+                        self.binder.unreachable
+                    },
+                )
             }
             Continuation::RepeatDone {
                 post_label,
@@ -1113,7 +1187,10 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             } => {
                 self.binder.loop_label = old_loop_label;
                 self.binder.break_target_label = old_break_target_label;
-                if loop_enters && has_block {
+                if !loop_enters {
+                    self.binder.add_antecedent(post_label, current);
+                }
+                if has_block {
                     Step::Done(finish_entered_loop_post_flow(
                         self.binder,
                         post_label,
@@ -1124,13 +1201,19 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 }
             }
             Continuation::ForRangeDone {
+                post_label,
                 current,
                 old_loop_label,
                 old_break_target_label,
             } => {
                 self.binder.loop_label = old_loop_label;
                 self.binder.break_target_label = old_break_target_label;
-                Step::Done(current)
+                self.binder.add_antecedent(post_label, current);
+                Step::Done(finish_entered_loop_post_flow(
+                    self.binder,
+                    post_label,
+                    value,
+                ))
             }
             Continuation::ThenForNode {
                 for_stat,
@@ -1242,6 +1325,13 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 mut current,
                 mut can_change_flow,
             } => {
+                if self
+                    .binder
+                    .get_flow(value)
+                    .is_some_and(|node| matches!(node.kind, FlowNodeKind::NamedLabel(_)))
+                {
+                    can_change_flow = true;
+                }
                 if can_change_flow {
                     current = value;
                 }

@@ -176,7 +176,7 @@ mod test {
             "#,
         );
 
-        assert_eq!(ws.expr_ty("f"), ws.ty("integer|string"));
+        assert_eq!(ws.expr_ty("f"), ws.ty("1|'override'"));
     }
 
     #[test]

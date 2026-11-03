@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{DiagnosticCode, EmmyrcLuaVersion, FileId, LuaType, VirtualWorkspace};
-    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName, LuaNameExpr};
+    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaLocalName, LuaNameExpr};
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
@@ -965,7 +965,7 @@ mod test {
         block.push_str("after_assign = value\n");
         ws.def(&block);
         let after_assign = ws.expr_ty("after_assign");
-        assert_eq!(ws.humanize_type(after_assign), "integer");
+        assert_eq!(ws.humanize_type(after_assign), "1");
     }
 
     #[test]
@@ -1586,7 +1586,7 @@ print(a.field)
     }
 
     #[test]
-    fn test_doc_member_assignment_prefers_annotation_source() {
+    fn test_doc_member_assignment_preserves_literal_flow() {
         let mut ws = VirtualWorkspace::new();
 
         let code = r#"
@@ -1598,7 +1598,7 @@ print(a.field)
         "#;
 
         ws.def(code);
-        assert_eq!(ws.expr_ty("b"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("b"), ws.ty("1"));
     }
 
     #[test]
@@ -2025,7 +2025,7 @@ n = n + 1
         "#,
         );
 
-        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("'loop'"));
     }
 
     #[test]
@@ -2071,7 +2071,7 @@ n = n + 1
     }
 
     #[test]
-    fn test_dynamic_numeric_for_post_flow_ignores_body_assignment_for_print_arg() {
+    fn test_dynamic_numeric_for_post_flow_joins_body_assignments() {
         let mut ws = VirtualWorkspace::new();
 
         let file_id = ws.def(
@@ -2089,7 +2089,7 @@ n = n + 1
         );
         let thing_type = last_name_expr_type(&ws, file_id, "thing");
 
-        assert_eq!(ws.humanize_type(thing_type), "nil");
+        assert_eq!(ws.humanize_type(thing_type), "MyClass?");
     }
 
     #[test]
@@ -2116,7 +2116,7 @@ n = n + 1
     }
 
     #[test]
-    fn test_dynamic_while_post_flow_ignores_body_assignment_for_print_arg() {
+    fn test_dynamic_while_post_flow_joins_body_assignments() {
         let mut ws = VirtualWorkspace::new();
 
         let file_id = ws.def(
@@ -2135,7 +2135,7 @@ n = n + 1
         );
         let thing_type = last_name_expr_type(&ws, file_id, "thing");
 
-        assert_eq!(ws.humanize_type(thing_type), "nil");
+        assert_eq!(ws.humanize_type(thing_type), "MyClass?");
     }
 
     #[test]
@@ -4656,6 +4656,57 @@ _ = a[2]
 
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), r#""a""#);
+    }
+
+    #[test]
+    fn test_literal_assignments_keep_precise_variable_and_field_reads() {
+        for (base, initial, replacement) in [
+            ("integer", "1", "2"),
+            ("number", "1.5", "2.5"),
+            ("string", "'hello'", "'updated'"),
+            ("boolean", "true", "false"),
+        ] {
+            for annotated in [false, true] {
+                let mut ws = VirtualWorkspace::new();
+                let variable_annotation = if annotated {
+                    format!("---@type {base}")
+                } else {
+                    String::new()
+                };
+                let field_annotation = if annotated {
+                    format!("---@type {{value: {base}}}")
+                } else {
+                    String::new()
+                };
+                let file = ws.def(&format!(
+                    r#"
+                    {variable_annotation}
+                    local value = {initial}
+                    value = {replacement}
+                    variable_read = value
+
+                    {field_annotation}
+                    local state = {{value = {initial}}}
+                    state.value = {replacement}
+                    field_read = state.value
+                    "#,
+                ));
+                let expected = ws.expr_ty(replacement);
+                assert_eq!(ws.expr_ty("variable_read"), expected, "{base}, {annotated}");
+                let model = ws.analysis.semantic_model(file);
+                let read = model
+                    .chunk()
+                    .unwrap()
+                    .descendants::<LuaIndexExpr>()
+                    .last()
+                    .unwrap();
+                assert_eq!(
+                    model.type_of_expr_at(read.get_syntax_id(), read.get_position()),
+                    expected,
+                    "{base}, {annotated}"
+                );
+            }
+        }
     }
 
     #[test]
