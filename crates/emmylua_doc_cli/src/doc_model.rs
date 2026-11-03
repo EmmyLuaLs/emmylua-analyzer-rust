@@ -234,7 +234,10 @@ impl DocModel {
 
         // First pass: collect facts.
         let mut type_builders: HashMap<DocTypeKey, Vec<TypeDef>> = HashMap::new();
-        let mut all_type_defs: Vec<TypeDef> = Vec::new();
+        // Definitions from non-workspace files (stdlib / libraries). They are
+        // merged into workspace types with the same key so their members are
+        // documented, but they never get a page of their own.
+        let mut external_type_defs: HashMap<DocTypeKey, Vec<TypeDef>> = HashMap::new();
         #[allow(clippy::type_complexity)]
         let mut member_sources: HashMap<SemanticId, Vec<(FileId, Member)>> = HashMap::new();
         let mut signature_sources: HashMap<LuaSyntaxId, (FileId, Signature)> = HashMap::new();
@@ -260,11 +263,11 @@ impl DocModel {
             };
 
             for def in &facts.type_defs {
-                all_type_defs.push(def.clone());
+                let key = type_def_key(def);
                 if !main_file_ids.contains(&file_id) {
+                    external_type_defs.entry(key).or_default().push(def.clone());
                     continue;
                 }
-                let key = type_def_key(def);
                 type_builders.entry(key).or_default().push(def.clone());
                 properties.insert(
                     DocOwner::Type(def.id.clone()),
@@ -329,6 +332,16 @@ impl DocModel {
             }
         }
 
+        // A workspace-declared type absorbs matching stdlib/library definitions
+        // (e.g. `---@class string` merges the stdlib `string` members). Types
+        // that exist only outside the workspace are intentionally not documented:
+        // a page requires a workspace definition, matching the previous generator.
+        for (key, defs) in external_type_defs {
+            if let Some(main_defs) = type_builders.get_mut(&key) {
+                main_defs.extend(defs);
+            }
+        }
+
         // Project signatures.
         let mut signatures: HashMap<LuaSyntaxId, DocSignature> = HashMap::new();
         for (syntax, (file_id, signature)) in &signature_sources {
@@ -364,8 +377,23 @@ impl DocModel {
         let mut types_by_key = HashMap::new();
         let mut types = Vec::new();
         for (key, mut defs) in type_builders {
-            defs.sort_by(|a, b| (a.file_id, a.name.as_str()).cmp(&(b.file_id, b.name.as_str())));
+            // Workspace definitions come first: the page metadata (property,
+            // generics, ...) belongs to the workspace declaration, while the
+            // merged stdlib/library definitions only contribute members.
+            defs.sort_by(|a, b| {
+                let a_external = !main_file_ids.contains(&a.file_id);
+                let b_external = !main_file_ids.contains(&b.file_id);
+                (a_external, a.file_id, a.name.as_str()).cmp(&(
+                    b_external,
+                    b.file_id,
+                    b.name.as_str(),
+                ))
+            });
             let first = defs.first().expect("type defs non-empty").clone();
+            debug_assert!(
+                defs.iter().any(|def| main_file_ids.contains(&def.file_id)),
+                "type pages must originate from a workspace definition"
+            );
             let model = SemanticModel::new(db, first.file_id);
             let kind = match first.kind {
                 TypeDefKind::Class => DocTypeKind::Class,
@@ -384,6 +412,14 @@ impl DocModel {
                             .filter(|decl| decl_belongs_to_type(&model, decl, &defs))
                             .cloned(),
                     );
+                }
+            }
+            // Global runtime tables (`string.gsub`, `table.insert`, ...) are
+            // owned by `SemanticId::Name`; expose them on the type page too.
+            if let DocTypeKey::Global(name) = &key {
+                let owner = SemanticId::name(name.clone().into());
+                if !member_owners.contains(&owner) {
+                    member_owners.push(owner);
                 }
             }
             let mut members: Vec<DocMember> = Vec::new();
