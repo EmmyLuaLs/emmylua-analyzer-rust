@@ -619,6 +619,62 @@ impl<'db> SemanticModel<'db> {
         };
         Some(owner_ty)
     }
+    /// The declared type at a member path (`L.out`): the root name's declared type, walked
+    /// through the path's keys. Read without flow, since a closure stored in a field must fit
+    /// the field's declared type, not the value an initializer narrowed it to (`{ to = nil }`).
+    fn declared_path_type(&self, path: &LuaIndexExpr) -> Option<LuaType> {
+        let mut keys = Vec::new();
+        let mut expr = LuaExpr::IndexExpr(path.clone());
+        let root = loop {
+            match expr {
+                LuaExpr::IndexExpr(index) => {
+                    keys.push(match index.get_index_key()? {
+                        emmylua_parser::LuaIndexKey::Name(name) => {
+                            SmolStr::new(name.get_name_text())
+                        }
+                        emmylua_parser::LuaIndexKey::String(string) => {
+                            SmolStr::new(string.get_value())
+                        }
+                        _ => return None,
+                    });
+                    expr = index.get_prefix_expr()?;
+                }
+                LuaExpr::NameExpr(name) => break name,
+                _ => return None,
+            }
+        };
+        let mut ty = self.type_of_decl(&self.resolve_name(root.get_position())?)?;
+        for key in keys.into_iter().rev() {
+            let infos = member::member_infos_with_key_all(self, &ty, &LuaMemberKey::Name(key));
+            ty = LuaType::from_vec(infos.into_iter().map(|info| info.typ).collect());
+            if ty.is_unknown() {
+                return None;
+            }
+        }
+        Some(ty)
+    }
+    /// The prefix `a.b` of a closure stored at a nested path: `function a.b.f()`,
+    /// `function a.b:m()` or `a.b.f = function() end`.
+    fn nested_member_prefix(&self, closure_syntax: LuaSyntaxId) -> Option<LuaIndexExpr> {
+        let root = self.syntax_tree()?.get_red_root();
+        let closure = closure_syntax.to_node_from_root(&root)?;
+        let parent = closure.parent()?;
+        let target = if let Some(func_stat) = emmylua_parser::LuaFuncStat::cast(parent.clone()) {
+            func_stat.get_func_name()?
+        } else {
+            let assign = LuaAssignStat::cast(parent)?;
+            let (vars, values) = assign.get_var_and_expr_list();
+            let index = values.iter().position(|value| value.syntax() == &closure)?;
+            vars.into_iter().nth(index)?
+        };
+        let emmylua_parser::LuaVarExpr::IndexExpr(name) = target else {
+            return None;
+        };
+        match name.get_prefix_expr()? {
+            LuaExpr::IndexExpr(prefix) => Some(prefix),
+            _ => None,
+        }
+    }
     /// If the closure is a member implementation like `function a.aaa(...)`, return the function signature of the same-named field on the owner type.
     /// Used to fill in parameter types from field declarations when `---@param` is absent.
     pub(crate) fn expected_member_param_for_closure(
@@ -800,6 +856,12 @@ impl<'db> SemanticModel<'db> {
             }
             _ => return None,
         };
+        // `L.out.to = function(line)` / `function L.out.to(line)`: the member is flattened onto `L`,
+        // but its field is declared on `L.out`.
+        let owner_ty = self
+            .nested_member_prefix(closure_syntax)
+            .and_then(|prefix| self.declared_path_type(&prefix))
+            .unwrap_or(owner_ty);
 
         let infos = member::member_infos_with_key_all(self, &owner_ty, &key);
         let mut out = Vec::new();
