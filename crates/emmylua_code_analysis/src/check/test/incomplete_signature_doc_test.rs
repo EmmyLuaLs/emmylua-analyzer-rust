@@ -282,14 +282,13 @@ mod tests {
         assert_eq!(ws.humanize_type(ty), "integer");
     }
 
-    /// A generic factory in another file: the call's shell does not bind the callee's `V`, so a
-    /// local holding the result must not read as `Box<V>` with `V` a stray name.
+    /// A generic factory, in another file or the same one: the call's shell does not bind the
+    /// callee's `V`, so a local holding the result reads as `Box<unknown>`, not `Box<V>` with `V`
+    /// a stray name.
     #[test]
-    fn test_cross_file_generic_factory_does_not_leak_its_generic() {
-        let mut ws = VirtualWorkspace::new();
-        ws.def_file(
-            "box.lua",
-            r#"
+    fn test_generic_factory_does_not_leak_its_generic() {
+        use crate::semantic_db::types::TypeCandidate;
+        const BOX: &str = r#"
             ---@class Box<T>
             ---@field v T
             local Box = {}
@@ -297,29 +296,36 @@ mod tests {
             ---@param v V
             ---@return Box<V>
             function Box.from(v) return setmetatable({ v = v }, { __index = Box }) end
-            return Box
-        "#,
-        );
-        // The shell is what a caller falls back to when the VM cannot type the call (luagnd's
-        // `Seq.from`), so check the shell itself.
-        let file_id = ws.def_file(
-            "use.lua",
-            "local Box = require 'box'\nlocal b = Box.from(1)\n",
-        );
-        let model = ws.analysis.semantic_model(file_id);
-        let decl = model
-            .file_facts()
-            .expect("facts")
-            .decls
-            .iter()
-            .find(|d| d.name == "b")
-            .expect("decl b")
-            .id
-            .clone();
-        let shell = model.analysis().decl_type(file_id, decl).expect("shell");
-        assert!(
-            !format!("{shell:?}").contains("Generic(\"V\")"),
-            "leaked the callee's generic: {shell:?}"
-        );
+        "#;
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file("box.lua", &format!("{BOX}\nreturn Box\n"));
+        let cross_file = "local Box = require 'box'\nlocal b = Box.from(1)\n".to_string();
+        let same_file = format!("{BOX}\nlocal b = Box.from(1)\n");
+        for (file, source) in [("use.lua", cross_file), ("same.lua", same_file)] {
+            let file_id = ws.def_file(file, &source);
+            let model = ws.analysis.semantic_model(file_id);
+            let decl = model
+                .file_facts()
+                .expect("facts")
+                .decls
+                .iter()
+                .find(|d| d.name == "b")
+                .expect("decl b")
+                .id
+                .clone();
+            // The shell is what a caller falls back to when the VM cannot type the call (luagnd's
+            // `Seq.from`), so check the shell itself.
+            let shell = model.analysis().decl_type(file_id, decl).expect("shell");
+            assert!(
+                matches!(
+                    shell.candidates.as_slice(),
+                    [TypeCandidate::GenericInstance(instance)]
+                        if instance.name == "Box"
+                            && instance.args.len() == 1
+                            && instance.args[0].is_unknown()
+                ),
+                "{file}: expected Box<unknown>, got {shell:?}"
+            );
+        }
     }
 }
