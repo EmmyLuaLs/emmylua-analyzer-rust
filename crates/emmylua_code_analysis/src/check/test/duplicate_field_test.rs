@@ -292,4 +292,30 @@ mod test {
             "{diagnostics:?}"
         );
     }
+
+    #[test]
+    fn test_same_key_on_different_nested_tables_is_not_duplicate() {
+        for (source, count) in [
+            (
+                "local M = { A = {}, B = {} }\nfunction M.A:init() end\nfunction M.B:init() end\n",
+                0,
+            ),
+            (
+                "local M = { a = {}, b = {} }\nM.a.to = function() end\nM.b.to = function() end\n",
+                0,
+            ),
+            // The same nested table twice still is a duplicate.
+            (
+                "local M = { A = {} }\nfunction M.A:init() end\nfunction M.A:init() end\n",
+                2,
+            ),
+        ] {
+            let diagnostics = check_source(source);
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::DuplicateSetField),
+                count,
+                "{source}: {diagnostics:?}"
+            );
+        }
+    }
 }
