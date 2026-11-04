@@ -274,6 +274,61 @@ impl TypeShell {
         out
     }
 
+    /// The `index`th value of a result list (0-based): the `b` in `local a, b = f()` is
+    /// `f()`'s `result_slot(1)`. A plain value has only slot 0; past a finite list's end is nil.
+    pub(crate) fn result_slot(&self, index: usize) -> Self {
+        if index == 0 {
+            return self.first_result();
+        }
+        let mut out = Self::unknown();
+        for candidate in &self.candidates {
+            match candidate {
+                TypeCandidate::Variadic(base) => {
+                    for candidate in &base.candidates {
+                        match candidate {
+                            TypeCandidate::Tuple(types) => {
+                                if let Some(slot) = types.get(index) {
+                                    out.merge(slot);
+                                }
+                            }
+                            _ => out.merge(&Self {
+                                candidates: vec![candidate.clone()],
+                            }),
+                        }
+                    }
+                }
+                TypeCandidate::Repeat(base) => out.merge(base),
+                TypeCandidate::Multi(slots) => {
+                    let Some(last) = slots.len().checked_sub(1) else {
+                        continue;
+                    };
+                    if index < last {
+                        out.merge(&slots[index].first_result());
+                        continue;
+                    }
+                    let tail = &slots[last];
+                    let expands = tail.candidates.iter().any(|candidate| {
+                        matches!(
+                            candidate,
+                            TypeCandidate::Variadic(_)
+                                | TypeCandidate::Repeat(_)
+                                | TypeCandidate::Multi(_)
+                        )
+                    });
+                    if expands {
+                        out.merge(&tail.result_slot(index - last));
+                    } else if index == last {
+                        out.merge(tail);
+                    } else {
+                        out.merge(&Self::from_primitive(PrimitiveType::Nil));
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
     /// Tuple candidate: `[number, string]`.
     pub fn from_tuple(types: Vec<TypeShell>) -> Self {
         Self {
