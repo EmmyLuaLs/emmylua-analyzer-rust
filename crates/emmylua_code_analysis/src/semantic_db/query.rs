@@ -1980,7 +1980,18 @@ pub(crate) fn decl_type(
     }
 
     if let Some(value_expr_syntax) = decl.value_expr_syntax {
-        let shell = expr_type_of(db, file, config, value_expr_syntax);
+        let mut shell = expr_type_of(db, file, config, value_expr_syntax);
+        // `local a, b = f()`: each target takes its own result slot, not the whole list. A
+        // target past a single value's only slot is an undeclared missing value: `any`, as the
+        // VM types it.
+        if let Some(index) = decl.multi_return_index {
+            let slot = shell.result_slot(index);
+            shell = if slot.is_unknown() && !shell.is_unknown() {
+                TypeShell::from_name("any")
+            } else {
+                slot
+            };
+        }
         if !shell.is_unknown() {
             // Globals cannot carry generic parameters not instantiated inside the function body (the `a` in `function f(x) a = x end` is unknown outside).
             if matches!(decl.kind, DeclKind::Global) {
