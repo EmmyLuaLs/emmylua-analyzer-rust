@@ -10,7 +10,9 @@ use emmylua_parser::{
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_check::{TypeCheckFailReason, check_type_detail, is_compatible};
-use crate::{Decl, LuaMemberKey, LuaType, LuaTypeNode, SemanticId, TypeDef, TypeDefKind};
+use crate::{
+    Decl, LuaMemberKey, LuaType, LuaTypeNode, MemberInfo, SemanticId, TypeDef, TypeDefKind,
+};
 
 use super::{CheckContext, Checker, check_field::static_member_key};
 use crate::semantic_model::render::humanize_type;
@@ -259,6 +261,12 @@ fn check_assign(
                 );
             }
             LuaVarExpr::IndexExpr(index_expr) => {
+                if let Some(value) = declared_index_value(semantic_model, index_expr) {
+                    // Writing nil removes a key, so a key takes `V?`.
+                    let target = LuaType::from_vec(vec![value, LuaType::Nil]);
+                    check_value_against_target(context, semantic_model, &target, &expr);
+                    continue;
+                }
                 let Some(resolved) = semantic_model.resolve_member(index_expr) else {
                     check_self_member_assign(context, semantic_model, index_expr, &expr);
                     continue;
@@ -291,6 +299,62 @@ fn check_assign(
             }
         }
     }
+}
+
+/// `t.x = value` into a declared `table<K, V>`, `{ [K]: V }` or `V[]`: `V` is the contract of a key
+/// with no named member. The class table itself is out: a write there declares the member.
+fn declared_index_value(
+    semantic_model: &SemanticModel<'_>,
+    index_expr: &LuaIndexExpr,
+) -> Option<LuaType> {
+    let prefix = index_expr.get_prefix_expr()?;
+    let prefix_decl = match &prefix {
+        LuaExpr::NameExpr(name) => semantic_model.resolve_name(name.get_position()),
+        _ => None,
+    };
+    if let Some(decl) = &prefix_decl
+        && let Some(decl) = semantic_model.file_facts()?.decl_by_id(decl)
+        && class_contract_for_decl(semantic_model, decl).is_some()
+    {
+        return None;
+    }
+    let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
+    let key = index_expr.get_index_key()?;
+    let key_ty = index_key_type(semantic_model, &key);
+    match &prefix_ty {
+        LuaType::Def(_) => None,
+        LuaType::Array(array) => matches!(key_ty, LuaType::Integer | LuaType::IntegerConst(_))
+            .then(|| array.get_base().clone()),
+        _ if static_member_key(semantic_model, &key).is_some_and(|key| {
+            semantic_model
+                .member_infos_with_key(&prefix_ty, &key)
+                .iter()
+                .any(|info| !is_plain_write_through(semantic_model, info, prefix_decl.as_ref()))
+        }) =>
+        {
+            None
+        }
+        LuaType::TableConst(_) => None,
+        _ => semantic_model
+            .applicable_index_infos(&prefix_ty, &key_ty)
+            .ok()?
+            .into_iter()
+            .next()
+            .map(|info| info.value_type),
+    }
+}
+
+/// A member made by a plain write through this variable, which says nothing about its type.
+fn is_plain_write_through(
+    semantic_model: &SemanticModel<'_>,
+    info: &MemberInfo,
+    variable: Option<&SemanticId>,
+) -> bool {
+    info.id
+        .as_ref()
+        .zip(info.file_id)
+        .and_then(|(id, file_id)| semantic_model.file_facts_of(file_id)?.member_by_id(id))
+        .is_some_and(|member| variable == Some(&member.owner) && member.doc_type_syntax.is_none())
 }
 
 fn check_against(
