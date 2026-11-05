@@ -147,7 +147,7 @@ pub(crate) fn rebuild_file_after_write(
     metadata_changed: bool,
     old_module_entry: Option<ModuleEntry>,
 ) {
-    if db.config_input().is_none() {
+    if db.config().is_none() {
         return;
     }
     let is_new_file = db.file_facts_of(file_id).is_none();
@@ -261,7 +261,7 @@ pub(crate) fn rebuild_file_after_remove(
     db.files.remove(&file_id);
     db.refresh_module_fallback_root();
 
-    if db.config_input().is_none() {
+    if db.config().is_none() {
         return;
     }
 
@@ -303,7 +303,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         .full_rebuilds
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     db.refresh_module_fallback_root();
-    if db.config_input().is_none() {
+    if db.config().is_none() {
         db.files.clear();
         db.workspace_index = WorkspaceIndexCache::new();
         return;

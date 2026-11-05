@@ -24,11 +24,10 @@ use super::def::{
 };
 use super::exports::FileExports;
 use super::facts::FileFacts;
-use super::flow::{FlowTree, flow_tree_of};
+use super::flow::FlowTree;
 use super::query::{
-    self, decl_references, decl_type, file_and_config, file_facts, member_keys_of_decl,
-    member_keys_of_type, member_type, module_export_type, resolve_name, resolve_type_def,
-    signature_return,
+    self, decl_references, decl_type, file_facts, member_keys_of_decl, member_keys_of_type,
+    member_type, module_export_type, resolve_name, resolve_type_def, signature_return,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{
@@ -224,7 +223,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Whether a doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).
     pub fn is_known_doc_tag(&self, name: &str) -> bool {
-        let Some(config) = self.db.config_input() else {
+        let Some(config) = self.db.config() else {
             return false;
         };
         config.known_doc_tags().iter().any(|tag| tag == name)
@@ -232,7 +231,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Whether a global name is deprecated in any workspace.
     pub(crate) fn is_global_deprecated(&self, name: &str) -> bool {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return false;
         }
         for &ws_id in self.db.workspace_lookup_order() {
@@ -245,7 +244,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Whether any deprecated member uses this key name.
     pub(crate) fn is_deprecated_member_name(&self, name: &str) -> bool {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return false;
         }
         for &ws_id in self.db.workspace_lookup_order() {
@@ -268,8 +267,7 @@ impl<'db> AnalysisView<'db> {
     }
     /// Per-file control-flow graph (CFG, for flow-sensitive analysis).
     pub fn flow_tree(&self, file_id: FileId) -> Option<&'db FlowTree> {
-        let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(flow_tree_of(self.db, file))
+        self.db.flow_tree_of(file_id)
     }
 
     // ── Declarations ──
@@ -291,8 +289,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Type of a declaration (node-keyed, with cycle convergence; may reference members across files).
     pub fn decl_type(&self, file_id: FileId, decl: SemanticId) -> Option<TypeShell> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(decl_type(self.db, file, config, decl))
+        Some(decl_type(self.db, file_id, self.db.config()?, decl))
     }
 
     /// Range of a declaration's name (for goto-def).
@@ -312,44 +309,32 @@ impl<'db> AnalysisView<'db> {
 
     /// Name use site → declaration (scope-aware).
     pub fn resolve_name(&self, file_id: FileId, offset: TextSize) -> Option<SemanticId> {
-        let file = self.db.file_data_id(file_id)?;
-        resolve_name(self.db, file, offset)
+        resolve_name(self.db, file_id, offset)
     }
 
     /// Workspace-global declaration (cross-file). The `Decl` key carries its defining file.
     pub fn global_decl(&self, name: &str) -> Option<SemanticId> {
-        self.db.config_input()?;
         query::global_decl_by_name(self.db, SmolStr::new(name))
     }
 
     /// Same-workspace global declarations with this name (overload candidates).
     pub fn global_decls_named_for_file(&self, file_id: FileId, name: &str) -> Vec<SemanticId> {
-        if self.db.config_input().is_none() {
-            return Vec::new();
-        }
         query::global_decls_named_for_file(self.db, file_id, name)
     }
 
     /// First non-empty workspace's global declarations with this name.
     pub fn global_decls_named_primary(&self, name: &str) -> Vec<SemanticId> {
-        if self.db.config_input().is_none() {
-            return Vec::new();
-        }
         query::global_decls_named_primary(self.db, name)
     }
 
     /// All references to a declaration.
     pub fn decl_references(&self, file_id: FileId, decl: SemanticId) -> Vec<LuaSyntaxId> {
-        let Some(file) = self.db.file_data_id(file_id) else {
-            return Vec::new();
-        };
-        decl_references(self.db, file, decl)
+        decl_references(self.db, file_id, decl)
     }
 
     /// File's exported facts (cross-file consumption entry: reads only the defining file, not its function bodies).
     pub fn file_exports(&self, file_id: FileId) -> Option<&'db FileExports> {
-        let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(self.db.file_exports_of(file))
+        self.db.file_exports_of(file_id)
     }
 
     pub fn members(&self, file_id: FileId) -> Option<&'db [Member]> {
@@ -359,8 +344,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Type of a member (node-keyed, with cycle convergence; may resolve value expressions across files).
     pub fn member_type(&self, file_id: FileId, member: SemanticId) -> Option<TypeShell> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(member_type(self.db, file, config, member))
+        Some(member_type(self.db, file_id, self.db.config()?, member))
     }
 
     /// Index expression (by syntax position) → `(owner, name)` member reference (for deprecated etc. checks).
@@ -369,9 +353,8 @@ impl<'db> AnalysisView<'db> {
         file_id: FileId,
         index_syntax: LuaSyntaxId,
     ) -> Option<(SemanticId, SmolStr)> {
-        let (file, _config) = file_and_config(self.db, file_id)?;
-        let facts = file_facts(self.db, file);
-        let tree = self.db.vfs().get_syntax_tree(&file)?;
+        let facts = file_facts(self.db, file_id);
+        let tree = self.db.vfs().get_syntax_tree(&file_id)?;
         let expr = query::find_expr_by_syntax_id(tree, &index_syntax)?;
         let emmylua_parser::LuaExpr::IndexExpr(index_expr) = expr else {
             return None;
@@ -399,7 +382,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Cross-file merged member keys (completion candidates): runtime members (Name/Decl keys) + `@field` (TypeDef keys).
     pub fn member_keys_of_owner(&self, owner: SemanticId) -> Vec<SmolStr> {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return Vec::new();
         }
         query::member_keys_of_owner(self.db, owner)
@@ -409,13 +392,13 @@ impl<'db> AnalysisView<'db> {
 
     /// Resolve `Name("a.b")` to its real definition (global type/variable/member chain). `Decl`/`TypeDef`/`Member` are returned as-is.
     pub fn resolve_owner(&self, owner: SemanticId) -> Option<SemanticId> {
-        self.db.config_input()?;
+        self.db.config()?;
         query::resolve_owner(self.db, owner)
     }
 
     /// Resolve an owner to a set of identities (dual identity: same-named type + runtime value decl).
     pub fn resolve_owner_set(&self, owner: SemanticId) -> Vec<SemanticId> {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return Vec::new();
         }
         query::resolve_owner_set(self.db, owner)
@@ -423,7 +406,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Deterministic canonical owner identities (P5b).
     pub fn resolve_owner_ids(&self, owner: &SemanticId) -> Vec<OwnerId> {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return Vec::new();
         }
         query::resolve_owner_ids(self.db, owner)
@@ -436,7 +419,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Members of an owner identified by `SemanticId` (cross-file).
     pub fn members_of_owner(&self, owner: SemanticId) -> MemberList {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return MemberList::default();
         }
         MemberList::from(query::members_of_owner(self.db, owner))
@@ -444,7 +427,7 @@ impl<'db> AnalysisView<'db> {
 
     /// Members of an owner with a specific name.
     pub fn members_of_owner_named(&self, owner: SemanticId, name: SmolStr) -> MemberList {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return MemberList::default();
         }
         MemberList::from(query::members_of_owner_named(self.db, owner, name))
@@ -455,7 +438,7 @@ impl<'db> AnalysisView<'db> {
         &self,
         type_def: SemanticId,
     ) -> Option<ConstructorAttribute> {
-        self.db.config_input()?;
+        self.db.config()?;
         query::constructor_attribute_of_type(self.db, type_def)
     }
 
@@ -472,8 +455,12 @@ impl<'db> AnalysisView<'db> {
         file_id: FileId,
         closure_syntax: LuaSyntaxId,
     ) -> Option<TypeShell> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(signature_return(self.db, file, config, closure_syntax))
+        Some(signature_return(
+            self.db,
+            file_id,
+            self.db.config()?,
+            closure_syntax,
+        ))
     }
 
     /// Per-slot function return types (preserves multiple return values).
@@ -482,11 +469,10 @@ impl<'db> AnalysisView<'db> {
         file_id: FileId,
         closure_syntax: LuaSyntaxId,
     ) -> Option<Vec<TypeShell>> {
-        let (file, config) = file_and_config(self.db, file_id)?;
         Some(query::signature_returns(
             self.db,
-            file,
-            config,
+            file_id,
+            self.db.config()?,
             closure_syntax,
         ))
     }
@@ -515,19 +501,18 @@ impl<'db> AnalysisView<'db> {
 
     /// Type of a module's exported value (for cross-file require resolution).
     pub fn module_export_type(&self, file_id: FileId) -> Option<TypeShell> {
-        let (file, config) = file_and_config(self.db, file_id)?;
-        Some(module_export_type(self.db, file, config))
+        Some(module_export_type(self.db, file_id, self.db.config()?))
     }
 
     /// Module name → module file (require resolution).
     pub fn module_file_of(&self, module_name: &str) -> Option<FileId> {
-        let config = self.db.config_input()?;
+        let config = self.db.config()?;
         query::module_file_of(self.db, config, SmolStr::new(module_name))
     }
 
     /// Module lookup relative to the caller's configured source root.
     pub fn module_file_from(&self, module_name: &str, caller: FileId) -> Option<FileId> {
-        let config = self.db.config_input()?;
+        let config = self.db.config()?;
         query::module_file_from(self.db, config, SmolStr::new(module_name), caller)
     }
 
@@ -549,7 +534,7 @@ impl<'db> AnalysisView<'db> {
 
     /// All type definitions for a scope + full name (cross-file, for member queries / inheritance chains).
     pub fn type_defs_in_scope(&self, scope: TypeScope, full_name: &str) -> TypeDefList {
-        if self.db.config_input().is_none() {
+        if self.db.config().is_none() {
             return TypeDefList::default();
         }
         TypeDefList::from(query::type_defs_in_scope(
@@ -558,8 +543,6 @@ impl<'db> AnalysisView<'db> {
             SmolStr::new(full_name),
         ))
     }
-
-    // ── Projection: TypeShell → LuaType ──
 
     /// Declared type projected to a concrete `LuaType` (consumed by semantic_model / diagnostics).
     pub fn decl_type_lua(&self, file_id: FileId, decl: SemanticId) -> Option<LuaType> {

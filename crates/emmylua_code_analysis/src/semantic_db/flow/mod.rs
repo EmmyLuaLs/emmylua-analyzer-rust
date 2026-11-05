@@ -40,11 +40,6 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
     label
 }
 
-/// Per-file control flow graph. Pure lookup in the write-time built `SemanticDatabase::flow_trees`.
-pub(crate) fn flow_tree_of(db: &SemanticDatabase, file: FileId) -> &FlowTree {
-    db.flow_tree_of(file)
-}
-
 pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId) -> FlowTree {
     let file_id = file;
     let facts = file_facts(db, file);

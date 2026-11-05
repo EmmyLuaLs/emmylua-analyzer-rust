@@ -99,7 +99,7 @@ pub fn check_simple_type_compact(
                     && context
                         .model
                         .db()
-                        .config_input()
+                        .config()
                         .is_none_or(|config| config.strict.doc_base_const_match_base_type) =>
             {
                 return Ok(());
@@ -144,7 +144,7 @@ pub fn check_simple_type_compact(
                     && context
                         .model
                         .db()
-                        .config_input()
+                        .config()
                         .is_none_or(|config| config.strict.doc_base_const_match_base_type) =>
             {
                 return Ok(());

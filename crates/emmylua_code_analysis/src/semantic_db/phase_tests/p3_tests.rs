@@ -58,7 +58,7 @@ fn p3_type_index_remove_add_matches_full_rebuild() {
     assert_eq!(a_defs[0].name.as_str(), "A");
 
     set_test_file(&mut db, 1, &test_file("a.lua"), "---@class B\nlocal B = {}");
-    let new_exports = db.file_exports_of(fid);
+    let new_exports = db.file_exports_of(fid).expect("exports");
     incremental.remove_file(fid);
     incremental.add_file(WorkspaceId::Main, fid, new_exports);
 
@@ -102,6 +102,7 @@ fn p3_member_index_remove_add_preserves_overloads() {
 
     let owner = db
         .file_exports_of(fid)
+        .expect("exports")
         .members
         .iter()
         .find(|member| member.key.name() == Some("f"))
@@ -135,7 +136,7 @@ fn p3_member_index_remove_add_preserves_overloads() {
         local C = {}
         "#,
     );
-    let new_exports = db.file_exports_of(fid);
+    let new_exports = db.file_exports_of(fid).expect("exports");
     incremental.remove_file(fid);
     incremental.add_file(fid, new_exports);
 

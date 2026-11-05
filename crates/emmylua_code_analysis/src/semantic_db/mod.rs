@@ -22,7 +22,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use emmylua_parser::{LineIndex, LuaVersionNumber};
+use emmylua_parser::{LineIndex, LuaSyntaxTree, LuaVersionNumber};
 use lsp_types::Uri;
 
 use crate::vfs::file_path_to_uri;
@@ -225,27 +225,32 @@ impl SemanticDatabase {
     pub(crate) fn file_facts_of(&self, file_id: FileId) -> Option<&facts::FileFacts> {
         self.file_cache(file_id).map(|cache| &cache.facts)
     }
-    pub(crate) fn flow_tree_of(&self, file_id: FileId) -> &flow::FlowTree {
-        &self
-            .file_cache(file_id)
-            .expect("flow tree must be built before read")
-            .flow
+
+    pub(crate) fn flow_tree_of(&self, file_id: FileId) -> Option<&flow::FlowTree> {
+        self.file_cache(file_id).map(|f| &f.flow)
     }
 
-    pub(crate) fn file_exports_of(&self, file_id: FileId) -> &exports::FileExportContribution {
-        self.file_cache(file_id)
-            .expect("file exports must be built before read")
-            .exports
-            .as_ref()
+    pub(crate) fn file_exports_of(
+        &self,
+        file_id: FileId,
+    ) -> Option<&exports::FileExportContribution> {
+        match self.file_cache(file_id) {
+            Some(cache) => Some(cache.exports.as_ref()),
+            None => None,
+        }
     }
 
-    #[cfg(test)]
+    pub(crate) fn syntax_tree_of(&self, file_id: FileId) -> Option<&LuaSyntaxTree> {
+        self.vfs.get_syntax_tree(&file_id)
+    }
+
+    #[allow(unused)]
     pub(crate) fn file_module_entry_of(&self, file_id: FileId) -> Option<&query::ModuleEntry> {
         self.file_cache(file_id)
             .and_then(|cache| cache.module_entry.as_ref())
     }
 
-    #[cfg(test)]
+    #[allow(unused)]
     pub(crate) fn file_deprecated_of(&self, file_id: FileId) -> Option<&query::DeprecatedFileData> {
         self.file_cache(file_id)
             .map(|cache| cache.deprecated.as_ref())
@@ -784,7 +789,7 @@ impl SemanticDatabase {
 
     // ── Input accessors (for tracked layer / facade) ──
 
-    pub(crate) fn config_input(&self) -> Option<&Emmyrc> {
+    pub(crate) fn config(&self) -> Option<&Emmyrc> {
         self.config.as_deref()
     }
 
@@ -818,7 +823,7 @@ impl SemanticDatabase {
 
     /// All use sites of a declaration (Decl) (cross-file, aggregated through sharded reference index).
     pub fn decl_reference_ranges(&self, decl: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let Some(_config) = self.config_input() else {
+        let Some(_config) = self.config() else {
             return Vec::new();
         };
         let mut out = Vec::new();
@@ -833,7 +838,7 @@ impl SemanticDatabase {
 
     /// All use sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_reference_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let Some(_config) = self.config_input() else {
+        let Some(_config) = self.config() else {
             return Vec::new();
         };
         let mut out = Vec::new();
@@ -848,7 +853,7 @@ impl SemanticDatabase {
 
     /// All definition sites of a member (Member) (cross-file, aggregated through sharded reference index).
     pub fn member_definition_ranges(&self, member: &SemanticId) -> Vec<(FileId, rowan::TextRange)> {
-        let Some(_config) = self.config_input() else {
+        let Some(_config) = self.config() else {
             return Vec::new();
         };
         let mut out = Vec::new();
@@ -903,14 +908,14 @@ impl SemanticDatabase {
 
     /// Module tree node details.
     pub fn module_node_info(&self, node_id: ModuleNodeId) -> Option<ModuleNode> {
-        let _config = self.config_input()?;
+        let _config = self.config()?;
         let index = query::workspace_module_index_for(self, node_id.workspace_id);
         index.module_node(node_id).cloned()
     }
 
     /// File id list under a module tree node.
     pub fn module_node_file_ids(&self, node_id: ModuleNodeId) -> Vec<FileId> {
-        let Some(_config) = self.config_input() else {
+        let Some(_config) = self.config() else {
             return Vec::new();
         };
         let index = query::workspace_module_index_for(self, node_id.workspace_id);

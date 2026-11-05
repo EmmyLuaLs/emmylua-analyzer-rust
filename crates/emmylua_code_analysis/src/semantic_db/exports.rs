@@ -313,17 +313,14 @@ pub(crate) fn build_require_alias_contributions(
     db: &SemanticDatabase,
     file_id: FileId,
 ) -> Vec<RequireAliasContribution> {
-    let Some(config) = db.config_input() else {
+    let Some(config) = db.config() else {
         return Vec::new();
     };
-    let Some(file) = db.file_data_id(file_id) else {
-        return Vec::new();
-    };
-    let facts = file_facts(db, file);
+    let facts = file_facts(db, file_id);
     if facts.decls.is_empty() {
         return Vec::new();
     }
-    let Some(tree) = db.vfs().get_syntax_tree(&file_id) else {
+    let Some(tree) = db.syntax_tree_of(file_id) else {
         return Vec::new();
     };
     let root = tree.get_red_root();

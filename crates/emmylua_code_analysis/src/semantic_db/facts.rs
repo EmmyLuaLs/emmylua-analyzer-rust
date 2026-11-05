@@ -23,10 +23,6 @@ use crate::semantic_db::def::SignatureReturnCast;
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
-// ──────────────────────────────────────────────
-// Type definitions (from def/, with global SemanticId identity)
-// ──────────────────────────────────────────────
-
 use super::def::{
     ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam, LuaMemberKey,
     Member, ModuleExport, ModuleVisibility, NameUse, OperatorDef, Scope, ScopeChild, ScopeKind,

@@ -328,6 +328,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
 
     let owner = db
         .file_exports_of(fid)
+        .expect("exports")
         .members
         .iter()
         .find(|member| member.key.name() == Some("f"))

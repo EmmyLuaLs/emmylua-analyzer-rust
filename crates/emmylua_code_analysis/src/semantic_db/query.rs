@@ -491,7 +491,7 @@ fn merge_canonical_members(
 /// falls back to the owner's `FileFacts` when the index has no contribution
 /// (e.g. an unconfigured database or a facts-only test setup).
 fn raw_owner_members(db: &SemanticDatabase, owner: &SemanticId) -> Arc<[MemberRef]> {
-    let from_index = if db.config_input().is_some() {
+    let from_index = if db.config().is_some() {
         members_from_workspaces(db, owner, None)
     } else {
         Arc::from(Vec::new())
@@ -527,7 +527,7 @@ fn raw_owner_members_named(
     owner: &SemanticId,
     name: &str,
 ) -> Arc<[MemberRef]> {
-    let from_index = if db.config_input().is_some() {
+    let from_index = if db.config().is_some() {
         members_from_workspaces(db, owner, Some(name))
     } else {
         Arc::from(Vec::new())
@@ -918,7 +918,7 @@ pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Opti
         _ if roots.is_empty() => fallback_root,
         _ => None,
     }?;
-    let config = db.config_input()?;
+    let config = db.config()?;
     let full_module_name = SmolStr::new(map_module_name(
         config,
         &module_name_from_path(&path, Some(&root_path))?,
@@ -2511,10 +2511,6 @@ fn local_base_type_defs<'a>(
     defs
 }
 
-// ──────────────────────────────────────────────
-// L3 semantics: name resolution and references
-// ──────────────────────────────────────────────
-
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
 pub(crate) fn resolve_name(
     db: &SemanticDatabase,
@@ -3601,11 +3597,6 @@ fn require_module_name(call_expr: &LuaCallExpr) -> Option<String> {
         },
         _ => None,
     }
-}
-
-/// file_id → (file input, config input).
-pub(crate) fn file_and_config(db: &SemanticDatabase, file_id: FileId) -> Option<(FileId, &Emmyrc)> {
-    Some((db.file_data_id(file_id)?, db.config_input()?))
 }
 
 /// Index expression -> `(owner, name)` (member reference resolution).
