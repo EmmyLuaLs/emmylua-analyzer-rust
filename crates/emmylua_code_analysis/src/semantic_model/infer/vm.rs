@@ -2992,7 +2992,7 @@ impl<'a> InferVm<'a> {
             params.push((name, Some(ty)));
         }
 
-        let ret = match func.get_return_type_list() {
+        let mut ret = match func.get_return_type_list() {
             Some(list) => {
                 let mut types = Vec::new();
                 for ret in list.get_return_type_list() {
@@ -3015,6 +3015,15 @@ impl<'a> InferVm<'a> {
             None => LuaType::Unknown,
         };
 
+        // Overloads need the same nested generic bindings as the main signature.
+        let generic_tpls = self.generic_tpls_with_metadata(file_id, &generic_params);
+        for (_, ty) in &mut params {
+            if let Some(ty) = ty {
+                *ty = bind_signature_generics(ty, &generic_tpls);
+            }
+        }
+        ret = bind_signature_generics(&ret, &generic_tpls);
+
         let mut fun = LuaFunctionType::new(
             if func.is_async() {
                 AsyncState::Async
@@ -3025,7 +3034,7 @@ impl<'a> InferVm<'a> {
             is_variadic,
             params,
             ret,
-            Some(self.generic_tpls_with_metadata(file_id, &generic_params)),
+            Some(generic_tpls),
         );
         if has_own_generics {
             fun = reassign_function_generics_to_func_ids(fun);

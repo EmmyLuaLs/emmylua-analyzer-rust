@@ -563,62 +563,115 @@ impl<'db> SemanticModel<'db> {
     ///
     /// `f` may be declared in multiple files (global overloads); this entry goes
     /// through the same `signature_candidates` projection used by the VM, so
-    /// diagnostics/completion see the same set.
+    /// diagnostics/completion see the same set. `None` keeps single-declaration
+    /// inference; `Some` includes the current file's casts and guards.
     pub(crate) fn callable_candidates_for_name_expr(
         &self,
         callee: &LuaExpr,
-    ) -> Vec<LuaFunctionType> {
+    ) -> Option<Vec<LuaFunctionType>> {
         let LuaExpr::NameExpr(name_expr) = callee else {
-            return Vec::new();
+            return None;
         };
-        let Some(owner) = self.resolve_name(name_expr.get_position()) else {
-            return Vec::new();
-        };
+        let owner = self.resolve_name(name_expr.get_position())?;
         // Only intervene for actual same-workspace global overloads. A single
         // declaration keeps the legacy projection path, which preserves its
         // generic/closure details.
         let SemanticId::Decl(key) = &owner else {
-            return Vec::new();
+            return None;
         };
-        let Some(facts) = self.file_facts_of(key.file_id) else {
-            return Vec::new();
-        };
-        let Some(decl) = facts.decl_by_id(&owner) else {
-            return Vec::new();
-        };
+        let facts = self.file_facts_of(key.file_id)?;
+        let decl = facts.decl_by_id(&owner)?;
         if !matches!(decl.kind, DeclKind::Global) {
-            return Vec::new();
+            return None;
         }
         let decls = self.global_decls_named_for_file(key.file_id, decl.name.as_str());
         if decls.len() <= 1 {
-            return Vec::new();
+            return None;
         }
         let vm = infer::vm::InferVm::new(self, &[]);
         // Identical duplicate declarations (same file content loaded twice, common in
         // tests / project duplicates) must keep the legacy single-symbol path; only
         // genuinely different global declarations are overloads.
         let mut per_decl: Vec<Vec<LuaFunctionType>> = Vec::with_capacity(decls.len());
+        let mut contracts = Vec::with_capacity(decls.len());
         for decl in &decls {
-            let candidates = vm
-                .callable_candidates_for_owner_single(decl)
-                .unwrap_or_default();
+            let mut candidates = if let SemanticId::Decl(key) = decl
+                && self
+                    .file_facts_of(key.file_id)
+                    .and_then(|facts| facts.decl_by_id(decl))
+                    .is_some_and(|decl| decl.doc_type_syntax.is_some())
+                && let Some(declared) = self.type_of_decl(decl)
+            {
+                let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+                if !candidates.is_empty() {
+                    contracts.push(declared);
+                }
+                candidates
+            } else {
+                Vec::new()
+            };
+            if candidates.is_empty() {
+                candidates = vm
+                    .callable_candidates_for_owner_single(decl)
+                    .unwrap_or_default();
+                contracts.extend(
+                    candidates
+                        .iter()
+                        .cloned()
+                        .map(|fun| LuaType::DocFunction(Rc::new(fun))),
+                );
+            }
             per_decl.push(candidates);
         }
-        let Some(first) = per_decl.first() else {
-            return Vec::new();
-        };
+        let first = per_decl.first()?;
         if per_decl.iter().all(|candidates| candidates == first) {
-            return Vec::new();
+            return None;
         }
-        per_decl.into_iter().flatten().collect()
+        // Apply this file's casts and guards once to the combined contract.
+        // Keep callable class types intact until guards have narrowed them.
+        let contract = flow::type_of_decl_contract_at(
+            self,
+            &owner,
+            name_expr.get_position(),
+            LuaType::from_vec(contracts),
+        );
+        // Some(empty) is a complete result: a cast can remove every callable.
+        let mut candidates = Vec::new();
+        for candidate in infer::vm::expand_callable_types_in_model(self, &contract) {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        }
+        Some(candidates)
     }
 
-    /// Public unified candidates for call rendering (signature help / completion / hover).
+    /// All callable candidates for call checks and rendering, before argument matching.
     ///
     /// Combines the diagnostic candidate path (member `CallableCandidateSet`,
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
+        if let Some(globals) = self.callable_candidates_for_name_expr(callee) {
+            return globals;
+        }
+        // The declared contract, including named casts, takes priority over
+        // implementation docs and assignments.
+        if let LuaExpr::NameExpr(name_expr) = callee
+            && let Some(SemanticId::Decl(key)) = self.resolve_name(name_expr.get_position())
+            && self
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.decl_by_id(&SemanticId::Decl(key.clone())))
+                .is_some_and(|decl| decl.doc_type_syntax.is_some())
+        {
+            let owner = SemanticId::Decl(key);
+            let contract = self.type_of_decl(&owner).unwrap_or(LuaType::Unknown);
+            let declared =
+                flow::type_of_decl_contract_at(self, &owner, name_expr.get_position(), contract);
+            let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+            if !candidates.is_empty() {
+                return candidates;
+            }
+        }
         let mut out = self.callable_candidates_cached(callee);
         // The value type may omit `---@overload` signatures. Keep its richer
         // generic projection when there are no overloads to add.
@@ -704,7 +757,7 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
             };
         };
-        let candidates = self.callable_candidates_cached(&callee);
+        let candidates = self.callable_candidates_for_expr(&callee);
         if candidates.is_empty() {
             return CallSiteAnalysis {
                 candidates,

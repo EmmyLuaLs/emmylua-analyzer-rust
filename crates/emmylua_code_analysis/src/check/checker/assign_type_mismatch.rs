@@ -763,7 +763,11 @@ fn collect_table_value_mismatches(
     expected: &LuaType,
 ) {
     if matches!(value_expr, LuaExpr::TableExpr(_)) {
-        collect_value_mismatches(mismatches, semantic_model, expected, value_expr);
+        // Resolve the next shape when checking its literal. Nested mapped
+        // values can remain lazy after the outer type is expanded.
+        let expected =
+            crate::semantic_model::type_eval::expand_alias_generic(semantic_model, expected);
+        collect_value_mismatches(mismatches, semantic_model, &expected, value_expr);
         return;
     }
     let value_ty =

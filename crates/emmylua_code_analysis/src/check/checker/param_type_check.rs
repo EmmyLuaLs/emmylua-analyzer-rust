@@ -5,8 +5,9 @@
 //! `AssignTypeMismatch`; other arguments use `ParamTypeMismatch`. Colon calls:
 //! strip one slot for the self parameter; plain functions treat the receiver as the first argument.
 
+use crate::semantic_db::types::{LiteralShell, exact_integer};
 use crate::semantic_model::type_check::{TypeCheckContext, integer_index_applies};
-use std::rc::Rc;
+use std::{collections::HashSet, rc::Rc};
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxId, LuaTokenKind,
@@ -65,13 +66,15 @@ fn check_pcall_forward(
     let Some(callback_expr) = args.first() else {
         return false;
     };
-    let callback_candidates = callable_candidates(semantic_model, callback_expr);
+    let callback_candidates = semantic_model.callable_candidates_for_expr(callback_expr);
     if callback_candidates.is_empty() {
         return false;
     }
     let forwarded = &args[1..];
     let mut best: Option<Vec<Mismatch>> = None;
-    for candidate in &callback_candidates {
+    for candidate in
+        candidates_for_arg_count(semantic_model, &callback_candidates, forwarded, false)
+    {
         let mismatches = check_candidate(
             semantic_model,
             candidate,
@@ -113,11 +116,8 @@ pub(crate) fn callable_candidates_uncached(
 ) -> Vec<LuaFunctionType> {
     // Unified path for name callees: global cross-file overloads must be visible
     // here exactly as they are in the VM call-selection path.
-    if let LuaExpr::NameExpr(_) = callee {
-        let candidates = semantic_model.callable_candidates_for_name_expr(callee);
-        if !candidates.is_empty() {
-            return candidates;
-        }
+    if let Some(candidates) = semantic_model.callable_candidates_for_name_expr(callee) {
+        return candidates;
     }
     // For static member calls, the member table is the authoritative source of
     // callable signatures.  Avoid paying for full VM expression inference on the
@@ -230,21 +230,7 @@ fn check_call(
         return;
     };
     let analysis = semantic_model.call_site_analysis(call_expr);
-    let mut candidates = analysis.candidates;
-    // Local `---@type F1` (fun alias) declaration structure takes precedence over closure body inference.
-    if let LuaExpr::NameExpr(name_expr) = &callee
-        && let Some(decl) = semantic_model.resolve_name(name_expr.get_position())
-    {
-        if let Some(facts) = semantic_model.file_facts()
-            && let Some(decl_facts) = facts.decl_by_id(&decl)
-            && let Some(doc_syntax) = decl_facts.doc_type_syntax
-        {
-            let doc_ty = semantic_model.doc_type_lua(doc_syntax);
-            if let Some(func) = doc_function_of(semantic_model, &doc_ty) {
-                candidates = vec![func];
-            }
-        }
-    }
+    let candidates = analysis.candidates;
 
     let args = call_expr
         .get_args_list()
@@ -253,6 +239,9 @@ fn check_call(
     // `pcall(callback, ...)`: forward the remaining arguments to the callback check.
     if let LuaExpr::NameExpr(callee_name) = &callee
         && callee_name.get_name_text().as_deref() == Some("pcall")
+        && semantic_model
+            .resolves_to_builtin(callee.clone(), "pcall")
+            .is_some()
         && !args.is_empty()
         && check_pcall_forward(context, semantic_model, &args)
     {
@@ -636,6 +625,27 @@ fn table_field_mismatches(
     let LuaExpr::TableExpr(table) = arg else {
         return Vec::new();
     };
+    // Check a dictionary literal against this candidate, so separate overloads
+    // cannot each accept a different part of the same call.
+    if let LuaType::Generic(generic) = param_ty
+        && generic.get_base_type_id().get_name() == "table"
+        && let [key_ty, value_ty] = generic.get_params().as_slice()
+        && semantic_model
+            .type_def_of(&generic.get_base_type_id())
+            .is_none_or(|def| semantic_model.is_std_file(def.file_id))
+        && dictionary_literal_has_mismatch(semantic_model, table, key_ty, value_ty)
+    {
+        return vec![Mismatch {
+            code: DiagnosticCode::ParamTypeMismatch,
+            range: arg.get_range(),
+            message: mismatch_message(
+                semantic_model,
+                &semantic_model.type_of_expr(arg.get_syntax_id()),
+                param_ty,
+                "",
+            ),
+        }];
+    }
     super::assign_type_mismatch::table_field_mismatches(semantic_model, param_ty, table)
         .into_iter()
         .map(|mismatch| Mismatch {
@@ -644,6 +654,55 @@ fn table_field_mismatches(
             message: mismatch.message,
         })
         .collect()
+}
+
+fn dictionary_literal_has_mismatch(
+    semantic_model: &SemanticModel<'_>,
+    table: &emmylua_parser::LuaTableExpr,
+    key_ty: &LuaType,
+    value_ty: &LuaType,
+) -> bool {
+    let mut seen = HashSet::new();
+    let value_or_absent = LuaType::from_vec(vec![value_ty.clone(), LuaType::Nil]);
+    table
+        .get_fields_with_keys()
+        .into_iter()
+        .rev()
+        .any(|(field, key)| {
+            let actual_key = super::assign_type_mismatch::index_key_type(semantic_model, &key);
+            // Only a known single key can overwrite an earlier entry.
+            let literal_key = match &actual_key {
+                LuaType::StringConst(value) | LuaType::DocStringConst(value) => {
+                    Some(LiteralShell::String(value.as_str().into()))
+                }
+                LuaType::IntegerConst(value) | LuaType::DocIntegerConst(value) => {
+                    Some(LiteralShell::Integer(*value))
+                }
+                LuaType::BooleanConst(value) | LuaType::DocBooleanConst(value) => {
+                    Some(LiteralShell::Boolean(*value))
+                }
+                LuaType::FloatConst(value) => Some(
+                    exact_integer(*value)
+                        .map(LiteralShell::Integer)
+                        .unwrap_or_else(|| LiteralShell::Float(value.to_bits())),
+                ),
+                _ => None,
+            };
+            if let Some(key) = literal_key
+                && !seen.insert(key)
+            {
+                return false;
+            }
+            let Some(value) = field.get_value_expr() else {
+                return false;
+            };
+            let actual_value = semantic_model.type_of_expr(value.get_syntax_id());
+            // Nil leaves no stored entry. A nullable value only needs to match
+            // the dictionary when the entry exists.
+            !actual_value.is_nil()
+                && (!is_compatible(semantic_model, &actual_key, key_ty)
+                    || !is_compatible(semantic_model, &actual_value, &value_or_absent))
+        })
 }
 
 fn check_arg_pairs(
