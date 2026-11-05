@@ -203,10 +203,14 @@ impl FileFacts {
             .partition_point(|(start, _)| *start <= offset);
         for (_, index) in self.member_by_range_start[..idx].iter().rev() {
             let member = &self.members[*index];
-            if member
-                .id
-                .member_key_range()
-                .is_some_and(|range| range.contains(offset))
+            // A positional table field has no key token: its range is its value's, which isn't a key.
+            let is_positional =
+                member.value_syntax.map(|value| value.get_range()) == member.id.member_key_range();
+            if !is_positional
+                && member
+                    .id
+                    .member_key_range()
+                    .is_some_and(|range| range.contains(offset))
             {
                 return Some(member);
             }
