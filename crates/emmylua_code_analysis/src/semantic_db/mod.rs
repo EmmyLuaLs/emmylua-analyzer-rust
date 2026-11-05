@@ -468,7 +468,15 @@ impl SemanticDatabase {
     /// Register a library workspace (allocates a new `WorkspaceId`).
     pub(crate) fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         let mut roots = self.workspace_roots.to_vec();
-        let id = WorkspaceId::Library(roots.len() as u32);
+        let mut last_lib_id = 0;
+        for root in &roots {
+            if let WorkspaceId::Library(id) = root.id {
+                if id > last_lib_id {
+                    last_lib_id = id;
+                }
+            }
+        }
+        let id = WorkspaceId::Library(last_lib_id + 1);
         roots.push(WorkspaceRoot {
             id,
             root: workspace.root.clone(),
