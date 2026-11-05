@@ -200,11 +200,6 @@ pub(crate) fn owner_id_from_semantic_id(facts: &FileFacts, owner: &SemanticId) -
     }
 }
 
-/// Per-file export contribution (collects identities only, no type precomputation).
-pub(crate) fn file_exports(db: &SemanticDatabase, file: FileId) -> &FileExportContribution {
-    db.file_exports_of(file)
-}
-
 pub(super) fn build_file_exports(
     db: &SemanticDatabase,
     file: FileId,

@@ -22,7 +22,7 @@ use super::def::{
     ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, OwnerId,
     Scope, SemanticId, Signature, TypeDef, TypeScope,
 };
-use super::exports::{FileExports, file_exports};
+use super::exports::FileExports;
 use super::facts::FileFacts;
 use super::flow::{FlowTree, flow_tree_of};
 use super::query::{
@@ -211,13 +211,11 @@ impl<'db> AnalysisView<'db> {
     // ── Files / Syntax ──
 
     pub fn file_facts(&self, file_id: FileId) -> Option<&'db FileFacts> {
-        let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(file_facts(self.db, file))
+        self.db.file_facts_of(file_id)
     }
 
     pub fn syntax_tree(&self, file_id: FileId) -> Option<&'db LuaSyntaxTree> {
-        let (file, _config) = file_and_config(self.db, file_id)?;
-        self.db.vfs().get_syntax_tree(&file)
+        self.db.vfs().get_syntax_tree(&file_id)
     }
 
     pub fn chunk(&self, file_id: FileId) -> Option<LuaChunk> {
@@ -225,8 +223,8 @@ impl<'db> AnalysisView<'db> {
     }
 
     /// Whether a doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).
-    pub fn is_known_doc_tag(&self, file_id: FileId, name: &str) -> bool {
-        let Some((_, config)) = file_and_config(self.db, file_id) else {
+    pub fn is_known_doc_tag(&self, name: &str) -> bool {
+        let Some(config) = self.db.config_input() else {
             return false;
         };
         config.known_doc_tags().iter().any(|tag| tag == name)
@@ -348,12 +346,10 @@ impl<'db> AnalysisView<'db> {
         decl_references(self.db, file, decl)
     }
 
-    // ── Members ──
-
     /// File's exported facts (cross-file consumption entry: reads only the defining file, not its function bodies).
     pub fn file_exports(&self, file_id: FileId) -> Option<&'db FileExports> {
         let (file, _config) = file_and_config(self.db, file_id)?;
-        Some(file_exports(self.db, file))
+        Some(self.db.file_exports_of(file))
     }
 
     pub fn members(&self, file_id: FileId) -> Option<&'db [Member]> {

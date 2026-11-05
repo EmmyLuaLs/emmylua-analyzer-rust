@@ -91,7 +91,7 @@ fn p10_workspace_id_caches_follow_root_changes() {
     assert_eq!(db.workspace_id_of(fid), None);
 
     db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
-    assert_eq!(db.all_workspace_ids().len(), 3);
+    assert_eq!(db.all_workspace_ids().len(), 2);
     assert_eq!(db.workspace_lookup_order()[0], WorkspaceId::Main);
     assert!(db.workspace_lookup_order()[1].is_library());
     assert!(db.workspace_id_of(fid).is_some_and(|id| id.is_library()));

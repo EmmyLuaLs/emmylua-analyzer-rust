@@ -88,7 +88,7 @@ impl<'db> SemanticModel<'db> {
     }
     /// Whether the doc tag is in `emmyrc.doc.known_tags` (used by unknown_doc_tag checks).
     pub fn is_known_doc_tag(&self, name: &str) -> bool {
-        self.analysis().is_known_doc_tag(self.view.file_id(), name)
+        self.analysis().is_known_doc_tag(name)
     }
     // -- Facts --
 
