@@ -224,6 +224,18 @@ mod tests {
             ("fun(text: string): string", "fun(): string", false),
             ("fun(text: string)", "fun(...: string)", false),
             ("fun(text: string?)", "fun(...: string)", true),
+            ("fun(text: string)", "fun(...)", true),
+            ("fun(text: string)", "fun(...: any)", true),
+            (
+                "fun(first: string, text: string)",
+                "fun(first: string, ...)",
+                true,
+            ),
+            (
+                "fun(first: integer, text: string)",
+                "fun(first: string, ...)",
+                false,
+            ),
             (
                 "fun(first: string, second: string)",
                 "fun(first: string, ...: string)",
