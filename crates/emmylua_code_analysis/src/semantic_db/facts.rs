@@ -1671,7 +1671,13 @@ impl FactsBuilder {
                 let statement_owner = self.current_owner_syntax;
                 self.current_owner_syntax = Some(closure.get_syntax_id());
                 self.collect_params(closure);
-                self.collect_signature(closure, statement_owner);
+                // A doc comment above a table field is owned by the field, whatever statement holds the table.
+                let doc_owner = closure
+                    .get_parent::<LuaTableField>()
+                    .map(|field| field.get_syntax_id())
+                    .filter(|field| self.doc_comment_owners.contains(field))
+                    .or(statement_owner);
+                self.collect_signature(closure, doc_owner);
             }
             LuaAst::LuaNameExpr(name_expr) => {
                 if let Some(name) = name_expr.get_name_text() {

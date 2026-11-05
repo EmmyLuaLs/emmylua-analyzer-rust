@@ -1382,3 +1382,114 @@ fn enum_runtime_cross_file_dynamic_and_conditional_keys() {
         eq(false)
     );
 }
+
+#[cfg(test)]
+mod table_field_param_docs {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+
+    const OPTS: &str = "---@class Opts\n---@field name string\n";
+
+    /// Every table position a doc-annotated function field can sit in. `%BODY%` reads a field of `opts`.
+    const SHAPES: [(&str, &str); 5] = [
+        (
+            "local value",
+            "local t = {\n---@param opts Opts\nf = function(opts) %BODY% end,\n}",
+        ),
+        (
+            "global value",
+            "T = {\n---@param opts Opts\nf = function(opts) %BODY% end,\n}",
+        ),
+        (
+            "nested table",
+            "local t = {\n{\n---@param opts Opts\nf = function(opts) %BODY% end,\n},\n}",
+        ),
+        (
+            "call argument",
+            "print({\n---@param opts Opts\nf = function(opts) %BODY% end,\n})",
+        ),
+        (
+            "return value",
+            "return {\n---@param opts Opts\nf = function(opts) %BODY% end,\n}",
+        ),
+    ];
+
+    fn undefined_field_in(source: &str) -> bool {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(OPTS);
+        !ws.has_no_diagnostic(DiagnosticCode::UndefinedField, source)
+    }
+
+    #[gtest]
+    fn param_type_reaches_the_body_in_every_table_position() {
+        for (shape, source) in SHAPES {
+            let wrong = source.replace("%BODY%", "local _ = opts.nope");
+            let right = source.replace("%BODY%", "local _ = opts.name");
+            expect_that!(undefined_field_in(&wrong), eq(true), "{shape}: wrong field");
+            expect_that!(
+                undefined_field_in(&right),
+                eq(false),
+                "{shape}: right field"
+            );
+        }
+    }
+
+    #[gtest]
+    fn each_sibling_field_uses_its_own_docs() {
+        let source = |first: &str, second: &str| {
+            format!(
+                "return {{
+                    ---@param a Opts
+                    f = function(a) local _ = a.{first} end,
+                    ---@param b Opts
+                    g = function(b) local _ = b.{second} end,
+                }}"
+            )
+        };
+        expect_that!(undefined_field_in(&source("nope", "name")), eq(true));
+        expect_that!(undefined_field_in(&source("name", "nope")), eq(true));
+        expect_that!(undefined_field_in(&source("name", "name")), eq(false));
+    }
+
+    #[gtest]
+    fn return_type_is_still_inferred_without_a_return_tag() {
+        for (shape, def, call) in [
+            (
+                "direct",
+                "local t = {\n---@param a integer\nf = function(a) return a end,\n}",
+                "t.f(1)",
+            ),
+            (
+                "nested",
+                "local t = {\n{\n---@param a integer\nf = function(a) return a end,\n},\n}",
+                "t[1].f(1)",
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            ws.def(&format!("{def}\nR = {call}"));
+            let actual = ws.expr_ty("R");
+            let expected = ws.ty("integer");
+            expect_that!(actual, eq(&expected), "{shape}");
+        }
+    }
+
+    #[gtest]
+    fn return_tag_on_a_nested_field_is_read() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def("local t = {\n{\n---@return string\nf = function() end,\n},\n}\nR = t[1].f()");
+        let actual = ws.expr_ty("R");
+        let expected = ws.ty("string");
+        expect_that!(actual, eq(&expected));
+    }
+
+    /// A field that doesn't hold the closure directly must not hand its docs to one.
+    #[gtest]
+    fn docs_stay_on_the_field_when_the_closure_is_wrapped() {
+        let source = "local function wrap(f) return f end
+            return {
+                ---@param opts Opts
+                f = wrap(function(opts) local _ = opts.nope end),
+            }";
+        expect_that!(undefined_field_in(source), eq(false));
+    }
+}
