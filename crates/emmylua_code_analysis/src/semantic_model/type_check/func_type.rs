@@ -99,7 +99,7 @@ pub(crate) fn function_param_pairs(
         }
         // A repeated caller tail can be empty. A fixed implementation slot
         // beyond the caller's prefix must also accept a missing argument.
-        // An untyped tail like `fun(t, ...)` promises nothing, so it constrains nothing.
+        // An untyped target tail like `fun(t, ...)` accepts anything, so it needs no `nil` added.
         let target_param = if index < fixed_source_count
             && index >= fixed_target_count
             && !matches!(target_param, LuaType::Any | LuaType::Unknown)
