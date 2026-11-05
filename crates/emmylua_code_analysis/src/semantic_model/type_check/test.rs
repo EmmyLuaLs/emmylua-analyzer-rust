@@ -276,3 +276,282 @@ fn test_detail_reason() {
         other => panic!("expected detailed reason, got {other:?}"),
     }
 }
+
+#[test]
+fn object_assignments_check_each_required_field() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def("");
+    for (source, target, accepted) in [
+        ("{label: string}", "{label: string}", true),
+        ("{label: integer}", "{label: string}", false),
+        ("{}", "{label: string}", false),
+        ("{}", "{label?: string}", true),
+        ("{label: string}", "{label?: string}", true),
+        ("{label: integer}", "{label?: string}", false),
+        ("{label?: string}", "{label: string}", false),
+        ("{label: string, count: integer}", "{label: string}", true),
+        ("{child: {label: 'name'}}", "{child: {label: string}}", true),
+        (
+            "{child: {label: integer}}",
+            "{child: {label: string}}",
+            false,
+        ),
+    ] {
+        let actual = ws.ty(source);
+        let expected = ws.ty(target);
+        let model = ws.analysis.semantic_model(file);
+        assert_eq!(
+            model.type_check(&actual, &expected),
+            accepted,
+            "{source} -> {target}"
+        );
+    }
+}
+
+#[test]
+fn intersection_components_can_supply_different_record_fields() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def("");
+    for (source, target, accepted) in [
+        (
+            "{label: string} & {count: integer}",
+            "{label: string, count: integer}",
+            true,
+        ),
+        (
+            "{label: string} & {count: boolean}",
+            "{label: string, count: integer}",
+            false,
+        ),
+        (
+            "{label: string} & {count: integer}",
+            "{label: string, count: integer, missing: boolean}",
+            false,
+        ),
+        (
+            "{label: string} & {count: integer}",
+            "{label: string, count: integer, missing?: boolean}",
+            true,
+        ),
+        (
+            "{child: {label: string} & {count: integer}}",
+            "{child: {label: string, count: integer}}",
+            true,
+        ),
+        (
+            "({label: string} | {count: integer}) & {other: boolean}",
+            "{label: string, count: integer}",
+            false,
+        ),
+        (
+            "string & integer",
+            "{label?: string, count?: integer}",
+            false,
+        ),
+    ] {
+        let actual = ws.ty(source);
+        let expected = ws.ty(target);
+        let model = ws.analysis.semantic_model(file);
+        assert_eq!(
+            model.type_check(&actual, &expected),
+            accepted,
+            "{source} -> {target}"
+        );
+        assert_eq!(
+            model.type_check_subtype(&actual, &expected),
+            accepted,
+            "{source} -> {target}"
+        );
+    }
+}
+
+#[test]
+fn intersection_optional_fields_check_present_values() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Counts {count: integer}
+        ---@alias Fields<T> {label: T, active: boolean}
+        ---@alias Expected {label?: string, active: boolean, count: integer}
+        "#,
+    );
+    let expected = ws.ty("Expected");
+    let label_only = ws.ty("{label?: string}");
+    for (source, accepted) in [
+        ("{label: integer, active: boolean} & Counts", false),
+        ("Counts & {label: integer, active: boolean}", false),
+        ("Fields<integer> & Counts", false),
+        ("{label?: integer, active: boolean} & Counts", false),
+        (
+            "({label: integer, active: boolean} | {active: boolean}) & Counts",
+            false,
+        ),
+        ("{label: string, active: boolean} & Counts", true),
+        ("Fields<string> & Counts", true),
+        ("{label: nil, active: boolean} & Counts", true),
+        ("{active: boolean} & Counts", true),
+        (
+            "({label: string, active: boolean} | {active: boolean}) & Counts",
+            true,
+        ),
+    ] {
+        let actual = ws.ty(source);
+        let model = ws.analysis.semantic_model(file);
+        for (name, target) in [("Expected", &expected), ("{label?: string}", &label_only)] {
+            assert_eq!(
+                model.type_check(&actual, target),
+                accepted,
+                "{source} -> {name}"
+            );
+            assert_eq!(
+                model.type_check_subtype(&actual, target),
+                accepted,
+                "{source} -> {name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn intersection_sequence_fields_keep_tuple_positions() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def("---@alias Single<T> [T]");
+    for (source, accepted) in [
+        ("[string] & {[1]: string | integer}", true),
+        ("Single<string> & {[1]: string | integer}", true),
+        (
+            "([string] | [string, integer]) & {[1]: string | integer}",
+            true,
+        ),
+        ("string[] & {[1]: string | integer}", true),
+        ("[integer] & {[1]: number}", false),
+    ] {
+        let actual = ws.ty(source);
+        for target in ["{[1]: string}", "{[1]?: string}"] {
+            let expected = ws.ty(target);
+            let model = ws.analysis.semantic_model(file);
+            assert_eq!(
+                model.type_check(&actual, &expected),
+                accepted,
+                "{source} -> {target}"
+            );
+            assert_eq!(
+                model.type_check_subtype(&actual, &expected),
+                accepted,
+                "{source} -> {target}"
+            );
+        }
+    }
+}
+
+#[test]
+fn intersection_fields_accept_unrelated_alias_alternatives() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let mut definitions = String::new();
+    for index in 0..80 {
+        definitions.push_str(&format!(
+            "---@alias Other{index} {{other: string}} | Other{}\n",
+            index + 1
+        ));
+    }
+    definitions.push_str("---@alias Other80 {other: string}\n");
+    let file = ws.def(&definitions);
+    // The label record alone proves the match in either component order.
+    for source in ["{label: string} & Other0", "Other0 & {label: string}"] {
+        let actual = ws.ty(source);
+        for target in ["{label: string}", "{label?: string}"] {
+            let expected = ws.ty(target);
+            let model = ws.analysis.semantic_model(file);
+            assert!(model.type_check(&actual, &expected), "{source} -> {target}");
+            assert!(
+                model.type_check_subtype(&actual, &expected),
+                "{source} -> {target}"
+            );
+        }
+    }
+}
+
+#[test]
+fn recursive_object_assignments_keep_observed_arguments() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Plain {label: string, child?: Plain}
+        ---@alias Observed<T> {label: string, child?: Payload<T[]>}
+        ---@alias Payload<T> {label: T, child?: Observed<T>}
+        ---@alias Phantom<T> {child?: Phantom<T[]>}
+        ---@alias Argument<T> T extends Phantom<infer U> and U or never
+        ---@alias Reflected<T> {label: Argument<Phantom<T>>, child?: Reflected<T[]>}
+        "#,
+    );
+    let plain = ws.ty("Plain");
+    let observed = ws.ty("Observed<string>");
+    let reflected = ws.ty("Reflected<string>");
+    let model = ws.analysis.semantic_model(file);
+    for source in [&observed, &reflected] {
+        assert!(!model.type_check(source, &plain));
+        assert!(!model.type_check(&plain, source));
+        assert!(!model.type_check_subtype(source, &plain));
+        assert!(!model.type_check_subtype(&plain, source));
+    }
+}
+
+#[test]
+fn intersection_fields_accept_known_recursive_union_branches() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Text string | Text
+        ---@alias Growing<T> T | Growing<T[]>
+        "#,
+    );
+    let actual = ws.ty("{label: string} & {count: integer}");
+    for target in ["{label: Text}", "{label: Growing<string>}"] {
+        let expected = ws.ty(target);
+        let model = ws.analysis.semantic_model(file);
+        assert!(
+            model.type_check(&actual, &expected),
+            "string label -> {target}"
+        );
+        assert!(
+            model.type_check_subtype(&actual, &expected),
+            "string label -> {target}"
+        );
+    }
+}
+
+#[test]
+fn intersection_fields_check_known_values_with_recursive_aliases() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Other {other: string} | Other
+        ---@alias Growing<T> {other: T} | Growing<T[]>
+        ---@alias Wrong<T> {label: T} | Wrong<T[]>
+        "#,
+    );
+    for (source, accepted) in [
+        ("{label: string} & Other", true),
+        ("Other & {label: string}", true),
+        ("{label: string} & Growing<integer>", true),
+        ("Growing<integer> & {label: string}", true),
+        ("{count: integer} & Wrong<integer>", false),
+        ("Wrong<integer> & {count: integer}", false),
+    ] {
+        let actual = ws.ty(source);
+        for target in ["{label: string}", "{label?: string}"] {
+            let expected = ws.ty(target);
+            let model = ws.analysis.semantic_model(file);
+            assert_eq!(
+                model.type_check(&actual, &expected),
+                accepted,
+                "{source} -> {target}"
+            );
+            assert_eq!(
+                model.type_check_subtype(&actual, &expected),
+                accepted,
+                "{source} -> {target}"
+            );
+        }
+    }
+}

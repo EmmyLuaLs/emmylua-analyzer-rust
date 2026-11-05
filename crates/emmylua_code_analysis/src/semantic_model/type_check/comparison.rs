@@ -10,13 +10,23 @@ use std::{collections::VecDeque, rc::Rc};
 use super::{TypeCheckContext, TypeCheckFailReason, TypeCheckResult};
 use crate::semantic_model::SemanticModel;
 use crate::{
-    GenericTplId, LuaGenericType, LuaType, LuaTypeDeclId, LuaTypeNode, TypeDef, TypeDefKind,
+    GenericTplId, LuaGenericType, LuaMemberKey, LuaType, LuaTypeDeclId, LuaTypeNode, TypeDef,
+    TypeDefKind,
 };
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(super) enum Target {
+    Type(LuaType),
+    // Both presence and absence need complete proofs before they can support
+    // an intersection field check.
+    FieldPresent(LuaMemberKey),
+    FieldAbsent(LuaMemberKey),
+}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Comparison {
     source: LuaType,
-    target: LuaType,
+    target: Target,
     strict_subtype: bool,
 }
 
@@ -83,6 +93,10 @@ impl Comparisons {
     /// Only a cycle through data constructors can justify a recursive match.
     /// Alias forwarding and union alternatives alone provide no evidence.
     fn guarded_cycle(&self, key: usize) -> bool {
+        // A cycle cannot prove whether a field exists.
+        if !matches!(self.nodes[key].key.target, Target::Type(_)) {
+            return false;
+        }
         fn is_structure(ty: &LuaType) -> bool {
             matches!(
                 ty,
@@ -98,8 +112,9 @@ impl Comparisons {
         let mut guarded_cycle = false;
         while let Some((previous, guarded)) = pending.pop() {
             let comparison = &self.nodes[previous].key;
-            let guarded =
-                guarded || (is_structure(&comparison.source) && is_structure(&comparison.target));
+            let guarded = guarded
+                || (is_structure(&comparison.source)
+                    && matches!(&comparison.target, Target::Type(ty) if is_structure(ty)));
             if !seen.insert((previous, guarded)) {
                 continue;
             }
@@ -173,9 +188,17 @@ pub(super) fn check(
     source: &LuaType,
     target: &LuaType,
 ) -> TypeCheckResult {
+    check_target(context, source, Target::Type(target.clone()))
+}
+
+pub(super) fn check_target(
+    context: &mut TypeCheckContext,
+    source: &LuaType,
+    target: Target,
+) -> TypeCheckResult {
     let key = Comparison {
         source: source.clone(),
-        target: target.clone(),
+        target,
         strict_subtype: context.strict_subtype,
     };
     let comparisons = context.comparisons.clone();
@@ -205,7 +228,9 @@ pub(super) fn check(
         };
         comparisons.borrow_mut().nodes[next].queued = false;
         let key = comparisons.borrow().nodes[next].key.clone();
-        if !evaluation.visit(&key.source) || !evaluation.visit(&key.target) {
+        if !evaluation.visit(&key.source)
+            || matches!(&key.target, Target::Type(target) if !evaluation.visit(target))
+        {
             return Err(TypeCheckFailReason::TooComplex);
         }
         let result = evaluate(context, next, &key);
@@ -222,7 +247,15 @@ fn evaluate(context: &TypeCheckContext, id: usize, key: &Comparison) -> TypeChec
         strict_subtype: key.strict_subtype,
         ..context.clone()
     };
-    let result = super::check_comparison(&mut current, &key.source, &key.target);
+    let result = match &key.target {
+        Target::Type(target) => super::check_comparison(&mut current, &key.source, target),
+        Target::FieldPresent(field) => {
+            super::check_field_presence(&mut current, &key.source, field, true)
+        }
+        Target::FieldAbsent(field) => {
+            super::check_field_presence(&mut current, &key.source, field, false)
+        }
+    };
     context.comparisons.borrow_mut().current = None;
     result
 }

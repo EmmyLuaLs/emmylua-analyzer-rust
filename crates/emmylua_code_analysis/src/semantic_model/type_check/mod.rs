@@ -22,6 +22,8 @@ mod sub_type;
 #[cfg(test)]
 mod test;
 
+use comparison::Target;
+
 pub(crate) use complex_type::integer_index_applies;
 pub use context::TypeCheckContext;
 pub use fail_reason::TypeCheckFailReason;
@@ -29,7 +31,7 @@ pub(crate) use func_type::function_param_pairs;
 
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_head;
-use crate::{InFiled, LuaType, SemanticId, TypeDef, TypeDefKind};
+use crate::{InFiled, LuaMemberKey, LuaObjectType, LuaType, SemanticId, TypeDef, TypeDefKind};
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
@@ -373,7 +375,46 @@ fn check_union_intersection_source(
 ) -> TypeCheckResult {
     match source {
         LuaType::Intersection(intersection) => {
-            // Source intersection: any member matching is enough.
+            if let LuaType::Object(object) = compact_type
+                && !object.get_fields().is_empty()
+            {
+                return check_all(object.get_fields().iter().map(|(key, expected)| {
+                    let field = LuaType::Object(std::rc::Rc::new(LuaObjectType::new_with_fields(
+                        [(key.clone(), expected.clone())].into(),
+                        object.get_index_access().to_vec(),
+                    )));
+                    let supplied = check_alternatives(
+                        context.mismatch(source, &field),
+                        intersection.get_types().iter().map(|member| {
+                            check_all([
+                                comparison::check_target(
+                                    context,
+                                    member,
+                                    Target::FieldPresent(key.clone()),
+                                ),
+                                check_general_type_compact(context, member, &field),
+                            ])
+                        }),
+                    );
+                    let failure = match supplied {
+                        Ok(()) => return Ok(()),
+                        Err(err) => err,
+                    };
+                    // Absence can match an optional field only when no
+                    // component supplies that field.
+                    let absent = check_all([
+                        comparison::check_target(context, source, Target::FieldAbsent(key.clone())),
+                        check_alternatives(
+                            context.mismatch(source, &field),
+                            intersection
+                                .get_types()
+                                .iter()
+                                .map(|member| check_general_type_compact(context, member, &field)),
+                        ),
+                    ]);
+                    check_alternatives(failure, [absent])
+                }));
+            }
             check_alternatives(
                 context.mismatch(source, compact_type),
                 intersection
@@ -383,6 +424,48 @@ fn check_union_intersection_source(
             )
         }
         _ => complex_type::check_complex_type_compact(context, source, compact_type),
+    }
+}
+
+fn check_field_presence(
+    context: &mut TypeCheckContext,
+    source: &LuaType,
+    key: &LuaMemberKey,
+    present: bool,
+) -> TypeCheckResult {
+    let target = if present {
+        Target::FieldPresent(key.clone())
+    } else {
+        Target::FieldAbsent(key.clone())
+    };
+    let expanded = context
+        .require_complete(|| expand_alias_head(context.model, source))?
+        .ok_or(TypeCheckFailReason::Unresolved)?;
+    if expanded != *source {
+        return comparison::check_target(context, &expanded, target);
+    }
+    let members: Vec<_> = match source {
+        LuaType::Union(union) => union.iter().collect(),
+        LuaType::Intersection(intersection) => intersection.get_types().iter().collect(),
+        _ => {
+            let exists = context.require_complete(|| {
+                complex_type::field_type(source, key).is_some()
+                    || context.model.member_type(source, key).is_some()
+            })?;
+            return if exists == present {
+                Ok(())
+            } else {
+                Err(TypeCheckFailReason::TypeNotMatch)
+            };
+        }
+    };
+    let checks = members
+        .into_iter()
+        .map(|member| comparison::check_target(context, member, target.clone()));
+    if present {
+        check_alternatives(TypeCheckFailReason::TypeNotMatch, checks)
+    } else {
+        check_all(checks)
     }
 }
 

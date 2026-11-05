@@ -892,9 +892,13 @@ fn recursive_aliases_ignore_only_unused_growing_arguments() {
     let unused = ws.ty("Unused<string>");
     let used = ws.ty("Used<string>");
     let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check(&unused, &plain));
     assert!(model.type_check_subtype(&unused, &plain));
+    assert!(model.type_check(&plain, &unused));
     assert!(model.type_check_subtype(&plain, &unused));
+    assert!(!model.type_check(&used, &plain));
     assert!(!model.type_check_subtype(&used, &plain));
+    assert!(!model.type_check(&plain, &used));
     assert!(!model.type_check_subtype(&plain, &used));
 }
 
@@ -916,11 +920,15 @@ fn recursive_aliases_can_recur_through_a_forwarding_alias() {
     let used = ws.ty("Used<string>");
     let model = ws.analysis.semantic_model(file);
     for source in [&left, &right] {
+        assert!(model.type_check(source, &plain));
         assert!(model.type_check_subtype(source, &plain));
+        assert!(model.type_check(&plain, source));
         assert!(model.type_check_subtype(&plain, source));
     }
     // The next label becomes string[] after forwarding and must still fail.
+    assert!(!model.type_check(&used, &plain));
     assert!(!model.type_check_subtype(&used, &plain));
+    assert!(!model.type_check(&plain, &used));
     assert!(!model.type_check_subtype(&plain, &used));
 }
 
@@ -939,8 +947,11 @@ fn forwarding_aliases_keep_reordered_and_fixed_field_types() {
     let fixed = ws.ty("Fixed<string>");
     let expected = ws.ty("{label: string}");
     let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check(&accepted, &expected));
     assert!(model.type_check_subtype(&accepted, &expected));
+    assert!(!model.type_check(&rejected, &expected));
     assert!(!model.type_check_subtype(&rejected, &expected));
+    assert!(!model.type_check(&fixed, &expected));
     assert!(!model.type_check_subtype(&fixed, &expected));
 }
 
@@ -958,9 +969,13 @@ fn recursive_aliases_preserve_indirect_argument_dependencies() {
     let accepted = ws.ty("Alternating<string, integer, boolean>");
     let rejected = ws.ty("Alternating<string, boolean, integer>");
     let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check(&accepted, &strings));
     assert!(model.type_check_subtype(&accepted, &strings));
+    assert!(model.type_check(&strings, &accepted));
     assert!(model.type_check_subtype(&strings, &accepted));
+    assert!(!model.type_check(&rejected, &strings));
     assert!(!model.type_check_subtype(&rejected, &strings));
+    assert!(!model.type_check(&strings, &rejected));
     assert!(!model.type_check_subtype(&strings, &rejected));
 }
 
@@ -978,9 +993,13 @@ fn recursive_aliases_reject_field_mismatches_after_several_children() {
     // The first four labels are strings; the fifth is an integer.
     let rejected = ws.ty("Shift<string, string, string, string, integer, boolean>");
     let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check(&accepted, &strings));
     assert!(model.type_check_subtype(&accepted, &strings));
+    assert!(model.type_check(&strings, &accepted));
     assert!(model.type_check_subtype(&strings, &accepted));
+    assert!(!model.type_check(&rejected, &strings));
     assert!(!model.type_check_subtype(&rejected, &strings));
+    assert!(!model.type_check(&strings, &rejected));
     assert!(!model.type_check_subtype(&strings, &rejected));
 }
 
@@ -1017,7 +1036,9 @@ fn recursive_alias_arguments_remain_visible_to_callers() {
     let plain = ws.ty("Plain");
     let expected = ws.ty("string[]");
     let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check(&node, &plain));
     assert!(model.type_check_subtype(&node, &plain));
+    assert!(model.type_check(&plain, &node));
     assert!(model.type_check_subtype(&plain, &node));
     assert_eq!(
         model.member_type(&node, &LuaMemberKey::from("child")),
@@ -1040,6 +1061,7 @@ fn recursive_aliases_preserve_omitted_arguments() {
         let root = ws.ty(&format!("{name}<integer, boolean>"));
         let child = ws.ty(&format!("{name}<integer[]>"));
         let model = ws.analysis.semantic_model(file);
+        assert!(model.type_check(&root, &record));
         assert!(model.type_check_subtype(&root, &record));
         assert_eq!(
             model.member_type(&root, &LuaMemberKey::from("child")),
@@ -1061,6 +1083,7 @@ fn deep_aliases_are_assignable_to_themselves_and_any() {
     )));
     let model = ws.analysis.semantic_model(file);
     for target in [&deep, &LuaType::Any, &LuaType::Unknown] {
+        assert!(model.type_check(&deep, target));
         assert!(model.type_check_subtype(&deep, target));
     }
 }
