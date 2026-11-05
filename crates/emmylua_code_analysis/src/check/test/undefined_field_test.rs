@@ -1492,4 +1492,33 @@ mod table_field_param_docs {
             }";
         expect_that!(undefined_field_in(source), eq(false));
     }
+
+    /// Docs on the statement holding the table describe the statement, not this closure.
+    #[gtest]
+    fn field_docs_beat_statement_docs() {
+        let source = |field: &str| {
+            format!(
+                "---@param opts string
+                local t = {{
+                    ---@param opts Opts
+                    f = function(opts) local _ = opts.{field} end,
+                }}"
+            )
+        };
+        expect_that!(undefined_field_in(&source("nope")), eq(true));
+        expect_that!(undefined_field_in(&source("name")), eq(false));
+    }
+
+    /// Same as a trailing tag after any statement: the closure is already collected by then.
+    #[gtest]
+    fn trailing_tag_does_not_type_the_closure() {
+        let mut ws = VirtualWorkspace::new();
+        expect_that!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::ParamTypeMismatch,
+                "local t = {\nf = function(a) end, ---@param a string\n}\nt.f(1)",
+            ),
+            eq(true)
+        );
+    }
 }
