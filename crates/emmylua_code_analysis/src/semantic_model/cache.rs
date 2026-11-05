@@ -26,6 +26,10 @@ use crate::IndexInfo;
 pub(crate) enum BuiltinKey {
     Expression(LuaSyntaxId),
     Flow(SemanticId, FlowId),
+    /// All writes, seeded by the point value or the declaration initializer.
+    Declaration(SemanticId, Option<FlowId>),
+    /// Standard global value before any workspace writes.
+    InitialGlobal(SmolStr),
 }
 
 /// Keep provisional memo entries while dependent queries still need them.

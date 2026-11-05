@@ -339,7 +339,10 @@ mod test {
 
     #[test]
     fn test_custom_pcall_checks_its_own_parameters() {
-        for definition in ["local function pcall", "function pcall"] {
+        for (definition, self_assignment) in [
+            ("local function pcall", "pcall = pcall"),
+            ("function pcall", ""),
+        ] {
             for (options, expected) in [("42", 0), ("'wrong'", 1)] {
                 let source = format!(
                     r#"
@@ -351,6 +354,7 @@ mod test {
                         ---@param cb Callback
                         ---@param options integer
                         {definition}(cb, options) return cb, options end
+                        {self_assignment}
                         return pcall(target, {options})
                     end
                     return run
@@ -411,6 +415,143 @@ mod test {
                         // Report the bad argument, not a mismatch on the callback itself.
                         assert!(diagnostic.range.start.character >= "pcall(accept, ".len() as u32);
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_builtin_forwarding() {
+        for (setup, before, after) in [
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do",
+                "end\npcall = pcall",
+            ),
+            (
+                "local pcall = pcall",
+                "local function run()",
+                "end\npcall = (pcall)\nreturn run",
+            ),
+            ("pcall = pcall", "", ""),
+            (
+                "local original = pcall; local pcall = original",
+                "for _ = 1, 2 do",
+                "end\npcall = original",
+            ),
+            (
+                "local original = pcall; local pcall; pcall = original",
+                "for _ = 1, 2 do\npcall = original",
+                "end",
+            ),
+            (
+                "local original = pcall; local pcall = original",
+                "local function run()",
+                "end\npcall = original\nreturn run",
+            ),
+            ("local original = pcall; pcall = original", "", ""),
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do\nlocal previous = pcall; pcall = previous",
+                "end",
+            ),
+        ] {
+            for (value, accepted) in [("42", true), ("'wrong'", false)] {
+                let source = format!(
+                    "{setup}\n---@type fun(fields: {{value: number}})\nlocal accept\n{before}\npcall(accept, {{value = {value}}})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(
+                    diagnostics.is_empty(),
+                    accepted,
+                    "{source}: {diagnostics:#?}"
+                );
+                for diagnostic in diagnostics {
+                    assert!(matches!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(code))
+                            if code == DiagnosticCode::AssignTypeMismatch.get_name()
+                                || code == DiagnosticCode::ParamTypeMismatch.get_name()
+                    ));
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, {value = ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_replacement_parameters() {
+        for (before, after) in [
+            ("for _ = 1, 2 do", "end"),
+            ("local function run()", "end\nreturn run"),
+        ] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let source = format!(
+                    "---@type function\nlocal pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\n---@param callback fun(fields: {{value: number}})\n---@param options integer\nlocal function replacement(callback, options) return callback, options end\npcall = replacement\n{before}\npcall(accept, {value})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_global_pcall_self_assignment_keeps_cross_file_replacements() {
+        let custom = "---@param callback fun(fields: {value: number})\n---@param options integer\nfunction pcall(callback, options) return callback, options end";
+        for custom_first in [true, false] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                if custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let source = format!(
+                    "pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\npcall(accept, {value})"
+                );
+                let file_id = ws.def_file("calls.lua", &source);
+                if !custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
                 }
             }
         }

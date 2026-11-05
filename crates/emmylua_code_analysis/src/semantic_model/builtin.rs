@@ -8,84 +8,99 @@ use super::prelude::*;
 use crate::semantic_db::flow::{FlowAntecedent, FlowEffect, FlowId, FlowNodeKind, LuaClosureId};
 use emmylua_parser::LuaVarExpr;
 
+type BuiltinRead = (FileId, BuiltinKey);
+
 enum BuiltinSource {
     Function(SmolStr),
-    Aliases(Vec<BuiltinKey>),
+    Aliases(Vec<BuiltinRead>),
+}
+
+impl BuiltinSource {
+    fn alias(file_id: FileId, key: BuiltinKey) -> Self {
+        Self::Aliases(vec![(file_id, key)])
+    }
 }
 
 impl<'db> SemanticModel<'db> {
-    /// Match a standard function through the local values that reach this read.
+    /// Match a standard function through the values that reach this read.
     pub(crate) fn resolves_to_builtin(&self, expr: LuaExpr, builtin: &str) -> Option<()> {
-        let query = BuiltinKey::Expression(expr.get_syntax_id());
-        let key = (self.file_id(), query.clone());
-        if let Some(name) = self.cache.borrow().builtin_function.get(&key) {
+        let query = (self.file_id(), BuiltinKey::Expression(expr.get_syntax_id()));
+        if let Some(name) = self.cache.borrow().builtin_function.get(&query) {
             return (name.as_deref() == Some(builtin)).then_some(());
         }
 
-        enum Step {
-            Read(BuiltinKey),
-            Merge(BuiltinKey, usize),
+        let mut pending = vec![query.clone()];
+        let mut visited = HashSet::new();
+        let mut dependents: HashMap<BuiltinRead, Vec<BuiltinRead>> = HashMap::new();
+        // No entry means unresolved. None is a known replacement or a conflict.
+        let mut origins: HashMap<BuiltinRead, Option<SmolStr>> = HashMap::new();
+        let mut changed = Vec::new();
+        while let Some(read) = pending.pop() {
+            if !visited.insert(read.clone()) {
+                continue;
+            }
+            let cached = self.cache.borrow().builtin_function.get(&read).cloned();
+            let origin = match cached {
+                Some(origin) => origin,
+                None => match self.model_for(read.0).builtin_source(&read.1) {
+                    Some(BuiltinSource::Aliases(sources)) if !sources.is_empty() => {
+                        for source in sources {
+                            dependents
+                                .entry(source.clone())
+                                .or_default()
+                                .push(read.clone());
+                            pending.push(source);
+                        }
+                        continue;
+                    }
+                    Some(BuiltinSource::Function(name)) => Some(name),
+                    _ => None,
+                },
+            };
+            origins.insert(read.clone(), origin);
+            changed.push(read);
         }
 
-        let mut pending = vec![Step::Read(query)];
-        let mut active = HashSet::new();
-        let mut values: Vec<Option<SmolStr>> = Vec::new();
-        while let Some(step) = pending.pop() {
-            let (query, value) = match step {
-                Step::Read(query) => {
-                    let key = (self.file_id(), query.clone());
-                    if let Some(value) = self.cache.borrow().builtin_function.get(&key) {
-                        values.push(value.clone());
-                        continue;
+        // Propagate origins through aliases and loop edges until they agree.
+        // Each read can change only from unresolved to one builtin, then unknown.
+        while let Some(read) = changed.pop() {
+            let origin = origins[&read].clone();
+            for dependent in dependents.get(&read).into_iter().flatten() {
+                let merged = match origins.get(dependent) {
+                    None => origin.clone(),
+                    Some(Some(current)) if origin.as_ref() == Some(current) => {
+                        Some(current.clone())
                     }
-                    if !active.insert(query.clone()) {
-                        values.push(None);
-                        continue;
-                    }
-                    let value = match self.builtin_source(&query) {
-                        Some(BuiltinSource::Aliases(sources)) => {
-                            pending.push(Step::Merge(query, sources.len()));
-                            pending.extend(sources.into_iter().rev().map(Step::Read));
-                            continue;
-                        }
-                        Some(BuiltinSource::Function(name)) => Some(name),
-                        None => None,
-                    };
-                    (query, value)
+                    _ => None,
+                };
+                if origins.get(dependent) != Some(&merged) {
+                    origins.insert(dependent.clone(), merged);
+                    changed.push(dependent.clone());
                 }
-                Step::Merge(query, count) => {
-                    let start = values.len() - count;
-                    let value = values[start].clone().filter(|name| {
-                        values[start..]
-                            .iter()
-                            .all(|value| value.as_ref() == Some(name))
-                    });
-                    values.truncate(start);
-                    (query, value)
-                }
-            };
-            active.remove(&query);
-            self.cache
-                .borrow_mut()
-                .builtin_function
-                .insert((self.file_id(), query), value.clone());
-            values.push(value);
+            }
         }
-        (values.pop()?? == builtin).then_some(())
+        let matches = origins
+            .get(&query)
+            .is_some_and(|origin| origin.as_deref() == Some(builtin));
+        self.cache.borrow_mut().builtin_function.extend(origins);
+        matches.then_some(())
     }
 
     fn builtin_source(&self, query: &BuiltinKey) -> Option<BuiltinSource> {
         let syntax = match query {
             BuiltinKey::Expression(syntax) => syntax,
             BuiltinKey::Flow(decl, flow_id) => return self.builtin_flow_source(decl, *flow_id),
+            BuiltinKey::Declaration(decl, start) => return self.builtin_decl_source(decl, *start),
+            BuiltinKey::InitialGlobal(name) => return Some(BuiltinSource::Function(name.clone())),
         };
         let root = self.syntax_tree()?.get_red_root();
         let expr = LuaExpr::cast(syntax.to_node_from_root(&root)?)?;
         let name = match expr {
             LuaExpr::ParenExpr(paren) => {
-                return Some(BuiltinSource::Aliases(vec![BuiltinKey::Expression(
-                    paren.get_expr()?.get_syntax_id(),
-                )]));
+                return Some(BuiltinSource::alias(
+                    self.file_id(),
+                    BuiltinKey::Expression(paren.get_expr()?.get_syntax_id()),
+                ));
             }
             LuaExpr::NameExpr(name) => name,
             _ => return None,
@@ -97,12 +112,17 @@ impl<'db> SemanticModel<'db> {
         if self.is_std_file(key.file_id) {
             return Some(BuiltinSource::Function(name.get_name_text()?.into()));
         }
-        if key.file_id != self.file_id() {
-            return None;
-        }
+        let file_id = key.file_id;
         let decl = decl?;
-        let info = self.file_facts()?.decl_by_id(&decl)?;
-        if !matches!(info.kind, DeclKind::Local { is_iter: false, .. }) {
+        let info = self.file_facts_of(file_id)?.decl_by_id(&decl)?;
+        if matches!(info.kind, DeclKind::Global) {
+            return Some(BuiltinSource::alias(
+                file_id,
+                BuiltinKey::Declaration(decl, None),
+            ));
+        }
+        if file_id != self.file_id() || !matches!(info.kind, DeclKind::Local { is_iter: false, .. })
+        {
             return None;
         }
         let tree = self.flow_tree()?;
@@ -110,28 +130,8 @@ impl<'db> SemanticModel<'db> {
             return self.builtin_initializer(&decl);
         }
 
-        // Deferred writes and later loop iterations can run before this read.
-        // Keep those cases conservative instead of using source order.
         let owner = info.owner_syntax?.to_node_from_root(&root)?;
         let closure = LuaClosureId::from_node(&owner);
-        if LuaClosureId::from_node(name.syntax()) != closure
-            || name
-                .syntax()
-                .ancestors()
-                .map(|node| LuaSyntaxKind::from(node.kind()))
-                .take_while(|kind| *kind != LuaSyntaxKind::ClosureExpr)
-                .any(|kind| {
-                    matches!(
-                        kind,
-                        LuaSyntaxKind::WhileStat
-                            | LuaSyntaxKind::RepeatStat
-                            | LuaSyntaxKind::ForStat
-                            | LuaSyntaxKind::ForRangeStat
-                    )
-                })
-        {
-            return None;
-        }
         let key = (self.file_id(), decl.clone());
         let cached = self.cache.borrow().builtin_local_writes.get(&key).copied();
         let local_writes = if let Some(local_writes) = cached {
@@ -152,15 +152,81 @@ impl<'db> SemanticModel<'db> {
                 .insert(key, local_writes);
             local_writes
         };
-        if !local_writes {
-            return None;
+        if !local_writes || LuaClosureId::from_node(name.syntax()) != closure {
+            // A deferred read or write can observe any value of this local.
+            return Some(BuiltinSource::alias(
+                self.file_id(),
+                BuiltinKey::Declaration(decl, None),
+            ));
         }
         let flow_id = tree.get_flow_id_at(name.get_position())?;
-        if tree.is_loop_reachable(flow_id) {
-            return None;
-        }
         let start = flow::skip_own_decl_assign(&decl, &tree, flow_id, name.get_position());
-        Some(BuiltinSource::Aliases(vec![BuiltinKey::Flow(decl, start)]))
+        if tree.is_loop_reachable(flow_id)
+            || name
+                .syntax()
+                .ancestors()
+                .map(|node| LuaSyntaxKind::from(node.kind()))
+                .take_while(|kind| *kind != LuaSyntaxKind::ClosureExpr)
+                .any(|kind| {
+                    matches!(
+                        kind,
+                        LuaSyntaxKind::WhileStat
+                            | LuaSyntaxKind::RepeatStat
+                            | LuaSyntaxKind::ForStat
+                            | LuaSyntaxKind::ForRangeStat
+                    )
+                })
+        {
+            // The point value alone omits possible writes from later iterations.
+            return Some(BuiltinSource::alias(
+                self.file_id(),
+                BuiltinKey::Declaration(decl, Some(start)),
+            ));
+        }
+        Some(BuiltinSource::alias(
+            self.file_id(),
+            BuiltinKey::Flow(decl, start),
+        ))
+    }
+
+    fn builtin_decl_source(
+        &self,
+        decl: &SemanticId,
+        start: Option<FlowId>,
+    ) -> Option<BuiltinSource> {
+        let info = self.file_facts()?.decl_by_id(decl)?;
+        let mut sources = Vec::new();
+        let decls = if matches!(info.kind, DeclKind::Global) {
+            // Globals start with the standard value. Every workspace write
+            // must preserve that origin, including writes from other files.
+            sources.push((self.file_id(), BuiltinKey::InitialGlobal(info.name.clone())));
+            self.global_decls_named_for_file(self.file_id(), info.name.as_str())
+        } else {
+            let initial = match start {
+                Some(start) => BuiltinKey::Flow(decl.clone(), start),
+                None => {
+                    if info.multi_return_index.is_some_and(|index| index > 0) {
+                        return None;
+                    }
+                    BuiltinKey::Expression(info.value_expr_syntax?)
+                }
+            };
+            sources.push((self.file_id(), initial));
+            vec![decl.clone()]
+        };
+        for decl in decls {
+            let SemanticId::Decl(key) = &decl else {
+                return None;
+            };
+            let model = self.model_for(key.file_id);
+            sources.extend(
+                model
+                    .flow_tree()?
+                    .decl_assignment_flows(&decl)
+                    .map(|flow| (key.file_id, BuiltinKey::Flow(decl.clone(), flow))),
+            );
+        }
+        Some(BuiltinSource::Aliases(sources))
     }
 
     fn builtin_initializer(&self, decl: &SemanticId) -> Option<BuiltinSource> {
@@ -168,9 +234,10 @@ impl<'db> SemanticModel<'db> {
         if info.multi_return_index.is_some_and(|index| index > 0) {
             return None;
         }
-        Some(BuiltinSource::Aliases(vec![BuiltinKey::Expression(
-            info.value_expr_syntax?,
-        )]))
+        Some(BuiltinSource::alias(
+            self.file_id(),
+            BuiltinKey::Expression(info.value_expr_syntax?),
+        ))
     }
 
     /// Cache each declaration/flow state, including states between successive
@@ -199,20 +266,22 @@ impl<'db> SemanticModel<'db> {
                         return None;
                     }
                     // A name or parenthesized name supplies only one value.
-                    return Some(BuiltinSource::Aliases(vec![BuiltinKey::Expression(
+                    return Some(BuiltinSource::alias(self.file_id(), BuiltinKey::Expression(
                         exprs.get(slot)?.get_syntax_id(),
-                    )]));
+                    )));
                 }
                 // A function definition replaces the builtin with a closure.
                 _ => return None,
             }
         }
         let sources = match &node.antecedent {
-            Some(FlowAntecedent::Single(next)) => vec![BuiltinKey::Flow(decl.clone(), *next)],
+            Some(FlowAntecedent::Single(next)) => {
+                vec![(self.file_id(), BuiltinKey::Flow(decl.clone(), *next))]
+            }
             Some(FlowAntecedent::Multiple(id)) => tree
                 .get_multi_antecedents(*id)?
                 .iter()
-                .map(|next| BuiltinKey::Flow(decl.clone(), *next))
+                .map(|next| (self.file_id(), BuiltinKey::Flow(decl.clone(), *next)))
                 .collect(),
             None => return None,
         };
