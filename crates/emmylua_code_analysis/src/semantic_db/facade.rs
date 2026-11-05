@@ -237,7 +237,7 @@ impl<'db> AnalysisView<'db> {
         if self.db.config_input().is_none() {
             return false;
         }
-        for &ws_id in query::workspace_lookup_order(self.db) {
+        for &ws_id in self.db.workspace_lookup_order() {
             if query::workspace_deprecated_index_for(self.db, ws_id).is_global_deprecated(name) {
                 return true;
             }
@@ -250,7 +250,7 @@ impl<'db> AnalysisView<'db> {
         if self.db.config_input().is_none() {
             return false;
         }
-        for &ws_id in query::workspace_lookup_order(self.db) {
+        for &ws_id in self.db.workspace_lookup_order() {
             if query::workspace_deprecated_index_for(self.db, ws_id).is_member_name_deprecated(name)
             {
                 return true;

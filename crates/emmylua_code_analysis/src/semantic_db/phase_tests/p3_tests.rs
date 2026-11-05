@@ -52,7 +52,7 @@ fn p3_type_index_remove_add_matches_full_rebuild() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, &test_file("a.lua"), "---@class A\nlocal A = {}");
 
-    let mut incremental = workspace_type_index_for(&db, WorkspaceId::MAIN).clone();
+    let mut incremental = workspace_type_index_for(&db, WorkspaceId::Main).clone();
     let a_defs = incremental.find_all(TypeScope::Global, "A");
     assert_eq!(a_defs.len(), 1);
     assert_eq!(a_defs[0].name.as_str(), "A");
@@ -60,7 +60,7 @@ fn p3_type_index_remove_add_matches_full_rebuild() {
     set_test_file(&mut db, 1, &test_file("a.lua"), "---@class B\nlocal B = {}");
     let new_exports = db.file_exports_of(fid);
     incremental.remove_file(fid);
-    incremental.add_file(WorkspaceId::MAIN, fid, new_exports);
+    incremental.add_file(WorkspaceId::Main, fid, new_exports);
 
     let mut fresh = setup();
     set_test_file(
@@ -69,7 +69,7 @@ fn p3_type_index_remove_add_matches_full_rebuild() {
         &test_file("a.lua"),
         "---@class B\nlocal B = {}",
     );
-    let full = workspace_type_index_for(&fresh, WorkspaceId::MAIN);
+    let full = workspace_type_index_for(&fresh, WorkspaceId::Main);
 
     assert!(incremental.find_all(TypeScope::Global, "A").is_empty());
     assert_eq!(
@@ -112,7 +112,7 @@ fn p3_member_index_remove_add_preserves_overloads() {
     let mut incremental = db
         .workspace_index_cache()
         .members
-        .get(&WorkspaceId::MAIN)
+        .get(&WorkspaceId::Main)
         .cloned()
         .unwrap_or_default();
     assert_eq!(
@@ -164,7 +164,7 @@ fn p3_reference_index_remove_add_matches_full_rebuild() {
         &test_file("ref.lua"),
         "M = {}\nM.y = 1\nlocal x = M.y",
     );
-    let ws = WorkspaceId::MAIN;
+    let ws = WorkspaceId::Main;
     let mut incremental = workspace_reference_index_for(&db, ws).clone();
 
     set_test_file(
@@ -196,7 +196,7 @@ fn p3_module_index_apply_file_change_is_workspace_local() {
     let mut db = setup();
     let fid1 = set_test_file(&mut db, 1, &test_file("mod.lua"), "return {}");
     let fid2 = set_test_file(&mut db, 2, &test_file("other.lua"), "return {}");
-    let mut index = workspace_module_index_for(&db, WorkspaceId::MAIN).clone();
+    let mut index = workspace_module_index_for(&db, WorkspaceId::Main).clone();
 
     let entry = build_module_entry(&db, fid2).expect("module entry");
     assert!(

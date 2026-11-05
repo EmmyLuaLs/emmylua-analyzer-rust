@@ -322,7 +322,7 @@ pub(super) fn goto_doc_definition(
         let document = db.document(model.file_id())?;
         let workspace_id = db
             .workspace_id_of(model.file_id())
-            .unwrap_or(WorkspaceId::MAIN);
+            .unwrap_or(WorkspaceId::Main);
         let description = description?;
         let items = parse_desc(
             workspace_id,

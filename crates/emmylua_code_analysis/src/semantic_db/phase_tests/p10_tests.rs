@@ -81,20 +81,8 @@ fn set_test_file(
 #[test]
 fn p10_workspace_id_caches_follow_root_changes() {
     let mut db = setup();
-    assert_eq!(
-        db.all_workspace_ids(),
-        &[WorkspaceId::MAIN, WorkspaceId::REMOTE]
-    );
-    assert_eq!(
-        db.workspace_lookup_order(),
-        &[WorkspaceId::MAIN, WorkspaceId::REMOTE]
-    );
-
-    // The query helpers return the cached slice, not a fresh Vec.
-    let cached_ptr = db.all_workspace_ids().as_ptr();
-    assert_eq!(query::all_workspace_ids(&db).as_ptr(), cached_ptr);
-    let lookup_ptr = db.workspace_lookup_order().as_ptr();
-    assert_eq!(query::workspace_lookup_order(&db).as_ptr(), lookup_ptr);
+    assert_eq!(db.all_workspace_ids(), &[WorkspaceId::Main]);
+    assert_eq!(db.workspace_lookup_order(), &[WorkspaceId::Main]);
 
     // File exists before its library root is registered. The full rebuild that
     // follows `add_library_workspace` must rebuild facts/modules with the new
@@ -104,9 +92,8 @@ fn p10_workspace_id_caches_follow_root_changes() {
 
     db.add_library_workspace(&WorkspaceFolder::new(p10_library_root(), true));
     assert_eq!(db.all_workspace_ids().len(), 3);
-    assert_eq!(db.workspace_lookup_order()[0], WorkspaceId::MAIN);
+    assert_eq!(db.workspace_lookup_order()[0], WorkspaceId::Main);
     assert!(db.workspace_lookup_order()[1].is_library());
-    assert_eq!(db.workspace_lookup_order()[2], WorkspaceId::REMOTE);
     assert!(db.workspace_id_of(fid).is_some_and(|id| id.is_library()));
     assert_eq!(
         db.analysis().module_file_of("mod"),
@@ -116,7 +103,7 @@ fn p10_workspace_id_caches_follow_root_changes() {
 
     // File -> workspace is cached on FileCache and refreshed after a path change.
     set_test_file(&mut db, 1, &p10_main_file("mod.lua"), "return {}");
-    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::Main));
 }
 
 #[test]
@@ -131,7 +118,7 @@ fn p10_multiple_main_roots_do_not_duplicate_type_definitions() {
         .copied()
         .find(|id| id.is_library())
         .unwrap();
-    let expected_ids = [WorkspaceId::MAIN, library_id, WorkspaceId::REMOTE];
+    let expected_ids = [WorkspaceId::Main, library_id];
     assert_eq!(db.all_workspace_ids(), expected_ids);
     assert_eq!(db.workspace_lookup_order(), expected_ids);
 
@@ -188,7 +175,7 @@ fn p10_type_buckets_share_arc_and_invalidate_on_write() {
         "---@class A\nlocal A = {}",
     );
 
-    let index = workspace_type_index_for(&db, WorkspaceId::MAIN);
+    let index = workspace_type_index_for(&db, WorkspaceId::Main);
     let first = index.find_all(TypeScope::Global, "A");
     let second = index.find_all(TypeScope::Global, "A");
     assert!(Arc::ptr_eq(&first, &second), "type bucket must be cached");
@@ -207,7 +194,7 @@ fn p10_type_buckets_share_arc_and_invalidate_on_write() {
         &p10_main_file("a.lua"),
         "---@class B\nlocal B = {}",
     );
-    let index = workspace_type_index_for(&db, WorkspaceId::MAIN);
+    let index = workspace_type_index_for(&db, WorkspaceId::Main);
     assert!(index.find_all(TypeScope::Global, "A").is_empty());
 
     let b_first = index.find_all(TypeScope::Global, "B");
@@ -351,7 +338,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     let index = db
         .workspace_index_cache()
         .members
-        .get(&WorkspaceId::MAIN)
+        .get(&WorkspaceId::Main)
         .expect("workspace member index");
 
     let f_first = index
@@ -399,7 +386,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     let index = db
         .workspace_index_cache()
         .members
-        .get(&WorkspaceId::MAIN)
+        .get(&WorkspaceId::Main)
         .expect("workspace member index");
     let f_after = index
         .members_of_owner_named(&owner, "f")
@@ -436,7 +423,7 @@ fn p10_member_buckets_share_arc_and_preserve_overloads() {
     let index = db
         .workspace_index_cache()
         .members
-        .get(&WorkspaceId::MAIN)
+        .get(&WorkspaceId::Main)
         .expect("workspace member index");
     assert!(index.members_of_owner_named(&owner, "g").is_none());
     assert_eq!(
@@ -459,7 +446,7 @@ fn p10_apply_file_change_and_batch_api() {
     ));
     assert_eq!(summary.updated, 1);
 
-    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::Main));
 
     let uri = db.file_uri(fid).expect("uri");
     let summary = db.apply_batch(BatchChange {

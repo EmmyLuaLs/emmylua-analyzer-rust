@@ -13,7 +13,7 @@ pub fn parse_desc(
     desc: LuaDocDescription,
     offset: Option<usize>,
 ) -> Vec<DescItem> {
-    let parser_kind = if workspace_id == WorkspaceId::STD {
+    let parser_kind = if workspace_id == WorkspaceId::Std {
         DescParserType::Md
     } else {
         match emmyrc.doc.syntax {

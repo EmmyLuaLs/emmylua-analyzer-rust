@@ -9,11 +9,11 @@ use super::flow::build_flow_tree;
 use super::query::aggregate_member_bucket;
 use super::query::file_workspace_id_for_path;
 use super::query::{
-    DeprecatedFileData, FileReferences, ModuleEntry, WorkspaceIndexCache, all_workspace_ids,
-    build_deprecated_file, build_file_facts, build_file_references, build_global_type_aggregate,
-    build_member_aggregates, build_module_entry, build_workspace_decl_index,
-    build_workspace_deprecated_index, build_workspace_member_index, build_workspace_module_index,
-    build_workspace_reference_index, build_workspace_type_index, changed_keys, file_workspace_id,
+    DeprecatedFileData, FileReferences, ModuleEntry, WorkspaceIndexCache, build_deprecated_file,
+    build_file_facts, build_file_references, build_global_type_aggregate, build_member_aggregates,
+    build_module_entry, build_workspace_decl_index, build_workspace_deprecated_index,
+    build_workspace_member_index, build_workspace_module_index, build_workspace_reference_index,
+    build_workspace_type_index, changed_keys, file_workspace_id,
 };
 use crate::{FileId, WorkspaceId, file_path_to_uri};
 use hashbrown::HashMap;
@@ -61,8 +61,8 @@ pub(crate) fn apply_file_to_workspace_indexes(
     }
     // This function mutates `db.workspace_index`; clone the tiny cached list to
     // avoid holding a borrow of `db` across the mutation loop.
-    let ws_ids = all_workspace_ids(db).to_vec();
-    let target_ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
+    let ws_ids = db.all_workspace_ids().to_vec();
+    let target_ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
 
     for ws_id in &ws_ids {
         if let Some(index) = db.workspace_index.types.get_mut(ws_id) {
@@ -139,6 +139,7 @@ pub(crate) fn apply_file_to_workspace_indexes(
         index.add_file(file_id, references);
     }
 }
+
 pub(crate) fn rebuild_file_after_write(
     db: &mut SemanticDatabase,
     file_id: FileId,
@@ -165,7 +166,7 @@ pub(crate) fn rebuild_file_after_write(
         .as_ref()
         .map(|cache| Arc::clone(&cache.references));
 
-    let facts = build_file_facts(db, file_id, file_id, &text);
+    let facts = build_file_facts(db, file_id, &text);
     let workspace_id = file_workspace_id_for_path(db.workspace_roots().as_ref(), path.as_deref());
 
     // Facts must be visible before flow/export builders run.
@@ -318,7 +319,7 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
         let Some(data) = db.file_data(file_id) else {
             continue;
         };
-        let facts = build_file_facts(db, file_id, file_id, &data.text);
+        let facts = build_file_facts(db, file_id, &data.text);
         let workspace_id =
             file_workspace_id_for_path(db.workspace_roots().as_ref(), data.path.as_deref());
         files.insert(
@@ -418,7 +419,7 @@ pub(crate) fn apply_file_reference_index(
     file_id: FileId,
     references: Arc<FileReferences>,
 ) {
-    let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
+    let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     let index = db.workspace_index.references.entry(ws_id).or_default();
     index.remove_file(file_id);
     index.add_file(file_id, references);
@@ -426,7 +427,7 @@ pub(crate) fn apply_file_reference_index(
 
 /// Rebuild only the per-workspace module indexes.
 pub(crate) fn rebuild_module_indexes(db: &mut SemanticDatabase) {
-    let ws_ids = all_workspace_ids(db);
+    let ws_ids = db.all_workspace_ids();
     let modules = ws_ids
         .iter()
         .map(|&ws_id| (ws_id, build_workspace_module_index(db, ws_id)))
@@ -439,7 +440,7 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase) {
     db.rebuild_metrics
         .workspace_index_rebuilds
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let ws_ids = all_workspace_ids(db);
+    let ws_ids = db.all_workspace_ids();
     let workspace_types = ws_ids
         .iter()
         .map(|&ws_id| (ws_id, build_workspace_type_index(db, ws_id)))
@@ -480,7 +481,7 @@ fn rebuild_workspace_indexes(db: &mut SemanticDatabase) {
 /// Pure value edits (`M.x = 1` -> `M.x = 2`) produce no key because the member
 /// identity is unchanged; consumers read the new value by id.
 fn rebuild_workspace_reference_indexes(db: &mut SemanticDatabase) {
-    let ws_ids = all_workspace_ids(db);
+    let ws_ids = db.all_workspace_ids();
     let workspace_references = ws_ids
         .iter()
         .map(|&ws_id| (ws_id, build_workspace_reference_index(db, ws_id)))
@@ -606,7 +607,7 @@ fn refresh_file_reference_index(db: &mut SemanticDatabase, file_id: FileId) {
     if let Some(cache) = db.files.get_mut(&file_id) {
         cache.references = Arc::clone(&references);
     }
-    let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::REMOTE);
+    let ws_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     let index = db.workspace_index.references.entry(ws_id).or_default();
     index.remove_file(file_id);
     index.add_file(file_id, references);
@@ -698,7 +699,7 @@ pub(crate) fn refresh_global_type_keys(db: &mut SemanticDatabase, names: HashSet
     if names.is_empty() {
         return;
     }
-    let ws_ids = db.all_workspace_ids_arc();
+    let ws_ids = db.all_workspace_ids.clone();
     let types = &db.workspace_index.types;
     let global_types = &mut db.workspace_index.global_types;
 
@@ -750,7 +751,7 @@ pub(crate) fn refresh_owner_member_keys(
     if owners.is_empty() && names.is_empty() {
         return;
     }
-    let ws_ids = db.all_workspace_ids_arc();
+    let ws_ids = db.all_workspace_ids.clone();
     let members = &db.workspace_index.members;
     {
         let owner_members = &mut db.workspace_index.owner_members;

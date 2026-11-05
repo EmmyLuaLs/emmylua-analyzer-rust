@@ -150,7 +150,7 @@ pub struct SemanticDatabase {
     /// Plain merged workspace indexes (type/member/decl/module/reference).
     workspace_index: query::WorkspaceIndexCache,
 
-    /// Reverse identity-level dependency index (P7): key -> files that read it.
+    /// Reverse identity-level dependency index: key -> files that read it.
     dependency_index: HashMap<DependencyKey, HashSet<FileId>>,
 
     #[cfg(test)]
@@ -163,8 +163,8 @@ impl Default for SemanticDatabase {
             config: None,
             main_root: None,
             workspace_roots: Arc::from(Vec::<WorkspaceRoot>::new()),
-            all_workspace_ids: Arc::from(vec![WorkspaceId::MAIN, WorkspaceId::REMOTE]),
-            workspace_lookup_order: Arc::from(vec![WorkspaceId::MAIN, WorkspaceId::REMOTE]),
+            all_workspace_ids: Arc::from(vec![WorkspaceId::Main]),
+            workspace_lookup_order: Arc::from(vec![WorkspaceId::Main]),
             vfs: Vfs::new(),
             files: HashMap::new(),
             module_fallback_root: None,
@@ -255,17 +255,15 @@ impl SemanticDatabase {
         &self.workspace_index
     }
 }
+
 fn compute_workspace_ids(roots: &[WorkspaceRoot]) -> Vec<WorkspaceId> {
-    let mut ids: Vec<WorkspaceId> = if roots.is_empty() {
-        vec![WorkspaceId::MAIN]
+    let ids: Vec<WorkspaceId> = if roots.is_empty() {
+        vec![WorkspaceId::Main]
     } else {
         // Several roots can belong to the same logical workspace (notably MAIN).
         // Aggregate each workspace index once, preserving registration order.
         roots.iter().map(|root| root.id).unique().collect()
     };
-    if !ids.contains(&WorkspaceId::REMOTE) {
-        ids.push(WorkspaceId::REMOTE);
-    }
     ids
 }
 
@@ -313,12 +311,6 @@ impl SemanticDatabase {
 
     pub(crate) fn all_workspace_ids(&self) -> &[WorkspaceId] {
         &self.all_workspace_ids
-    }
-
-    /// Shared handle to the cached workspace id list, used by mutation paths that
-    /// need to read the list while mutating another field of the database.
-    pub(crate) fn all_workspace_ids_arc(&self) -> Arc<[WorkspaceId]> {
-        Arc::clone(&self.all_workspace_ids)
     }
 
     pub(crate) fn workspace_lookup_order(&self) -> &[WorkspaceId] {
@@ -446,7 +438,7 @@ impl SemanticDatabase {
         let mut roots = self.workspace_roots.to_vec();
         roots.retain(|root_entry| !root_entry.id.is_std());
         roots.push(WorkspaceRoot {
-            id: WorkspaceId::STD,
+            id: WorkspaceId::Std,
             root,
             import: WorkspaceImport::All,
         });
@@ -465,7 +457,7 @@ impl SemanticDatabase {
             return;
         }
         roots.push(WorkspaceRoot {
-            id: WorkspaceId::MAIN,
+            id: WorkspaceId::Main,
             root,
             import: WorkspaceImport::All,
         });
@@ -476,9 +468,7 @@ impl SemanticDatabase {
     /// Register a library workspace (allocates a new `WorkspaceId`).
     pub(crate) fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         let mut roots = self.workspace_roots.to_vec();
-        let id = WorkspaceId {
-            id: self.next_library_workspace_id(&roots),
-        };
+        let id = WorkspaceId::Library(roots.len() as u32);
         roots.push(WorkspaceRoot {
             id,
             root: workspace.root.clone(),
@@ -500,15 +490,6 @@ impl SemanticDatabase {
         self.reset_file_facts_cache();
     }
 
-    fn next_library_workspace_id(&self, roots: &[WorkspaceRoot]) -> u32 {
-        let used: HashSet<u32> = roots.iter().map(|root_entry| root_entry.id.id).collect();
-        let mut candidate = WorkspaceId::LIBRARY_START.id;
-        while used.contains(&candidate) {
-            candidate += 1;
-        }
-        candidate
-    }
-
     /// Add paths that workspace reload must preserve (e.g. bundled std lib).
     pub(crate) fn add_protected_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         let mut set = self.vfs.protected_paths().clone();
@@ -527,8 +508,6 @@ impl SemanticDatabase {
             .as_ref()
             .map(|config| language_level_to_version(config.get_language_level()))
     }
-
-    // ---- URI / FileId mapping ----
 
     pub(crate) fn allocate_file_id(&mut self) -> FileId {
         self.vfs.allocate_file_id()
@@ -724,8 +703,8 @@ impl SemanticDatabase {
 
     pub fn clear(&mut self) {
         self.workspace_roots = Arc::from(Vec::<WorkspaceRoot>::new());
-        self.all_workspace_ids = Arc::from(vec![WorkspaceId::MAIN, WorkspaceId::REMOTE]);
-        self.workspace_lookup_order = Arc::from(vec![WorkspaceId::MAIN, WorkspaceId::REMOTE]);
+        self.all_workspace_ids = Arc::from(vec![WorkspaceId::Main]);
+        self.workspace_lookup_order = Arc::from(vec![WorkspaceId::Main]);
         self.main_root = None;
         self.vfs = Vfs::new();
         self.files = HashMap::new();
@@ -835,7 +814,7 @@ impl SemanticDatabase {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for &ws_id in query::all_workspace_ids(self) {
+        for &ws_id in self.all_workspace_ids() {
             let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.decl_refs.get(decl) {
                 out.extend(ranges.iter().copied());
@@ -850,7 +829,7 @@ impl SemanticDatabase {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for &ws_id in query::all_workspace_ids(self) {
+        for &ws_id in self.all_workspace_ids() {
             let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.member_refs.get(member) {
                 out.extend(ranges.iter().copied());
@@ -865,7 +844,7 @@ impl SemanticDatabase {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for &ws_id in query::all_workspace_ids(self) {
+        for &ws_id in self.all_workspace_ids() {
             let index = query::workspace_reference_index_for(self, ws_id);
             if let Some(ranges) = index.member_defs.get(member) {
                 out.extend(ranges.iter().copied());
@@ -894,8 +873,7 @@ impl SemanticDatabase {
 
     /// File → semantic module info (equivalent to ModuleIndex).
     pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
-        let _config = self.config_input()?;
-        let ws_id = query::file_workspace_id(self, file_id).unwrap_or(WorkspaceId::REMOTE);
+        let ws_id = query::file_workspace_id(self, file_id).unwrap_or(WorkspaceId::Main);
         let index = query::workspace_module_index_for(self, ws_id);
         let mut info = index.module_info(file_id)?;
         if let Some(shell) = self.analysis().module_export_type(file_id) {
@@ -906,8 +884,7 @@ impl SemanticDatabase {
 
     /// Module path → module tree node id (empty path returns the root node).
     pub fn module_node(&self, module_path: &str) -> Option<ModuleNodeId> {
-        let _config = self.config_input()?;
-        for &ws_id in query::all_workspace_ids(self) {
+        for &ws_id in self.all_workspace_ids() {
             let index = query::workspace_module_index_for(self, ws_id);
             if let Some(node_id) = index.find_module_node(module_path) {
                 return Some(node_id);

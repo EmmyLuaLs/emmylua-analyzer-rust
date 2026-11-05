@@ -2175,10 +2175,10 @@ fn test_multi_workspace_roots_and_module_index() {
         "return {}",
     );
 
-    assert_eq!(db.workspace_id_of(std_fid), Some(WorkspaceId::STD));
-    assert_eq!(db.workspace_id_of(main_fid), Some(WorkspaceId::MAIN));
-    assert_eq!(db.workspace_id_of(lib1_fid), Some(WorkspaceId { id: 3 }));
-    assert_eq!(db.workspace_id_of(lib2_fid), Some(WorkspaceId { id: 4 }));
+    assert_eq!(db.workspace_id_of(std_fid), Some(WorkspaceId::Std));
+    assert_eq!(db.workspace_id_of(main_fid), Some(WorkspaceId::Main));
+    assert_eq!(db.workspace_id_of(lib1_fid), Some(WorkspaceId::Library(1)));
+    assert_eq!(db.workspace_id_of(lib2_fid), Some(WorkspaceId::Library(2)));
 
     assert_eq!(db.module_name_of(main_fid).as_deref(), Some("main"));
     assert_eq!(db.module_name_of(lib1_fid).as_deref(), Some("mod"));
@@ -2197,7 +2197,7 @@ fn test_multi_workspace_roots_and_module_index() {
 
     let info = db.module_info_of(lib1_fid).expect("module info");
     assert_eq!(info.full_module_name, "mod");
-    assert_eq!(info.workspace_id, WorkspaceId { id: 3 });
+    assert_eq!(info.workspace_id, WorkspaceId::Library(1));
 
     // Module tree node API
     let node_id = db.module_node("mod").expect("module node");
@@ -2295,7 +2295,7 @@ fn test_relative_fixture_paths_are_rejected_by_uri_and_workspace_lookup() {
         "local a = 1".to_string(),
     );
     assert!(db.file_uri(fid_abs).is_some());
-    assert_eq!(db.workspace_id_of(fid_abs), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(fid_abs), Some(WorkspaceId::Main));
 }
 
 #[test]

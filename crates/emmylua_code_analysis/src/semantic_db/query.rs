@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use super::SemanticDatabase;
 use super::def::Decl;
+use super::def::TypeScope;
 use super::def::{
     ChangedKeys, ConstructorAttribute, DeclKind, DependencyKey, DocGenericParam, ExportKey,
     MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, OwnerId,
@@ -31,18 +32,27 @@ use emmylua_parser::{
 };
 use rowan::{TextRange, TextSize};
 
+pub(crate) use super::index::members::{
+    WorkspaceMemberIndex, aggregate_member_bucket, build_member_aggregates,
+    build_workspace_member_index,
+};
+pub(crate) use super::index::references::{
+    FileReferences, WorkspaceReferenceIndex, build_file_references, build_workspace_reference_index,
+};
+pub(crate) use super::index::types::{
+    DeprecatedFileData, DeprecatedIndex, WorkspaceTypeIndex, build_deprecated_file,
+    build_global_type_aggregate, build_workspace_deprecated_index, build_workspace_type_index,
+};
+use crate::WorkspaceId;
+use smol_str::SmolStr;
+
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
 /// Results are cached in the plain `SemanticDatabase` file cache and invalidated
 /// by file/config/workspace writes. It reads the same input fields so callers
 /// are correctly invalidated when the underlying text/config/roots change.
-pub(crate) fn build_file_facts(
-    db: &SemanticDatabase,
-    _file: FileId,
-    file_id: FileId,
-    text: &str,
-) -> FileFacts {
-    let workspace_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+pub(crate) fn build_file_facts(db: &SemanticDatabase, file_id: FileId, text: &str) -> FileFacts {
+    let workspace_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     let tree = db
         .vfs()
         .get_syntax_tree(&file_id)
@@ -206,26 +216,6 @@ fn insert_type_changed_keys(changed: &mut ChangedKeys, scope: TypeScope, full_na
     }
 }
 
-/// Rebuild the reverse dependency map from all per-file references (full rebuild).
-// ──────────────────────────────────────────────
-// Plain workspace type index (scope + full_name → definitions)
-// ──────────────────────────────────────────────
-use super::def::TypeScope;
-
-pub(crate) use super::index::members::{
-    WorkspaceMemberIndex, aggregate_member_bucket, build_member_aggregates,
-    build_workspace_member_index,
-};
-pub(crate) use super::index::references::{
-    FileReferences, WorkspaceReferenceIndex, build_file_references, build_workspace_reference_index,
-};
-pub(crate) use super::index::types::{
-    DeprecatedFileData, DeprecatedIndex, WorkspaceTypeIndex, build_deprecated_file,
-    build_global_type_aggregate, build_workspace_deprecated_index, build_workspace_type_index,
-};
-use crate::WorkspaceId;
-use smol_str::SmolStr;
-
 pub(crate) fn workspace_type_index_for(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
@@ -246,33 +236,13 @@ pub(crate) fn workspace_deprecated_index_for(
         .expect("workspace deprecated index must be built before read")
 }
 
-/// Cached workspace ids (roots + `REMOTE`; `MAIN` when no roots are registered).
-///
-/// The list is refreshed only when workspace roots change, so hot query paths do
-/// not allocate a fresh `Vec` on every call.
-pub(crate) fn all_workspace_ids(db: &SemanticDatabase) -> &[WorkspaceId] {
-    db.all_workspace_ids()
-}
-
-/// Deterministic workspace priority used by cross-workspace lookups.
-///
-/// Main workspace wins over libraries, libraries over std; remote stays last.
-/// Library order keeps registration order (stable sort). Cached in the database.
-pub(crate) fn workspace_lookup_order(db: &SemanticDatabase) -> &[WorkspaceId] {
-    db.workspace_lookup_order()
-}
-
 pub(crate) fn file_matches_workspace_id(
     db: &SemanticDatabase,
     file_id: FileId,
     ws_id: WorkspaceId,
 ) -> bool {
     let file_ws = file_workspace_id(db, file_id);
-    if ws_id == WorkspaceId::REMOTE {
-        file_ws.is_none()
-    } else {
-        file_ws == Some(ws_id)
-    }
+    file_ws == Some(ws_id)
 }
 
 fn find_global_types(db: &SemanticDatabase, full_name: &str) -> Arc<[TypeDef]> {
@@ -290,7 +260,7 @@ fn find_internal_types(db: &SemanticDatabase, ws: WorkspaceId, full_name: &str) 
 }
 
 fn find_file_types(db: &SemanticDatabase, file_id: FileId, full_name: &str) -> Arc<[TypeDef]> {
-    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     workspace_type_index_for(db, ws).find_all(TypeScope::File(file_id), full_name)
 }
 
@@ -303,7 +273,7 @@ pub(crate) fn resolve_type_def_locations(
 ) -> Arc<[TypeDef]> {
     let file_id = file;
     let facts = file_facts(db, file);
-    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
 
     if let Some(ns) = &facts.namespace {
         let full = SmolStr::new(format!("{}.{}", ns, bare_name));
@@ -384,7 +354,7 @@ fn constructor_attribute_of_decl(
     let facts = file_facts(db, file);
     let decl = facts.decl_by_id(&decl)?;
     let value_syntax = decl.value_expr_syntax?;
-    let tree = syntax_tree(db, file);
+    let tree = db.vfs().get_syntax_tree(&file)?;
     let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
     let call = LuaCallExpr::cast(node)?;
     let prefix = call.get_prefix_expr()?;
@@ -406,8 +376,6 @@ fn constructor_attribute_of_decl(
         .first()
         .map(|(_, attribute)| attribute.clone())
 }
-
-// ──────────────────────────────────────────────
 
 /// Recompute the aggregate buckets for owners / names changed by a file update.
 pub(crate) fn workspace_member_index_for(
@@ -488,7 +456,7 @@ fn merge_canonical_members(
         return raw;
     };
     let mut extra: Vec<MemberRef> = Vec::new();
-    for &ws_id in all_workspace_ids(db) {
+    for &ws_id in db.all_workspace_ids.iter() {
         let index = workspace_member_index_for(db, ws_id);
         let members = match named {
             Some(name) => index.members_of_owner_id_named(&owner_id, name),
@@ -615,7 +583,7 @@ fn members_from_workspaces(
     // setups / owner without contributions): merge in workspace order.
     let mut single: Option<Arc<[MemberRef]>> = None;
     let mut extra: Vec<MemberRef> = Vec::new();
-    for &ws_id in all_workspace_ids(db) {
+    for &ws_id in db.all_workspace_ids() {
         let index = workspace_member_index_for(db, ws_id);
         let members = match named {
             Some(name) => index.members_of_owner_named(owner, name),
@@ -872,7 +840,7 @@ pub(crate) fn workspace_decl_index_for(
 pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Option<SemanticId> {
     let roots = db.workspace_roots();
     if roots.is_empty() {
-        return workspace_decl_index_for(db, WorkspaceId::MAIN).global_decl_named(&name);
+        return workspace_decl_index_for(db, WorkspaceId::Main).global_decl_named(&name);
     }
     for root in roots.iter() {
         if let Some(decl) = workspace_decl_index_for(db, root.id).global_decl_named(&name) {
@@ -914,7 +882,7 @@ pub(crate) fn global_decls_named_for_file(
 
 /// First non-empty workspace in explicit priority order (main > library > std).
 pub(crate) fn global_decls_named_primary(db: &SemanticDatabase, name: &str) -> Vec<SemanticId> {
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let decls = global_decls_named_in_workspace(db, ws_id, name);
         if !decls.is_empty() {
             return decls;
@@ -922,10 +890,6 @@ pub(crate) fn global_decls_named_primary(db: &SemanticDatabase, name: &str) -> V
     }
     Vec::new()
 }
-
-// ──────────────────────────────────────────────
-// require / module resolution (M0: path-derived module name + suffix matching)
-// ──────────────────────────────────────────────
 
 /// Per-file module information (equivalent to a semantic ModuleIndex entry).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -991,7 +955,7 @@ pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Opti
         aliases,
         full_module_name,
         name,
-        workspace_id: file_ws.unwrap_or(WorkspaceId::REMOTE),
+        workspace_id: file_ws.unwrap_or(WorkspaceId::Main),
         visible: facts.module_visibility,
         is_meta: facts.is_meta,
         version_conds: facts.version_conds.clone(),
@@ -1042,7 +1006,7 @@ pub(crate) fn build_workspace_module_index(
         a.full_module_name
             .as_str()
             .cmp(b.full_module_name.as_str())
-            .then_with(|| a.workspace_id.id.cmp(&b.workspace_id.id))
+            .then_with(|| a.workspace_id.cmp(&b.workspace_id))
             .then_with(|| a.file_id.id.cmp(&b.file_id.id))
     });
     for file_ids in module_name_to_file_ids.values_mut() {
@@ -1194,7 +1158,7 @@ pub(crate) fn file_workspace_id_for_path(
 ) -> Option<WorkspaceId> {
     let path = path?;
     if roots.is_empty() {
-        return Some(WorkspaceId::MAIN);
+        return Some(WorkspaceId::Main);
     }
     find_workspace_id(roots, path)
 }
@@ -1257,7 +1221,7 @@ fn module_file_in_root(
         rewritten
     };
     let lookup = |find: &dyn Fn(&ModuleIndex) -> Option<FileId>| {
-        workspace_lookup_order(db)
+        db.workspace_lookup_order()
             .iter()
             .enumerate()
             .filter_map(|(order, &ws_id)| {
@@ -1363,7 +1327,7 @@ impl ModuleIndex {
             a.full_module_name
                 .as_str()
                 .cmp(b.full_module_name.as_str())
-                .then_with(|| a.workspace_id.id.cmp(&b.workspace_id.id))
+                .then_with(|| a.workspace_id.cmp(&b.workspace_id))
                 .then_with(|| a.file_id.id.cmp(&b.file_id.id))
         });
         self.entry_by_file_id = self
@@ -1732,7 +1696,7 @@ pub(crate) fn members_of_owner_id_named_all(
     name: &str,
 ) -> Vec<MemberRef> {
     let mut out: Vec<MemberRef> = Vec::new();
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let index = workspace_member_index_for(db, ws_id);
         let Some(members) = index.members_of_owner_id_named(owner_id, name) else {
             continue;
@@ -1765,7 +1729,7 @@ fn push_type_associated_owner_ids(
     type_id: &SemanticId,
     out: &mut Vec<OwnerId>,
 ) {
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let index = workspace_decl_index_for(db, ws_id);
         let locations = index.type_def_locations(type_id);
         if locations.is_empty() {
@@ -1842,7 +1806,7 @@ pub(crate) fn resolve_owner_ids(db: &SemanticDatabase, owner: &SemanticId) -> Ve
             }
             // Runtime declarations named like the type, plus their `owner_syntax`
             // associated classes (differently-named runtime tables).
-            for &ws_id in workspace_lookup_order(db) {
+            for &ws_id in db.workspace_lookup_order() {
                 for decl_id in workspace_decl_index_for(db, ws_id).runtime_decls_named(&name_str) {
                     if let Some(owner_id) = canonical_owner_id(db, decl_id) {
                         push_unique_owner_id(&mut out, owner_id);

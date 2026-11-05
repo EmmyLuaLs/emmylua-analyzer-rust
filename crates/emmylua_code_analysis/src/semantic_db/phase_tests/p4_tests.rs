@@ -123,5 +123,5 @@ fn p4_path_change_does_not_full_rebuild() {
     assert_eq!(db.analysis().module_file_of("new"), Some(fid));
 
     // Workspace id stays stable for the same FileId.
-    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::Main));
 }
