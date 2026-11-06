@@ -158,4 +158,29 @@ mod tests {
         ));
         Ok(())
     }
+
+    /// #1318: completing a `Partial<T>` field shows `T`'s field docs. Resolve renders the
+    /// declaration site, so the detail is `T`'s declared field type.
+    #[gtest]
+    fn test_partial_field_keeps_source_docs() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@class Linter
+            ---@field cmd string the command to run
+            "#,
+        );
+        check!(ws.check_completion_resolve(
+            r#"
+            ---@type Partial<Linter>
+            local p = {}
+            p.<??>
+            "#,
+            VirtualCompletionResolveItem {
+                detail: "(field) cmd: string".to_string(),
+                documentation: Some("\nthe command to run".to_string()),
+            },
+        ));
+        Ok(())
+    }
 }
