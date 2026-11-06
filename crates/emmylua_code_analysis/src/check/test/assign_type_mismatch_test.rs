@@ -2934,6 +2934,38 @@ return t
         assert_eq!(changed.1.len(), 1, "{changed:?}");
     }
 
+    /// Mixed guards on one member, read past the merge of earlier ones: what the path
+    /// collected applies to the memoized state in the order of the program.
+    #[test]
+    fn test_mixed_member_guards_apply_to_the_memoized_state() {
+        for (read, expected) in [("string|integer", 0), ("string", 1)] {
+            let source = format!(
+                r#"
+                ---@class MixedGuards
+                ---@field v string|integer|nil
+
+                ---@param o MixedGuards
+                local function f(o)
+                    if o.v then print(1) end
+                    if o.v == 'x' then print(2) end
+                    if type(o.v) == 'number' then print(3) end
+                    if o.v and o.v ~= 'y' then
+                        ---@type {read}
+                        local value = o.v
+                        return value
+                    end
+                end
+                return f
+                "#
+            );
+            assert_eq!(
+                count_by_code(&check_source(&source), DiagnosticCode::AssignTypeMismatch),
+                expected,
+                "{read}"
+            );
+        }
+    }
+
     /// An undeclared member keeps following its writes, under a guard too.
     #[test]
     fn test_undeclared_member_write_target_ignores_guards() {

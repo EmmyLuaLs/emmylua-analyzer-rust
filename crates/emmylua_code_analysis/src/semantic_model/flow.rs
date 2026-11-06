@@ -524,7 +524,6 @@ fn apply_field_nullable(model: &SemanticModel, member: &SemanticId, ty: LuaType)
     ty
 }
 
-/// Flow-sensitive type of the member at `offset` (member assignment flow + `---@cast t.x +T` widening).
 /// Target type for a member write: its writes and casts, without guards. A guard narrows reads,
 /// so inside `t.x == 1`, `t.x = "a"` is still held to what `t.x` may hold, not to `1`.
 pub fn type_of_member_assign_target_at(
@@ -535,6 +534,7 @@ pub fn type_of_member_assign_target_at(
     member_type_at(model, member, offset, true)
 }
 
+/// Flow-sensitive type of the member at `offset` (member assignment flow + `---@cast t.x +T` widening).
 /// Same as `type_of_decl_at`: exclude this assignment when `offset` lies on `t.x = value`.
 pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: TextSize) -> LuaType {
     member_type_at(model, member, offset, false)
@@ -2293,7 +2293,7 @@ fn trace_decl_uncached(
                             let assign_path = PathState {
                                 narrowings,
                                 casts: path.casts.clone(),
-                                ignore_guards: false,
+                                ignore_guards: path.ignore_guards,
                             };
                             let base_before = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
                             let frame = DeclAssignmentFrame {
