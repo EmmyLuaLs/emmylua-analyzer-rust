@@ -49,9 +49,9 @@ fn workspace_class_page_includes_stdlib_members() {
         "stdlib member was dropped:\n{md}"
     );
     assert_eq!(
-        md.matches("### string.gsub\n").count(),
+        md.lines().filter(|line| *line == "### string.gsub").count(),
         1,
-        "stdlib member was duplicated:\n{md}"
+        "expected exactly one stdlib member heading: {md}"
     );
 
     // Page metadata must come from the workspace declaration, not from stdlib.
@@ -75,9 +75,9 @@ fn global_class_page_includes_runtime_members() {
         "global runtime member was dropped:\n{md}"
     );
     assert_eq!(
-        md.matches("### mylib.foo\n").count(),
+        md.lines().filter(|line| *line == "### mylib.foo").count(),
         1,
-        "global runtime member was duplicated:\n{md}"
+        "expected exactly one global runtime member heading: {md}"
     );
 }
 
