@@ -1905,3 +1905,19 @@ fn expression_casts_use_the_current_file() {
         }
     }
 }
+
+/// A member written in a closure from its parameter, read by the call the closure is passed to:
+/// the parameter's type needs that call, and the call's argument needs the member.
+#[test]
+fn test_closure_param_and_call_argument_through_one_member() {
+    let mut ws = crate::VirtualWorkspace::new();
+    ws.def(
+        r#"
+        local state = {}
+        local function h(f, x) end
+        h(function(e) state.filter = e.text end, state.filter)
+        got = state.filter
+    "#,
+    );
+    assert!(!matches!(ws.expr_ty("got"), LuaType::Never));
+}
