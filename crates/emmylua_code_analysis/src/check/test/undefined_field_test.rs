@@ -1187,6 +1187,33 @@ function KPlayer.GetPlayerObjById() end",
             "#
         ));
     }
+
+    #[test]
+    fn test_object_index_signature_allows_matching_keys() {
+        for (decl, read, accepted) in [
+            ("{ [string]: integer }", "pt.X", true),
+            ("{ [string]: integer }", "pt['X']", true),
+            ("{ [integer]: string }", "pt[1]", true),
+            ("{ x: number, [string]: integer }", "pt.y", true),
+            // The key must fit the index domain.
+            ("{ [integer]: string }", "pt.X", false),
+            ("{ x: number, [integer]: string }", "pt.y", false),
+        ] {
+            let source = format!(
+                r#"
+                ---@type {decl}
+                local pt
+                local _ = {read}
+                "#
+            );
+            let mut ws = VirtualWorkspace::new();
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::UndefinedField, &source),
+                accepted,
+                "{source}"
+            );
+        }
+    }
 }
 
 #[googletest::gtest]
