@@ -5517,8 +5517,14 @@ fn filter_type_by_member_truthiness(
         }
         // Missing member is equivalent to nil: `obj.missing` is false.
         let member_ty = model.member_type(&component, key).unwrap_or(LuaType::Nil);
-        let truthy = type_is_truthy(&member_ty);
-        if truthy == keep_matching {
+        // The true branch keeps a component whose member can be truthy, the false branch one
+        // whose member can be falsy (a `boolean` member can be either).
+        let possible = if keep_matching {
+            type_is_truthy(&member_ty)
+        } else {
+            !member_ty.is_always_truthy()
+        };
+        if possible {
             kept.push(component);
         }
     }
