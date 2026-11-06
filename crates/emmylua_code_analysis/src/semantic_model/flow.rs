@@ -2144,15 +2144,36 @@ fn trace_decl(
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
-    // On a loop-free graph every route to a flow node crosses the same guards, so
-    // a state's value depends on the node and the purpose alone — never on the
-    // route. That makes the state cacheable, which matters because a nested
+    // On a loop-free graph a state for an empty incoming path depends on the node and
+    // the purpose alone. That makes it cacheable, which matters because a nested
     // conditional chain otherwise re-derives the same states along exponentially
     // many routes. Only nodes that can reach a loop backwards keep the uncached
     // path (see the type note on `cache::TraceStateKey`), so a loop in one function
     // does not disable memoization for the rest of the file.
     if tree.is_loop_reachable(flow_id) {
         return trace_decl_uncached(model, decl, tree, flow_id, purpose, mode, visited, path);
+    }
+    // The memo holds the state for an empty incoming path. Guards collected between the query
+    // and this node narrow that state: they apply in program order and distribute over branch
+    // merges. Incoming casts and correlated narrowings do not commute that way.
+    if !path.narrowings.is_empty()
+        && path.casts.is_empty()
+        && !path
+            .narrowings
+            .iter()
+            .any(|narrowing| matches!(narrowing, Narrowing::Correlated { .. }))
+    {
+        let state = trace_decl(
+            model,
+            decl,
+            tree,
+            flow_id,
+            purpose,
+            mode,
+            visited,
+            &mut PathState::default(),
+        )?;
+        return Some(finalize(model, state, path));
     }
     let key = decl_trace_key(model, decl, flow_id, purpose, mode);
     {
