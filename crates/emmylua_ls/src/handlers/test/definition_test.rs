@@ -646,4 +646,26 @@ mod tests {
         ));
         Ok(())
     }
+
+    /// A positional table field has no key, so tokens inside its value are not on a member key.
+    #[gtest]
+    fn test_name_inside_positional_field_value() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_definition(
+            r#"
+                local t = {
+                    {
+                        f = function(opts)
+                            local _ = <??>opts
+                        end,
+                    },
+                }
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 3,
+            }],
+        ));
+        Ok(())
+    }
 }
