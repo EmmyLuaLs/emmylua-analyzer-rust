@@ -458,7 +458,6 @@ fn p10_apply_file_change_and_batch_api() {
 
     let summary = db.apply_file_change(FileChange::remove(fid));
     assert_eq!(summary.removed, 1);
-    assert!(db.file_data_id(fid).is_none());
 }
 
 #[test]

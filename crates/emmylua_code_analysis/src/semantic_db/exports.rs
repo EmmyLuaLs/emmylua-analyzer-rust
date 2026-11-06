@@ -25,7 +25,7 @@ use crate::{Emmyrc, FileId};
 
 use super::SemanticDatabase;
 use super::facts::FileFacts;
-use super::query::{self, file_facts};
+use super::query::{self};
 
 /// Export contribution visible from a single file.
 ///
@@ -205,7 +205,7 @@ pub(super) fn build_file_exports(
     file: FileId,
     file_id: FileId,
 ) -> FileExportContribution {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file).expect("file facts must exist");
     let aliases = build_require_alias_contributions(db, file_id);
 
     let types = facts.type_defs.clone();
@@ -233,7 +233,7 @@ pub(super) fn build_file_exports(
             index_key_syntax: member.index_key_syntax,
             index_key_text: member.index_key_syntax.and_then(|syntax| {
                 syntax
-                    .to_node_from_root(&db.vfs().get_syntax_tree(&file_id)?.get_red_root())
+                    .to_node_from_root(&db.syntax_tree_of(file_id)?.get_red_root())
                     .map(|node| node.text().to_string().into())
             }),
             member: member.id.clone(),
@@ -316,7 +316,7 @@ pub(crate) fn build_require_alias_contributions(
     let Some(config) = db.config() else {
         return Vec::new();
     };
-    let facts = file_facts(db, file_id);
+    let facts = db.file_facts_of(file_id).expect("file facts must exist");
     if facts.decls.is_empty() {
         return Vec::new();
     }

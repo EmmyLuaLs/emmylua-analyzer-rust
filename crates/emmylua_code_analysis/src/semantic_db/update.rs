@@ -380,13 +380,11 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
     rebuild_workspace_indexes(db);
 
     for file_id in file_ids.iter().copied() {
-        if let Some(file) = db.file_data_id(file_id) {
-            let references = build_file_references(db, file);
-            db.files
-                .get_mut(&file_id)
-                .expect("file cache must exist before references build")
-                .references = Arc::new(references);
-        }
+        let references = build_file_references(db, file_id);
+        db.files
+            .get_mut(&file_id)
+            .expect("file cache must exist before references build")
+            .references = Arc::new(references);
     }
 
     rebuild_workspace_reference_indexes(db);
@@ -399,9 +397,6 @@ pub(crate) fn rebuild_all_caches(db: &mut SemanticDatabase) {
 /// entries must be refreshed before rebuild_module_indexes.
 pub(crate) fn rebuild_all_module_entries(db: &mut SemanticDatabase) {
     for file_id in db.file_ids() {
-        if db.file_data_id(file_id).is_none() {
-            continue;
-        }
         let entry = build_module_entry(db, file_id);
         if let Some(cache) = db.files.get_mut(&file_id) {
             cache.module_entry = entry;
@@ -587,9 +582,6 @@ pub(crate) fn refresh_dependent_references(
 }
 
 fn refresh_file_reference_index(db: &mut SemanticDatabase, file_id: FileId) {
-    if db.file_data_id(file_id).is_none() {
-        return;
-    }
     #[cfg(test)]
     db.rebuild_metrics
         .dependent_reference_refreshes
@@ -620,9 +612,6 @@ fn refresh_file_contribution_and_references(
     db: &mut SemanticDatabase,
     file_id: FileId,
 ) -> ChangedKeys {
-    if db.file_data_id(file_id).is_none() {
-        return ChangedKeys::default();
-    }
     let Some(old_exports) = db
         .files
         .get(&file_id)

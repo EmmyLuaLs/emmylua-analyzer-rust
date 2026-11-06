@@ -177,10 +177,6 @@ impl Default for SemanticDatabase {
 }
 
 impl SemanticDatabase {
-    pub(crate) fn file_data_id(&self, file_id: FileId) -> Option<FileId> {
-        self.vfs.file(file_id).map(|_| file_id)
-    }
-
     pub(crate) fn file_data(&self, file_id: FileId) -> Option<&FileData> {
         self.vfs.file(file_id)
     }
