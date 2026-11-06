@@ -4,7 +4,7 @@
 //! function in it, so a chain of `n` guards in a loop-free function walked
 //! ~2^n routes (`walking.lua` of a real game client project never finished).
 
-use emmylua_parser::{LuaAstNode, LuaNameExpr};
+use emmylua_parser::{LuaAstNode, LuaIndexExpr, LuaNameExpr};
 use rowan::TextSize;
 
 use crate::semantic_model::flow::flow_metrics;
@@ -101,5 +101,43 @@ fn flow_loop_in_other_function_keeps_guard_chain_linear() {
                  So far: {measurements:?}"
             );
         }
+    }
+}
+
+/// `n` guards on one field, each read again after its merge.
+fn member_guard_chain(n: usize) -> String {
+    let mut content = String::from(
+        "---@class Hunk\n---@field count integer?\n\n---@param hunk Hunk\nlocal function f(hunk)\n",
+    );
+    for _ in 0..n {
+        content.push_str("  if hunk.count then\n    print(1)\n  end\n  print(hunk.count)\n");
+    }
+    content.push_str("end\n");
+    content
+}
+
+/// A guard on a field leaves a narrowing on the path, and the member memo used to serve
+/// only an empty path, so every read walked both sides of every earlier guard. diffs.nvim's
+/// `highlight_hunk` never finished. The walk must stay polynomial in the number of guards.
+#[test]
+fn flow_member_guard_chain_keeps_the_memo() {
+    let mut measurements = Vec::new();
+    for n in [4usize, 8, 12, 16] {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def_file("hunk.lua", &member_guard_chain(n));
+        let model = ws.analysis.semantic_model(file_id);
+        flow_metrics::reset();
+        for index in model.chunk().expect("chunk").descendants::<LuaIndexExpr>() {
+            let _ = model.type_of_expr_at(index.get_syntax_id(), index.get_position());
+        }
+        let steps = flow_metrics::trace_steps();
+        measurements.push((n, steps));
+
+        let bound = 64 * (n as u64) * (n as u64) + 256;
+        assert!(
+            steps <= bound,
+            "the member walk took {steps} steps for {n} guards (bound {bound}). \
+             So far: {measurements:?}"
+        );
     }
 }

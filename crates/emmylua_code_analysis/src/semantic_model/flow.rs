@@ -2530,8 +2530,31 @@ fn trace_member(
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
-    if tree.is_loop_reachable(flow_id) || !path.casts.is_empty() || !path.narrowings.is_empty() {
+    if tree.is_loop_reachable(flow_id)
+        || path
+            .narrowings
+            .iter()
+            .any(|narrowing| matches!(narrowing, Narrowing::Correlated { .. }))
+    {
         return trace_member_uncached(model, member, access, tree, flow_id, visited, path);
+    }
+    // The memo holds the state for an empty path, and what the path collected applies to
+    // that state. Walking on with it visits both sides of every earlier guard on this
+    // member, 2^n routes.
+    if !path.narrowings.is_empty() || !path.casts.is_empty() {
+        let state = trace_member(
+            model,
+            member,
+            access,
+            tree,
+            flow_id,
+            visited,
+            &mut PathState {
+                ignore_guards: path.ignore_guards,
+                ..PathState::default()
+            },
+        )?;
+        return Some(finalize(model, state, path));
     }
     let key = cache::TraceStateKey {
         file_id: model.file_id(),
