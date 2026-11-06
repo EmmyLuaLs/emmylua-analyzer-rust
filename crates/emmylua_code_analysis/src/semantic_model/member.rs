@@ -415,6 +415,25 @@ pub fn member_type(
     member_info(model, prefix_type, key).map(|info| info.typ)
 }
 
+/// Value type of the first index signature whose key domain accepts `key_type`:
+/// `table<K, V>`, `{ [K]: V }` and `---@field [K] V` (`t.x` / `t[k]` with no named member).
+/// Arrays and table literals keep their own read rules (`T[]` reads `T?`).
+pub(crate) fn index_signature_type(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key_type: &LuaType,
+) -> Option<LuaType> {
+    if matches!(prefix_type, LuaType::TableConst(_) | LuaType::Array(_)) {
+        return None;
+    }
+    model
+        .applicable_index_infos(prefix_type, key_type)
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|info| info.value_type)
+}
+
 /// Returns the second argument type of `setmetatable(t, mt)` for the given `t` table identity.
 /// Supports a table literal as the first argument, and also a local name indirection (`local t = {...}; setmetatable(t, mt)`).
 pub(crate) fn table_metatable_type(
