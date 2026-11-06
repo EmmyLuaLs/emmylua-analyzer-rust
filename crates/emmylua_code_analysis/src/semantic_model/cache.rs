@@ -205,6 +205,7 @@ pub(crate) enum TraceSubject {
     Member {
         member: SemanticId,
         access: Option<LuaSyntaxId>,
+        ignore_guards: bool,
     },
 }
 
