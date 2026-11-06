@@ -5,12 +5,20 @@ use emmylua_code_analysis::EmmyLuaAnalysis;
 mod export;
 mod json_types;
 
+/// The export, as both `generate_json` and `export_value` produce it.
+fn build_index(analysis: &EmmyLuaAnalysis) -> json_types::Index {
+    let model = DocModel::build(analysis);
+    export::export(&model, analysis.emmyrc.clone())
+}
+
+pub fn export_value(analysis: &EmmyLuaAnalysis) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::to_value(build_index(analysis))
+}
+
 pub fn generate_json(
     analysis: &EmmyLuaAnalysis,
     output: OutputDestination,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let model = DocModel::build(analysis);
-
     let output = match output {
         OutputDestination::File(output) if output.extension() == Some("json".as_ref()) => {
             if let Some(parent) = output.parent()
@@ -33,7 +41,7 @@ pub fn generate_json(
         OutputDestination::Stdout => OutputDestination::Stdout,
     };
 
-    let data = export::export(&model, analysis.emmyrc.clone());
+    let data = build_index(analysis);
 
     match output {
         OutputDestination::Stdout => {
