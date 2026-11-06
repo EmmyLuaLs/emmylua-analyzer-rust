@@ -1264,6 +1264,14 @@ impl<'db> SemanticModel<'db> {
         });
         ty
     }
+    /// Assignment contract of a member: casts apply, conditional narrowing does not.
+    pub fn type_of_member_assign_target_at(
+        &self,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
+        flow::type_of_member_assign_target_at(self, member, offset)
+    }
     /// Decl type before the flow node at offset (for assignment checks: this assignment does not participate in the target type).
     pub fn type_of_decl_before_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
         self.type_of_decl_before_at_impl(decl, offset)

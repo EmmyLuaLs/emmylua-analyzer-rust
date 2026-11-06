@@ -356,7 +356,10 @@ fn check_self_member_assign(
                 && member.key.name() == Some(key.as_str())
                 && member.value_syntax != Some(value_expr.get_syntax_id())
         })
-        .map(|member| semantic_model.type_of_member_at(&member.id, index_expr.get_range().start()))
+        .map(|member| {
+            semantic_model
+                .type_of_member_assign_target_at(&member.id, index_expr.get_range().start())
+        })
         .or_else(|| {
             semantic_model.member_type(&owner_ty, &LuaMemberKey::Name(key.clone().into()))
         })?;
@@ -373,7 +376,7 @@ fn check_member_assign(
 ) {
     let mut target = semantic_model.member_assignment_type(
         member_id,
-        semantic_model.type_of_member_at(member_id, target_offset),
+        semantic_model.type_of_member_assign_target_at(member_id, target_offset),
     );
     // `t.x = value`: resolve_member first returns the synthesized member for this assignment; prefer the same-named member on the prefix's declared type.
     if let Some(facts) = semantic_model.file_facts()
