@@ -19,6 +19,7 @@ use std::collections::VecDeque;
 
 use crate::LuaFunctionType;
 use crate::LuaType;
+use crate::LuaTypeNode;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_check::{function_param_pairs, is_compatible};
 
@@ -49,7 +50,14 @@ pub fn functions_compatible(
     expected: &LuaFunctionType,
     bindings: &TplBindings,
 ) -> bool {
+    // Solving substitutes again and again, so a binding that mentions a bound generic would grow
+    // each pair and `seen_pairs` would never see one twice. Dropped, its generic stays open.
     let mut bindings = bindings.clone();
+    let bound: Vec<_> = bindings.keys().cloned().collect();
+    bindings.retain(|_, value| {
+        !value
+            .any_type(|ty| matches!(ty, LuaType::TplRef(tpl) if bound.contains(&tpl.get_tpl_id())))
+    });
     let mut queue = VecDeque::new();
     queue.push_back(Constraint::FnPair(ActualExpected {
         actual: actual.clone(),

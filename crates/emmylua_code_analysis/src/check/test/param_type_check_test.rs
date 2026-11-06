@@ -3561,4 +3561,23 @@ mod test {
             diagnostics
         );
     }
+
+    /// A closure argument whose own parameter is typed by the callee's `T`: binding `T` to a
+    /// type that mentions `T` grew each function pair, so the solver's queue never ran dry.
+    #[test]
+    fn test_generic_bound_to_a_type_that_mentions_it_terminates() {
+        check_source(
+            r#"
+            local _ = {}
+            ---@generic T : fun(...)
+            ---@param fn T
+            _.curry = function(fn)
+                return function(...) end
+            end
+            ---@generic T, V
+            ---@param fn fun(...): T
+            _.converge = _.curry(function(fn, fns, val) end)
+            "#,
+        );
+    }
 }
