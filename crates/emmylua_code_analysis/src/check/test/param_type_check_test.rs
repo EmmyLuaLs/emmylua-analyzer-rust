@@ -5,7 +5,7 @@ mod test {
     use lsp_types::{Diagnostic, NumberOrString};
     use tokio_util::sync::CancellationToken;
 
-    use crate::check::test::{check_source, check_source_with_emmyrc};
+    use crate::check::test::{check_source, check_source_with_emmyrc, count_by_code};
     use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
 
     #[test]
@@ -3566,7 +3566,7 @@ mod test {
     /// type that mentions `T` grew each function pair, so the solver's queue never ran dry.
     #[test]
     fn test_generic_bound_to_a_type_that_mentions_it_terminates() {
-        check_source(
+        let diagnostics = check_source(
             r#"
             local _ = {}
             ---@generic T : fun(...)
@@ -3578,6 +3578,11 @@ mod test {
             ---@param fn fun(...): T
             _.converge = _.curry(function(fn, fns, val) end)
             "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::ParamTypeMismatch),
+            0,
+            "{diagnostics:?}"
         );
     }
 }
