@@ -4220,7 +4220,7 @@ fn callback_fun_from_param(model: &SemanticModel, ty: &LuaType) -> Option<LuaFun
 }
 
 /// Closure param type: compile the "call that wraps this closure" and run it, then read the
-/// param environment.
+/// param environment. This starts a fresh evaluation: from inside one, use `closure_param_in`.
 pub fn closure_param_vm(
     model: &SemanticModel,
     closure_syntax: LuaSyntaxId,
@@ -4230,7 +4230,8 @@ pub fn closure_param_vm(
 }
 
 /// `closure_param_vm` inside an evaluation: `computing` carries over, as the wrapping call can
-/// read the very member this parameter is being asked for.
+/// read the very member this parameter is being asked for. The nested run gets its own copy:
+/// a guard covers what is being evaluated now, so what it adds ends with it.
 fn closure_param_in(
     model: &SemanticModel,
     closure_syntax: LuaSyntaxId,

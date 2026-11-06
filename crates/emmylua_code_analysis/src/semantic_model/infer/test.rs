@@ -1907,17 +1907,31 @@ fn expression_casts_use_the_current_file() {
 }
 
 /// A member written in a closure from its parameter, read by the call the closure is passed to:
-/// the parameter's type needs that call, and the call's argument needs the member.
+/// the parameter's type needs that call, and the call's argument needs the member. Without the
+/// guard this overflows the stack and aborts the process, so getting a type at all is the check.
 #[test]
 fn test_closure_param_and_call_argument_through_one_member() {
-    let mut ws = crate::VirtualWorkspace::new();
-    ws.def(
-        r#"
-        local state = {}
-        local function h(f, x) end
-        h(function(e) state.filter = e.text end, state.filter)
-        got = state.filter
-    "#,
-    );
-    assert!(!matches!(ws.expr_ty("got"), LuaType::Never));
+    for (doc, expected) in [
+        ("", None),
+        (
+            "---@param f fun(e: {text: string})\n---@param x? string",
+            Some(LuaType::String),
+        ),
+    ] {
+        let mut ws = crate::VirtualWorkspace::new();
+        ws.def(&format!(
+            r#"
+            local state = {{}}
+            {doc}
+            local function h(f, x) end
+            h(function(e) state.filter = e.text end, state.filter)
+            got = state.filter
+            "#
+        ));
+        let got = ws.expr_ty("got");
+        assert!(!matches!(got, LuaType::Never), "{doc}: {got:?}");
+        if let Some(expected) = expected {
+            assert_eq!(got, expected, "{doc}");
+        }
+    }
 }
