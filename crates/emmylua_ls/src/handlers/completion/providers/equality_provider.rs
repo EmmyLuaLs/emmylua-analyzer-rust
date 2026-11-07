@@ -126,7 +126,7 @@ fn get_token_should_type(builder: &CompletionBuilder) -> Option<Vec<LuaType>> {
             let var = vars.first()?;
             let var_type = builder
                 .semantic_model
-                .type_of_expr(var.to_expr().get_syntax_id());
+                .assignment_target_type(&var.to_expr());
             if !contains_function(builder, &var_type) && !matches!(var_type, LuaType::Unknown) {
                 return Some(vec![var_type]);
             }
@@ -190,7 +190,7 @@ fn expr_should_type(builder: &CompletionBuilder, expr: &emmylua_parser::LuaExpr)
     ret
 }
 
-fn contains_function(builder: &CompletionBuilder, typ: &LuaType) -> bool {
+pub(super) fn contains_function(builder: &CompletionBuilder, typ: &LuaType) -> bool {
     match typ {
         LuaType::DocFunction(_) | LuaType::Function | LuaType::Signature(_) => true,
         LuaType::Union(union) => union.into_vec().iter().any(|component| {
