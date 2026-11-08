@@ -3923,18 +3923,17 @@ pub(crate) fn unify_call_bindings(
                                 .saturating_sub(arg_index)
                                 .saturating_sub(trailing)
                         };
-                        let consume = consume.min(arg_params.len().saturating_sub(arg_index));
                         // `arg_index` can be past the end: the ordinary params before this
                         // slot advance it even when the callback declares fewer params.
-                        let remaining: Vec<LuaType> = arg_params
-                            .get(arg_index..arg_index + consume)
-                            .unwrap_or_default()
+                        let start = arg_index.min(arg_params.len());
+                        let consume = consume.min(arg_params.len() - start);
+                        let remaining: Vec<LuaType> = arg_params[start..start + consume]
                             .iter()
                             .enumerate()
                             .map(|(offset, (_, ty))| {
                                 let ty = ty.clone().unwrap_or(Unknown);
                                 if arg_fun.is_variadic()
-                                    && arg_index + offset + 1 == arg_params.len()
+                                    && start + offset + 1 == arg_params.len()
                                     && !matches!(ty, Variadic(_))
                                 {
                                     Variadic(Rc::new(VariadicType::Repeat(ty)))
@@ -3948,11 +3947,9 @@ pub(crate) fn unify_call_bindings(
                             && let TplRef(tpl) = base
                             && !bindings.contains_key(&tpl.get_tpl_id())
                             && !remaining.is_empty()
-                            && arg_params[arg_index..arg_index + consume]
-                                .iter()
-                                .any(|(_, ty)| {
-                                    ty.as_ref().is_some_and(|t| !matches!(t, Unknown | Any))
-                                })
+                            && arg_params[start..start + consume].iter().any(|(_, ty)| {
+                                ty.as_ref().is_some_and(|t| !matches!(t, Unknown | Any))
+                            })
                             && !remaining.iter().any(|t| {
                                 matches!(
                                     t,
