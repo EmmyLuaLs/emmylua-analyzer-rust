@@ -369,4 +369,22 @@ mod test {
             "#,
         ));
     }
+
+    /// #1334: a `table<string, integer>` read is `integer`, which is not callable.
+    #[test]
+    fn test_index_signature_value_is_not_callable() {
+        let diagnostics = crate::check::test::check_source(
+            r#"
+            ---@param pt table<string, integer>
+            local function g(pt)
+                return pt.X()
+            end
+            return g
+        "#,
+        );
+        assert_eq!(
+            crate::check::test::count_by_code(&diagnostics, DiagnosticCode::CallNonCallable),
+            1
+        );
+    }
 }
