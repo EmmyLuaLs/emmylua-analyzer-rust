@@ -1327,6 +1327,18 @@ mod tests {
         let union = || LuaUnionType::from_vec(vec![named("A"), named("A"), named("B")]);
         assert!(matches!(union(), LuaUnionType::Multi(_)));
         assert_eq!(union(), union());
+        // Eq is a multiset compare, and the hash is a sum over members: order does not count,
+        // repeats do.
+        let reordered = LuaUnionType::from_vec(vec![named("B"), named("A"), named("A")]);
+        assert_eq!(union(), reordered);
+        assert_eq!(
+            FxBuildHasher.hash_one(union()),
+            FxBuildHasher.hash_one(&reordered)
+        );
+        assert_ne!(
+            FxBuildHasher.hash_one(union()),
+            FxBuildHasher.hash_one(LuaUnionType::from_vec(vec![named("A"), named("B")]))
+        );
         // Same length and members, other counts: their hashes differ, so they must not be equal.
         assert_ne!(
             union(),
