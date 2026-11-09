@@ -3630,4 +3630,39 @@ mod test {
             diagnostics
         );
     }
+
+    /// A callback with fewer params than the expected function's fixed prefix, where a variadic
+    /// follows that prefix. The variadic's slice of the callback's params started past their end
+    /// and panicked.
+    #[test]
+    fn test_short_callback_against_variadic_tail_does_not_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param f fun(x: integer, ...: string)
+            local function g(f) end
+            g(function() end)
+        "#
+        ));
+    }
+
+    /// Around the panic's boundary: a callback with exactly the fixed prefix, and one whose extra
+    /// params the variadic takes.
+    #[test]
+    fn test_callback_at_and_past_variadic_prefix() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param f fun(x: integer, ...: string)
+            local function g(f) end
+            g(function(x) end)
+            g(function(x, a, b) end)
+            ---@param a string
+            ---@param b string
+            g(function(x, a, b) end)
+        "#
+        ));
+    }
 }
