@@ -487,6 +487,50 @@ local t = {
     }
 
     #[test]
+    fn test_single_arg_call_parens_omit_keeps_parens_for_multiple_args() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                single_arg_call_parens: SingleArgCallParens::Omit,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        for code in [
+            "print(\"a\", \"b\")\n",
+            "local n = select(\"#\", ...)\n",
+            "obj:method({ 1 }, 2)\n",
+            // the string/table is not the first argument
+            "foo(x, \"a\")\n",
+            "foo(1, { 2 })\n",
+        ] {
+            assert_format_with_config!(code, code, config.clone());
+        }
+    }
+
+    #[test]
+    fn test_single_arg_call_parens_omit_keeps_parens_around_a_comment() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                single_arg_call_parens: SingleArgCallParens::Omit,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // same layout as with the default `Preserve`: the comment keeps the call parenthesized
+        assert_format_with_config!(
+            r#"foo("a" --[[note]])
+"#,
+            r#"foo(
+    "a" --[[note]]
+)
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_simple_lambda_single_line_always_collapses_eligible_multiline_lambda() {
         let config = LuaFormatConfig {
             output: OutputConfig {

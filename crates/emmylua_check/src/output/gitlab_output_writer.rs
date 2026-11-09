@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
-use emmylua_code_analysis::{DbIndex, FileId};
+use emmylua_code_analysis::{FileId, SemanticDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -63,11 +63,11 @@ impl GitlabOutputWriter {
 }
 
 impl OutputWriter for GitlabOutputWriter {
-    fn write(&mut self, db: &DbIndex, file_id: FileId, diagnostics: Vec<Diagnostic>) {
-        let Some(file_path) = db.get_vfs().get_file_path(&file_id) else {
+    fn write(&mut self, db: &SemanticDatabase, file_id: FileId, diagnostics: Vec<Diagnostic>) {
+        let Some(file_path) = db.file_path(file_id) else {
             return;
         };
-        let Some(path) = repository_relative_path(&self.project_root, file_path) else {
+        let Some(path) = repository_relative_path(&self.project_root, &file_path) else {
             eprintln!(
                 "emmylua_check: skipped GitLab Code Quality findings for {} because it is outside the repository root {}",
                 file_path.display(),
@@ -166,7 +166,7 @@ fn repository_relative_path(
 
 #[cfg(test)]
 mod tests {
-    use emmylua_code_analysis::{DbIndex, file_path_to_uri};
+    use emmylua_code_analysis::{EmmyLuaAnalysis, file_path_to_uri};
     use googletest::prelude::*;
     use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
     use serde_json::json;
@@ -214,14 +214,14 @@ mod tests {
         );
         let repository = normalize_local_path(std::env::current_dir().unwrap());
         let file_path = repository.join("src/player.lua");
-        let mut db = DbIndex::new();
-        let file_id = db
-            .get_vfs_mut()
-            .file_id(&file_path_to_uri(&file_path).unwrap());
+        let mut analysis = EmmyLuaAnalysis::new();
+        let file_id = analysis
+            .update_file_by_uri(&file_path_to_uri(&file_path).unwrap(), Some(String::new()))
+            .unwrap();
         let output_path = report_path("finding");
         let mut writer = GitlabOutputWriter::new(OutputDestination::File(output_path.clone()));
 
-        writer.write(&db, file_id, vec![diagnostic]);
+        writer.write(&analysis.db, file_id, vec![diagnostic]);
         writer.finish();
         let actual = serde_json::from_str::<serde_json::Value>(
             &std::fs::read_to_string(&output_path).unwrap(),

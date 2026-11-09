@@ -1,4 +1,4 @@
-use crate::diff::{DiffRenderOptions, render_unified_diff};
+use crate::diff::{DiffRenderOptions, git_blob_hash, render_unified_diff};
 
 #[test]
 fn test_git_diff_style_has_full_header_and_hunks() {
@@ -201,8 +201,8 @@ fn test_index_line_has_git_blob_hashes() {
     assert!(
         rendered.contains(&format!(
             "index {}..{} 100644",
-            super::git_blob_hash(b"local x=1\n"),
-            super::git_blob_hash(b"local x = 1\n")
+            git_blob_hash(b"local x=1\n"),
+            git_blob_hash(b"local x = 1\n")
         )),
         "missing index line in: {rendered}"
     );

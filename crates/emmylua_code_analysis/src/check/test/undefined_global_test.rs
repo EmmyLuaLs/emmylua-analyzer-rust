@@ -1,0 +1,65 @@
+#[cfg(test)]
+mod tests {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+
+    use crate::Emmyrc;
+    use crate::check::test::{check_source, check_source_with_emmyrc, count_by_code};
+
+    #[test]
+    fn test_undefined_global() {
+        // `missing` is undefined; `print` is builtin, `x` is local, and `global_defined` is a workspace global, so none of those count.
+        let diags = check_source(
+            "local x = 1\nlocal y = missing\nprint(x)\nglobal_defined = 1\nlocal z = global_defined",
+        );
+        assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 1);
+    }
+
+    #[test]
+    fn test_definition_position_not_undefined() {
+        // Assignment target (definition site) is not undefined.
+        let diags = check_source("foo = 1\nlocal y = foo");
+        assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 0);
+    }
+
+    #[test]
+    fn test_all_defined_ok() {
+        let diags = check_source("local a = 1\nprint(a)");
+        assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 0);
+    }
+
+    /// `emmyrc.diagnostics.globals` whitelist: configured global names are not reported.
+    #[test]
+    fn test_globals_config_whitelist() {
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.diagnostics.globals.push("my_global".to_string());
+        let diags = check_source_with_emmyrc("local a = my_global", emmyrc);
+        assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 0);
+    }
+
+    #[test]
+    fn test_cross_file_global_defined_via_g() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def("_G.GetTime = function() end");
+        assert!(ws.has_no_diagnostic(DiagnosticCode::UndefinedGlobal, "local t = GetTime()"));
+    }
+
+    #[test]
+    fn test_cross_file_global_function_defined() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def("function GetTime() end");
+        assert!(ws.has_no_diagnostic(DiagnosticCode::UndefinedGlobal, "local t = GetTime()"));
+    }
+
+    /// `emmyrc.diagnostics.globals_regex`: names matching the regex are not reported.
+    #[test]
+    fn test_globals_regex_config_whitelist() {
+        let mut emmyrc = Emmyrc::default();
+        emmyrc
+            .diagnostics
+            .globals_regex
+            .push("^m[0-9]+$".to_string());
+        let diags = check_source_with_emmyrc("local a = m42\nlocal b = n42", emmyrc);
+        // m42 matches the regex; n42 does not.
+        assert_eq!(count_by_code(&diags, DiagnosticCode::UndefinedGlobal), 1);
+    }
+}

@@ -61,7 +61,6 @@ m.foo()
 
         Ok(())
     }
-
     #[gtest]
     fn test_return_overload_tag_is_documentation_keyword() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -76,7 +75,6 @@ m.foo()
         verify_that!(&tokens, contains(eq(&(0, 4, 15, keyword, doc))))?;
         Ok(())
     }
-
     #[gtest]
     fn test_return_overload_rows_highlight_types() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -104,7 +102,6 @@ m.foo()
         )?;
         Ok(())
     }
-
     #[gtest]
     fn test_mapped_type_parameter_is_highlighted() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -125,7 +122,6 @@ m.foo()
         )?;
         Ok(())
     }
-
     #[gtest]
     fn test_local_function() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -158,6 +154,12 @@ m.foo()
     }
 
     #[cfg(feature = "slow-tests")]
+    // This used to never terminate: the repeated-prefix guard chain made flow
+    // backtracking re-derive the same declaration-trace states along an
+    // exponential number of merge routes (a chain of N guards entered
+    // `trace_decl` ~2^N times — 393k calls at N=16). `semantic_model/flow.rs` now
+    // memoizes those states on loop-free flow graphs, so the cost is linear and
+    // this finishes in well under a second.
     #[gtest]
     fn test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

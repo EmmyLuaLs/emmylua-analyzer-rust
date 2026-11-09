@@ -1,6 +1,6 @@
 mod commands;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{RequestOutcome, ServerContextSnapshot};
 use commands::get_commands_list;
 #[allow(unused)]
 pub use commands::*;
@@ -16,11 +16,11 @@ pub async fn on_execute_command_handler(
     context: ServerContextSnapshot,
     params: ExecuteCommandParams,
     _: CancellationToken,
-) -> Option<Value> {
+) -> RequestOutcome<Value> {
     let args = params.arguments;
     let command_name = params.command.as_str();
     dispatch_command(context, command_name, args).await;
-    Some(Value::Null)
+    RequestOutcome::Ready(Value::Null)
 }
 
 pub struct CommandCapabilities;

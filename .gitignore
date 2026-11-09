@@ -3,7 +3,11 @@
 dhat-heap.json
 
 # AI
+.agents
 .cursor
 .claude
 .codex
 openspec
+.trellis
+AGENTS.md
+.scratch

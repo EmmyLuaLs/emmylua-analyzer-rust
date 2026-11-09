@@ -4,7 +4,9 @@ mod tests {
 
     use crate::{
         assert_format, assert_format_with_config,
-        config::{LayoutConfig, LuaFormatConfig, OutputConfig},
+        config::{
+            AlignConfig, IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig, OutputConfig,
+        },
     };
 
     #[test]
@@ -1365,6 +1367,77 @@ end
         );
     }
 
+    #[test]
+    fn test_required_semicolon_before_parenthesized_statement_is_preserved() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f()
+;(req).style = 1
+"#,
+            r#"
+local req = f();
+(req).style = 1
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_required_semicolon_before_commented_parenthesized_statement_is_preserved() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f();
+-- separator before next statement
+(req).style = 1
+"#,
+            r#"
+local req = f();
+-- separator before next statement
+(req).style = 1
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_optional_semicolon_before_non_parenthesized_statement_is_removed() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local req = f()
+;req.style = 1
+"#,
+            r#"
+local req = f()
+req.style = 1
+"#,
+            config
+        );
+    }
+
     // ========== semicolon ==========
 
     #[test]
@@ -1913,7 +1986,7 @@ end
         use emmylua_parser::LuaLanguageLevel;
 
         let config = LuaFormatConfig {
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },
@@ -2027,11 +2100,11 @@ end
         use emmylua_parser::LuaLanguageLevel;
 
         let config = LuaFormatConfig {
-            indent: crate::config::IndentConfig {
-                kind: crate::config::IndentKind::Space,
+            indent: IndentConfig {
+                kind: IndentKind::Space,
                 width: 2,
             },
-            align: crate::config::AlignConfig {
+            align: AlignConfig {
                 continuous_assign_statement: true,
                 ..Default::default()
             },

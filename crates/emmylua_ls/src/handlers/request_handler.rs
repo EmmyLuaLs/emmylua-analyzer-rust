@@ -66,8 +66,7 @@ macro_rules! dispatch_request {
                     if let Ok((id, params)) = $request.extract::<<$req_type as LspRequest>::Params>(<$req_type>::METHOD) {
                         let snapshot = $context.snapshot();
                         $context.task(id.clone(), |cancel_token| async move {
-                            let result = $handler(snapshot, params, cancel_token).await;
-                            Some(Response::new_ok(id, result))
+                            $handler(snapshot, params, cancel_token).await
                         }).await;
                         return Ok(());
                     }

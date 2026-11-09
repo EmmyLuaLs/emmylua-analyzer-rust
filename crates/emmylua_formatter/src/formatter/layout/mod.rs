@@ -320,10 +320,10 @@ fn analyze_call_arg_list_layout(ctx: &FormatContext, args: &LuaCallArgList, plan
         is_multiline_block_like_expr(arg)
             || matches!(arg, LuaExpr::TableExpr(table) if table.syntax().text().contains_char('\n'))
     });
-    let first_line_prefix_width = arg_exprs
-        .first()
-        .map(|arg| source_line_prefix_width(arg.syntax()))
-        .unwrap_or(0);
+    // The candidates are measured from the opening `(`, so the prefix is that token's column. The first
+    // argument's column would depend on this list's own previous layout (on the `(` line or below it),
+    // and the next pass could then choose differently (#1302).
+    let first_line_prefix_width = source_line_prefix_width(args.syntax());
     let first_arg_multiline_block = arg_exprs.first().is_some_and(is_multiline_block_like_expr);
     let first_arg_multiline_table = matches!(arg_exprs.first(), Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n'));
     let mut single_inline_block_arg_index = None;

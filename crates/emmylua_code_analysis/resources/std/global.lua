@@ -175,10 +175,12 @@ function load(chunk, chunkname, mode, env) end
 --- @version 5.1, JIT
 --- @param text       Language<"Lua">
 --- @param chunkname? string
+--- @param mode?      std.loadmode
+--- @param env?       table
 --- @return_overload function chunk
 --- @return_overload nil, string error_message
 --- @nodiscard
-function loadstring(text, chunkname) end
+function loadstring(text, chunkname, mode, env) end
 
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
@@ -188,6 +190,7 @@ function loadstring(text, chunkname) end
 --- @param env?      table
 --- @return_overload function chunk
 --- @return_overload nil, string error_message
+--- @nodiscard
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT

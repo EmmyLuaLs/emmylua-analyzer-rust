@@ -1,14 +1,15 @@
-use crate::handlers::completion::{
-    completion_builder::CompletionBuilder, completion_data::CompletionData,
-};
+//! `require("...")` module path completion.
+
+use std::collections::HashSet;
+
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaLiteralExpr, LuaStringToken,
 };
 use lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
-use super::get_text_edit_range_in_string;
+use crate::handlers::completion::completion_builder::CompletionBuilder;
 
-use super::{CompletionProvider, ProviderDecision};
+use super::{CompletionProvider, ProviderDecision, get_text_edit_range_in_string};
 
 pub struct ModulePathProvider;
 
@@ -49,7 +50,6 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
-
     if !supports_provider(builder) {
         return None;
     }
@@ -60,81 +60,100 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     Some(())
 }
 
+/// Enumerate direct child segments of workspace modules by prefix (module / folder).
 pub fn add_modules(
     builder: &mut CompletionBuilder,
     prefix_content: &str,
     text_edit_range: Option<lsp_types::Range>,
 ) -> Option<()> {
-    let version_number = builder
-        .semantic_model
-        .get_emmyrc()
-        .runtime
-        .version
-        .to_lua_version_number();
+    let current_file = builder.semantic_model.file_id();
+    let mut file_ids = builder.semantic_model.main_workspace_file_ids();
+    file_ids.sort();
+
+    // `a.b.cd` → parent path `a.b` + current segment prefix `cd`.
     let parts: Vec<&str> = prefix_content.split(['.', '/', '\\']).collect();
     let module_path = if parts.len() > 1 {
         parts[..parts.len() - 1].join(".")
     } else {
-        "".to_string()
+        String::new()
     };
+    let segment_prefix = parts.last().copied().unwrap_or("");
 
-    let prefix = if let Some(last_sep) = prefix_content.rfind(['/', '\\', '.']) {
-        let (path, _) = prefix_content.split_at(last_sep + 1);
-        path
-    } else {
-        ""
-    };
-
-    let db = builder.semantic_model.get_db();
-    let mut module_completions = Vec::new();
-    let module_info = db.get_module_index().find_module_node(&module_path)?;
-    for (name, module_id) in &module_info.children {
-        let child_module_node = db.get_module_index().get_module_node(module_id)?;
-        let filter_text = format!("{}{}", prefix, name);
-        let text_edit = text_edit_range.map(|text_edit_range| {
-            CompletionTextEdit::Edit(TextEdit {
-                range: text_edit_range,
-                new_text: filter_text.clone(),
-            })
-        });
-        if let Some(child_file_id) = child_module_node.file_ids.first() {
-            let child_module_info = db.get_module_index().get_module(*child_file_id)?;
-            let data = if let Some(property_id) = &child_module_info.semantic_id {
-                CompletionData::from_property_owner_id(builder, property_id.clone())
+    let typed_parent = prefix_content
+        .rfind(['.', '/', '\\'])
+        .map(|i| &prefix_content[..=i])
+        .unwrap_or("");
+    let version = builder.get_emmyrc().runtime.version.to_lua_version_number();
+    let mut seen = HashSet::new();
+    let mut completions = Vec::new();
+    for file_id in file_ids {
+        if file_id == current_file {
+            continue;
+        }
+        for module_name in builder.semantic_model.module_names_of(file_id) {
+            let relative = if module_path.is_empty() {
+                module_name.as_str()
+            } else if let Some(rest) = module_name.strip_prefix(&format!("{}.", module_path)) {
+                rest
+            } else {
+                continue;
+            };
+            let (segment, is_file) = match relative.find('.') {
+                Some(dot) => (&relative[..dot], false),
+                None => (relative, true),
+            };
+            if !segment.starts_with(segment_prefix) {
+                continue;
+            }
+            let filter_text = format!("{typed_parent}{segment}");
+            let detail = if is_file {
+                // Resolve the full candidate in the caller's root, not whichever
+                // file happened to be enumerated first. Skip unavailable candidates.
+                let Some(target) = builder.semantic_model.module_file_of(&filter_text) else {
+                    continue;
+                };
+                if target == current_file {
+                    continue;
+                }
+                let Some(info) = builder.semantic_model.module_info_of(target) else {
+                    continue;
+                };
+                if !info.is_visible(&version) {
+                    continue;
+                }
+                let Some(uri) = builder.semantic_model.file_uri_of(target) else {
+                    continue;
+                };
+                Some(uri.to_string())
             } else {
                 None
             };
-
-            if child_module_info.is_visible(&version_number) {
-                let uri = db.get_vfs().get_uri(child_file_id)?;
-                let completion_item = CompletionItem {
-                    label: name.clone(),
-                    kind: Some(lsp_types::CompletionItemKind::FILE),
-                    filter_text: Some(filter_text),
-                    text_edit,
-                    detail: Some(uri.to_string()),
-                    data,
-                    ..Default::default()
-                };
-                module_completions.push(completion_item);
+            if !seen.insert(segment.to_string()) {
+                continue;
             }
-        } else {
-            let completion_item = CompletionItem {
-                label: name.clone(),
-                kind: Some(lsp_types::CompletionItemKind::FOLDER),
+            let text_edit = text_edit_range.map(|range| {
+                CompletionTextEdit::Edit(TextEdit {
+                    range,
+                    new_text: filter_text.clone(),
+                })
+            });
+            completions.push(CompletionItem {
+                label: segment.to_string(),
+                kind: Some(if is_file {
+                    lsp_types::CompletionItemKind::FILE
+                } else {
+                    lsp_types::CompletionItemKind::FOLDER
+                }),
                 filter_text: Some(filter_text),
                 text_edit,
+                detail,
                 ..Default::default()
-            };
-
-            module_completions.push(completion_item);
+            });
         }
     }
-
-    let _ = module_info;
-    for completion_item in module_completions {
+    completions.sort_by(|a, b| a.label.cmp(&b.label));
+    for completion_item in completions {
         builder.add_completion_item(completion_item)?;
     }
-
     Some(())
 }

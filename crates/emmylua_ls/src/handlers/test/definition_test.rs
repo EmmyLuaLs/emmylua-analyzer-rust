@@ -7,6 +7,26 @@ mod tests {
     type Expected = VirtualLocation;
 
     #[gtest]
+    fn test_vararg_definition_uses_the_nearest_function() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_definition(
+            r#"
+                local function outer(...)
+                    local function inner(...)
+                        return .<??>..
+                    end
+                    return inner(...)
+                end
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 2
+            }]
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_basic_definition() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_definition(

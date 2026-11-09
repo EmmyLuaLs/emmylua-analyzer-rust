@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_check"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_code_analysis"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
@@ -562,6 +562,7 @@ dependencies = [
  "regex",
  "rowan",
  "rust-i18n",
+ "rustc-hash 2.1.3",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -584,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_doc_cli"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "clap",
  "emmy_lsp_types",
@@ -605,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_formatter"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "clap",
  "emmylua_parser",
@@ -624,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_ls"
-version = "0.25.1"
+version = "0.30.0"
 dependencies = [
  "chrono",
  "clap",
@@ -637,7 +638,7 @@ dependencies = [
  "fern",
  "glob",
  "googletest",
- "include_dir",
+ "hashbrown 0.17.1",
  "internment",
  "itertools 0.14.0",
  "log",
@@ -648,7 +649,6 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "tokio",
  "tokio-util",
  "walkdir",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.29.1"
+version = "0.30.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.29.1"
+version = "0.30.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
@@ -1528,9 +1528,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pest"
-version = "2.8.6"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0848c601009d37dfa3430c4666e147e49cdcf1b92ecd3e63657d8a5f19da662"
+checksum = "5a07a60cc7a4d00c91f95c685609d1d2f79050e6804b70ebedd7650f0b839bcf"
 dependencies = [
  "memchr",
  "ucd-trie",
@@ -1538,9 +1538,9 @@ dependencies = [
 
 [[package]]
 name = "pest_derive"
-version = "2.8.6"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11f486f1ea21e6c10ed15d5a7c77165d0ee443402f0780849d1768e7d9d6fe77"
+checksum = "b3a83744a5c8455b8b3e0dc5031362780a347c878bdd11584d1a8984228cc88d"
 dependencies = [
  "pest",
  "pest_generator",
@@ -1548,9 +1548,9 @@ dependencies = [
 
 [[package]]
 name = "pest_generator"
-version = "2.8.6"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8040c4647b13b210a963c1ed407c1ff4fdfa01c31d6d2a098218702e6664f94f"
+checksum = "e0cd3451aa3de60d4b9a1e736885e4dea6b31617598026f12256ad566d63304a"
 dependencies = [
  "pest",
  "pest_meta",
@@ -1561,12 +1561,11 @@ dependencies = [
 
 [[package]]
 name = "pest_meta"
-version = "2.8.6"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89815c69d36021a140146f26659a81d6c2afa33d216d736dd4be5381a7362220"
+checksum = "e04d3a0849e241d7dfce834c83b1c5edc8622009e8dd51a12ba1927c32f05496"
 dependencies = [
  "pest",
- "sha2",
 ]
 
 [[package]]
@@ -1681,9 +1680,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rand"
-version = "0.8.6"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
+checksum = "22f6172bdec972074665ed81ed53b71da00bfc44b65a753cfde883ec4c702a1a"
 dependencies = [
  "libc",
  "rand_chacha",
@@ -1787,7 +1786,7 @@ dependencies = [
  "countme",
  "hashbrown 0.14.5",
  "memoffset",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "text-size",
 ]
 
@@ -1850,6 +1849,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rustix"

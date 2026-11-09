@@ -8,7 +8,7 @@ use lsp_types::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::ServerContextSnapshot,
+    context::{RequestOutcome, ServerContextSnapshot, snapshot_query},
     handlers::{
         document_formatting::{FormattingOptions, build_workspace_formatter_config},
         document_range_formatting::external_range_format::external_tool_range_format,
@@ -28,46 +28,112 @@ pub struct RangeFormatResult {
 pub async fn on_range_formatting_handler(
     context: ServerContextSnapshot,
     params: DocumentRangeFormattingParams,
-    _: CancellationToken,
-) -> Option<Vec<TextEdit>> {
+    cancel_token: CancellationToken,
+) -> RequestOutcome<Vec<TextEdit>> {
     let uri = params.text_document.uri;
     let request_range = params.range;
-    let analysis = context.analysis().read().await;
-    let workspace_manager = context.workspace_manager().read().await;
-    let client_id = workspace_manager.client_config.client_id;
-    let file_id = analysis.get_file_id(&uri)?;
-    let emmyrc = analysis.get_emmyrc();
-    let document = analysis
-        .compilation
-        .get_db()
-        .get_vfs()
-        .get_document(&file_id)?;
-    let file_path = document.get_file_path();
-    let normalized_path = file_path.to_string_lossy().to_string().replace("\\", "/");
-    let formatting_options = FormattingOptions {
-        indent_size: params.options.tab_size,
-        use_tabs: !params.options.insert_spaces,
-        insert_final_newline: params.options.insert_final_newline.unwrap_or(true),
-        non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
+
+    // Extract data inside the lock and release the lock/snapshot immediately to avoid blocking other requests during external tool await.
+    let client_id = {
+        let workspace_manager = context.workspace_manager().lock().await;
+        workspace_manager.client_config.client_id
     };
-    let formatted_result = if let Some(external_tool) = &emmyrc.format.external_tool_range_format {
-        external_tool_range_format(
+    let extracted =
+        match snapshot_query(context.analysis(), cancel_token.clone(), move |analysis| {
+            let file_id = analysis.get_file_id(&uri)?;
+            let document = analysis.db.document(file_id)?;
+            let file_path = Some(document.get_file_path().clone());
+            let normalized_path = file_path
+                .as_deref()
+                .map(|p| p.to_string_lossy().to_string().replace("\\", "/"))
+                .unwrap_or_default();
+            let emmyrc = analysis.get_emmyrc();
+            let formatting_options = FormattingOptions {
+                indent_size: params.options.tab_size,
+                use_tabs: !params.options.insert_spaces,
+                insert_final_newline: params.options.insert_final_newline.unwrap_or(true),
+                non_standard_symbol: !emmyrc.runtime.nonstandard_symbol.is_empty(),
+            };
+            Some((
+                file_id,
+                document.get_text().to_string(),
+                document.get_offset(
+                    request_range.start.line as usize,
+                    request_range.start.character as usize,
+                )?,
+                document.get_offset(
+                    request_range.end.line as usize,
+                    request_range.end.character as usize,
+                )?,
+                document.get_line_count(),
+                emmyrc,
+                file_path,
+                normalized_path,
+                formatting_options,
+            ))
+        })
+        .await
+        {
+            RequestOutcome::Ready(data) => data,
+            RequestOutcome::Missing => {
+                return RequestOutcome::Missing;
+            }
+            RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
+        };
+
+    let (
+        file_id,
+        text,
+        start_offset,
+        end_offset,
+        line_count,
+        emmyrc,
+        file_path,
+        normalized_path,
+        formatting_options,
+    ) = extracted;
+
+    if let Some(external_tool) = &emmyrc.format.external_tool_range_format {
+        let Some(formatted_result) = external_tool_range_format(
             external_tool,
-            &document,
-            &request_range,
+            &text,
+            start_offset,
+            end_offset,
+            line_count,
             &normalized_path,
             formatting_options,
         )
-        .await?
-    } else {
-        let syntax_tree = analysis
-            .compilation
-            .get_db()
-            .get_vfs()
-            .get_syntax_tree(&file_id)?;
-        let chunk = syntax_tree.get_chunk_node();
+        .await
+        else {
+            return RequestOutcome::Missing;
+        };
+        let mut formatted_text = formatted_result.text;
+        if client_id.is_intellij() || client_id.is_other() {
+            formatted_text = formatted_text.replace("\r\n", "\n");
+        }
+
+        return RequestOutcome::Ready(vec![TextEdit {
+            range: Range {
+                start: Position {
+                    line: formatted_result.start_line as u32,
+                    character: formatted_result.start_col as u32,
+                },
+                end: Position {
+                    line: formatted_result.end_line as u32,
+                    character: formatted_result.end_col as u32,
+                },
+            },
+            new_text: formatted_text,
+        }]);
+    }
+
+    // Non-external-tool branch is pure synchronous computation, so a temporary snapshot can be reacquired.
+    let result = match snapshot_query(context.analysis(), cancel_token, move |analysis| {
+        let model = analysis.semantic_model(file_id);
+        let chunk = model.chunk()?;
+        let document = analysis.db.document(file_id)?;
         let config = build_workspace_formatter_config(
-            Some(file_path.as_path()),
+            file_path.as_deref(),
             params.options.tab_size as usize,
             params.options.insert_spaces,
             params.options.insert_final_newline.unwrap_or(true),
@@ -80,37 +146,24 @@ pub async fn on_range_formatting_handler(
             &config,
             emmyrc.get_language_level(),
         )?;
-        let mut new_text = output.text;
-        if client_id.is_intellij() || client_id.is_other() {
-            new_text = new_text.replace("\r\n", "\n");
+        let range = document.to_lsp_range(output.replace_range)?;
+        Some((output, range))
+    })
+    .await
+    {
+        RequestOutcome::Ready(result) => result,
+        RequestOutcome::Missing => {
+            return RequestOutcome::Missing;
         }
-
-        return Some(vec![TextEdit {
-            range: document.to_lsp_range(output.replace_range)?,
-            new_text,
-        }]);
+        RequestOutcome::Cancelled(source) => return RequestOutcome::Cancelled(source),
     };
-
-    let mut formatted_text = formatted_result.text;
+    let (output, range) = result;
+    let mut new_text = output.text;
     if client_id.is_intellij() || client_id.is_other() {
-        formatted_text = formatted_text.replace("\r\n", "\n");
+        new_text = new_text.replace("\r\n", "\n");
     }
 
-    let text_edit = TextEdit {
-        range: Range {
-            start: Position {
-                line: formatted_result.start_line as u32,
-                character: formatted_result.start_col as u32,
-            },
-            end: Position {
-                line: formatted_result.end_line as u32,
-                character: formatted_result.end_col as u32,
-            },
-        },
-        new_text: formatted_text,
-    };
-
-    Some(vec![text_edit])
+    RequestOutcome::Ready(vec![TextEdit { range, new_text }])
 }
 
 pub struct DocumentRangeFormattingCapabilities;

@@ -36,6 +36,64 @@ mod tests {
     }
 
     #[gtest]
+    fn test_require_completion_skips_removed_module() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file("lib/helper.lua", "return {}");
+        // The new semantic database removes stale module entries with the file.
+        ws.def_file("lib.missing.lua", "return {}");
+        let missing = ws.virtual_url_generator.new_uri("lib.missing.lua");
+        ws.analysis.update_file_by_uri(&missing, None);
+        let items = get_completion_items(
+            &mut ws,
+            r#"require("lib.<??>")"#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        assert!(items.iter().any(|item| item.label == "helper"));
+        assert!(!items.iter().any(|item| item.label == "missing"));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_require_completion_resolves_full_candidates_in_callers_root() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut config = ws.get_emmyrc();
+        config.workspace.module_map = vec![emmylua_code_analysis::EmmyrcWorkspaceModuleMap {
+            pattern: "^([ab])[.](.*)$".into(),
+            replace: "package_$1.$2".into(),
+        }];
+        ws.update_emmyrc(config);
+        let base = ws.virtual_url_generator.base.clone();
+        for root in ["a", "b"] {
+            ws.analysis.add_main_workspace(base.join(root));
+        }
+        // Index the other root first so selecting the first file would be wrong.
+        ws.def_file("b/lib/helper.lua", "return {}");
+        ws.def_file("a/lib/helper.lua", "return {}");
+        let expected_uri = ws
+            .virtual_url_generator
+            .new_uri("a/lib/helper.lua")
+            .to_string();
+        ws.virtual_url_generator.base = base.join("a");
+        for prefix in ["lib.he", "lib/he", r"lib\he", "package_a.lib.he"] {
+            let items = get_completion_items(
+                &mut ws,
+                &format!(r#"require("{}<??>")"#, prefix.replace('\\', "\\\\")),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            let item = items
+                .iter()
+                .find(|item| item.label == "helper")
+                .unwrap_or_else(|| panic!("missing helper for {prefix}: {items:?}"));
+            assert_eq!(item.detail.as_deref(), Some(expected_uri.as_str()));
+            assert_eq!(
+                item.filter_text.as_deref(),
+                Some(format!("{}helper", &prefix[..prefix.len() - 2]).as_str())
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
 
@@ -50,6 +108,86 @@ mod tests {
                 ..Default::default()
             }],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_completion_keeps_fields_on_elements() -> Result<()> {
+        for (expression, has_name) in [("items", false), ("items[1]", true)] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            ws.def_file(
+                "item.lua",
+                r#"
+---@class Item
+---@field name string
+"#,
+            );
+            let items = get_completion_items(
+                &mut ws,
+                &format!(
+                    r#"
+---@type Item[]
+local items
+{expression}.<??>
+"#
+                ),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            assert_eq!(
+                items.iter().any(|item| item.label == "name"),
+                has_name,
+                "{expression}: {items:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_named_array_completion_only_includes_container_fields() -> Result<()> {
+        for (typ, has_label) in [
+            ("ItemArray", false),
+            ("Array<Item>", false),
+            ("Items", false),
+            ("GenericItems<Item>", false),
+            ("DerivedItems", false),
+            ("LabeledItems", true),
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            ws.def_file(
+                "item.lua",
+                r#"
+---@class Item
+---@field name string
+---@alias ItemArray Item[]
+---@alias Array<T> T[]
+---@class Items: Item[]
+---@class GenericItems<T>: T[]
+---@class DerivedItems: Items
+---@class LabeledItems: Item[]
+---@field label string
+"#,
+            );
+            let items = get_completion_items(
+                &mut ws,
+                &format!(
+                    r#"
+---@type {typ}
+local items
+items.<??>
+"#
+                ),
+                CompletionTriggerKind::INVOKED,
+            )?;
+            assert!(
+                !items.iter().any(|item| item.label == "name"),
+                "{typ}: {items:?}"
+            );
+            assert_eq!(
+                items.iter().any(|item| item.label == "label"),
+                has_label,
+                "{typ}: {items:?}"
+            );
+        }
         Ok(())
     }
 
@@ -168,7 +306,7 @@ mod tests {
             ],
         ));
 
-        // 主动触发补全
+        // Actively triggered completion
         check!(ws.check_completion(
             r#"
                 ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
@@ -196,7 +334,7 @@ mod tests {
             ],
         ));
 
-        // 被动触发补全
+        // Passively triggered completion
         check!(ws.check_completion_with_kind(
             r#"
                 ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
@@ -225,7 +363,7 @@ mod tests {
     #[gtest]
     fn test_3() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        // 被动触发补全
+        // Passively triggered completion
         check!(ws.check_completion_with_kind(
             r#"
                 ---@class Test
@@ -249,7 +387,7 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
 
-        // 主动触发补全
+        // Actively triggered completion
         check!(ws.check_completion(
             r#"
                 ---@class Test1
@@ -1104,6 +1242,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_issue_502() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1131,6 +1270,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_class_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1157,6 +1297,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_class_function_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1244,6 +1385,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1272,6 +1414,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require_table_field() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -1399,10 +1542,11 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        // 模块 return 显式声明后，不再区分稳定 surface。
+        // After an explicit module return declaration, the stable surface is no longer distinguished.
         ws.def_file(
             "AAA.lua",
             r#"
@@ -1524,6 +1668,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_file_start() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
@@ -1549,7 +1694,7 @@ mod tests {
                 A = {}
             "#,
         );
-        // 测试索引成员别名语法
+        // Test index member alias syntax
         check!(ws.check_completion(
             r#"
                 A.<??>
@@ -2410,6 +2555,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_colon_member_completion_after_method_trigger() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -2849,6 +2995,51 @@ mod tests {
             CompletionTriggerKind::INVOKED
         ));
 
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_alias_member_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_completion(
+            r#"
+                ---@class Foo
+                ---@field x number
+
+                ---@alias FooAlias Foo
+
+                ---@type FooAlias
+                local foo
+                foo.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "x".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+                ..Default::default()
+            }],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_doc_alias_type_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "alias.lua",
+            "---@alias FooAlias Foo
+---@class Foo
+---@field x number",
+        );
+        check!(ws.check_completion(
+            r#"
+                ---@type FooAl<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "FooAlias".to_string(),
+                kind: CompletionItemKind::STRUCT,
+                ..Default::default()
+            }],
+        ));
         Ok(())
     }
 }

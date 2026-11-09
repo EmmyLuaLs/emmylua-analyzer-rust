@@ -9,8 +9,6 @@ use rowan::NodeOrToken;
 use crate::formatter::model::StatementExprListLayoutPlan;
 use crate::ir::{self, DocIR};
 
-use super::super::expr;
-use super::super::model::{FormatPlan, StatementExprListLayoutKind, SyntaxNodeLayoutPlan};
 use super::FormatContext;
 use super::helpers::{
     find_direct_child_plan_by_id, find_node_by_id, leading_inline_block_comment,
@@ -24,6 +22,8 @@ use super::{
     render_direct_body_comment, render_header_exprs_with_leading_docs,
     source_order_token_is_trailing_statement_semicolon,
 };
+use crate::formatter::expr;
+use crate::formatter::model::{FormatPlan, StatementExprListLayoutKind, SyntaxNodeLayoutPlan};
 
 pub(super) fn render_while_stat(
     ctx: &FormatContext,

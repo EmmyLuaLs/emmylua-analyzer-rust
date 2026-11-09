@@ -3,7 +3,7 @@ use std::error::Error;
 use log::warn;
 use lsp_server::Notification;
 use lsp_types::{
-    CancelParams, NumberOrString,
+    CancelParams, DidChangeConfigurationParams, NumberOrString,
     notification::{
         Cancel, DidChangeConfiguration, DidChangeTextDocument, DidChangeWatchedFiles,
         DidCloseTextDocument, DidOpenTextDocument, DidRenameFiles, DidSaveTextDocument,
@@ -37,7 +37,8 @@ macro_rules! dispatch_notification {
                 <$sync_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$sync_notif as LspNotification>::Params>(<$sync_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        $sync_handler(snapshot, params).await;
+                        // Catch panics locally so a handler cannot kill the main loop.
+                        let _ = crate::util::catch_unwind($sync_handler(snapshot, params)).await;
                     }
                 }
             )*
@@ -45,9 +46,7 @@ macro_rules! dispatch_notification {
                 <$async_notif>::METHOD => {
                     if let Ok(params) = $notification.extract::<<$async_notif as LspNotification>::Params>(<$async_notif>::METHOD) {
                         let snapshot = $context.snapshot();
-                        tokio::spawn(async move {
-                            $async_handler(snapshot, params).await;
-                        });
+                        let _ = crate::util::catch_unwind($async_handler(snapshot, params)).await;
                     }
                 }
             )*
@@ -62,17 +61,27 @@ pub async fn on_notification_handler(
     notification: Notification,
     server_context: &mut ServerContext,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
-    dispatch_notification!(notification, server_context, {
-        sync: {
-            DidChangeTextDocument => on_did_change_text_document,
+    if notification.method == DidChangeConfiguration::METHOD {
+        if let Ok(params) =
+            notification.extract::<DidChangeConfigurationParams>(DidChangeConfiguration::METHOD)
+        {
+            let snapshot = server_context.snapshot();
+            tokio::spawn(async move {
+                on_did_change_configuration(snapshot, params).await;
+            });
         }
+        return Ok(());
+    }
+
+    dispatch_notification!(notification, server_context, {
+        sync: {}
         async: {
+            DidChangeTextDocument => on_did_change_text_document,
             DidOpenTextDocument => on_did_open_text_document,
             DidSaveTextDocument => on_did_save_text_document,
             DidCloseTextDocument => on_did_close_document,
             DidChangeWatchedFiles => on_did_change_watched_files,
             SetTrace => on_set_trace,
-            DidChangeConfiguration => on_did_change_configuration,
             DidRenameFiles => on_did_rename_files_handler,
         }
     });

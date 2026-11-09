@@ -21,13 +21,8 @@ impl LspServer {
         params: &InitializeParams,
         init_rx: oneshot::Receiver<()>,
     ) -> Self {
-        let server_context = context::ServerContext::new(
-            lsp_server::Connection {
-                sender: connection.connection.sender.clone(),
-                receiver: connection.connection.receiver.clone(),
-            },
-            params.capabilities.clone(),
-        );
+        let server_context =
+            context::ServerContext::new(connection.connection.clone(), params.capabilities.clone());
 
         Self {
             connection,

@@ -1,3 +1,5 @@
+//! Postfix completion: `expr.` / `expr@` / `expr:` trigger templates (if/while/for/table/++ etc.).
+
 use emmylua_code_analysis::Emmyrc;
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexKey, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{CompletionItem, Range};
@@ -34,10 +36,7 @@ impl CompletionProvider for PostfixProvider {
     }
 
     fn supports(&self, builder: &CompletionBuilder) -> bool {
-        is_postfix_trigger(
-            builder.trigger_token.kind().into(),
-            builder.semantic_model.get_emmyrc(),
-        )
+        is_postfix_trigger(builder.trigger_token.kind().into(), builder.get_emmyrc())
     }
 
     fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
@@ -54,7 +53,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let emmyrc = builder.semantic_model.get_emmyrc();
+    let emmyrc = builder.get_emmyrc();
     let trigger_kind = builder.trigger_token.kind();
     if !is_postfix_trigger(trigger_kind.into(), emmyrc) {
         return None;
@@ -77,12 +76,8 @@ fn get_postfix_target(builder: &CompletionBuilder) -> Option<PostfixTarget> {
         return None;
     };
 
-    let left_token = match builder
-        .semantic_model
-        .get_root()
-        .syntax()
-        .token_at_offset(left_pos.into())
-    {
+    let root = builder.semantic_model.chunk()?;
+    let left_token = match root.syntax().token_at_offset(left_pos.into()) {
         TokenAtOffset::Single(token) => token,
         TokenAtOffset::Between(left, right) => {
             if left.kind() == LuaTokenKind::TkName.into() {
@@ -97,7 +92,7 @@ fn get_postfix_target(builder: &CompletionBuilder) -> Option<PostfixTarget> {
     let expr = get_left_expr(left_token, trigger_pos.into())?;
     let text_range = expr.syntax().text_range();
     let replace_range = TextRange::new(text_range.start(), (trigger_pos + 1).into());
-    let document = builder.semantic_model.get_document();
+    let document = builder.get_document();
     let replace_range = document.to_lsp_range(replace_range)?;
 
     Some(PostfixTarget {
@@ -114,21 +109,18 @@ fn add_control_flow_completion(builder: &mut CompletionBuilder, target: &Postfix
         "if",
         format!("if {} then\n\t$0\nend", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
         "ifn",
         format!("if not {} then\n\t$0\nend", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
         "while",
         format!("while {} do\n\t$0\nend", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -138,7 +130,6 @@ fn add_control_flow_completion(builder: &mut CompletionBuilder, target: &Postfix
             target.text
         ),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -148,7 +139,6 @@ fn add_control_flow_completion(builder: &mut CompletionBuilder, target: &Postfix
             target.text
         ),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -164,7 +154,6 @@ fn add_table_completion(builder: &mut CompletionBuilder, target: &PostfixTarget)
         "insert",
         format!("table.insert({}, ${{1:value}})", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -177,7 +166,6 @@ fn add_function_completion(builder: &mut CompletionBuilder, target: &PostfixTarg
     if target.is_paren_call() || !is_function_name_expr(&target.expr) {
         return;
     }
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -190,28 +178,24 @@ fn add_assignable_completion(builder: &mut CompletionBuilder, target: &PostfixTa
     if !target.is_assignable() {
         return;
     }
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
         "++",
         format!("{0} = {0} + 1", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
         "--",
         format!("{0} = {0} - 1", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
         "+n",
         format!("{0} = {0} + $1", target.text),
     );
-
     add_postfix_completion(
         builder,
         target.replace_range.clone(),
@@ -286,12 +270,9 @@ fn add_postfix_completion(
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         ..Default::default()
     };
-
-    builder.add_completion_item(item);
-    Some(())
+    builder.add_completion_item(item)
 }
 
-// text_range, replace_range
 fn get_left_expr(token: LuaSyntaxToken, trigger_pos: TextSize) -> Option<LuaExpr> {
     token
         .parent_ancestors()

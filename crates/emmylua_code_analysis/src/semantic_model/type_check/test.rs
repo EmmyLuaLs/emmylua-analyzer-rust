@@ -1,0 +1,278 @@
+//! Type-check tests (LuaType + semantic context).
+
+use smol_str::SmolStr;
+use std::{rc::Rc, sync::Arc};
+
+use crate::{AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel};
+use crate::{
+    Emmyrc, FileId, InFiled, LuaArrayType, LuaGenericType, LuaInstanceType, SemanticDatabase,
+};
+
+use super::check_type_detail;
+use super::context::TypeCheckContext;
+use super::{TypeCheckFailReason, check_general_type_compact, is_compatible};
+
+/// Model-less context (structural tests don't need resolution).
+fn with_ctx<R>(f: impl FnOnce(&mut TypeCheckContext<'_>) -> R) -> R {
+    let db = SemanticDatabase::new();
+    let model = SemanticModel::new(&db, FileId::new(0));
+    let mut context = TypeCheckContext::new(&model, false);
+    f(&mut context)
+}
+
+fn ok(source: &LuaType, target: &LuaType) -> bool {
+    with_ctx(|context| check_general_type_compact(context, source, target).is_ok())
+}
+
+fn doc_fun(params: Vec<Option<LuaType>>, ret: LuaType) -> LuaType {
+    LuaType::DocFunction(Rc::new(LuaFunctionType::new(
+        AsyncState::None,
+        false,
+        false,
+        params.into_iter().map(|t| (String::new(), t)).collect(),
+        ret,
+        None,
+    )))
+}
+
+fn union(types: Vec<LuaType>) -> LuaType {
+    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+}
+
+#[test]
+fn test_primitives_and_consts() {
+    use LuaType as LT;
+    assert!(!ok(&LT::Number, &LT::Integer));
+    assert!(ok(&LT::Integer, &LT::Number));
+    assert!(!ok(&LT::String, &LT::Number));
+    assert!(ok(&LT::IntegerConst(1), &LT::Integer));
+    assert!(!ok(&LT::Number, &LT::IntegerConst(1)));
+    assert!(ok(&LT::StringConst(SmolStr::new("x").into()), &LT::String));
+    assert!(ok(&LT::Nil, &LT::Nil));
+    assert!(!ok(&LT::Nil, &LT::Number));
+    assert!(ok(&LT::Table, &LT::Table));
+    assert!(ok(
+        &LT::Table,
+        &LT::Array(Rc::new(LuaArrayType::from_base_type(LT::Number)))
+    ));
+    assert!(ok(
+        &LT::Function,
+        &LT::DocFunction(Rc::new(LuaFunctionType::new(
+            AsyncState::None,
+            false,
+            false,
+            vec![],
+            LT::Nil,
+            None
+        )))
+    ));
+    assert!(ok(
+        &LT::DocStringConst(SmolStr::new("a").into()),
+        &LT::DocStringConst(SmolStr::new("a").into())
+    ));
+    assert!(!ok(
+        &LT::DocStringConst(SmolStr::new("a").into()),
+        &LT::DocStringConst(SmolStr::new("b").into())
+    ));
+}
+
+#[test]
+fn test_never_is_bottom() {
+    use LuaType as LT;
+    assert!(ok(&LT::Never, &LT::String));
+    assert!(ok(&LT::Never, &LT::Number));
+    assert!(ok(&LT::Never, &LT::Nil));
+    assert!(ok(&LT::Never, &LT::Table));
+    assert!(!ok(&LT::String, &LT::Never));
+}
+
+#[test]
+fn test_union_intersection() {
+    use LuaType as LT;
+    // Target union: source matches any one component.
+    let t_union = union(vec![LT::String, LT::Number]);
+    assert!(ok(&LT::String, &t_union));
+    assert!(!ok(&LT::Boolean, &t_union));
+    // Every possible source value must fit the target.
+    let s_union = union(vec![LT::String, LT::Number]);
+    assert!(!ok(&s_union, &LT::Number));
+    assert!(!ok(&s_union, &LT::Boolean));
+    // A nullable value cannot supply a required integer.
+    let nullable = LT::Union(Rc::new(LuaUnionType::Nullable(LT::Integer)));
+    assert!(!ok(&nullable, &LT::Integer));
+}
+
+#[test]
+fn test_function_structure() {
+    use LuaType as LT;
+    // Return covariance.
+    assert!(
+        ok(&doc_fun(vec![], LT::Integer), &doc_fun(vec![], LT::Number)),
+        "Integer results can supply number results"
+    );
+    assert!(
+        !ok(&doc_fun(vec![], LT::String), &doc_fun(vec![], LT::Integer)),
+        "返回不匹配"
+    );
+    // Parameters: the compact parameter type must be acceptable to the source.
+    assert!(ok(
+        &doc_fun(vec![Some(LT::Number)], LT::Nil),
+        &doc_fun(vec![Some(LT::Number)], LT::Nil)
+    ));
+    assert!(!ok(
+        &doc_fun(vec![Some(LT::Number)], LT::Nil),
+        &doc_fun(vec![Some(LT::String)], LT::Nil)
+    ));
+    // Parameter count is lenient: a source with fewer parameters is accepted (extra args are ignored).
+    assert!(ok(
+        &doc_fun(vec![], LT::Nil),
+        &doc_fun(vec![Some(LT::Number)], LT::Nil)
+    ));
+    // Function → Function primitive.
+    assert!(ok(&doc_fun(vec![], LT::Nil), &LT::Function));
+}
+
+#[test]
+fn test_ref_inheritance() {
+    // Inheritance chain: with `---@class Bar : Foo`, Bar ≤ Foo.
+    use lsp_types::Uri;
+    use std::str::FromStr;
+
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    let uri = Uri::from_str("file:///C:/ws/inherit.lua").unwrap();
+    let fid = db.set_file_content(
+        &uri,
+        Some("---@class Foo\nlocal Foo = {}\n---@class Bar : Foo\nlocal Bar = {}".to_string()),
+    );
+    let model = SemanticModel::new(&db, fid);
+    let foo = LuaType::Ref(LuaTypeDeclId::global("Foo"));
+    let bar = LuaType::Ref(LuaTypeDeclId::global("Bar"));
+    assert!(is_compatible(&model, &bar, &foo), "Bar ≤ Foo（继承）");
+    assert!(is_compatible(&model, &foo, &bar), "名义双向（旧语义）");
+    assert!(is_compatible(&model, &foo, &foo));
+}
+
+#[test]
+fn test_named_arrays_keep_inherited_index_types() {
+    let mut ws = crate::VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@class ArrayBase: table
+        ---@field [integer] string
+        ---@field label boolean
+        ---@class IntegerFieldArray: ArrayBase
+        ---@field integer boolean
+
+        ---@class GenericMetadata<K>: table
+        ---@field [K] boolean
+        ---@class ArrayWithGenericMetadata: GenericMetadata<string>
+        ---@field [integer] string
+
+        ---@class GenericArrayBase<T>: table
+        ---@field [integer] T
+        ---@class StringArray: GenericArrayBase<string>
+        ---@class OverriddenArray: GenericArrayBase<integer>
+        ---@field [integer] string
+
+        ---@class RecursiveArray: RecursiveArrayBase
+        ---@class RecursiveArrayBase: RecursiveArray
+        ---@field [integer] string
+        "#,
+    );
+    let strings = ws.ty("string[]");
+    let numbers = ws.ty("number[]");
+    for name in [
+        "IntegerFieldArray",
+        "ArrayWithGenericMetadata",
+        "StringArray",
+        "OverriddenArray",
+        "RecursiveArray",
+    ] {
+        let source = ws.ty(name);
+        let model = ws.analysis.semantic_model(file);
+        assert!(
+            model.type_check(&source, &strings),
+            "{name} is a string array"
+        );
+        assert!(
+            !model.type_check(&source, &numbers),
+            "{name} is not a number array"
+        );
+    }
+}
+
+#[test]
+fn test_alias_nominal() {
+    use lsp_types::Uri;
+    use std::str::FromStr;
+
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    let uri = Uri::from_str("file:///C:/ws/alias.lua").unwrap();
+    let fid = db.set_file_content(
+        &uri,
+        Some("---@alias MyStr string\nlocal s = 'x'".to_string()),
+    );
+    let model = SemanticModel::new(&db, fid);
+    let my_str = LuaType::Ref(LuaTypeDeclId::global("MyStr"));
+    // semantic has no alias origin: nominal (same id) passes, structural expansion is degraded.
+    assert!(is_compatible(&model, &my_str, &my_str));
+}
+
+#[test]
+fn test_generic_params() {
+    use LuaType as LT;
+    let box_num_src = LT::Generic(Rc::new(LuaGenericType::new(
+        LuaTypeDeclId::global("Box"),
+        vec![LT::Number],
+    )));
+    let box_num_tgt = LT::Generic(Rc::new(LuaGenericType::new(
+        LuaTypeDeclId::global("Box"),
+        vec![LT::Number],
+    )));
+    let box_str = LT::Generic(Rc::new(LuaGenericType::new(
+        LuaTypeDeclId::global("Box"),
+        vec![LT::String],
+    )));
+    assert!(ok(&box_num_src, &box_num_tgt));
+    assert!(!ok(&box_num_src, &box_str));
+}
+
+#[test]
+fn test_instance_base() {
+    use LuaType as LT;
+    let inst = LT::Instance(Rc::new(LuaInstanceType::new(
+        LT::Number,
+        InFiled::new(FileId::new(0), Default::default()),
+    )));
+    assert!(!ok(&inst, &LT::Integer));
+    assert!(!ok(&inst, &LT::String));
+}
+
+#[test]
+fn test_detail_reason() {
+    use crate::LuaType as LT;
+    use lsp_types::Uri;
+    use std::str::FromStr;
+
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    let uri = Uri::from_str("file:///C:/ws/x.lua").unwrap();
+    let fid = db.set_file_content(&uri, Some("local x = 1".to_string()));
+    let model = SemanticModel::new(&db, fid);
+    let result = check_type_detail(&model, &LT::String, &LT::Number);
+    assert!(result.is_err(), "String !≤ Number 应失败");
+    match result {
+        Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => {
+            assert!(
+                reason.contains("expected"),
+                "reason should contain expected: {reason}"
+            );
+        }
+        other => panic!("expected detailed reason, got {other:?}"),
+    }
+}

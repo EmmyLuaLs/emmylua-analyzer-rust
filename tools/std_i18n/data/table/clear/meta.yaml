@@ -1,0 +1,8 @@
+v: 2
+f: 'table/clear.lua'
+b:
+- a: 'local function clear(tab) end'
+  g: '@version JIT'
+  r: [4, 0, 15, 20]
+  e:
+  - ['clear', 'd', doc, [5, 0, 15, 0], '068a05ad8f2bfbe4']

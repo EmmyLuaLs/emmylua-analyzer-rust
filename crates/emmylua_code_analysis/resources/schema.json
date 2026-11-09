@@ -183,6 +183,11 @@
           "const": "type-not-found"
         },
         {
+          "description": "Type evaluation exceeded its resource budget",
+          "type": "string",
+          "const": "type-complexity"
+        },
+        {
           "description": "Missing return statement",
           "type": "string",
           "const": "missing-return"

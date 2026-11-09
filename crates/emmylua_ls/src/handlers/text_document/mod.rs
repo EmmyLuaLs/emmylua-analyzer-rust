@@ -11,9 +11,10 @@ pub use register_file_watch::register_files_watch;
 pub use set_trace::on_set_trace;
 pub use text_document_handler::{
     on_did_change_text_document, on_did_close_document, on_did_open_text_document,
-    on_did_save_text_document,
+    on_did_save_text_document, process_did_change_text_document, process_did_close_document,
+    process_did_open_text_document,
 };
-pub use watched_file_handler::on_did_change_watched_files;
+pub use watched_file_handler::{on_did_change_watched_files, process_did_change_watched_files};
 
 use super::RegisterCapabilities;
 

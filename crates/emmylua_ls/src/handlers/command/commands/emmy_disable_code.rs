@@ -4,7 +4,7 @@ use emmylua_code_analysis::{DiagnosticCode, FileId, load_configs_raw};
 use lsp_types::{Command, Range};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::context::{ServerContextSnapshot, WorkspaceManager};
 
@@ -57,10 +57,10 @@ pub fn make_disable_code_command(
 }
 
 async fn add_disable_project(
-    workspace_manager: &RwLock<WorkspaceManager>,
+    workspace_manager: &Mutex<WorkspaceManager>,
     code: DiagnosticCode,
 ) -> Option<()> {
-    let workspace_manager = workspace_manager.read().await;
+    let workspace_manager = workspace_manager.lock().await;
     let main_workspace = workspace_manager.workspace_folders.first()?;
     let emmyrc_path = main_workspace.root.join(".emmyrc.json");
     let mut emmyrc = load_configs_raw(vec![emmyrc_path.clone()], None);

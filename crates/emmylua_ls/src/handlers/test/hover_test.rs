@@ -1,7 +1,28 @@
 #[cfg(test)]
 mod tests {
+    use crate::handlers::hover::hover;
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult, check};
     use googletest::prelude::*;
+    use lsp_types::HoverContents;
+
+    #[gtest]
+    fn test_hover_generic_index_signature_and_named_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class Base<K, V>
+            ---@field [K] V
+            ---@class Record: Base<integer, string>
+            ---@field integer boolean
+
+            ---@type Record
+            local <??>value"#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: Record {\n    integer: boolean,\n    [integer]: string,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 
     fn dedent(input: &str) -> String {
         let lines: Vec<&str> = input.lines().collect();
@@ -50,6 +71,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_class_index_signature() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -68,6 +90,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_class_nil_type_key_hidden() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -84,6 +107,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_right_to_left() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -152,6 +176,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_nil() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -240,6 +265,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_generic_param_constraint_and_field_description() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -295,6 +321,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_special_alias_call_type_syntax() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -392,6 +419,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_narrowed_function_type() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -421,6 +449,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_decl_desc() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -441,6 +470,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_issue_535() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -464,8 +494,7 @@ mod tests {
         check!(ws.check_hover(
             r#"
                 ---@type table<string, number>
-                local t = {
-                }
+                local t = {}
                 ---@class T2
                 local a = {}
 
@@ -517,6 +546,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_class_bound_local_decl_description() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -545,6 +575,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_class_bound_member_description() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -576,6 +607,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_attribute_hover_uses_arg_types() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -595,6 +627,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_alias_desc() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -611,6 +644,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_type_desc() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -630,6 +664,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_field_key() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -657,6 +692,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_field_key_for_generic() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -685,6 +721,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_before_dot_returns_object_info() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -740,6 +777,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_see_tag() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -770,6 +808,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_other_tag() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -788,6 +827,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_class_with_nil() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -816,6 +856,7 @@ mod tests {
         Ok(())
     }
 
+    // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_right_expr() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -834,5 +875,84 @@ mod tests {
         ));
 
         Ok(())
+    }
+
+    /// A field of a generic class must be projected through the prefix's type arguments at the use
+    /// site: `@field aaa T` + `MyTable<int>` shows `integer`, not the declaration-site `T`.
+    #[gtest]
+    fn test_hover_generic_field_access_projected() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class MyTable<T>
+                ---@field aaa T
+                ---@field bbb T
+
+                local c ---@type MyTable<int>
+
+                print(c.<??>aaa)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) aaa: integer\n```".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            r#"
+                ---@class MyTable<T>
+                ---@field aaa T
+                ---@field bbb T
+
+                local c ---@type MyTable<int>
+
+                local x = c.<??>bbb
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) bbb: integer\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    /// Generic arguments keep their parameter positions: `Pair<int, string>.second` is `string`.
+    #[gtest]
+    fn test_hover_generic_field_access_projected_multi_param() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Pair<T, U>
+                ---@field first T
+                ---@field second U
+
+                local p ---@type Pair<int, string>
+
+                print(p.<??>second)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) second: string\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn test_class_method_self_field_hover() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let (source, position) = ProviderVirtualWorkspace::handle_file_content(
+            r#"
+            ---@class <??>LinkedTableA
+            local M
+
+            function M:init()
+                self.a = 1
+            end
+            "#,
+        )
+        .unwrap();
+        let file_id = ws.def(&source);
+        let result = hover(&ws.analysis, file_id, position).expect("class hover");
+        let HoverContents::Markup(content) = result.contents else {
+            panic!("expected markup hover");
+        };
+        assert!(content.value.contains("a: integer"), "{}", content.value);
     }
 }

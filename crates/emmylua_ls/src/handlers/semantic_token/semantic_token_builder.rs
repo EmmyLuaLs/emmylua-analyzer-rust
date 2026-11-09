@@ -247,7 +247,7 @@ pub struct SemanticBuilder<'a> {
 }
 
 impl<'a> SemanticBuilder<'a> {
-    pub fn new(document: &'a LuaDocument, multi_line_support: bool) -> Self {
+    pub fn new(document: &'a LuaDocument<'a>, multi_line_support: bool) -> Self {
         Self {
             document,
             multi_line_support,

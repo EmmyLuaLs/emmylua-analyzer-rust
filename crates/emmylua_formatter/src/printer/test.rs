@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::config::LayoutConfig;
     use crate::config::LuaFormatConfig;
     use crate::ir::*;
     use crate::printer::Printer;
@@ -43,7 +44,7 @@ mod tests {
     #[test]
     fn test_group_break() {
         let config = LuaFormatConfig {
-            layout: crate::config::LayoutConfig {
+            layout: LayoutConfig {
                 max_line_width: 10,
                 ..Default::default()
             },

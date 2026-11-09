@@ -424,7 +424,6 @@ fn layout_comment_is_inline_trailing(
     };
 
     has_non_trivia_before_on_same_line_tokenwise(&comment_node)
-        && !comment_node.text().contains_char('\n')
         && !has_inline_non_trivia_after(&comment_node)
 }
 

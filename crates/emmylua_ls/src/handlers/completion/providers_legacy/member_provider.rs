@@ -1,0 +1,265 @@
+use emmylua_code_analysis::{
+    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
+    enum_variable_is_param,
+};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken, LuaSyntaxToken};
+use std::collections::HashMap;
+
+use crate::handlers::completion::{
+    add_completions::{CompletionTriggerStatus, add_member_completion},
+    completion_builder::CompletionBuilder,
+};
+
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct MemberProvider;
+
+impl CompletionProvider for MemberProvider {
+    fn name(&self) -> &'static str {
+        "member"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        builder
+            .trigger_token
+            .parent()
+            .and_then(LuaIndexExpr::cast)
+            .is_some()
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Continue
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
+    if builder.is_cancelled() {
+        return None;
+    }
+
+    let index_expr = LuaIndexExpr::cast(builder.trigger_token.parent()?)?;
+    let index_token = index_expr.get_index_token()?;
+    let completion_status = if index_token.is_dot() || index_token.is_safe_navigation() {
+        CompletionTriggerStatus::Dot
+    } else if index_token.is_colon() {
+        CompletionTriggerStatus::Colon
+    } else if LuaStringToken::can_cast(builder.trigger_token.kind().into()) {
+        CompletionTriggerStatus::InString
+    } else {
+        CompletionTriggerStatus::LeftBracket
+    };
+
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    let prefix_type = match builder
+        .semantic_model
+        .infer_expr(prefix_expr.clone())
+        .ok()?
+    {
+        LuaType::TplRef(tpl) => tpl.get_constraint().cloned()?,
+        prefix_type => prefix_type,
+    };
+    // Do not complete enum types that are function parameters.
+    if enum_variable_is_param(
+        builder.semantic_model.get_db(),
+        &mut builder.semantic_model.get_cache().borrow_mut(),
+        &index_expr,
+        &prefix_type,
+    )
+    .is_some()
+    {
+        return None;
+    }
+
+    let member_info_map = builder.semantic_model.get_member_info_map(&prefix_type)?;
+
+    add_completions_for_members(builder, &member_info_map, completion_status)
+}
+
+pub fn add_completions_for_members(
+    builder: &mut CompletionBuilder,
+    members: &HashMap<LuaMemberKey, Vec<LuaMemberInfo>>,
+    completion_status: CompletionTriggerStatus,
+) -> Option<()> {
+    // Sort.
+    let mut sorted_entries: Vec<_> = members.iter().collect();
+    sorted_entries.sort_unstable_by_key(|(name1, _)| *name1);
+
+    for (_, member_infos) in sorted_entries {
+        add_resolve_member_infos(builder, member_infos, completion_status);
+    }
+
+    Some(())
+}
+
+fn add_resolve_member_infos(
+    builder: &mut CompletionBuilder,
+    member_infos: &[LuaMemberInfo],
+    completion_status: CompletionTriggerStatus,
+) -> Option<()> {
+    if member_infos.len() == 1 {
+        let member_info = &member_infos[0];
+        add_member_completion(builder, member_info.clone(), completion_status);
+        return Some(());
+    }
+
+    let filtered_member_infos = filter_member_infos(
+        &builder.semantic_model,
+        &builder.trigger_token,
+        member_infos,
+    )?;
+
+    let resolve_state = get_resolve_state(builder.semantic_model.get_db(), &filtered_member_infos);
+
+    for member_info in filtered_member_infos {
+        match resolve_state {
+            MemberResolveState::All => {
+                add_member_completion(builder, member_info.clone(), completion_status);
+            }
+            MemberResolveState::Meta => {
+                if let Some(feature) = member_info.feature
+                    && feature.is_meta_decl()
+                {
+                    add_member_completion(builder, member_info.clone(), completion_status);
+                }
+            }
+            MemberResolveState::FileDecl => {
+                if let Some(feature) = member_info.feature
+                    && feature.is_file_decl()
+                {
+                    add_member_completion(builder, member_info.clone(), completion_status);
+                }
+            }
+        }
+    }
+
+    Some(())
+}
+
+/// Filters member info and returns the members that are needed.
+fn filter_member_infos<'a>(
+    semantic_model: &SemanticModel,
+    trigger_token: &LuaSyntaxToken,
+    member_infos: &'a [LuaMemberInfo],
+) -> Option<Vec<&'a LuaMemberInfo>> {
+    if member_infos.is_empty() {
+        return None;
+    }
+
+    let visible_member_infos: Vec<&LuaMemberInfo> = member_infos
+        .iter()
+        .filter(|member_info| {
+            member_info.property_owner_id.as_ref().is_none_or(|id| {
+                semantic_model.is_semantic_visible(trigger_token.clone(), id.clone())
+            })
+        })
+        .collect();
+    if visible_member_infos.is_empty() {
+        return None;
+    }
+
+    let mut file_decl_member: Option<&LuaMemberInfo> = None;
+    let mut member_with_owners: Vec<(&LuaMemberInfo, Option<LuaTypeDeclId>)> =
+        Vec::with_capacity(visible_member_infos.len());
+    let mut all_doc_function = true;
+
+    // Collect all information in one pass.
+    for member_info in visible_member_infos {
+        let owner_id = get_owner_type_id(semantic_model.get_db(), member_info);
+        member_with_owners.push((member_info, owner_id.clone()));
+
+        // Find the first file_decl as the reference; if none, use the first member.
+        if file_decl_member.is_none()
+            && let Some(feature) = member_info.feature
+            && feature.is_file_decl()
+        {
+            file_decl_member = Some(member_info);
+        }
+
+        // Check whether all members are DocFunction.
+        match &member_info.typ {
+            LuaType::DocFunction(_) => {}
+            _ => {
+                all_doc_function = false;
+            }
+        }
+    }
+
+    // Determine the final reference owner to use.
+    let final_reference_owner = if let Some(file_decl_member_info) = file_decl_member {
+        // Type-check against the first member to ensure subclass member types match the parent type.
+        if let Some((first_member, first_owner)) = member_with_owners.first() {
+            let type_check_result =
+                semantic_model.type_check(&file_decl_member_info.typ, &first_member.typ);
+            if type_check_result.is_ok() {
+                get_owner_type_id(semantic_model.get_db(), file_decl_member_info)
+            } else {
+                first_owner.clone()
+            }
+        } else {
+            get_owner_type_id(semantic_model.get_db(), file_decl_member_info)
+        }
+    } else {
+        // No file_decl found, so use the first member as the reference.
+        member_with_owners
+            .first()
+            .and_then(|(_, owner)| owner.clone())
+    };
+
+    // Filter members with the same owner_type_id.
+    let mut filtered_member_infos: Vec<&LuaMemberInfo> = member_with_owners
+        .into_iter()
+        .filter_map(|(member_info, owner_id)| {
+            if owner_id == final_reference_owner {
+                Some(member_info)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // If all members are DocFunction, keep only the first.
+    if all_doc_function && !filtered_member_infos.is_empty() {
+        filtered_member_infos.truncate(1);
+    }
+
+    Some(filtered_member_infos)
+}
+
+enum MemberResolveState {
+    All,
+    Meta,
+    FileDecl,
+}
+
+fn get_owner_type_id(db: &DbIndex, info: &LuaMemberInfo) -> Option<LuaTypeDeclId> {
+    match &info.property_owner_id {
+        Some(LuaSemanticDeclId::Member(member_id)) => {
+            if let Some(owner) = db.get_member_index().get_current_owner(member_id) {
+                return owner.get_type_id().cloned();
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn get_resolve_state(db: &DbIndex, member_infos: &Vec<&LuaMemberInfo>) -> MemberResolveState {
+    let mut resolve_state = MemberResolveState::All;
+    if db.get_emmyrc().strict.meta_override_file_define {
+        for member_info in member_infos.iter() {
+            if let Some(feature) = member_info.feature {
+                if feature.is_meta_decl() {
+                    resolve_state = MemberResolveState::Meta;
+                    break;
+                } else if feature.is_file_decl() {
+                    resolve_state = MemberResolveState::FileDecl;
+                }
+            }
+        }
+    }
+    resolve_state
+}

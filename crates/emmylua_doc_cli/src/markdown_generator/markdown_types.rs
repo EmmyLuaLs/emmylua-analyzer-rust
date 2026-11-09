@@ -9,16 +9,44 @@ pub struct Doc {
     pub fields: Option<Vec<MemberDoc>>,
     pub methods: Option<Vec<MemberDoc>>,
     pub property: Property,
+    /// Parameters of a simple global function, with their rendered types and descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<MemberParam>,
+    /// Return values of a simple global function, with their rendered types and descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub returns: Vec<MemberParam>,
+    /// Additional signatures from `---@overload` declarations (rendered code blocks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overloads: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct MemberDoc {
     pub name: String,
     pub display: String,
     pub property: Property,
+    /// Parameters of a function member, with their rendered types and descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<MemberParam>,
+    /// Return values of a function member, with their rendered types and descriptions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub returns: Vec<MemberParam>,
+    /// Additional signatures from `---@overload` declarations (rendered code blocks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overloads: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+/// A documented parameter or return value of a function member.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct MemberParam {
+    pub name: String,
+    /// Rendered type, when it is known.
+    pub type_text: Option<String>,
+    /// `@param` / `@return` description, when it is present.
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Property {
     pub description: Option<String>,
     pub see: Option<String>,
