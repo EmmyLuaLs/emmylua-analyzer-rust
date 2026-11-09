@@ -93,6 +93,15 @@ Example output:
 ::warning file=src/util.lua,line=3,col=1,endLine=3,endColumn=9::use new_fn instead
 ```
 
+#### GitLab Code Quality Report
+
+Write diagnostics in the [GitLab Code Quality report format](https://docs.gitlab.com/ci/testing/code_quality/#code-quality-report-format):
+```shell
+emmylua_check . -f gitlab --output gl-code-quality-report.json
+```
+
+Run the command from the repository root. Report paths are relative to the current working directory, and diagnostics outside it are skipped because GitLab cannot associate them with repository files. Each fingerprint is derived from the rule, relative path, diagnostic range, and description.
+
 ---
 
 ## ⚙️ Configuration
@@ -143,6 +152,18 @@ With `--warnings-as-errors`, the workflow fails the build when warnings are pres
         run: emmylua_check . -f github --warnings-as-errors
 ```
 
+### GitLab CI/CD
+
+Use the `gitlab` output format and publish the generated file as a Code Quality report:
+```yaml
+emmylua-check:
+  script:
+    - emmylua_check . -f gitlab --output gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+```
+
 ---
 
 ## Command Line Options
@@ -156,8 +177,8 @@ Arguments:
 Options:
   -c, --config <CONFIG>                Path to configuration file. If not provided, ".emmyrc.json" and ".luarc.json" will be searched in the workspace directory
   -i, --ignore <IGNORE>                Comma-separated list of ignore patterns. Patterns must follow glob syntax
-  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif, github]
-      --output <OUTPUT>                Specify output target (stdout or file path, only used when output_format is json) [default: stdout]
+  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif, github, gitlab]
+      --output <OUTPUT>                Specify output target (stdout or a file path, used by json, sarif, and gitlab formats) [default: stdout]
       --warnings-as-errors             Treat warnings as errors
       --severity <SEVERITY>            Only output diagnostics at this severity or above [possible values: error, warn, info, hint]
       --verbose                        Verbose output
