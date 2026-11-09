@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::check::test::{check_source, check_source_with_emmyrc};
+    use crate::check::test::{check_source, check_source_with_emmyrc, count_by_code};
     use crate::{DiagnosticCode, Emmyrc, LuaMemberKey, LuaType, VirtualWorkspace};
     use tokio_util::sync::CancellationToken;
 
@@ -2932,5 +2932,96 @@ return t
         let changed = snapshot(&ws);
         assert_eq!(changed.0, expected.0);
         assert_eq!(changed.1.len(), 1, "{changed:?}");
+    }
+
+    /// Mixed guards on one member, read past the merge of earlier ones: what the path
+    /// collected applies to the memoized state in the order of the program.
+    #[test]
+    fn test_mixed_member_guards_apply_to_the_memoized_state() {
+        for (read, expected) in [("string|integer", 0), ("string", 1)] {
+            let source = format!(
+                r#"
+                ---@class MixedGuards
+                ---@field v string|integer|nil
+
+                ---@param o MixedGuards
+                local function f(o)
+                    if o.v then print(1) end
+                    if o.v == 'x' then print(2) end
+                    if type(o.v) == 'number' then print(3) end
+                    if o.v and o.v ~= 'y' then
+                        ---@type {read}
+                        local value = o.v
+                        return value
+                    end
+                end
+                return f
+                "#
+            );
+            assert_eq!(
+                count_by_code(&check_source(&source), DiagnosticCode::AssignTypeMismatch),
+                expected,
+                "{read}"
+            );
+        }
+    }
+
+    /// An undeclared member keeps following its writes, under a guard too.
+    #[test]
+    fn test_undeclared_member_write_target_ignores_guards() {
+        let diagnostics = check_source(
+            r#"
+            ---@param opts table<string, any>
+            local function f(opts)
+                if opts.w == nil then
+                    opts.w = function() return '' end
+                end
+                if opts.w == 'a' then
+                    opts.w = function() return '' end
+                end
+            end
+            return f
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:?}"
+        );
+    }
+
+    /// A guard narrows reads, not the contract of a write: inside `o.w == 'a'`, `o.w` may
+    /// still take anything its field declares, and nothing else.
+    #[test]
+    fn test_member_write_target_ignores_guards() {
+        for (write, expected) in [("function() return '' end", 0), ("1", 1)] {
+            for prefix in [
+                "",
+                "if flag then o.w = 'b' end",
+                "if flag then o.w = function() return '' end end",
+            ] {
+                let source = format!(
+                    r#"
+                    ---@class GuardedWrite
+                    ---@field w string|fun():string
+
+                    ---@param o GuardedWrite
+                    ---@param flag boolean
+                    local function f(o, flag)
+                        {prefix}
+                        if o.w == 'a' then
+                            o.w = {write}
+                        end
+                    end
+                    return f
+                    "#
+                );
+                assert_eq!(
+                    count_by_code(&check_source(&source), DiagnosticCode::AssignTypeMismatch),
+                    expected,
+                    "{prefix} / {write}"
+                );
+            }
+        }
     }
 }

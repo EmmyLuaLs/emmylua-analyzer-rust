@@ -524,9 +524,28 @@ fn apply_field_nullable(model: &SemanticModel, member: &SemanticId, ty: LuaType)
     ty
 }
 
+/// Target type for a member write: its writes and casts, without guards. A guard narrows reads,
+/// so inside `t.x == 1`, `t.x = "a"` is still held to what `t.x` may hold, not to `1`.
+pub fn type_of_member_assign_target_at(
+    model: &SemanticModel,
+    member: &SemanticId,
+    offset: TextSize,
+) -> LuaType {
+    member_type_at(model, member, offset, true)
+}
+
 /// Flow-sensitive type of the member at `offset` (member assignment flow + `---@cast t.x +T` widening).
 /// Same as `type_of_decl_at`: exclude this assignment when `offset` lies on `t.x = value`.
 pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: TextSize) -> LuaType {
+    member_type_at(model, member, offset, false)
+}
+
+fn member_type_at(
+    model: &SemanticModel,
+    member: &SemanticId,
+    offset: TextSize,
+    ignore_guards: bool,
+) -> LuaType {
     let fallback = || flow_member_value_type(model, member).unwrap_or(LuaType::Unknown);
     let Some(tree) = model.flow_tree() else {
         return fallback();
@@ -544,7 +563,10 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
             && !tree.has_flow_event_between(assign_pos, offset, false)
         {
             let mut visited = HashSet::new();
-            let mut path = PathState::default();
+            let mut path = PathState {
+                ignore_guards,
+                ..PathState::default()
+            };
             if let Some(ty) = trace_member(
                 model,
                 member,
@@ -563,7 +585,10 @@ pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: Tex
         }
     }
     let mut visited = HashSet::new();
-    let mut path = PathState::default();
+    let mut path = PathState {
+        ignore_guards,
+        ..PathState::default()
+    };
     trace_member(model, member, None, &tree, start, &mut visited, &mut path)
         .unwrap_or_else(fallback)
 }
@@ -1916,6 +1941,8 @@ struct PathState {
     narrowings: Vec<Narrowing>,
     /// Most recent cast operation first.
     casts: Vec<CastOp>,
+    /// A member write's target: guards on the way are not collected.
+    ignore_guards: bool,
 }
 
 /// Checks from an antecedent toward the declaration whether a narrowing node already exists.
@@ -2266,6 +2293,7 @@ fn trace_decl_uncached(
                             let assign_path = PathState {
                                 narrowings,
                                 casts: path.casts.clone(),
+                                ignore_guards: path.ignore_guards,
                             };
                             let base_before = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
                             let frame = DeclAssignmentFrame {
@@ -2502,14 +2530,38 @@ fn trace_member(
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
-    if tree.is_loop_reachable(flow_id) || !path.casts.is_empty() || !path.narrowings.is_empty() {
+    if tree.is_loop_reachable(flow_id)
+        || path
+            .narrowings
+            .iter()
+            .any(|narrowing| matches!(narrowing, Narrowing::Correlated { .. }))
+    {
         return trace_member_uncached(model, member, access, tree, flow_id, visited, path);
+    }
+    // The memo holds the state for an empty path, and what the path collected applies to
+    // that state. Walking on with it visits both sides of every earlier guard on this
+    // member, 2^n routes.
+    if !path.narrowings.is_empty() || !path.casts.is_empty() {
+        let state = trace_member(
+            model,
+            member,
+            access,
+            tree,
+            flow_id,
+            visited,
+            &mut PathState {
+                ignore_guards: path.ignore_guards,
+                ..PathState::default()
+            },
+        )?;
+        return Some(finalize(model, state, path));
     }
     let key = cache::TraceStateKey {
         file_id: model.file_id(),
         subject: cache::TraceSubject::Member {
             member: member.clone(),
             access: access.map(|access| access.get_syntax_id()),
+            ignore_guards: path.ignore_guards,
         },
         flow_id: flow_id.0,
     };
@@ -2580,6 +2632,7 @@ fn trace_member_uncached(
                         let assign_path = PathState {
                             narrowings: Vec::new(),
                             casts: path.casts.clone(),
+                            ignore_guards: path.ignore_guards,
                         };
                         let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly);
                         if let Some(annotation) = member_annotation_type(model, member) {
@@ -2605,15 +2658,17 @@ fn trace_member_uncached(
                 collect_member_cast(model, member, cast_ptr, path);
             }
             FlowNodeKind::TrueCondition(cond_ptr) => {
-                if let Some(narrowing) =
-                    narrow_member_condition(model, member, access, cond_ptr, true)
+                if !path.ignore_guards
+                    && let Some(narrowing) =
+                        narrow_member_condition(model, member, access, cond_ptr, true)
                 {
                     path.narrowings.push(narrowing);
                 }
             }
             FlowNodeKind::FalseCondition(cond_ptr) => {
-                if let Some(narrowing) =
-                    narrow_member_condition(model, member, access, cond_ptr, false)
+                if !path.ignore_guards
+                    && let Some(narrowing) =
+                        narrow_member_condition(model, member, access, cond_ptr, false)
                 {
                     path.narrowings.push(narrowing);
                 }
@@ -5941,6 +5996,7 @@ impl PathState {
         Self {
             narrowings: self.narrowings.iter().map(|n| n.clone_ref()).collect(),
             casts: self.casts.clone(),
+            ignore_guards: self.ignore_guards,
         }
     }
 }
