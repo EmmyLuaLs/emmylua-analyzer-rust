@@ -2208,6 +2208,23 @@ fn test_multi_workspace_roots_and_module_index() {
 }
 
 #[test]
+fn test_file_outside_roots_without_main_workspace() {
+    let mut db = setup();
+    db.add_std_workspace(portable_test_path("emmylua_ws_std"));
+    let fid = set_test_file_portable(
+        &mut db,
+        1,
+        "emmylua_ws_outside.lua",
+        "---@class Outside\nundefined_table.",
+    );
+    assert_eq!(db.workspace_id_of(fid), None);
+    assert_eq!(db.analysis().type_def_locations(fid, "Outside").len(), 1);
+
+    db.update_config(Arc::new(Emmyrc::default()));
+    assert_eq!(db.analysis().type_def_locations(fid, "Outside").len(), 1);
+}
+
+#[test]
 fn test_module_info_version_and_export_type() {
     let mut db = setup();
     db.add_main_workspace(portable_test_root());

@@ -230,8 +230,7 @@ pub(crate) fn file_matches_workspace_id(
     file_id: FileId,
     ws_id: WorkspaceId,
 ) -> bool {
-    let file_ws = file_workspace_id(db, file_id);
-    file_ws == Some(ws_id)
+    file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main) == ws_id
 }
 
 fn find_global_types(db: &SemanticDatabase, full_name: &str) -> Arc<[TypeDef]> {
