@@ -42,8 +42,32 @@ function string.char(...) end
 ---
 --- 对于带上值的函数，只会保存上值的数量；（重新）加载后，这些上值会变成包含 **nil**
 --- 的新实例。（你可以使用 debug 库按需序列化并恢复函数的上值。）
+--- @version >5.3
 --- @param func   function
 --- @param strip? boolean
+--- @return string
+function string.dump(func, strip) end
+
+--- 返回一个字符串，包含给定函数的二进制表示（*二进制块*）。之后对该字符串调用 `load`，
+--- 会得到该函数的一个副本（但其上值是新的实例）。
+---
+--- 对于带上值的函数，只会保存上值的数量；（重新）加载后，这些上值会变成包含 **nil**
+--- 的新实例。（你可以使用 debug 库按需序列化并恢复函数的上值。）
+--- @version 5.1, 5.2
+--- @param func function
+--- @return string
+function string.dump(func) end
+
+--- 返回一个字符串，包含给定函数的二进制表示（*二进制块*）。之后对该字符串调用 `load`，
+--- 会得到该函数的一个副本（但其上值是新的实例）。如果 `strip` 为真，则为了节省空间，
+--- 二进制表示可能不会包含该函数的全部调试信息。LuaJIT 2.1 还接受模式字符串：
+--- 包含 `s` 的字符串会去除调试信息，包含 `d` 的字符串会生成确定性输出。
+---
+--- 对于带上值的函数，只会保存上值的数量；（重新）加载后，这些上值会变成包含 **nil**
+--- 的新实例。（你可以使用 debug 库按需序列化并恢复函数的上值。）
+--- @version JIT
+--- @param func   function
+--- @param strip? boolean | string
 --- @return string
 function string.dump(func, strip) end
 
@@ -214,7 +238,7 @@ function string.match(s, pattern, init) end
 --- @version >5.3
 --- 按格式字符串 `fmt` 将 `v1`、`v2` 等值打包（即以二进制形式序列化），并返回得到的二进制字符串。
 --- @param fmt string
---- @param v1  string | number | integer
+--- @param v1? string | number | integer
 --- @param v2? string | number | integer
 --- @param ... string | number | integer
 --- @return string
