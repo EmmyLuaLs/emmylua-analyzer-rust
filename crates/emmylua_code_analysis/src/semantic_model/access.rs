@@ -8,6 +8,18 @@ impl<'db> SemanticModel<'db> {
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.db().lua_version()
     }
+    /// Whether any of the `---@version` conditions matches the configured runtime.
+    ///
+    /// An empty condition list means the declaration is visible in every version.
+    pub(crate) fn versions_visible(
+        &self,
+        versions: &[emmylua_parser::LuaVersionCondition],
+    ) -> bool {
+        let Some(version) = self.lua_version() else {
+            return true;
+        };
+        versions.is_empty() || versions.iter().any(|condition| condition.check(&version))
+    }
     /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
         Self {

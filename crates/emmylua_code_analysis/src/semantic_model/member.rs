@@ -909,9 +909,6 @@ fn collect_type_def_members(
 
 /// `---@version` visibility: the member is visible if any version condition on its closure signature matches.
 fn member_version_visible(model: &SemanticModel, facts: &FileFacts, member: &Member) -> bool {
-    let Some(version) = model.lua_version() else {
-        return true;
-    };
     let Some(value_syntax) = member.value_syntax else {
         return true;
     };
@@ -921,13 +918,7 @@ fn member_version_visible(model: &SemanticModel, facts: &FileFacts, member: &Mem
     signature
         .docs
         .as_ref()
-        .map(|docs| {
-            docs.versions.is_empty()
-                || docs
-                    .versions
-                    .iter()
-                    .any(|condition| condition.check(&version))
-        })
+        .map(|docs| model.versions_visible(&docs.versions))
         .unwrap_or(true)
 }
 

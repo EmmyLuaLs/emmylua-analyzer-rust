@@ -2589,6 +2589,14 @@ impl<'a> InferVm<'a> {
         };
         let facts = self.model.file_facts_of(file_id)?;
         let signature = facts.signature_by_closure(value_syntax)?;
+        // `---@version`-hidden declarations must not contribute call candidates.
+        if signature
+            .docs
+            .as_ref()
+            .is_some_and(|docs| !self.model.versions_visible(&docs.versions))
+        {
+            return None;
+        }
         // Runtime member methods without doc annotations: use signature projection (param
         // names + inferred return + is_colon_define). Decls (plain functions) still prefer
         // the existing `callee.ty` DocFunction (generic docs etc.) to avoid a no-doc body
