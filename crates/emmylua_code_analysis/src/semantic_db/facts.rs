@@ -23,6 +23,7 @@ use crate::semantic_db::def::SignatureReturnCast;
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
+use super::def::operator::is_operator_name;
 use super::def::{
     ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam, LuaMemberKey,
     Member, ModuleExport, ModuleVisibility, NameUse, OperatorDef, Scope, ScopeChild, ScopeKind,
@@ -1179,11 +1180,22 @@ impl FactsBuilder {
                     self.collect_field_member(&field_tag, field_deprecated.contains(&idx));
                 }
                 LuaDocTag::Operator(operator_tag) => {
-                    if let (Some(owner), Some(name_token), Some(returns)) = (
-                        self.current_class.clone(),
-                        operator_tag.get_name_token(),
-                        operator_tag.get_return_type(),
-                    ) {
+                    let Some(name_token) = operator_tag.get_name_token() else {
+                        continue;
+                    };
+                    let name = SmolStr::new(name_token.get_name_text());
+                    if !is_operator_name(&name) {
+                        self.annotation_errors.push(AnnotationError {
+                            range: name_token.get_range(),
+                            message: SmolStr::new(format!("unknown operator `{name}`")),
+                        });
+                        // Do not register an invalid operator: downstream
+                        // consumers expect every `OperatorDef` name to be valid.
+                        continue;
+                    }
+                    if let (Some(owner), Some(returns)) =
+                        (self.current_class.clone(), operator_tag.get_return_type())
+                    {
                         let params = operator_tag
                             .get_param_list()
                             .map(|list| {
@@ -1194,7 +1206,7 @@ impl FactsBuilder {
                             .unwrap_or_default();
                         self.operators.push(OperatorDef {
                             owner,
-                            name: name_token.get_name_text().into(),
+                            name,
                             params,
                             returns: returns.get_syntax_id(),
                         });
