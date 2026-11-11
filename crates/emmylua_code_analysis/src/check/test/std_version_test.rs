@@ -245,7 +245,11 @@ mod test {
             );
         }
 
-        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
             let diagnostics = diagnostic_codes_for(version, "local _ = os.difftime(1)");
             assert!(
                 diagnostics.iter().any(|code| code == "missing-parameter"),
@@ -256,8 +260,10 @@ mod test {
 
     #[test]
     fn test_os_time_return_type_by_version() {
-        // 5.1/5.2/LuaJIT push a Lua number; 5.3+ push an integer.
-        // `os.time` never returns nil: it raises on an invalid table instead.
+        // 5.1/5.2/LuaJIT push a Lua number; 5.3+ push an integer. From 5.3 on,
+        // an invalid time raises instead of returning nil; 5.1/5.2/LuaJIT can
+        // still return nil when mktime fails, which the normal-path annotation
+        // intentionally does not model (same as `os.date`).
         for version in [
             EmmyrcLuaVersion::Lua51,
             EmmyrcLuaVersion::Lua52,
@@ -270,7 +276,11 @@ mod test {
             );
         }
 
-        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
             assert_eq!(
                 expr_type_for(version, "os.time()"),
                 "integer",
@@ -300,19 +310,31 @@ mod test {
 
     #[test]
     fn test_os_remove_reports_error_code() {
-        // `os.remove` returns the errno as its third result in 5.1-5.4 and LuaJIT.
+        // `os.remove`/`os.rename` return the errno as their third result on
+        // failure (the third result is absent on success, hence `nil`).
+        // `select(3, ...)` selects that declared result statically; this test
+        // only checks the annotation and never executes the Lua code.
         for version in [
             EmmyrcLuaVersion::Lua51,
             EmmyrcLuaVersion::Lua52,
             EmmyrcLuaVersion::Lua53,
             EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
             EmmyrcLuaVersion::LuaJIT,
         ] {
-            let ty = expr_type_for(version, "select(3, os.remove('/nonexistent'))");
-            assert!(
-                ty.contains("integer"),
-                "os.remove must expose an integer errcode in {version:?}, got {ty}"
-            );
+            for (call, name) in [
+                ("select(3, os.remove('/nonexistent'))", "os.remove"),
+                (
+                    "select(3, os.rename('/nonexistent', '/nonexistent2'))",
+                    "os.rename",
+                ),
+            ] {
+                let ty = expr_type_for(version, call);
+                assert_eq!(
+                    ty, "integer?",
+                    "{name} must expose an integer errcode in {version:?}"
+                );
+            }
         }
     }
 }
