@@ -1130,17 +1130,29 @@ impl<'a> InferVm<'a> {
             if type_has_member {
                 continue;
             }
-            // Cross-file member association.
+            // Cross-file member association. Several declarations may share one key
+            // (version-gated stdlib overloads); prefer the declaration visible in the
+            // configured runtime version, falling back to the first match when all are
+            // hidden so "not available here" still reports Unknown from the call.
             let members = self.model.members_of_owner(&owner_id);
-            if let Some(member) = members.into_iter().find(|m| match key {
-                LuaMemberKey::Name(name) => &m.name == name,
-                LuaMemberKey::Integer(_) => self
-                    .model
-                    .file_facts_of(m.file_id)
-                    .and_then(|facts| facts.member_by_id(&m.id))
-                    .is_some_and(|member| &member.key == key),
-                _ => false,
-            }) {
+            let matching: Vec<_> = members
+                .into_iter()
+                .filter(|m| match key {
+                    LuaMemberKey::Name(name) => &m.name == name,
+                    LuaMemberKey::Integer(_) => self
+                        .model
+                        .file_facts_of(m.file_id)
+                        .and_then(|facts| facts.member_by_id(&m.id))
+                        .is_some_and(|member| &member.key == key),
+                    _ => false,
+                })
+                .collect();
+            let member = matching
+                .iter()
+                .find(|m| self.model.member_ref_versions_visible(m))
+                .cloned()
+                .or_else(|| matching.into_iter().next());
+            if let Some(member) = member {
                 if self.computing.contains(&member.id) {
                     return Value::plain(LuaType::Unknown);
                 }

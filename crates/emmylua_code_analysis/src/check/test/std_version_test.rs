@@ -255,6 +255,31 @@ mod test {
     }
 
     #[test]
+    fn test_os_time_return_type_by_version() {
+        // 5.1/5.2/LuaJIT push a Lua number; 5.3+ push an integer.
+        // `os.time` never returns nil: it raises on an invalid table instead.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "os.time()"),
+                "number",
+                "os.time must return number in {version:?}"
+            );
+        }
+
+        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+            assert_eq!(
+                expr_type_for(version, "os.time()"),
+                "integer",
+                "os.time must return integer in {version:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_os_setlocale_locale_is_optional() {
         // All supported runtimes accept `os.setlocale()` and return the
         // current locale for the default category.
