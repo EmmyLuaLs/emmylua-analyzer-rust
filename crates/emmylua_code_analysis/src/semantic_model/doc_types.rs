@@ -608,9 +608,8 @@ impl<'db> SemanticModel<'db> {
                         .get_type()
                         .map(|t| self.doc_type_lua_rich_scoped(file_id, t.get_syntax_id(), state))
                         .unwrap_or(LuaType::Unknown);
-                    if param.is_nullable() && !ty.is_nullable() {
-                        ty =
-                            LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+                    if param.is_nullable() {
+                        ty = LuaType::make_nullable(ty);
                     }
                     params.push((name, Some(ty)));
                 }

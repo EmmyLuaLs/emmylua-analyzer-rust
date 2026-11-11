@@ -2686,8 +2686,8 @@ impl<'a> InferVm<'a> {
                     self.doc_type_lua_with_generics(file_id, *syntax, generic_params)
                 })
                 .unwrap_or(LuaType::Any);
-            if docs.nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if docs.nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }
@@ -4079,8 +4079,9 @@ pub(crate) fn unify_call_bindings(
             } else {
                 let pv = param_union.into_vec();
                 // A generic union like `` `T`|T `` allows T to be bound through any generic
-                // component; ordinary unions still require all non-nil components to be
-                // compatible (caller may pass any member).
+                // component. Plain unions (nothing to infer) accept the argument when it
+                // matches any member, mirroring `param_type_check` ("caller may pass any
+                // member").
                 if matches!(arg, Function | DocFunction(_) | Signature(_)) {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
@@ -4093,15 +4094,9 @@ pub(crate) fn unify_call_bindings(
                     } else {
                         true
                     }
-                } else if pv.iter().any(|p| matches!(p, TplRef(_))) {
+                } else {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
-                } else if pv.contains(&Nil) {
-                    pv.iter()
-                        .filter(|t| !matches!(t, Nil))
-                        .all(|p| unify_call_bindings(model, p, arg, bindings))
-                } else {
-                    false
                 }
             }
         }

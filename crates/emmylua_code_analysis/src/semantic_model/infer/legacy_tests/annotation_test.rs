@@ -363,4 +363,92 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_union_parameter_call_inference() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@alias Mode 'a' | 'b'
+
+            ---@param x? string | integer
+            ---@return integer
+            function opt_union(x) return 1 end
+
+            ---@param x string | integer
+            ---@return integer
+            function req_union(x) return 1 end
+
+            ---@param x? Mode
+            ---@return integer
+            function opt_alias(x) return 1 end
+
+            OPT0 = opt_union()
+            OPT1 = opt_union("a")
+            OPT2 = opt_union(1)
+            REQ1 = req_union("a")
+            REQ2 = req_union(1)
+            ALIAS0 = opt_alias()
+            ALIAS1 = opt_alias("a")
+            "#,
+        );
+
+        let expected = ws.ty("integer");
+        for name in ["OPT0", "OPT1", "OPT2", "REQ1", "REQ2", "ALIAS0", "ALIAS1"] {
+            assert_eq!(ws.expr_ty(name), expected, "{name} must infer integer");
+        }
+
+        // Union parameters still reject values outside the union.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param x? string | integer
+            function takes_union(x) end
+            takes_union(true)
+            "#,
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@alias Mode2 'a' | 'b'
+            ---@param x? Mode2
+            function takes_mode(x) end
+            takes_mode("c")
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_optional_union_parameter_keeps_generic_binding() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param x T | nil
+            ---@return T | nil
+            local function pass(x) return x end
+
+            GENERIC0 = pass(1)
+            GENERIC1 = pass("a")
+            GENERIC_NIL = pass(nil)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("GENERIC0"), ws.ty("integer?"));
+        assert_eq!(ws.expr_ty("GENERIC1"), ws.ty("string?"));
+        // The plain `T` member binds to the actual `nil`; this predates the
+        // union-matching change and keeps `T | nil` calls precise instead of
+        // dropping the resolved slot.
+        let generic_nil = ws.expr_ty("GENERIC_NIL");
+        assert!(
+            generic_nil.is_nullable(),
+            "T | nil call must stay nullable: {generic_nil:?}"
+        );
+        assert!(
+            !generic_nil.is_unknown(),
+            "T | nil call must resolve: {generic_nil:?}"
+        );
+    }
 }
