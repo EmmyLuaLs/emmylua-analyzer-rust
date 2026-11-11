@@ -128,7 +128,7 @@ pub struct SemanticDatabase {
     workspace_roots: Arc<[WorkspaceRoot]>,
 
     /// Cached workspace ids derived from `workspace_roots` (always includes
-    /// `REMOTE`, or `MAIN` when no roots are registered).
+    /// `Main`, which also owns files outside every root).
     ///
     /// Refreshed only when roots change, so hot query paths do not allocate a
     /// fresh `Vec`/sort on every call.
@@ -258,13 +258,12 @@ impl SemanticDatabase {
 }
 
 fn compute_workspace_ids(roots: &[WorkspaceRoot]) -> Vec<WorkspaceId> {
-    let ids: Vec<WorkspaceId> = if roots.is_empty() {
-        vec![WorkspaceId::Main]
-    } else {
-        // Several roots can belong to the same logical workspace (notably MAIN).
-        // Aggregate each workspace index once, preserving registration order.
-        roots.iter().map(|root| root.id).unique().collect()
-    };
+    // Several roots can belong to the same logical workspace (notably MAIN).
+    // Aggregate each workspace index once, preserving registration order.
+    let mut ids: Vec<WorkspaceId> = roots.iter().map(|root| root.id).unique().collect();
+    if !ids.contains(&WorkspaceId::Main) {
+        ids.push(WorkspaceId::Main);
+    }
     ids
 }
 
