@@ -877,3 +877,208 @@ fn recursive_alias_member_queries_keep_concrete_alternatives() {
         assert_eq!(members[0].typ, LuaType::String);
     }
 }
+
+#[test]
+fn recursive_aliases_ignore_only_unused_growing_arguments() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Plain {label: string, child?: Plain}
+        ---@alias Unused<T> {label: string, child?: Unused<T[]>}
+        ---@alias Used<T> {label: T, child?: Used<T[]>}
+        "#,
+    );
+    let plain = ws.ty("Plain");
+    let unused = ws.ty("Unused<string>");
+    let used = ws.ty("Used<string>");
+    let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check_subtype(&unused, &plain));
+    assert!(model.type_check_subtype(&plain, &unused));
+    assert!(!model.type_check_subtype(&used, &plain));
+    assert!(!model.type_check_subtype(&plain, &used));
+}
+
+#[test]
+fn recursive_aliases_can_recur_through_a_forwarding_alias() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Plain {label: string, child?: Plain}
+        ---@alias Left<T> {label: string, child?: Right<T[]>}
+        ---@alias Right<U> Left<U>
+        ---@alias Used<T> {label: T, child?: Forward<T[]>}
+        ---@alias Forward<U> Used<U>
+        "#,
+    );
+    let plain = ws.ty("Plain");
+    let left = ws.ty("Left<string>");
+    let right = ws.ty("Right<string>");
+    let used = ws.ty("Used<string>");
+    let model = ws.analysis.semantic_model(file);
+    for source in [&left, &right] {
+        assert!(model.type_check_subtype(source, &plain));
+        assert!(model.type_check_subtype(&plain, source));
+    }
+    // The next label becomes string[] after forwarding and must still fail.
+    assert!(!model.type_check_subtype(&used, &plain));
+    assert!(!model.type_check_subtype(&plain, &used));
+}
+
+#[test]
+fn forwarding_aliases_keep_reordered_and_fixed_field_types() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Record<Value, Unused> {label: Value, child?: Record<Value, Unused[]>}
+        ---@alias Reordered<A, B> Record<B, A>
+        ---@alias Fixed<T> Record<integer, T>
+        "#,
+    );
+    let accepted = ws.ty("Reordered<integer, string>");
+    let rejected = ws.ty("Reordered<string, integer>");
+    let fixed = ws.ty("Fixed<string>");
+    let expected = ws.ty("{label: string}");
+    let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check_subtype(&accepted, &expected));
+    assert!(!model.type_check_subtype(&rejected, &expected));
+    assert!(!model.type_check_subtype(&fixed, &expected));
+}
+
+#[test]
+fn recursive_aliases_preserve_indirect_argument_dependencies() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Strings {label: string, child?: Integers}
+        ---@alias Integers {label: integer, child?: Strings}
+        ---@alias Alternating<T, U, V> {label: T, child?: Alternating<U, T, V[]>}
+        "#,
+    );
+    let strings = ws.ty("Strings");
+    let accepted = ws.ty("Alternating<string, integer, boolean>");
+    let rejected = ws.ty("Alternating<string, boolean, integer>");
+    let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check_subtype(&accepted, &strings));
+    assert!(model.type_check_subtype(&strings, &accepted));
+    assert!(!model.type_check_subtype(&rejected, &strings));
+    assert!(!model.type_check_subtype(&strings, &rejected));
+}
+
+#[test]
+fn recursive_aliases_reject_field_mismatches_after_several_children() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Strings {label: string, child?: Strings}
+        ---@alias Shift<A, B, C, D, E, Unused> {label: A, child?: Shift<B, C, D, E, string, Unused[]>}
+        "#,
+    );
+    let strings = ws.ty("Strings");
+    let accepted = ws.ty("Shift<string, string, string, string, string, boolean>");
+    // The first four labels are strings; the fifth is an integer.
+    let rejected = ws.ty("Shift<string, string, string, string, integer, boolean>");
+    let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check_subtype(&accepted, &strings));
+    assert!(model.type_check_subtype(&strings, &accepted));
+    assert!(!model.type_check_subtype(&rejected, &strings));
+    assert!(!model.type_check_subtype(&strings, &rejected));
+}
+
+#[test]
+fn recursive_aliases_preserve_arguments_used_by_conditional_inference() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Inspected<T> {value: Inspected<T[]> extends Inspected<infer U> and U or never}
+        "#,
+    );
+    let inspected = ws.ty("Inspected<string>");
+    let expected = ws.ty("string[]");
+    let model = ws.analysis.semantic_model(file);
+    let value = model
+        .member_type(&inspected, &LuaMemberKey::from("value"))
+        .expect("value must resolve");
+    assert_eq!(expand_alias_generic(&model, &value), expected);
+}
+
+#[test]
+fn recursive_alias_arguments_remain_visible_to_callers() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Node<T> {label: string, child: Node<T[]>}
+        ---@alias Plain {label: string, child: Plain}
+        ---@alias ChildArgument<T> T extends {child: Node<infer U>} and U or never
+        "#,
+    );
+    let node = ws.ty("Node<string>");
+    let child = ws.ty("Node<string[]>");
+    let inferred = ws.ty("ChildArgument<Node<string>>");
+    let plain = ws.ty("Plain");
+    let expected = ws.ty("string[]");
+    let model = ws.analysis.semantic_model(file);
+    assert!(model.type_check_subtype(&node, &plain));
+    assert!(model.type_check_subtype(&plain, &node));
+    assert_eq!(
+        model.member_type(&node, &LuaMemberKey::from("child")),
+        Some(child)
+    );
+    assert_eq!(expand_alias_generic(&model, &inferred), expected);
+}
+
+#[test]
+fn recursive_aliases_preserve_omitted_arguments() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Defaulted<T, U = string> {label: U, child: Defaulted<T[]>}
+        ---@alias Required<T, U> {label: U, child: Required<T[]>}
+        "#,
+    );
+    let record = ws.ty("{label: boolean}");
+    for name in ["Defaulted", "Required"] {
+        let root = ws.ty(&format!("{name}<integer, boolean>"));
+        let child = ws.ty(&format!("{name}<integer[]>"));
+        let model = ws.analysis.semantic_model(file);
+        assert!(model.type_check_subtype(&root, &record));
+        assert_eq!(
+            model.member_type(&root, &LuaMemberKey::from("child")),
+            Some(child),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn deep_aliases_are_assignable_to_themselves_and_any() {
+    let mut ws = VirtualWorkspace::new();
+    // At 600 levels, eager alias analysis previously overflowed the stack.
+    // These comparisons must finish without expanding the alias.
+    let file = ws.def(&format!("---@alias Deep<T> T{}", "[]".repeat(600)));
+    let deep = LuaType::Generic(Rc::new(LuaGenericType::new(
+        LuaTypeDeclId::global("Deep"),
+        vec![LuaType::String],
+    )));
+    let model = ws.analysis.semantic_model(file);
+    for target in [&deep, &LuaType::Any, &LuaType::Unknown] {
+        assert!(model.type_check_subtype(&deep, target));
+    }
+}
+
+#[test]
+fn recursive_alias_comparisons_do_not_ignore_used_growing_arguments() {
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def(
+        r#"
+        ---@alias Left<T, Unused> {value: T, next: Left<T[], Unused[]>}
+        ---@alias Right<T> {value: T, next: Right<T[]>}
+        "#,
+    );
+    let source = ws.ty("Left<string, integer>");
+    let target = ws.ty("Right<string>");
+    let model = ws.analysis.semantic_model(file);
+    assert!(matches!(
+        crate::semantic_model::type_check::check_type_subtype(&model, &source, &target),
+        Err(TypeCheckFailReason::TooComplex)
+    ));
+}

@@ -163,8 +163,11 @@ fn check_comparison(
 
     // Resolve outer computations before comparing their data constructors.
     for (is_source, ty) in [(false, compact_type), (true, source)] {
+        let comparison_alias = comparison::alias_for_comparison(context, ty);
         let expanded = context
-            .require_complete(|| expand_alias_head(context.model, ty))?
+            .require_complete(|| {
+                expand_alias_head(context.model, comparison_alias.as_ref().unwrap_or(ty))
+            })?
             .ok_or(TypeCheckFailReason::Unresolved)?;
         if expanded == *ty {
             continue;
