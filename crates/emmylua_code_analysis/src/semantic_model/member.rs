@@ -1088,7 +1088,10 @@ mod tests {
 
     use lsp_types::Uri;
 
-    use crate::{Emmyrc, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDatabase};
+    use crate::{
+        Emmyrc, EmmyrcLuaVersion, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType,
+        SemanticDatabase,
+    };
 
     use super::*;
     use crate::VirtualWorkspace;
@@ -1155,6 +1158,34 @@ mod tests {
         }
         assert!(found_randomseed, "未找到 math.randomseed");
         assert!(found_time, "未找到 os.time");
+    }
+
+    /// LuaJIT workspace: set the runtime version before `init_std_lib`, because
+    /// `new_with_init_std_lib` would load the default (non-JIT) std first.
+    /// `new()` does not load std, so ffi/jit are registered exactly once.
+    fn ffi_workspace() -> VirtualWorkspace {
+        let mut ws = VirtualWorkspace::new();
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::LuaJIT;
+        ws.update_emmyrc(config);
+        ws.analysis.init_std_lib(None);
+        ws
+    }
+
+    #[test]
+    fn test_std_ffi_load_returns_clib() {
+        let mut ws = ffi_workspace();
+
+        let ty = ws.expr_ty("require('ffi').load('c')");
+        assert_eq!(ws.humanize_type(ty), "ffi.clib*");
+    }
+
+    #[test]
+    fn test_std_ffi_c_returns_clib() {
+        let mut ws = ffi_workspace();
+
+        let ty = ws.expr_ty("require('ffi').C");
+        assert_eq!(ws.humanize_type(ty), "ffi.clib*");
     }
 
     /// String values can complete members through the string library (`s.sub` / `s:sub`).
