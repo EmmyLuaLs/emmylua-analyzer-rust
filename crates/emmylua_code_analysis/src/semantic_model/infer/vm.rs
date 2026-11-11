@@ -1132,8 +1132,13 @@ impl<'a> InferVm<'a> {
             }
             // Cross-file member association. Several declarations may share one key
             // (version-gated stdlib overloads); prefer the declaration visible in the
-            // configured runtime version, falling back to the first match when all are
-            // hidden so "not available here" still reports Unknown from the call.
+            // configured runtime version.
+            //
+            // An unversioned declaration is always visible, so it never reaches the
+            // fallback. The fallback only runs when every candidate is version-gated
+            // and hidden in this runtime; then the choice follows member-index order
+            // (workspace/discovery order) and keeps a type so the call still reports
+            // Unknown instead of dropping the member entirely.
             let members = self.model.members_of_owner(&owner_id);
             let matching: Vec<_> = members
                 .into_iter()

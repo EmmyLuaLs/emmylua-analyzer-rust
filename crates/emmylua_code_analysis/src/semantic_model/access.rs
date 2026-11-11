@@ -24,6 +24,9 @@ impl<'db> SemanticModel<'db> {
     ///
     /// Used where raw members are selected by key (e.g. stdlib global-table members): a
     /// `---@version`-hidden declaration must not shadow a later visible one.
+    ///
+    /// Missing file facts / member data is treated as visible: that is the safe
+    /// default, so incomplete indexes do not hide declarations.
     pub(crate) fn member_ref_versions_visible(&self, member_ref: &MemberRef) -> bool {
         let Some(facts) = self.file_facts_of(member_ref.file_id) else {
             return true;
