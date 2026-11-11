@@ -164,6 +164,14 @@ pub fn render_markdown(text: &str) -> String {
             continue;
         }
 
+        // Table.
+        if let Some((table, next)) = try_parse_table(&lines, i) {
+            close_block(&mut html, &mut in_para, &mut list_tag);
+            html.push_str(&table);
+            i = next;
+            continue;
+        }
+
         // Paragraph text.
         if !in_para {
             html.push_str("<p>");
@@ -229,6 +237,184 @@ fn parse_list_item(line: &str) -> Option<(&'static str, &str)> {
         return Some(("ol", content));
     }
     None
+}
+
+/// Column alignment from a GFM table delimiter cell (`---`, `:---`, `:---:`,
+/// `---:`).
+#[derive(Clone, Copy, PartialEq)]
+enum TableAlign {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+impl TableAlign {
+    fn class(self) -> Option<&'static str> {
+        match self {
+            TableAlign::None => None,
+            TableAlign::Left => Some("align-left"),
+            TableAlign::Center => Some("align-center"),
+            TableAlign::Right => Some("align-right"),
+        }
+    }
+}
+
+/// Parses a GFM table starting at `start` (the header row). Returns the
+/// rendered HTML and the index of the first line after the table.
+///
+/// `start + 1` must be a delimiter row such as `| --- | :---: |`; otherwise
+/// the block is not a table and normal paragraph handling applies.
+///
+/// This follows the small CommonMark subset supported by [`render_markdown`]:
+/// cells cannot span lines, and HTML blocks / indented code blocks are not
+/// recognized as table-body terminators (only headings, rules, lists,
+/// blockquotes and fenced code are).
+fn try_parse_table(lines: &[&str], start: usize) -> Option<(String, usize)> {
+    let header = split_table_row(lines.get(start)?)?;
+    let delimiter = split_table_row(lines.get(start + 1)?)?;
+    if header.is_empty() || header.len() != delimiter.len() {
+        return None;
+    }
+    let aligns: Vec<TableAlign> = delimiter
+        .iter()
+        .map(|cell| parse_table_align(cell))
+        .collect::<Option<_>>()?;
+
+    let mut rows = Vec::new();
+    let mut i = start + 2;
+    while let Some(line) = lines.get(i) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.contains('|') || interrupts_table(trimmed) {
+            break;
+        }
+        let Some(cells) = split_table_row(trimmed) else {
+            break;
+        };
+        rows.push(cells);
+        i += 1;
+    }
+
+    Some((render_table(&header, &aligns, &rows), i))
+}
+
+/// A block-level construct that ends a table body.
+fn interrupts_table(line: &str) -> bool {
+    parse_heading(line).is_some()
+        || is_horizontal_rule(line)
+        || parse_list_item(line).is_some()
+        || line.starts_with('>')
+        || line.starts_with("```")
+}
+
+fn parse_table_align(cell: &str) -> Option<TableAlign> {
+    let mut core = cell.trim();
+    let left = core.starts_with(':');
+    if left {
+        core = &core[1..];
+    }
+    let right = core.ends_with(':');
+    if right {
+        core = &core[..core.len() - 1];
+    }
+    if core.is_empty() || !core.chars().all(|c| c == '-') {
+        return None;
+    }
+    Some(match (left, right) {
+        (true, true) => TableAlign::Center,
+        (true, false) => TableAlign::Left,
+        (false, true) => TableAlign::Right,
+        (false, false) => TableAlign::None,
+    })
+}
+
+/// Splits one table row into trimmed cells. Outer pipes are optional, and a
+/// backslash-escaped `|` stays inside the cell for `render_inline` to unescape.
+///
+/// Escape handling is intentionally simple: `\` protects the next character,
+/// so `\|` is a literal pipe while `\\|` is a literal backslash followed by a
+/// real cell delimiter. There is no separate CommonMark backslash token.
+fn split_table_row(line: &str) -> Option<Vec<String>> {
+    let line = line.trim();
+    if !line.contains('|') {
+        return None;
+    }
+
+    let mut cells = Vec::new();
+    let mut cell = String::new();
+    // True when the last character consumed was an unescaped row delimiter.
+    let mut ends_with_border = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                cell.push(c);
+                if let Some(next) = chars.next() {
+                    cell.push(next);
+                }
+                ends_with_border = false;
+            }
+            '|' => {
+                cells.push(std::mem::take(&mut cell));
+                ends_with_border = chars.peek().is_none();
+            }
+            _ => {
+                cell.push(c);
+                ends_with_border = false;
+            }
+        }
+    }
+    cells.push(cell);
+
+    if line.starts_with('|') {
+        cells.remove(0);
+    }
+    if ends_with_border {
+        cells.pop();
+    }
+    if cells.is_empty() {
+        return None;
+    }
+    Some(cells.into_iter().map(|c| c.trim().to_string()).collect())
+}
+
+fn render_table(header: &[String], aligns: &[TableAlign], rows: &[Vec<String>]) -> String {
+    let mut html = String::from("<div class=\"doc-table\"><table>\n<thead>\n<tr>");
+    for (idx, cell) in header.iter().enumerate() {
+        push_cell(&mut html, "th", aligns.get(idx).copied(), cell);
+    }
+    html.push_str("</tr>\n</thead>\n");
+
+    if !rows.is_empty() {
+        html.push_str("<tbody>\n");
+        for row in rows {
+            html.push_str("<tr>");
+            for idx in 0..header.len() {
+                let cell = row.get(idx).map(String::as_str).unwrap_or("");
+                push_cell(&mut html, "td", aligns.get(idx).copied(), cell);
+            }
+            html.push_str("</tr>\n");
+        }
+        html.push_str("</tbody>\n");
+    }
+
+    html.push_str("</table></div>");
+    html
+}
+
+fn push_cell(html: &mut String, tag: &str, align: Option<TableAlign>, content: &str) {
+    html.push('<');
+    html.push_str(tag);
+    if let Some(class) = align.and_then(TableAlign::class) {
+        html.push_str(" class=\"");
+        html.push_str(class);
+        html.push('"');
+    }
+    html.push('>');
+    html.push_str(&render_inline(content));
+    html.push_str("</");
+    html.push_str(tag);
+    html.push('>');
 }
 
 fn close_block(html: &mut String, in_para: &mut bool, list_tag: &mut Option<&str>) {
@@ -339,4 +525,113 @@ fn try_emph(chars: &[char], i: usize) -> Option<(String, usize)> {
 fn try_escape(chars: &[char], i: usize) -> Option<(String, usize)> {
     let next = chars.get(i + 1)?;
     Some((html_escape(&next.to_string()), i + 2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_markdown, split_table_row};
+
+    #[test]
+    fn renders_pipe_table() {
+        let html = render_markdown("| aaa | bbb |\n| --- | --- |\n| 1 | 2 |");
+        assert!(html.contains("<table>"), "{html}");
+        assert!(html.contains("<th>aaa</th>"), "{html}");
+        assert!(html.contains("<th>bbb</th>"), "{html}");
+        assert!(html.contains("<td>1</td>"), "{html}");
+        assert!(html.contains("<td>2</td>"), "{html}");
+        assert!(!html.contains("<p>|"), "{html}");
+    }
+
+    #[test]
+    fn renders_table_without_outer_pipes() {
+        let html = render_markdown("aaa | bbb\n--- | ---\n1 | 2");
+        assert!(html.contains("<th>aaa</th>"), "{html}");
+        assert!(html.contains("<td>2</td>"), "{html}");
+    }
+
+    #[test]
+    fn renders_inline_markdown_inside_cells() {
+        let html = render_markdown("| **bold** | `code` |\n| --- | --- |\n| [x](y) | plain |");
+        assert!(html.contains("<th><strong>bold</strong></th>"), "{html}");
+        assert!(html.contains("<th><code>code</code></th>"), "{html}");
+        assert!(html.contains("<td><a href=\"y\">x</a></td>"), "{html}");
+    }
+
+    #[test]
+    fn renders_alignment_classes() {
+        let html = render_markdown("| a | b | c |\n|:---|:---:|---:|\n| 1 | 2 | 3 |");
+        assert!(html.contains("<th class=\"align-left\">a</th>"), "{html}");
+        assert!(html.contains("<th class=\"align-center\">b</th>"), "{html}");
+        assert!(html.contains("<th class=\"align-right\">c</th>"), "{html}");
+        assert!(html.contains("<td class=\"align-center\">2</td>"), "{html}");
+    }
+
+    #[test]
+    fn escaped_pipe_stays_inside_cell() {
+        let html = render_markdown("| a \\| b | c |\n| --- | --- |\n| 1 | 2 |");
+        assert!(html.contains("<th>a | b</th>"), "{html}");
+        assert!(html.contains("<th>c</th>"), "{html}");
+    }
+
+    #[test]
+    fn table_without_delimiter_row_falls_back_to_paragraph() {
+        let html = render_markdown("| aaa | bbb |\n| 1 | 2 |");
+        assert!(!html.contains("<table>"), "{html}");
+        assert!(html.contains("<p>"), "{html}");
+    }
+
+    #[test]
+    fn table_ends_at_blank_line() {
+        let html = render_markdown("| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter");
+        assert!(html.contains("</table>"), "{html}");
+        assert!(html.contains("<p>after</p>"), "{html}");
+    }
+
+    #[test]
+    fn table_pads_missing_cells_and_drops_extra_ones() {
+        let html = render_markdown("| a | b |\n| --- | --- |\n| 1 |\n| 2 | 3 | 4 |");
+        assert!(html.contains("<tr><td>1</td><td></td></tr>"), "{html}");
+        assert!(html.contains("<tr><td>2</td><td>3</td></tr>"), "{html}");
+        assert!(!html.contains("<td>4</td>"), "{html}");
+    }
+
+    #[test]
+    fn invalid_delimiter_cell_falls_back_to_paragraph() {
+        let html = render_markdown("| a | b |\n| -- | x |\n| 1 | 2 |");
+        assert!(!html.contains("<table>"), "{html}");
+        assert!(html.contains("<p>| a | b |"), "{html}");
+    }
+
+    #[test]
+    fn mismatched_column_count_falls_back_to_paragraph() {
+        let html = render_markdown("| a | b |\n| --- |\n| 1 | 2 |");
+        assert!(!html.contains("<table>"), "{html}");
+        assert!(html.contains("<p>"), "{html}");
+    }
+
+    #[test]
+    fn table_body_stops_at_heading() {
+        let html = render_markdown("| a | b |\n| --- | --- |\n| 1 | 2 |\n### next");
+        assert!(html.contains("</table>"), "{html}");
+        assert!(html.contains("<h3>next</h3>"), "{html}");
+        assert!(!html.contains("<td>### next</td>"), "{html}");
+    }
+
+    #[test]
+    fn split_table_row_handles_border_pipes() {
+        assert_eq!(
+            split_table_row("| a | b |"),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(
+            split_table_row("a | b"),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(split_table_row("|"), None);
+        assert_eq!(split_table_row("||"), Some(vec![String::new()]));
+        assert_eq!(
+            split_table_row("a \\| b | c"),
+            Some(vec!["a \\| b".to_string(), "c".to_string()])
+        );
+    }
 }

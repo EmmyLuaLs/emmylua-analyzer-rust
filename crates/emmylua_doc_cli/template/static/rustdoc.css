@@ -853,6 +853,44 @@ a:hover {
   color: var(--fg-muted);
 }
 
+/* Markdown tables */
+.docblock .doc-table {
+  margin: 0 0 10px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.docblock table {
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.docblock th,
+.docblock td {
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docblock th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
+.docblock .align-left {
+  text-align: left;
+}
+
+.docblock .align-center {
+  text-align: center;
+}
+
+.docblock .align-right {
+  text-align: right;
+}
+
 .docblock h1,
 .docblock h2,
 .docblock h3,
