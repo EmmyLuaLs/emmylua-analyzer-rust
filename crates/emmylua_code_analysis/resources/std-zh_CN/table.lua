@@ -39,26 +39,25 @@ function table.concat(list, sep, i, j) end
 --- @param value any
 function table.insert(list, pos, value) end
 
---- @version >5.3
+--- @version >5.3, JIT
 --- 将元素从表 `a1` 移动到表 `a2`，等价于进行如下的多重赋值：
 --- `a2[t]`, `···` = `a1[f]`, `···`, `a1[e]`。
 ---
 --- `a2` 的默认值为 `a1`。目标区间可以与源区间重叠。要移动的元素数量必须能放入 Lua 整数。
 ---
 --- 返回目标表 `a2`。
---- @overload fun(a1: table, f: integer, e: integer, t: integer): table
 --- @param a1 table
 --- @param f  integer
 --- @param e  integer
 --- @param t  integer
---- @param a2 table
+--- @param a2? table
 --- @return table
 function table.move(a1, f, e, t, a2) end
 
---- @version 5.1, JIT
+--- @version 5.1, 5.2, JIT
 --- 返回给定表的最大正整数索引；如果表没有正整数索引，则返回 0。
 --- @param table table
---- @return integer
+--- @return number
 --- @nodiscard
 function table.maxn(table) end
 
@@ -72,7 +71,7 @@ function table.maxn(table) end
 --- @generic V
 --- @param list table<integer, V> | V[]
 --- @param pos? integer
---- @return V
+--- @return V?
 function table.remove(list, pos) end
 
 --- 在表内从 `list[1]` 到 `list[#list]` 之间，按指定顺序 *原地* 排序列表元素。
@@ -113,7 +112,7 @@ function table.pack(...) end
 --- 如果 `f` 返回非 nil 值，则中断循环，并将该值作为 `foreach` 的最终返回值。
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T | nil
+--- @param callback fun(key: any, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreach(list, callback) end
@@ -124,7 +123,7 @@ function table.foreach(list, callback) end
 --- 如果 `f` 返回非 nil 值，则中断循环，并将该值作为 `foreachi` 的结果返回。
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T | nil
+--- @param callback fun(key: integer, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreachi(list, callback) end
