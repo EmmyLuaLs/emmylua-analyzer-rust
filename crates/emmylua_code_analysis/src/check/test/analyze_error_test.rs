@@ -132,3 +132,74 @@ fn test_field_under_class_ok() {
         0
     );
 }
+
+/// `tostring` is a library function, not an operator: `@operator tostring`
+/// must be reported instead of being silently ignored, and the diagnostic
+/// must point at the name.
+#[test]
+fn test_unknown_operator() {
+    let source = "---@class Complex\n---@operator tostring: string\nlocal Complex = {}";
+    let diags = check_source(source);
+    let diag = diags
+        .iter()
+        .find(|diag| diag.code == DiagnosticCode::AnnotationUsageError)
+        .unwrap_or_else(|| panic!("unknown operator is not reported: {diags:?}"));
+    assert!(
+        diag.message.contains("unknown operator `tostring`"),
+        "{}",
+        diag.message
+    );
+    assert_eq!(&source[diag.range], "tostring");
+}
+
+/// Operator names are case-sensitive, and names that are not operators are
+/// rejected: `pairs` is handled through the `__pairs` metatable, not through
+/// `@operator`.
+#[test]
+fn test_unknown_operator_names() {
+    for name in ["Add", "pairs"] {
+        let source = format!("---@class C\n---@operator {name}: string\nlocal C = {{}}");
+        let diags = check_source(&source);
+        let diag = diags
+            .iter()
+            .find(|diag| diag.code == DiagnosticCode::AnnotationUsageError)
+            .unwrap_or_else(|| panic!("`{name}` is not reported: {diags:?}"));
+        assert_eq!(&source.as_str()[diag.range], name);
+    }
+}
+
+/// A missing operator name is a doc syntax error, not an annotation usage
+/// error, and must not panic.
+#[test]
+fn test_operator_without_name() {
+    let diags = check_source("---@class C\n---@operator\nlocal C = {}");
+    assert_eq!(
+        count_by_code(&diags, DiagnosticCode::AnnotationUsageError),
+        0,
+        "diagnostics: {:?}",
+        diags
+    );
+}
+
+/// Accepted operator names are not reported, including names whose overloads
+/// are not evaluated yet.
+#[test]
+fn test_known_operators_ok() {
+    let diags = check_source(
+        r#"
+        ---@class Complex
+        ---@operator add(Complex): Complex
+        ---@operator band(Complex): Complex
+        ---@operator eq(Complex): boolean
+        ---@operator len: integer
+        ---@operator call: string
+        local Complex = {}
+        "#,
+    );
+    assert_eq!(
+        count_by_code(&diags, DiagnosticCode::AnnotationUsageError),
+        0,
+        "diagnostics: {:?}",
+        diags
+    );
+}
