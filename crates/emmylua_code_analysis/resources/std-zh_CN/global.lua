@@ -33,7 +33,7 @@ function assert(v, ...) end
 --- | "incremental"  # 将收集器模式更改为增量模式。此选项后面可以跟三个数字：垃圾收集器暂停、步进倍率和步进大小。
 --- | "generational" # 将收集器模式更改为分代模式。此选项后面可以跟两个数字：垃圾收集器次要倍率和主要倍率。
 --- | "isrunning"    # 返回一个布尔值，指示收集器是否正在运行（即未停止）。
---- | "param"        # changes and/or retrieves a collector parameter (Lua 5.5).
+--- | "param"        # 更改和/或获取收集器参数（Lua 5.5）。
 
 --- @alias std.collectgarbage.param
 --- | "minormul"   # minor multiplier
@@ -44,51 +44,65 @@ function assert(v, ...) end
 --- | "stepsize"   # step size
 
 --- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"
---- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning"
---- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_52 | "incremental" | "generational"
---- @alias std.collectgarbage_opt_55 std.collectgarbage_opt_54 | "param"
+--- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning" | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_53 std.collectgarbage_opt_51 | "isrunning"
+--- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_53 | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_55 "collect" | "stop" | "restart" | "count" | "step" | "isrunning" | "incremental" | "generational" | "param"
 
 --- @version 5.1
----
---- This function is a generic interface to the garbage collector. It performs
---- different functions according to its first argument, `opt`.
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
 --- @param opt? std.collectgarbage_opt_51
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
 
---- @version 5.2, 5.3, JIT
----
---- This function is a generic interface to the garbage collector. It performs
---- different functions according to its first argument, `opt`.
+--- @version 5.2
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
 --- @param opt? std.collectgarbage_opt_52
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
 
+--- @version 5.3, JIT
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_53
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
 --- @version 5.4
----
---- This function is a generic interface to the garbage collector. It performs
---- different functions according to its first argument, `opt`.
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
 --- @param opt? std.collectgarbage_opt_54
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
 
 --- @version 5.5
----
---- This function is a generic interface to the garbage collector. It performs
---- different functions according to its first argument, `opt`.
---- See `std.collectgarbage_opt` for the complete list of options.
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- 完整的选项列表参见 `std.collectgarbage_opt`。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @overload fun(opt: "param", param: string, value?: integer): integer
 --- @param opt? std.collectgarbage_opt_55
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
 
 --- @version 5.1, JIT
----
---- Returns the number of kilobytes of memory in use by Lua.
---- Equivalent to `collectgarbage("count")`.
+--- 返回 Lua 使用的内存千字节数。
+--- 等价于 `collectgarbage("count")`。
 --- @return integer
 --- @nodiscard
 function gcinfo() end
@@ -122,9 +136,9 @@ _G = {}
 function getmetatable(object) end
 
 --- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
---- `index` is the previous key for the default `next` iterator; custom
---- `__pairs` implementations may use an arbitrary state value.
+
 --- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
+--- `index` 是默认 `next` 迭代器的前一个键；自定义 `__pairs` 实现可以使用任意状态值。
 
 --- 返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
 --- > `for i,v in ipairs(t) do` *body* `end`
@@ -142,11 +156,8 @@ function ipairs(t) end
 --- @alias std.load_reader fun(): string?
 
 --- @version 5.1
----
---- Loads a chunk using function `chunk` to get its pieces. Each call to
---- `chunk` must return a string that concatenates with previous results. A
---- return of an empty string, **nil**, or no value signals the end of the
---- chunk.
+--- 使用函数 `chunk` 获取代码块片段来加载代码块。每次调用 `chunk` 都必须返回
+--- 一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
 --- @param chunk fun(): string?
 --- @param chunkname? string
 --- @return_overload function chunk
@@ -155,35 +166,28 @@ function ipairs(t) end
 function load(chunk, chunkname) end
 
 --- @version >5.2, JIT
+--- 加载一个代码块。
+--- 如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
+--- `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
+--- 一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
 ---
---- Loads a chunk.
---- If `chunk` is a string, the chunk is this string. If `chunk` is a function,
---- `load` calls it repeatedly to get the chunk pieces. Each call to `chunk`
---- must return a string that concatenates with previous results. A return of
---- an empty string, **nil**, or no value signals the end of the chunk.
+--- 如果没有语法错误，则将编译后的代码块作为函数返回；
+--- 否则，返回 **nil** 加上错误消息。
 ---
---- If there are no syntactic errors, returns the compiled chunk as a function;
---- otherwise, returns **nil** plus the error message.
+--- 如果生成的函数有上值，则第一个上值设置为 `env` 的值（如果给定了该参数），
+--- 或者设置为全局环境的值。其他上值初始化为 **nil**。（当你加载主代码块时，
+--- 生成的函数将始终只有一个上值，即 _ENV 变量。但是，当你加载从函数创建的
+--- 二进制代码块时（参见 string.dump），生成的函数可以有任意数量的上值。）
+--- 所有上值都是新的，即它们不与任何其他函数共享。
 ---
---- If the resulting function has upvalues, the first upvalue is set to the
---- value of `env`, if that parameter is given, or to the value of the global
---- environment. Other upvalues are initialized with **nil**. (When you load a
---- main chunk, the resulting function will always have exactly one upvalue, the
---- _ENV variable. However, when you load a binary chunk created from a
---- function (see string.dump), the resulting function can have an arbitrary
---- number of upvalues.) All upvalues are fresh, that is, they are not shared
---- with any other function.
+--- `chunkname` 用作错误消息和调试信息的代码块名称。如果省略，
+--- 由于 `chunk` 是字符串，默认为 `chunk`，否则默认为 "=(load)"。
 ---
---- `chunkname` is used as the name of the chunk for error messages and debug
---- information. When absent, it defaults to `chunk`, if `chunk` is a string,
---- or to "=(`load`)" otherwise.
+--- 字符串 `mode` 控制代码块是文本还是二进制（即预编译代码块）。
+--- 它可以是字符串 "b"（仅二进制代码块）、"t"（仅文本代码块）
+--- 或 "bt"（二进制和文本）。默认为 "bt"。
 ---
---- The string `mode` controls whether the chunk can be text or binary (that is,
---- a precompiled chunk). It may be the string "b" (only binary chunks), "t"
---- (only text chunks), or "bt" (both binary and text). The default is "bt".
----
---- Lua does not check the consistency of binary chunks. Maliciously crafted
---- binary chunks can crash the interpreter.
+--- Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
 --- @param chunk      Language<"Lua"> | std.load_reader
 --- @param chunkname? string
 --- @param mode?      std.loadmode
@@ -194,8 +198,7 @@ function load(chunk, chunkname) end
 function load(chunk, chunkname, mode, env) end
 
 --- @version 5.1
----
---- Loads a chunk from the given string.
+--- 从给定字符串加载代码块。
 --- @param text       Language<"Lua">
 --- @param chunkname? string
 --- @return_overload function chunk
@@ -204,9 +207,8 @@ function load(chunk, chunkname, mode, env) end
 function loadstring(text, chunkname) end
 
 --- @version JIT
----
---- Loads a chunk from the given string. In LuaJIT `loadstring` is an alias
---- for `load` and also accepts `mode` and `env`.
+--- 从给定字符串加载代码块。在 LuaJIT 中，`loadstring` 是 `load` 的别名，
+--- 并且也接受 `mode` 和 `env`。
 --- @param text       Language<"Lua">
 --- @param chunkname? string
 --- @param mode?      std.loadmode
@@ -217,9 +219,8 @@ function loadstring(text, chunkname) end
 function loadstring(text, chunkname, mode, env) end
 
 --- @version 5.1
----
---- Similar to `load`, but gets the chunk from file `filename` or from the
---- standard input, if no file name is given.
+--- 类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+--- 则从标准输入获取。
 --- @param filename? string
 --- @return_overload function chunk
 --- @return_overload nil, string error_message
@@ -227,9 +228,8 @@ function loadstring(text, chunkname, mode, env) end
 function loadfile(filename) end
 
 --- @version >5.2, JIT
----
---- Similar to `load`, but gets the chunk from file `filename` or from the
---- standard input, if no file name is given.
+--- 类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+--- 则从标准输入获取。
 --- @param filename? string
 --- @param mode?     std.loadmode
 --- @param env?      table
@@ -364,9 +364,9 @@ function require(modname) end
 --- @return std.Select<T..., Num>
 function select(index, ...) end
 
---- `__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3
---- (LuaJIT only with 5.2 compatibility). `@field` declarations do not support
---- per-field `@version` filtering, so these are documented here instead.
+--- `__pairs` 在 Lua 5.2+ 可用，`__ipairs` 在 Lua 5.2/5.3 可用
+--- （LuaJIT 仅在启用 5.2 兼容模式时可用）。`@field` 声明不支持按字段的
+--- `@version` 过滤，因此在此处说明。
 --- @class std.metatable
 --- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
@@ -447,36 +447,32 @@ function tostring(v) end
 --- | "function"
 --- | "thread"
 --- | "userdata"
---- | "cdata" # LuaJIT only
+--- | "cdata" # 仅 LuaJIT
 
 --- 返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
 --- （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
 --- "`table`"、"`function`"、"`thread`" 和 "`userdata`"。
+--- LuaJIT 对 FFI cdata 值还会返回 "`cdata`"。
 --- @param v any
 --- @return std.type type
 function type(v) end
 
 --- 一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
---- 此变量的当前值是 "`Lua 5.4`"。
+--- 此变量的当前值是 "`Lua 5.5`"。
 --- @type string
 _VERSION = "Lua 5.5"
 
----
 --- @version 5.1
----
---- This function is similar to `pcall`, except that it sets a new message
---- handler `msgh`.
---- @generic T, R
---- @param f    sync fun(...: T...): R...
+--- 此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+--- @generic R
+--- @param f    sync fun(): R...
 --- @param msgh fun(err: any): any
 --- @return_overload true, R...
 --- @return_overload false, any
 function xpcall(f, msgh) end
 
 --- @version >5.2, JIT
----
---- This function is similar to `pcall`, except that it sets a new message
---- handler `msgh`.
+--- 此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
 --- @generic T, R
 --- @param f    sync fun(...: T...): R...
 --- @param msgh fun(err: any): any
@@ -514,6 +510,7 @@ _ENV = {}
 
 --- @version 5.1, JIT
 --- 设置指定函数的环境。
+--- @overload fun(f: 0, env: table)
 --- @param f   function | integer 要设置环境的函数。
 --- @param env table              要分配给函数的环境表。
 --- @return function

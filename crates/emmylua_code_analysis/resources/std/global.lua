@@ -46,24 +46,42 @@ function assert(v, ...) end
 --- | "stepsize"   # step size
 
 --- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"
---- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning"
---- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_52 | "incremental" | "generational"
---- @alias std.collectgarbage_opt_55 std.collectgarbage_opt_54 | "param"
+--- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning" | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_53 std.collectgarbage_opt_51 | "isrunning"
+--- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_53 | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_55 "collect" | "stop" | "restart" | "count" | "step" | "isrunning" | "incremental" | "generational" | "param"
 
 --- @version 5.1
 ---
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
 --- @param opt? std.collectgarbage_opt_51
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
 
---- @version 5.2, 5.3, JIT
+--- @version 5.2
 ---
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
 --- @param opt? std.collectgarbage_opt_52
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.3, JIT
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_53
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
@@ -72,6 +90,9 @@ function collectgarbage(opt, ...) end
 ---
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
 --- @param opt? std.collectgarbage_opt_54
 --- @param ...  any
 --- @return any
@@ -82,6 +103,10 @@ function collectgarbage(opt, ...) end
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
 --- See `std.collectgarbage_opt` for the complete list of options.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @overload fun(opt: "param", param: string, value?: integer): integer
 --- @param opt? std.collectgarbage_opt_55
 --- @param ...  any
 --- @return any
@@ -134,9 +159,10 @@ _G = {}
 function getmetatable(object) end
 
 --- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
+
+--- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
 --- `index` is the previous key for the default `next` iterator; custom
 --- `__pairs` implementations may use an arbitrary state value.
---- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
 
 ---
 --- Returns three values (an iterator function, the table `t`, and 0) so that
@@ -508,7 +534,7 @@ function tostring(v) end
 --- Returns the type of its only argument, coded as a string. The possible
 --- results of this function are "`nil`" (a string, not the value **nil**),
 --- "`number`", "`string`", "`boolean`", "`table`", "`function`", "`thread`",
---- and "`userdata`".
+--- and "`userdata`". LuaJIT also returns "`cdata`" for FFI cdata values.
 --- @param v any
 --- @return std.type type
 function type(v) end
@@ -519,13 +545,12 @@ function type(v) end
 --- @type string
 _VERSION = "Lua 5.5"
 
----
 --- @version 5.1
 ---
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
---- @generic T, R
---- @param f    sync fun(...: T...): R...
+--- @generic R
+--- @param f    sync fun(): R...
 --- @param msgh fun(err: any): any
 --- @return_overload true, R...
 --- @return_overload false, any
@@ -578,6 +603,7 @@ _ENV = {}
 --- Sets the environment for the specified function.
 --- When `f` is 0, `setfenv` changes the environment of the running thread and
 --- returns no values.
+--- @overload fun(f: 0, env: table)
 --- @param f   function | integer The function for which the environment is to be set.
 --- @param env table              The environment table to assign to the function.
 --- @return function

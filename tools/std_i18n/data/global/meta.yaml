@@ -33,212 +33,222 @@ b:
   - ['std.collectgarbage.param.item.stepsize', 'i:stepsize', tail, [45, 20, 45, 30], '92c7a59e2065582e', ' ']
 - a: 'function collectgarbage(opt, ...) end'
   g: '@version 5.1'
-  r: [52, 0, 58, 15]
+  r: [53, 0, 61, 15]
   e:
-  - ['collectgarbage@5.1', 'd', doc, [53, 0, 56, 0], 'b0182f679af8884f']
+  - ['collectgarbage@5.1', 'd', doc, [54, 0, 57, 0], 'b0182f679af8884f']
 - a: 'function collectgarbage(opt, ...) end'
-  g: '@version 5.2, 5.3, JIT'
-  r: [61, 0, 67, 15]
+  g: '@version 5.2'
+  r: [64, 0, 73, 15]
   e:
-  - ['collectgarbage@5.2,5.3,JIT', 'd', doc, [62, 0, 65, 0], 'b0182f679af8884f']
+  - ['collectgarbage@5.2', 'd', doc, [65, 0, 68, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.3, JIT'
+  r: [76, 0, 85, 15]
+  e:
+  - ['collectgarbage@5.3,JIT', 'd', doc, [77, 0, 80, 0], 'b0182f679af8884f']
 - a: 'function collectgarbage(opt, ...) end'
   g: '@version 5.4'
-  r: [70, 0, 76, 15]
+  r: [88, 0, 97, 15]
   e:
-  - ['collectgarbage@5.4', 'd', doc, [71, 0, 74, 0], 'b0182f679af8884f']
+  - ['collectgarbage@5.4', 'd', doc, [89, 0, 92, 0], 'b0182f679af8884f']
 - a: 'function collectgarbage(opt, ...) end'
   g: '@version 5.5'
-  r: [79, 0, 86, 15]
+  r: [100, 0, 111, 15]
   e:
-  - ['collectgarbage@5.5', 'd', doc, [80, 0, 84, 0], '68b2fe64e8dca8f5']
+  - ['collectgarbage@5.5', 'd', doc, [101, 0, 105, 0], '68b2fe64e8dca8f5']
 - a: 'function gcinfo() end'
   g: '@version 5.1, JIT'
-  r: [89, 0, 94, 14]
+  r: [114, 0, 119, 14]
   e:
-  - ['gcinfo', 'd', doc, [90, 0, 93, 0], '47c45531f376c179']
+  - ['gcinfo', 'd', doc, [115, 0, 118, 0], '47c45531f376c179']
 - a: 'function dofile(filename) end'
   g: 'Opens the named file and executes its contents as a Lua chunk. When called'
-  r: [97, 0, 104, 19]
+  r: [122, 0, 129, 19]
   e:
-  - ['dofile', 'd', doc, [97, 0, 103, 0], 'c825642b6b44c7c5']
+  - ['dofile', 'd', doc, [122, 0, 128, 0], 'c825642b6b44c7c5']
 - a: 'function error(message, level) end'
   g: 'Terminates the last protected function called and returns `message` as the'
-  r: [107, 0, 117, 26]
+  r: [132, 0, 142, 26]
   e:
-  - ['error', 'd', doc, [107, 0, 116, 0], '81879d09ef03c7c5']
+  - ['error', 'd', doc, [132, 0, 141, 0], '81879d09ef03c7c5']
 - a: '_G = {}'
   g: 'A global variable (not a function) that holds the global environment. Lua'
-  r: [120, 0, 124, 16]
+  r: [145, 0, 149, 16]
   e:
-  - ['_G', 'd', doc, [120, 0, 124, 0], 'bdd640b6033d9688']
+  - ['_G', 'd', doc, [145, 0, 149, 0], 'bdd640b6033d9688']
 - a: 'function getmetatable(object) end'
   g: 'If `object` does not have a metatable, returns **nil**. Otherwise, if the'
-  r: [127, 0, 132, 15]
+  r: [152, 0, 157, 15]
   e:
-  - ['getmetatable', 'd', doc, [127, 0, 131, 0], 'c0aa4bd98f53dd45']
+  - ['getmetatable', 'd', doc, [152, 0, 156, 0], 'c0aa4bd98f53dd45']
 - a: '---'
-  g: '@alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V'
-  r: [135, 0, 138, 74]
+  g: '@alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V'
+  r: [162, 0, 164, 63]
   e:
-  - ['std.ipairs_iterator', 'd', doc, [136, 0, 138, 0], '2a1e60a56888ec95']
+  - ['std.pairs_iterator', 'd', doc, [163, 0, 164, 63], 'b205b9411daa649d']
 - a: 'function ipairs(t) end'
   g: 'Returns three values (an iterator function, the table `t`, and 0) so that'
-  r: [140, 0, 148, 110]
+  r: [166, 0, 174, 110]
   e:
-  - ['ipairs', 'd', doc, [140, 0, 146, 0], 'f7e9dd303f83d75c']
+  - ['ipairs', 'd', doc, [166, 0, 172, 0], 'f7e9dd303f83d75c']
 - a: '--- @alias std.load_reader fun(): string?'
   g: '@alias std.loadmode'
-  r: [151, 0, 154, 33]
+  r: [177, 0, 180, 33]
   e:
-  - ['std.loadmode.item.b', 'i:b', tail, [152, 12, 152, 31], 'a7b23db765875ab4', ' ']
-  - ['std.loadmode.item.t', 'i:t', tail, [153, 12, 153, 29], '3f888b84d5ff9cb6', ' ']
-  - ['std.loadmode.item.bt', 'i:bt', tail, [154, 12, 154, 33], '6281255a2e74d843', ' ']
+  - ['std.loadmode.item.b', 'i:b', tail, [178, 12, 178, 31], 'a7b23db765875ab4', ' ']
+  - ['std.loadmode.item.t', 'i:t', tail, [179, 12, 179, 29], '3f888b84d5ff9cb6', ' ']
+  - ['std.loadmode.item.bt', 'i:bt', tail, [180, 12, 180, 33], '6281255a2e74d843', ' ']
 - a: 'function load(chunk, chunkname) end'
   g: '@version 5.1'
-  r: [158, 0, 168, 14]
+  r: [184, 0, 194, 14]
   e:
-  - ['load@5.1', 'd', doc, [159, 0, 164, 0], '64f4c6bbc11a35e5']
+  - ['load@5.1', 'd', doc, [185, 0, 190, 0], '64f4c6bbc11a35e5']
 - a: 'function load(chunk, chunkname, mode, env) end'
   g: '@version >5.2, JIT'
-  r: [171, 0, 207, 14]
+  r: [197, 0, 233, 14]
   e:
-  - ['load@>5.2,JIT', 'd', doc, [172, 0, 201, 0], '9b1f3f8370f55492']
+  - ['load@>5.2,JIT', 'd', doc, [198, 0, 227, 0], '9b1f3f8370f55492']
 - a: 'function loadstring(text, chunkname) end'
   g: '@version 5.1'
-  r: [210, 0, 217, 14]
+  r: [236, 0, 243, 14]
   e:
-  - ['loadstring@5.1', 'd', doc, [211, 0, 213, 0], 'f48d0ce581463e55']
+  - ['loadstring@5.1', 'd', doc, [237, 0, 239, 0], 'f48d0ce581463e55']
 - a: 'function loadstring(text, chunkname, mode, env) end'
   g: '@version JIT'
-  r: [220, 0, 230, 14]
+  r: [246, 0, 256, 14]
   e:
-  - ['loadstring@JIT', 'd', doc, [221, 0, 224, 0], '120f55ca4fe849ef']
+  - ['loadstring@JIT', 'd', doc, [247, 0, 250, 0], '120f55ca4fe849ef']
 - a: 'function loadfile(filename) end'
   g: '@version 5.1'
-  r: [233, 0, 240, 14]
+  r: [259, 0, 266, 14]
   e:
-  - ['loadfile@5.1', 'd', doc, [234, 0, 237, 0], 'f973f805658a8a32']
+  - ['loadfile@5.1', 'd', doc, [260, 0, 263, 0], 'f973f805658a8a32']
 - a: 'function loadfile(filename, mode, env) end'
   g: '@version >5.2, JIT'
-  r: [243, 0, 252, 14]
+  r: [269, 0, 278, 14]
   e:
-  - ['loadfile@>5.2,JIT', 'd', doc, [244, 0, 247, 0], 'f973f805658a8a32']
+  - ['loadfile@>5.2,JIT', 'd', doc, [270, 0, 273, 0], 'f973f805658a8a32']
 - a: 'function module(name, ...) end'
   g: '@version 5.1, JIT'
-  r: [260, 0, 266, 19]
+  r: [286, 0, 292, 19]
   e:
-  - ['module', 'd', doc, [261, 0, 265, 0], '96d94858b124b359']
+  - ['module', 'd', doc, [287, 0, 291, 0], '96d94858b124b359']
 - a: 'function next(table, index) end'
   g: 'Allows a program to traverse all fields of a table. Its first argument is'
-  r: [269, 0, 290, 18]
+  r: [295, 0, 316, 18]
   e:
-  - ['next', 'd', doc, [269, 0, 286, 0], '431cf1e327403b46']
+  - ['next', 'd', doc, [295, 0, 312, 0], '431cf1e327403b46']
 - a: 'function pairs(t) end'
   g: 'If `t` has a metamethod `__pairs`, calls it with `t` as argument and returns'
-  r: [293, 0, 306, 70]
+  r: [319, 0, 332, 70]
   e:
-  - ['pairs', 'd', doc, [293, 0, 304, 0], '1a7f95aa4362e930']
+  - ['pairs', 'd', doc, [319, 0, 330, 0], '1a7f95aa4362e930']
 - a: 'function pcall(f, ...) end'
   g: 'Calls function `f` with the given arguments in *protected mode*. This'
-  r: [309, 0, 320, 34]
+  r: [335, 0, 346, 34]
   e:
-  - ['pcall', 'd', doc, [309, 0, 316, 0], '1f340e7d3461d4ae']
+  - ['pcall', 'd', doc, [335, 0, 342, 0], '1f340e7d3461d4ae']
 - a: 'function print(...) end'
   g: 'Receives any number of arguments, and prints their values to `stdout`,'
-  r: [323, 0, 328, 35]
+  r: [349, 0, 354, 35]
   e:
-  - ['print', 'd', doc, [323, 0, 328, 35], '64fc74d7af730bec']
+  - ['print', 'd', doc, [349, 0, 354, 35], '64fc74d7af730bec']
 - a: 'function rawequal(v1, v2) end'
   g: 'Checks whether `v1` is equal to `v2`, without the `__eq` metamethod. Returns'
-  r: [331, 0, 336, 19]
+  r: [357, 0, 362, 19]
   e:
-  - ['rawequal', 'd', doc, [331, 0, 334, 0], '0cec4f0b3fdbc099']
+  - ['rawequal', 'd', doc, [357, 0, 360, 0], '0cec4f0b3fdbc099']
 - a: 'function rawget(table, index) end'
   g: 'Gets the real value of `table[index]`, the `__index` metamethod. `table`'
-  r: [339, 0, 345, 28]
+  r: [365, 0, 371, 28]
   e:
-  - ['rawget', 'd', doc, [339, 0, 342, 0], '44a4244f6dfbe0ee']
+  - ['rawget', 'd', doc, [365, 0, 368, 0], '44a4244f6dfbe0ee']
 - a: 'function rawlen(v) end'
   g: '@version >5.2'
-  r: [348, 0, 353, 19]
+  r: [374, 0, 379, 19]
   e:
-  - ['rawlen', 'd', doc, [349, 0, 352, 0], '07f69e94e4daa054']
+  - ['rawlen', 'd', doc, [375, 0, 378, 0], '07f69e94e4daa054']
 - a: 'function rawset(table, index, value) end'
   g: 'Sets the real value of `table[index]` to `value`, without invoking the'
-  r: [356, 0, 364, 13]
+  r: [382, 0, 390, 13]
   e:
-  - ['rawset', 'd', doc, [356, 0, 360, 0], '16e809b0963bd346']
+  - ['rawset', 'd', doc, [382, 0, 386, 0], '16e809b0963bd346']
 - a: 'function require(modname) end'
   g: 'Loads the given module. The function starts by looking into the'
-  r: [367, 0, 398, 15]
+  r: [393, 0, 424, 15]
   e:
-  - ['require', 'd', doc, [367, 0, 397, 0], 'f661cf52fac913b3']
+  - ['require', 'd', doc, [393, 0, 423, 0], 'f661cf52fac913b3']
 - a: 'function select(index, ...) end'
   g: 'If `index` is a number, returns all arguments after argument number'
-  r: [401, 0, 409, 33]
+  r: [427, 0, 435, 33]
   e:
-  - ['select', 'd', doc, [401, 0, 406, 0], '721ecd0e987e2ba7']
+  - ['select', 'd', doc, [427, 0, 432, 0], '721ecd0e987e2ba7']
 - a: '-- NOTE: The actual implementation of setmetatable is provided by the language server'
   g: '`__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3'
-  r: [412, 0, 445, 43]
+  r: [438, 0, 471, 43]
   e:
-  - ['std.metatable', 'd', doc, [412, 0, 415, 0], '9088c9c0e368e051']
+  - ['std.metatable', 'd', doc, [438, 0, 441, 0], '9088c9c0e368e051']
 - a: 'function setmetatable(table, metatable) end'
   g: 'Sets the metatable for the given table. (To change the metatable of other'
-  r: [449, 0, 459, 13]
+  r: [475, 0, 485, 13]
   e:
-  - ['setmetatable', 'd', doc, [449, 0, 456, 0], '25474b66521bebe3']
+  - ['setmetatable', 'd', doc, [475, 0, 482, 0], '25474b66521bebe3']
 - a: 'function tonumber(e) end'
   g: 'When called with no `base`, `tonumber` tries to convert its argument to a'
-  r: [462, 0, 480, 14]
+  r: [488, 0, 506, 14]
   e:
-  - ['tonumber', 'd', doc, [462, 0, 477, 0], '5d06a5a2b00378b0']
+  - ['tonumber', 'd', doc, [488, 0, 503, 0], '5d06a5a2b00378b0']
 - a: 'function tostring(v) end'
   g: 'Receives a value of any type and converts it to a string in a human-readable'
-  r: [483, 0, 492, 18]
+  r: [509, 0, 518, 18]
   e:
-  - ['tostring', 'd', doc, [483, 0, 491, 0], 'eb7a0cd064f9b7a3']
+  - ['tostring', 'd', doc, [509, 0, 517, 0], 'eb7a0cd064f9b7a3']
 - a: '---'
   g: '@alias std.type'
-  r: [495, 0, 504, 27]
+  r: [521, 0, 530, 27]
   e:
-  - ['std.type.item.cdata', 'i:cdata', tail, [504, 15, 504, 27], '9540448154e052f0', ' ']
+  - ['std.type.item.cdata', 'i:cdata', tail, [530, 15, 530, 27], '9540448154e052f0', ' ']
 - a: 'function type(v) end'
   g: 'Returns the type of its only argument, coded as a string. The possible'
-  r: [506, 0, 512, 25]
+  r: [532, 0, 538, 25]
   e:
-  - ['type', 'd', doc, [506, 0, 511, 0], '495411a7e8486c06']
+  - ['type', 'd', doc, [532, 0, 537, 0], '595832312bb8fe9f']
 - a: '_VERSION = "Lua 5.5"'
   g: 'A global variable (not a function) that holds a string containing the'
-  r: [515, 0, 518, 16]
+  r: [541, 0, 544, 16]
   e:
-  - ['_VERSION', 'd', doc, [515, 0, 518, 0], '7b8dacd71a947be4']
+  - ['_VERSION', 'd', doc, [541, 0, 544, 0], '7b8dacd71a947be4']
+- a: 'function xpcall(f, msgh) end'
+  g: '@version 5.1'
+  r: [547, 0, 555, 31]
+  e:
+  - ['xpcall@5.1', 'd', doc, [548, 0, 551, 0], 'dc8a1c68d79dae75']
 - a: 'function xpcall(f, msgh, ...) end'
   g: '@version >5.2, JIT'
-  r: [533, 0, 542, 31]
+  r: [558, 0, 567, 31]
   e:
-  - ['xpcall@>5.2,JIT', 'd', doc, [534, 0, 537, 0], 'dc8a1c68d79dae75']
+  - ['xpcall@>5.2,JIT', 'd', doc, [559, 0, 562, 0], 'dc8a1c68d79dae75']
 - a: 'function warn(msg1, ...) end'
   g: '@version >5.4'
-  r: [554, 0, 563, 31]
+  r: [579, 0, 588, 31]
   e:
-  - ['warn', 'd', doc, [555, 0, 562, 0], '2e4312489bfc7d9c']
+  - ['warn', 'd', doc, [580, 0, 587, 0], '2e4312489bfc7d9c']
 - a: '_ENV = {}'
   g: 'This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.'
-  r: [569, 0, 572, 16]
+  r: [594, 0, 597, 16]
   e:
-  - ['_ENV', 'd', doc, [569, 0, 571, 0], '0e721e4ff07c6e6b']
+  - ['_ENV', 'd', doc, [594, 0, 596, 0], '0e721e4ff07c6e6b']
 - a: 'function setfenv(f, env) end'
   g: '@version 5.1, JIT'
-  r: [575, 0, 582, 20]
+  r: [600, 0, 608, 20]
   e:
-  - ['setfenv', 'd', doc, [576, 0, 580, 0], 'a3911a9349078616']
-  - ['setfenv.param.f', 'p:f', tail, [580, 34, 580, 86], '45534d1ea636fab4']
-  - ['setfenv.param.env', 'p:env', tail, [581, 34, 581, 82], '405f4286ea2c7329']
+  - ['setfenv', 'd', doc, [601, 0, 605, 0], 'a3911a9349078616']
+  - ['setfenv.param.f', 'p:f', tail, [606, 34, 606, 86], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [607, 34, 607, 82], '405f4286ea2c7329']
 - a: 'function getfenv(f) end'
   g: '@version 5.1, JIT'
-  r: [585, 0, 589, 75]
+  r: [611, 0, 615, 75]
   e:
-  - ['getfenv', 'd', doc, [586, 0, 588, 0], '7ec4ca6b1f97e9ee']
-  - ['getfenv.param.f', 'p:f', tail, [588, 33, 588, 83], '61d794dd7c91d37d']
-  - ['getfenv.return.1', 'r:1', tail, [589, 22, 589, 75], '41910412fe03bad4']
+  - ['getfenv', 'd', doc, [612, 0, 614, 0], '7ec4ca6b1f97e9ee']
+  - ['getfenv.param.f', 'p:f', tail, [614, 33, 614, 83], '61d794dd7c91d37d']
+  - ['getfenv.return.1', 'r:1', tail, [615, 22, 615, 75], '41910412fe03bad4']

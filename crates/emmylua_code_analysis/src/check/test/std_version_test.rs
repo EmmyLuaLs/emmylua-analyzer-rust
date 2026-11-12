@@ -385,24 +385,33 @@ mod test {
 
     #[test]
     fn test_collectgarbage_options_respect_version() {
-        let incremental = r#"collectgarbage("incremental")"#;
-        for version in [
-            EmmyrcLuaVersion::Lua51,
-            EmmyrcLuaVersion::Lua52,
-            EmmyrcLuaVersion::Lua53,
-        ] {
-            let diagnostics = diagnostic_codes_for(version, incremental);
+        for option in ["incremental", "generational"] {
+            let source = format!(r#"collectgarbage("{option}")"#);
+
+            for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::Lua53] {
+                let diagnostics = diagnostic_codes_for(version, &source);
+                assert!(
+                    diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                    "{option} must be hidden in {version:?}: {diagnostics:?}"
+                );
+            }
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, &source);
             assert!(
                 diagnostics.iter().any(|code| code == "param-type-mismatch"),
-                "incremental must be hidden in {version:?}: {diagnostics:?}"
+                "{option} must be hidden in LuaJIT: {diagnostics:?}"
             );
-        }
-        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::Lua55] {
-            let diagnostics = diagnostic_codes_for(version, incremental);
-            assert!(
-                diagnostics.is_empty(),
-                "incremental must be accepted in {version:?}: {diagnostics:?}"
-            );
+
+            for version in [
+                EmmyrcLuaVersion::Lua52,
+                EmmyrcLuaVersion::Lua54,
+                EmmyrcLuaVersion::Lua55,
+            ] {
+                let diagnostics = diagnostic_codes_for(version, &source);
+                assert!(
+                    diagnostics.is_empty(),
+                    "{option} must be accepted in {version:?}: {diagnostics:?}"
+                );
+            }
         }
 
         let isrunning = r#"collectgarbage("isrunning")"#;
@@ -411,7 +420,11 @@ mod test {
             diagnostics.iter().any(|code| code == "param-type-mismatch"),
             "isrunning must be hidden in Lua 5.1: {diagnostics:?}"
         );
-        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::LuaJIT] {
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
             let diagnostics = diagnostic_codes_for(version, isrunning);
             assert!(
                 diagnostics.is_empty(),
@@ -424,6 +437,55 @@ mod test {
         assert!(
             diagnostics.iter().any(|code| code == "param-type-mismatch"),
             "param must be hidden in Lua 5.4: {diagnostics:?}"
+        );
+
+        // Lua 5.5 removed the deprecated `setpause`/`setstepmul` options.
+        for option in ["setpause", "setstepmul"] {
+            let source = format!(r#"collectgarbage("{option}", 100)"#);
+            for version in [
+                EmmyrcLuaVersion::Lua51,
+                EmmyrcLuaVersion::Lua52,
+                EmmyrcLuaVersion::Lua53,
+                EmmyrcLuaVersion::Lua54,
+            ] {
+                let diagnostics = diagnostic_codes_for(version, &source);
+                assert!(
+                    diagnostics.is_empty(),
+                    "{option} must be accepted in {version:?}: {diagnostics:?}"
+                );
+            }
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua55, &source);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "{option} must be hidden in Lua 5.5: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_collectgarbage_return_types() {
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua51, r#"collectgarbage("count")"#),
+            "number",
+            "collectgarbage(\"count\") must keep its number return type"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua51, r#"collectgarbage("step")"#),
+            "boolean",
+            "collectgarbage(\"step\") must keep its boolean return type"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua54, r#"collectgarbage("isrunning")"#),
+            "boolean",
+            "collectgarbage(\"isrunning\") must keep its boolean return type"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::Lua55,
+                r#"collectgarbage("param", "pause")"#
+            ),
+            "integer",
+            "collectgarbage(\"param\") must keep its integer return type"
         );
     }
 
@@ -534,7 +596,12 @@ mod test {
             diagnostics.iter().any(|code| code == "redundant-parameter"),
             "Lua 5.1 xpcall must not accept extra arguments: {diagnostics:?}"
         );
-        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
             let diagnostics = diagnostic_codes_for(version, source);
             assert!(
                 diagnostics.is_empty(),
@@ -854,6 +921,15 @@ mod test {
         assert!(
             diagnostics.iter().any(|code| code == "param-type-mismatch"),
             "the visible sibling member must still be param-checked: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_setfenv_zero_returns_no_values() {
+        let ty = expr_type_for(EmmyrcLuaVersion::Lua51, "setfenv(0, {})");
+        assert_ne!(
+            ty, "function",
+            "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
 }
