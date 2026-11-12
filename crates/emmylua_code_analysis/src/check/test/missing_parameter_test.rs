@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, Emmyrc, EmmyrcLuaVersion, VirtualWorkspace};
 
     #[test]
     fn test_issue_276() {
@@ -365,5 +365,25 @@ mod test {
                 c(c)
         "#
         ));
+    }
+
+    #[test]
+    fn test_issue_1249_newproxy_optional_argument() {
+        for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::LuaJIT] {
+            let mut config = Emmyrc::default();
+            config.runtime.version = version;
+            let mut ws = VirtualWorkspace::new_with_config(config);
+
+            assert!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::MissingParameter,
+                    r#"
+                    local p = newproxy()
+                    print(p)
+                    "#
+                ),
+                "newproxy() must be accepted in {version:?}"
+            );
+        }
     }
 }
