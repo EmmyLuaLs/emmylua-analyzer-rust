@@ -567,6 +567,184 @@ fn test_member_type_via_name_reference() {
     );
 }
 
+// 两种可选字段写法在直接查询声明类型时均应保留 nil, 包括未实例化的泛型.
+#[test]
+fn test_optional_field_member_type_includes_nil() {
+    let nil = TypeShell::from_primitive(PrimitiveType::Nil);
+
+    // value? string → string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional
+---@field value? string
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value? string");
+
+    // value string? → string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional
+---@field value string?
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value string?");
+
+    // value? T → T | nil, 泛型未实例化时同样保留 nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional<T>
+---@field value? T
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_generic("T");
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value? T");
+
+    // value T? → T | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional<T>
+---@field value T?
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_generic("T");
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value T?");
+}
+
+// 从可选字段推导成员类型时应保留 nil, 包括泛型字段的实例化.
+#[test]
+fn test_optional_field_assignment_retains_nil_in_member_type() {
+    let nil = TypeShell::from_primitive(PrimitiveType::Nil);
+
+    // 非泛型: 形参类型就是字段所属类型, 赋值后成员类型应为 string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+local M = {}
+---@class Optional
+---@field value? string
+---@param optional Optional
+local function init(optional)
+    M.value = optional.value
+end
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| {
+            member.key.name() == Some("value")
+                && matches!(member.source, MemberSource::Runtime { .. })
+        })
+        .expect("inferred member");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "Optional");
+
+    // 泛型实例化: T 绑定为 string, 成员类型仍应为 string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+local M = {}
+---@class Optional<T>
+---@field value? T
+---@param optional Optional<string>
+local function init(optional)
+    M.value = optional.value
+end
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| {
+            member.key.name() == Some("value")
+                && matches!(member.source, MemberSource::Runtime { .. })
+        })
+        .expect("inferred member");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "Optional<string>");
+}
+
 #[test]
 fn test_member_global_root() {
     let mut db = setup();

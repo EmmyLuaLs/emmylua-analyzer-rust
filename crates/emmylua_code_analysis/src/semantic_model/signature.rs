@@ -1,3 +1,4 @@
+use crate::semantic_model::infer::vm::expand_callable_types_in_model;
 use crate::semantic_model::type_check::TypeCheckFailReason;
 use crate::{IndexInfo, OperatorDef};
 
@@ -672,10 +673,20 @@ impl<'db> SemanticModel<'db> {
             if let Some(ty) = expected_fun
                 .get_params()
                 .get(expected_index)
-                .and_then(|(_, ty)| ty.clone())
-                && !types.contains(&ty)
+                .and_then(|(_, ty)| ty.as_ref())
             {
-                types.push(ty);
+                let ty = match ty {
+                    LuaType::Generic(_)
+                    | LuaType::Call(_)
+                    | LuaType::Conditional(_)
+                    | LuaType::Mapped(_) => {
+                        type_eval::expand_alias_head(self, ty).unwrap_or_else(|| ty.clone())
+                    }
+                    _ => ty.clone(),
+                };
+                if !types.contains(&ty) {
+                    types.push(ty);
+                }
             }
         }
         if types.is_empty() {
@@ -836,30 +847,7 @@ impl<'db> SemanticModel<'db> {
         let infos = member::member_infos_with_key_all(self, &owner_ty, &key);
         let mut out = Vec::new();
         for info in &infos {
-            let typ = match &info.typ {
-                LuaType::Ref(id) | LuaType::Def(id)
-                    if self
-                        .type_def_of(id)
-                        .is_some_and(|def| def.kind == TypeDefKind::Alias) =>
-                {
-                    let def = self.type_def_of(id)?;
-                    self.alias_target(&def)
-                        .map(|target| type_eval::expand_alias_generic(self, &target))
-                        .unwrap_or_else(|| info.typ.clone())
-                }
-                _ => type_eval::expand_alias_generic(self, &info.typ),
-            };
-            match &typ {
-                LuaType::DocFunction(fun) => out.push(fun.as_ref().clone()),
-                LuaType::Union(union) => {
-                    for ty in union.into_vec() {
-                        if let LuaType::DocFunction(fun) = ty {
-                            out.push(fun.as_ref().clone());
-                        }
-                    }
-                }
-                _ => {}
-            }
+            out.extend(expand_callable_types_in_model(self, &info.typ));
         }
         // Repeated `@field` non-overload: the last one overrides previous ones (expected by the third test case).
         if out.len() > 1 {

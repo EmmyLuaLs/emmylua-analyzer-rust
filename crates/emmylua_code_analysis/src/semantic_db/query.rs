@@ -2508,8 +2508,11 @@ pub(crate) fn member_type(
                     .type_def_by_id(&member.owner)
                     .map(|def| def.generic_params.as_slice())
                     .unwrap_or(&[]);
-                let shell = lower_doc_type(db, file_id, value_syntax, generics);
+                let mut shell = lower_doc_type(db, file_id, value_syntax, generics);
                 if !shell.is_unknown() {
+                    if member.is_nullable {
+                        shell.merge(&TypeShell::from_primitive(PrimitiveType::Nil));
+                    }
                     return shell;
                 }
             }
@@ -2573,6 +2576,7 @@ pub(crate) fn type_member(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
+    config: &Emmyrc,
     type_def: SemanticId,
     name: &str,
     visited: &mut Vec<SemanticId>,
@@ -2583,21 +2587,17 @@ pub(crate) fn type_member(
     visited.push(type_def.clone());
 
     if let Some(member) = facts.field_members_of_type(&type_def, name) {
-        if let Some(value_syntax) = member.value_syntax {
-            let generics = facts
-                .type_def_by_id(&type_def)
-                .map(|def| def.generic_params.as_slice())
-                .unwrap_or(&[]);
-            let shell = lower_doc_type(db, file, value_syntax, generics);
-            if !shell.is_unknown() {
-                return Some(shell);
-            }
+        let shell = member_type(db, file, config, member.id.clone());
+        if !shell.is_unknown() {
+            return Some(shell);
         }
     }
 
     let def = facts.type_def_by_id(&type_def)?;
     for super_def in local_base_type_defs(db, facts, def) {
-        if let Some(shell) = type_member(db, facts, file, super_def.id.clone(), name, visited) {
+        if let Some(shell) =
+            type_member(db, facts, file, config, super_def.id.clone(), name, visited)
+        {
             return Some(shell);
         }
     }
@@ -3533,7 +3533,7 @@ fn expr_type_index(
             if let Some(def) = def {
                 let mut visited = Vec::new();
                 if let Some(shell) =
-                    type_member(db, facts, file, def.id.clone(), &name, &mut visited)
+                    type_member(db, facts, file, config, def.id.clone(), &name, &mut visited)
                 {
                     return shell;
                 }

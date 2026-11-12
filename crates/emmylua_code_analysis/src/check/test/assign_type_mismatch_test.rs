@@ -4,6 +4,78 @@ mod tests {
     use crate::{DiagnosticCode, Emmyrc, LuaMemberKey, LuaType, VirtualWorkspace};
     use tokio_util::sync::CancellationToken;
 
+    // 可选字段首次赋值给方法中的 self 成员时不应报告类型不匹配.
+    #[test]
+    fn test_optional_field_assignment_in_method() {
+        let diagnostics = check_source(
+            r#"
+            local M = {}
+
+            ---@class Optional
+            ---@field a? string
+
+            ---@param optional Optional
+            function M:__init(optional)
+                self.a = optional.a
+            end
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 两种可选字段写法赋值给空表成员时应具有相同的类型行为.
+    #[test]
+    fn test_optional_field_assignment_to_table() {
+        for field in ["a string?", "a? string"] {
+            let source = format!(
+                r#"
+                local M = {{}}
+                ---@class Optional
+                ---@field {field}
+                ---@param optional Optional
+                local function init(optional)
+                    M.a = optional.a
+                end
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+                0,
+                "{field}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 可选字段赋给明确声明为 string 的目标时仍需报告类型不匹配.
+    #[test]
+    fn test_optional_field_assignment_respects_required_member() {
+        let diagnostics = check_source(
+            r#"
+            ---@class Required
+            ---@field a string
+            local M = {}
+
+            ---@class Optional
+            ---@field a? string
+
+            ---@param optional Optional
+            function M:__init(optional)
+                self.a = optional.a
+            end
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
     #[test]
     fn test_constructor_errors_point_to_the_invalid_value() {
         for (target, constructor, invalid_value) in [
