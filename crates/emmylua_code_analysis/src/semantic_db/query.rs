@@ -857,6 +857,15 @@ fn decl_version_visible(db: &SemanticDatabase, decl_id: &SemanticId) -> bool {
     let Some(decl) = facts.decl_by_id(decl_id) else {
         return true;
     };
+    // Declarations carry `---@version` conditions directly. This also covers
+    // non-function declarations (table globals such as `bit = {}`) which have
+    // no closure signature.
+    if !decl.version_conds.is_empty() {
+        return decl
+            .version_conds
+            .iter()
+            .any(|condition| condition.check(&version));
+    }
     let signature = decl
         .value_expr_syntax
         .and_then(|syntax| facts.signature_by_closure(syntax))

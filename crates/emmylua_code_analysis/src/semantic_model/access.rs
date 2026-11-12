@@ -40,9 +40,15 @@ impl<'db> SemanticModel<'db> {
 
     /// Whether a declaration/member is visible under the configured Lua version.
     pub(crate) fn semantic_id_version_visible(&self, id: &SemanticId) -> bool {
-        let Some(version) = self.lua_version() else {
-            return true;
-        };
+        // Declarations store their `---@version` conditions directly, which
+        // covers non-function declarations (for example `bit = {}`).
+        if let SemanticId::Decl(key) = id
+            && let Some(facts) = self.file_facts_of(key.file_id)
+            && let Some(decl) = facts.decl_by_id(id)
+            && !decl.version_conds.is_empty()
+        {
+            return self.versions_visible(&decl.version_conds);
+        }
         let Some((file_id, signature_syntax)) = self.versioned_signature_syntax(id) else {
             return true;
         };
@@ -52,13 +58,10 @@ impl<'db> SemanticModel<'db> {
         let Some(signature) = facts.signature_by_closure(signature_syntax) else {
             return true;
         };
-        signature.docs.as_ref().is_none_or(|docs| {
-            docs.versions.is_empty()
-                || docs
-                    .versions
-                    .iter()
-                    .any(|condition| condition.check(&version))
-        })
+        signature
+            .docs
+            .as_ref()
+            .is_none_or(|docs| self.versions_visible(&docs.versions))
     }
 
     /// Whether a callee expression refers to a declaration/member that is

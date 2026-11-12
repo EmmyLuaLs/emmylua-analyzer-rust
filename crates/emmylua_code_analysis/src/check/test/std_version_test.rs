@@ -468,6 +468,38 @@ mod test {
     }
 
     #[test]
+    fn test_versioned_table_globals_visibility() {
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::Lua55] {
+            assert_eq!(
+                expr_type_for(version, "bit"),
+                "unknown",
+                "bit must be hidden outside LuaJIT in {version:?}"
+            );
+            assert_eq!(
+                expr_type_for(version, "bit32"),
+                "unknown",
+                "bit32 must be hidden outside Lua 5.2 in {version:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::Lua52] {
+            assert_eq!(
+                expr_type_for(version, "utf8"),
+                "unknown",
+                "utf8 must be hidden before Lua 5.4 in {version:?}"
+            );
+        }
+
+        for (version, name) in [
+            (EmmyrcLuaVersion::LuaJIT, "bit"),
+            (EmmyrcLuaVersion::Lua52, "bit32"),
+            (EmmyrcLuaVersion::Lua54, "utf8"),
+        ] {
+            let ty = expr_type_for(version, name);
+            assert_ne!(ty, "unknown", "`{name}` must be visible in {version:?}");
+        }
+    }
+
+    #[test]
     fn test_loadstring_and_loadfile_version_signatures() {
         let loadstring = r#"loadstring("return 1", "chunk", "t", {})"#;
         let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, loadstring);
@@ -600,6 +632,115 @@ mod test {
         assert!(
             diagnostics.iter().any(|code| code == "param-type-mismatch"),
             "visible local function must still be param-checked: {diagnostics:?}"
+        );
+    }
+
+    fn ws_with_version(version: EmmyrcLuaVersion) -> VirtualWorkspace {
+        let mut config = Emmyrc::default();
+        config.runtime.version = version;
+        VirtualWorkspace::new_with_config(config)
+    }
+
+    #[test]
+    fn test_hidden_std_member_skips_param_diagnostics() {
+        for version in [EmmyrcLuaVersion::LuaJIT, EmmyrcLuaVersion::Lua51] {
+            let diagnostics = diagnostic_codes_for(version, "string.unpack(1)");
+            assert!(
+                !diagnostics
+                    .iter()
+                    .any(|code| code == "missing-parameter" || code == "param-type-mismatch"),
+                "hidden string.unpack must not be param-checked in {version:?}: {diagnostics:?}"
+            );
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-field"),
+                "hidden string.unpack must be reported as undefined in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, "string.unpack(1)");
+        assert!(
+            diagnostics
+                .iter()
+                .any(|code| code == "missing-parameter" || code == "param-type-mismatch"),
+            "visible string.unpack must still be checked in Lua 5.4: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_hidden_class_member_skips_param_diagnostics() {
+        let source = r#"
+            ---@class VersionedClass
+            local VersionedClass = {}
+
+            ---@version 5.1
+            ---@param x integer
+            function VersionedClass:hidden(x) end
+
+            local instance = setmetatable({}, { __index = VersionedClass })
+            instance:hidden("bad")
+        "#;
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, source);
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|code| code == "missing-parameter" || code == "param-type-mismatch"),
+            "hidden class member must not be param-checked: {diagnostics:?}"
+        );
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, source);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "visible class member must still be param-checked: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_hidden_global_is_reported_as_undefined() {
+        for (version, name, source) in [
+            (
+                EmmyrcLuaVersion::Lua54,
+                "loadstring",
+                "loadstring(\"return 1\")",
+            ),
+            (EmmyrcLuaVersion::Lua51, "utf8", "utf8.char(65)"),
+            (EmmyrcLuaVersion::Lua54, "unpack", "unpack({})"),
+        ] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-global"),
+                "hidden global `{name}` must be undefined in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let diagnostics =
+            diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, "loadstring(\"return 1\")");
+        assert!(
+            !diagnostics.iter().any(|code| code == "undefined-global"),
+            "loadstring is available in LuaJIT: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_numeric_for_variable_does_not_inherit_version_conds() {
+        let mut ws = ws_with_version(EmmyrcLuaVersion::Lua54);
+        let file_id = ws.def(
+            r#"
+            ---@version 5.1
+            local versioned = 1
+
+            for i = 1, 10 do
+                print(versioned, i)
+            end
+            "#,
+        );
+
+        let model = ws.analysis.semantic_model(file_id);
+        let facts = model.file_facts().expect("file facts");
+        let decl = facts.decl_named("i").expect("numeric for variable");
+        assert!(
+            decl.version_conds.is_empty(),
+            "numeric for variables must not inherit @version from a previous statement"
         );
     }
 }
