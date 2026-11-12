@@ -743,4 +743,75 @@ mod test {
             "numeric for variables must not inherit @version from a previous statement"
         );
     }
+
+    #[test]
+    fn test_duplicate_unversioned_global_uses_last_declaration() {
+        let mut ws = ws_with_version(EmmyrcLuaVersion::Lua54);
+        let file_id = ws.def(
+            r#"
+            ---@return number
+            function duplicate_global() end
+
+            ---@return string
+            function duplicate_global() end
+            "#,
+        );
+
+        let model = ws.analysis.semantic_model(file_id);
+        let facts = model.file_facts().expect("file facts");
+        let decls: Vec<_> = facts
+            .decls
+            .iter()
+            .filter(|decl| decl.name == "duplicate_global")
+            .collect();
+        assert_eq!(decls.len(), 2, "both declarations must be indexed");
+        assert_eq!(
+            model.global_decl("duplicate_global"),
+            Some(decls[1].id.clone()),
+            "duplicate globals must keep last-declaration-wins"
+        );
+    }
+
+    #[test]
+    fn test_hidden_last_global_does_not_shadow_visible_declaration() {
+        let source = r#"
+            ---@return number
+            function duplicate_global() end
+
+            ---@version 5.1
+            ---@return string
+            function duplicate_global() end
+        "#;
+
+        let mut ws = ws_with_version(EmmyrcLuaVersion::Lua54);
+        let file_id = ws.def(source);
+        let model = ws.analysis.semantic_model(file_id);
+        let facts = model.file_facts().expect("file facts");
+        let decls: Vec<_> = facts
+            .decls
+            .iter()
+            .filter(|decl| decl.name == "duplicate_global")
+            .collect();
+        assert_eq!(decls.len(), 2, "both declarations must be indexed");
+        assert_eq!(
+            model.global_decl("duplicate_global"),
+            Some(decls[0].id.clone()),
+            "a version-hidden last declaration must not shadow an earlier visible one"
+        );
+
+        let mut ws = ws_with_version(EmmyrcLuaVersion::Lua51);
+        let file_id = ws.def(source);
+        let model = ws.analysis.semantic_model(file_id);
+        let facts = model.file_facts().expect("file facts");
+        let decls: Vec<_> = facts
+            .decls
+            .iter()
+            .filter(|decl| decl.name == "duplicate_global")
+            .collect();
+        assert_eq!(
+            model.global_decl("duplicate_global"),
+            Some(decls[1].id.clone()),
+            "the version-visible last declaration must win in its runtime"
+        );
+    }
 }

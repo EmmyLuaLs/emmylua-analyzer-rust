@@ -833,13 +833,17 @@ pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Optio
     None
 }
 
-/// Pick the first declaration whose `---@version` conditions match the
+/// Pick the newest declaration whose `---@version` conditions match the
 /// configured runtime. Version-hidden declarations must not be used as a
 /// fallback: otherwise names removed in a newer Lua release (for example
 /// `loadstring` in Lua 5.2+) keep resolving to their old signatures.
 fn first_version_visible_decl(db: &SemanticDatabase, decls: &[SemanticId]) -> Option<SemanticId> {
+    // Prefer the newest visible declaration: this keeps the historical
+    // "last declaration wins" behavior for duplicate non-versioned globals,
+    // while still skipping every `---@version`-hidden candidate.
     decls
         .iter()
+        .rev()
         .find(|decl| decl_version_visible(db, decl))
         .cloned()
 }
