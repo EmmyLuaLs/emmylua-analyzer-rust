@@ -512,6 +512,51 @@ mod test {
     }
 
     #[test]
+    fn test_version_global_is_plain_string() {
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "_VERSION"),
+                "string",
+                "_VERSION must not keep the Lua 5.5 literal in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_assert_removes_nil_and_false() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@type boolean
+            local bool_value
+            local asserted_bool = assert(bool_value)
+
+            ---@type string?
+            local string_value
+            local asserted_string = assert(string_value)
+            "#,
+        );
+
+        let bool_ty = decl_type(&ws, file_id, "asserted_bool");
+        assert_eq!(
+            ws.humanize_type(bool_ty),
+            "true",
+            "assert must remove false from a boolean result"
+        );
+
+        let string_ty = decl_type(&ws, file_id, "asserted_string");
+        assert_eq!(
+            ws.humanize_type(string_ty),
+            "string",
+            "assert must remove nil from a nullable result"
+        );
+    }
+
+    #[test]
     fn test_rawset_preserves_table_type() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(

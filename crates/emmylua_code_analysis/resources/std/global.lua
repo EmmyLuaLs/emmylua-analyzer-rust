@@ -516,6 +516,7 @@ function type(v) end
 ---
 --- A global variable (not a function) that holds a string containing the
 --- running Lua version. The current value of this variable is "`Lua 5.5`".
+--- @type string
 _VERSION = "Lua 5.5"
 
 ---

@@ -458,6 +458,7 @@ function type(v) end
 
 --- 一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
 --- 此变量的当前值是 "`Lua 5.4`"。
+--- @type string
 _VERSION = "Lua 5.5"
 
 ---

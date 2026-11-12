@@ -210,35 +210,35 @@ b:
   - ['type', 'd', doc, [506, 0, 511, 0], '495411a7e8486c06']
 - a: '_VERSION = "Lua 5.5"'
   g: 'A global variable (not a function) that holds a string containing the'
-  r: [515, 0, 517, 75]
+  r: [515, 0, 518, 16]
   e:
-  - ['_VERSION', 'd', doc, [515, 0, 517, 75], '734fa3ae1a8b3a86']
+  - ['_VERSION', 'd', doc, [515, 0, 518, 0], '7b8dacd71a947be4']
 - a: 'function xpcall(f, msgh, ...) end'
   g: '@version >5.2, JIT'
-  r: [532, 0, 541, 31]
+  r: [533, 0, 542, 31]
   e:
-  - ['xpcall@>5.2,JIT', 'd', doc, [533, 0, 536, 0], 'dc8a1c68d79dae75']
+  - ['xpcall@>5.2,JIT', 'd', doc, [534, 0, 537, 0], 'dc8a1c68d79dae75']
 - a: 'function warn(msg1, ...) end'
   g: '@version >5.4'
-  r: [553, 0, 562, 31]
+  r: [554, 0, 563, 31]
   e:
-  - ['warn', 'd', doc, [554, 0, 561, 0], '2e4312489bfc7d9c']
+  - ['warn', 'd', doc, [555, 0, 562, 0], '2e4312489bfc7d9c']
 - a: '_ENV = {}'
   g: 'This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.'
-  r: [568, 0, 571, 16]
+  r: [569, 0, 572, 16]
   e:
-  - ['_ENV', 'd', doc, [568, 0, 570, 0], '0e721e4ff07c6e6b']
+  - ['_ENV', 'd', doc, [569, 0, 571, 0], '0e721e4ff07c6e6b']
 - a: 'function setfenv(f, env) end'
   g: '@version 5.1, JIT'
-  r: [574, 0, 581, 20]
+  r: [575, 0, 582, 20]
   e:
-  - ['setfenv', 'd', doc, [575, 0, 579, 0], 'a3911a9349078616']
-  - ['setfenv.param.f', 'p:f', tail, [579, 34, 579, 86], '45534d1ea636fab4']
-  - ['setfenv.param.env', 'p:env', tail, [580, 34, 580, 82], '405f4286ea2c7329']
+  - ['setfenv', 'd', doc, [576, 0, 580, 0], 'a3911a9349078616']
+  - ['setfenv.param.f', 'p:f', tail, [580, 34, 580, 86], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [581, 34, 581, 82], '405f4286ea2c7329']
 - a: 'function getfenv(f) end'
   g: '@version 5.1, JIT'
-  r: [584, 0, 588, 75]
+  r: [585, 0, 589, 75]
   e:
-  - ['getfenv', 'd', doc, [585, 0, 587, 0], '7ec4ca6b1f97e9ee']
-  - ['getfenv.param.f', 'p:f', tail, [587, 33, 587, 83], '61d794dd7c91d37d']
-  - ['getfenv.return.1', 'r:1', tail, [588, 22, 588, 75], '41910412fe03bad4']
+  - ['getfenv', 'd', doc, [586, 0, 588, 0], '7ec4ca6b1f97e9ee']
+  - ['getfenv.param.f', 'p:f', tail, [588, 33, 588, 83], '61d794dd7c91d37d']
+  - ['getfenv.return.1', 'r:1', tail, [589, 22, 589, 75], '41910412fe03bad4']
