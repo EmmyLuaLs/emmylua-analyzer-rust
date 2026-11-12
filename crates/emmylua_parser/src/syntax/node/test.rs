@@ -219,6 +219,32 @@ mod tests {
     }
 
     #[test]
+    fn test_doc_in_is_not_a_type_operator() {
+        use crate::{LuaDocDescriptionOwner, LuaDocTagField, LuaDocType};
+        let field = get_ast_node::<LuaDocTagField>(
+            "---@field x integer in worldspace
+local t",
+        );
+        assert!(matches!(field.get_type(), Some(LuaDocType::Name(_))));
+        let description = field.get_description().unwrap().get_description_text();
+        assert_eq!(description.trim(), "in worldspace");
+
+        let tree = LuaParser::parse(
+            "---@alias M { [K in Keys]: integer }
+local t",
+            ParserConfig::default(),
+        );
+        assert!(tree.get_errors().is_empty());
+        let chunk = tree.get_chunk_node();
+        let mapped = chunk
+            .descendants::<crate::LuaDocMappedType>()
+            .next()
+            .unwrap();
+        assert!(mapped.get_key().is_some());
+        assert!(matches!(mapped.get_value_type(), Some(LuaDocType::Name(_))));
+    }
+
+    #[test]
     fn test_comment_description() {
         let code = r#"
             ---hello
