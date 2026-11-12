@@ -8,7 +8,7 @@ b:
   - ['assert', 'd', doc, [15, 0, 20, 0], 'a04606caad8dd4b1']
 - a: '--- @alias std.collectgarbage.param'
   g: '@alias std.collectgarbage_opt'
-  r: [26, 0, 36, 105]
+  r: [26, 0, 37, 80]
   e:
   - ['std.collectgarbage_opt.item.collect', 'i:collect', tail, [27, 23, 27, 93], '229e8488ba07e8ea', ' ']
   - ['std.collectgarbage_opt.item.stop', 'i:stop', tail, [28, 22, 28, 155], '96adf3b32ca6e135', ' ']
@@ -20,174 +20,225 @@ b:
   - ['std.collectgarbage_opt.item.incremental', 'i:incremental', tail, [34, 22, 34, 179], 'b74ab58b9c276d37', ' ']
   - ['std.collectgarbage_opt.item.generational', 'i:generational', tail, [35, 22, 35, 174], '6f28b79368adc435', ' ']
   - ['std.collectgarbage_opt.item.isrunning', 'i:isrunning', tail, [36, 22, 36, 105], 'ffcec93fe4c3260d', ' ']
-- a: '---'
+  - ['std.collectgarbage_opt.item.param', 'i:param', tail, [37, 22, 37, 80], 'abb94ec97f21a820', ' ']
+- a: '--- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"'
   g: '@alias std.collectgarbage.param'
-  r: [38, 0, 44, 30]
+  r: [39, 0, 45, 30]
   e:
-  - ['std.collectgarbage.param.item.minormul', 'i:minormul', tail, [39, 20, 39, 37], '17c912903d2b33e7', ' ']
-  - ['std.collectgarbage.param.item.majorminor', 'i:majorminor', tail, [40, 20, 40, 38], 'ca29b001e432351d', ' ']
-  - ['std.collectgarbage.param.item.minormajor', 'i:minormajor', tail, [41, 20, 41, 38], '45e16901f0e1c945', ' ']
-  - ['std.collectgarbage.param.item.pause', 'i:pause', tail, [42, 20, 42, 36], '035f4092820a2d28', ' ']
-  - ['std.collectgarbage.param.item.stepmul', 'i:stepmul', tail, [43, 20, 43, 36], 'f0701f65388feb8c', ' ']
-  - ['std.collectgarbage.param.item.stepsize', 'i:stepsize', tail, [44, 20, 44, 30], '92c7a59e2065582e', ' ']
+  - ['std.collectgarbage.param.item.minormul', 'i:minormul', tail, [40, 20, 40, 37], '17c912903d2b33e7', ' ']
+  - ['std.collectgarbage.param.item.majorminor', 'i:majorminor', tail, [41, 20, 41, 38], 'ca29b001e432351d', ' ']
+  - ['std.collectgarbage.param.item.minormajor', 'i:minormajor', tail, [42, 20, 42, 38], '45e16901f0e1c945', ' ']
+  - ['std.collectgarbage.param.item.pause', 'i:pause', tail, [43, 20, 43, 36], '035f4092820a2d28', ' ']
+  - ['std.collectgarbage.param.item.stepmul', 'i:stepmul', tail, [44, 20, 44, 36], 'f0701f65388feb8c', ' ']
+  - ['std.collectgarbage.param.item.stepsize', 'i:stepsize', tail, [45, 20, 45, 30], '92c7a59e2065582e', ' ']
 - a: 'function collectgarbage(opt, ...) end'
-  g: 'This function is a generic interface to the garbage collector. It performs'
-  r: [46, 0, 76, 15]
+  g: '@version 5.1'
+  r: [52, 0, 58, 15]
   e:
-  - ['collectgarbage', 'd', doc, [46, 0, 73, 0], 'd70cd5b9039fa128']
+  - ['collectgarbage@5.1', 'd', doc, [53, 0, 56, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.2, 5.3, JIT'
+  r: [61, 0, 67, 15]
+  e:
+  - ['collectgarbage@5.2,5.3,JIT', 'd', doc, [62, 0, 65, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.4'
+  r: [70, 0, 76, 15]
+  e:
+  - ['collectgarbage@5.4', 'd', doc, [71, 0, 74, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.5'
+  r: [79, 0, 86, 15]
+  e:
+  - ['collectgarbage@5.5', 'd', doc, [80, 0, 84, 0], '68b2fe64e8dca8f5']
+- a: 'function gcinfo() end'
+  g: '@version 5.1, JIT'
+  r: [89, 0, 94, 14]
+  e:
+  - ['gcinfo', 'd', doc, [90, 0, 93, 0], '47c45531f376c179']
 - a: 'function dofile(filename) end'
   g: 'Opens the named file and executes its contents as a Lua chunk. When called'
-  r: [79, 0, 86, 19]
+  r: [97, 0, 104, 19]
   e:
-  - ['dofile', 'd', doc, [79, 0, 85, 0], 'c825642b6b44c7c5']
+  - ['dofile', 'd', doc, [97, 0, 103, 0], 'c825642b6b44c7c5']
 - a: 'function error(message, level) end'
   g: 'Terminates the last protected function called and returns `message` as the'
-  r: [89, 0, 99, 26]
+  r: [107, 0, 117, 26]
   e:
-  - ['error', 'd', doc, [89, 0, 98, 0], '81879d09ef03c7c5']
+  - ['error', 'd', doc, [107, 0, 116, 0], '81879d09ef03c7c5']
 - a: '_G = {}'
   g: 'A global variable (not a function) that holds the global environment. Lua'
-  r: [102, 0, 106, 16]
+  r: [120, 0, 124, 16]
   e:
-  - ['_G', 'd', doc, [102, 0, 106, 0], 'bdd640b6033d9688']
+  - ['_G', 'd', doc, [120, 0, 124, 0], 'bdd640b6033d9688']
 - a: 'function getmetatable(object) end'
   g: 'If `object` does not have a metatable, returns **nil**. Otherwise, if the'
-  r: [109, 0, 114, 15]
+  r: [127, 0, 132, 15]
   e:
-  - ['getmetatable', 'd', doc, [109, 0, 113, 0], 'c0aa4bd98f53dd45']
+  - ['getmetatable', 'd', doc, [127, 0, 131, 0], 'c0aa4bd98f53dd45']
+- a: '---'
+  g: '@alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V'
+  r: [135, 0, 138, 74]
+  e:
+  - ['std.ipairs_iterator', 'd', doc, [136, 0, 138, 0], '2a1e60a56888ec95']
 - a: 'function ipairs(t) end'
   g: 'Returns three values (an iterator function, the table `t`, and 0) so that'
-  r: [117, 0, 125, 33]
+  r: [140, 0, 148, 110]
   e:
-  - ['ipairs', 'd', doc, [117, 0, 123, 0], 'f7e9dd303f83d75c']
-- a: '---'
+  - ['ipairs', 'd', doc, [140, 0, 146, 0], 'f7e9dd303f83d75c']
+- a: '--- @alias std.load_reader fun(): string?'
   g: '@alias std.loadmode'
-  r: [128, 0, 131, 33]
+  r: [151, 0, 154, 33]
   e:
-  - ['std.loadmode.item.b', 'i:b', tail, [129, 12, 129, 31], 'a7b23db765875ab4', ' ']
-  - ['std.loadmode.item.t', 'i:t', tail, [130, 12, 130, 29], '3f888b84d5ff9cb6', ' ']
-  - ['std.loadmode.item.bt', 'i:bt', tail, [131, 12, 131, 33], '6281255a2e74d843', ' ']
+  - ['std.loadmode.item.b', 'i:b', tail, [152, 12, 152, 31], 'a7b23db765875ab4', ' ']
+  - ['std.loadmode.item.t', 'i:t', tail, [153, 12, 153, 29], '3f888b84d5ff9cb6', ' ']
+  - ['std.loadmode.item.bt', 'i:bt', tail, [154, 12, 154, 33], '6281255a2e74d843', ' ']
+- a: 'function load(chunk, chunkname) end'
+  g: '@version 5.1'
+  r: [158, 0, 168, 14]
+  e:
+  - ['load@5.1', 'd', doc, [159, 0, 164, 0], '64f4c6bbc11a35e5']
 - a: 'function load(chunk, chunkname, mode, env) end'
-  g: 'Loads a chunk.'
-  r: [133, 0, 168, 14]
+  g: '@version >5.2, JIT'
+  r: [171, 0, 207, 14]
   e:
-  - ['load', 'd', doc, [133, 0, 162, 0], '9b1f3f8370f55492']
+  - ['load@>5.2,JIT', 'd', doc, [172, 0, 201, 0], '9b1f3f8370f55492']
+- a: 'function loadstring(text, chunkname) end'
+  g: '@version 5.1'
+  r: [210, 0, 217, 14]
+  e:
+  - ['loadstring@5.1', 'd', doc, [211, 0, 213, 0], 'f48d0ce581463e55']
 - a: 'function loadstring(text, chunkname, mode, env) end'
-  g: 'Loads a chunk from the given string.'
-  r: [171, 0, 181, 14]
+  g: '@version JIT'
+  r: [220, 0, 230, 14]
   e:
-  - ['loadstring', 'd', doc, [171, 0, 174, 0], '73e410346147cc94']
+  - ['loadstring@JIT', 'd', doc, [221, 0, 224, 0], '120f55ca4fe849ef']
+- a: 'function loadfile(filename) end'
+  g: '@version 5.1'
+  r: [233, 0, 240, 14]
+  e:
+  - ['loadfile@5.1', 'd', doc, [234, 0, 237, 0], 'f973f805658a8a32']
 - a: 'function loadfile(filename, mode, env) end'
-  g: 'Similar to `load`, but gets the chunk from file `filename` or from the'
-  r: [184, 0, 192, 14]
+  g: '@version >5.2, JIT'
+  r: [243, 0, 252, 14]
   e:
-  - ['loadfile', 'd', doc, [184, 0, 187, 0], 'f973f805658a8a32']
+  - ['loadfile@>5.2,JIT', 'd', doc, [244, 0, 247, 0], 'f973f805658a8a32']
 - a: 'function module(name, ...) end'
   g: '@version 5.1, JIT'
-  r: [200, 0, 206, 19]
+  r: [260, 0, 266, 19]
   e:
-  - ['module', 'd', doc, [201, 0, 205, 0], '96d94858b124b359']
+  - ['module', 'd', doc, [261, 0, 265, 0], '96d94858b124b359']
 - a: 'function next(table, index) end'
   g: 'Allows a program to traverse all fields of a table. Its first argument is'
-  r: [209, 0, 230, 18]
+  r: [269, 0, 290, 18]
   e:
-  - ['next', 'd', doc, [209, 0, 226, 0], '431cf1e327403b46']
+  - ['next', 'd', doc, [269, 0, 286, 0], '431cf1e327403b46']
 - a: 'function pairs(t) end'
   g: 'If `t` has a metamethod `__pairs`, calls it with `t` as argument and returns'
-  r: [233, 0, 246, 69]
+  r: [293, 0, 306, 70]
   e:
-  - ['pairs', 'd', doc, [233, 0, 244, 0], '1a7f95aa4362e930']
+  - ['pairs', 'd', doc, [293, 0, 304, 0], '1a7f95aa4362e930']
 - a: 'function pcall(f, ...) end'
   g: 'Calls function `f` with the given arguments in *protected mode*. This'
-  r: [249, 0, 260, 34]
+  r: [309, 0, 320, 34]
   e:
-  - ['pcall', 'd', doc, [249, 0, 256, 0], '1f340e7d3461d4ae']
+  - ['pcall', 'd', doc, [309, 0, 316, 0], '1f340e7d3461d4ae']
 - a: 'function print(...) end'
   g: 'Receives any number of arguments, and prints their values to `stdout`,'
-  r: [263, 0, 268, 35]
+  r: [323, 0, 328, 35]
   e:
-  - ['print', 'd', doc, [263, 0, 268, 35], '64fc74d7af730bec']
+  - ['print', 'd', doc, [323, 0, 328, 35], '64fc74d7af730bec']
 - a: 'function rawequal(v1, v2) end'
   g: 'Checks whether `v1` is equal to `v2`, without the `__eq` metamethod. Returns'
-  r: [271, 0, 276, 19]
+  r: [331, 0, 336, 19]
   e:
-  - ['rawequal', 'd', doc, [271, 0, 274, 0], '0cec4f0b3fdbc099']
+  - ['rawequal', 'd', doc, [331, 0, 334, 0], '0cec4f0b3fdbc099']
 - a: 'function rawget(table, index) end'
   g: 'Gets the real value of `table[index]`, the `__index` metamethod. `table`'
-  r: [279, 0, 285, 28]
+  r: [339, 0, 345, 28]
   e:
-  - ['rawget', 'd', doc, [279, 0, 282, 0], '44a4244f6dfbe0ee']
+  - ['rawget', 'd', doc, [339, 0, 342, 0], '44a4244f6dfbe0ee']
 - a: 'function rawlen(v) end'
   g: '@version >5.2'
-  r: [288, 0, 293, 19]
+  r: [348, 0, 353, 19]
   e:
-  - ['rawlen', 'd', doc, [289, 0, 292, 0], '07f69e94e4daa054']
+  - ['rawlen', 'd', doc, [349, 0, 352, 0], '07f69e94e4daa054']
 - a: 'function rawset(table, index, value) end'
   g: 'Sets the real value of `table[index]` to `value`, without invoking the'
-  r: [296, 0, 303, 17]
+  r: [356, 0, 364, 13]
   e:
-  - ['rawset', 'd', doc, [296, 0, 300, 0], '16e809b0963bd346']
+  - ['rawset', 'd', doc, [356, 0, 360, 0], '16e809b0963bd346']
 - a: 'function require(modname) end'
   g: 'Loads the given module. The function starts by looking into the'
-  r: [306, 0, 337, 15]
+  r: [367, 0, 398, 15]
   e:
-  - ['require', 'd', doc, [306, 0, 336, 0], 'f661cf52fac913b3']
+  - ['require', 'd', doc, [367, 0, 397, 0], 'f661cf52fac913b3']
 - a: 'function select(index, ...) end'
   g: 'If `index` is a number, returns all arguments after argument number'
-  r: [340, 0, 348, 33]
+  r: [401, 0, 409, 33]
   e:
-  - ['select', 'd', doc, [340, 0, 345, 0], '721ecd0e987e2ba7']
+  - ['select', 'd', doc, [401, 0, 406, 0], '721ecd0e987e2ba7']
+- a: '-- NOTE: The actual implementation of setmetatable is provided by the language server'
+  g: '`__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3'
+  r: [412, 0, 445, 43]
+  e:
+  - ['std.metatable', 'd', doc, [412, 0, 415, 0], '9088c9c0e368e051']
 - a: 'function setmetatable(table, metatable) end'
   g: 'Sets the metatable for the given table. (To change the metatable of other'
-  r: [383, 0, 393, 13]
+  r: [449, 0, 459, 13]
   e:
-  - ['setmetatable', 'd', doc, [383, 0, 390, 0], '25474b66521bebe3']
+  - ['setmetatable', 'd', doc, [449, 0, 456, 0], '25474b66521bebe3']
 - a: 'function tonumber(e) end'
   g: 'When called with no `base`, `tonumber` tries to convert its argument to a'
-  r: [396, 0, 414, 14]
+  r: [462, 0, 480, 14]
   e:
-  - ['tonumber', 'd', doc, [396, 0, 411, 0], '5d06a5a2b00378b0']
+  - ['tonumber', 'd', doc, [462, 0, 477, 0], '5d06a5a2b00378b0']
 - a: 'function tostring(v) end'
   g: 'Receives a value of any type and converts it to a string in a human-readable'
-  r: [417, 0, 426, 18]
+  r: [483, 0, 492, 18]
   e:
-  - ['tostring', 'd', doc, [417, 0, 425, 0], 'eb7a0cd064f9b7a3']
+  - ['tostring', 'd', doc, [483, 0, 491, 0], 'eb7a0cd064f9b7a3']
+- a: '---'
+  g: '@alias std.type'
+  r: [495, 0, 504, 27]
+  e:
+  - ['std.type.item.cdata', 'i:cdata', tail, [504, 15, 504, 27], '9540448154e052f0', ' ']
 - a: 'function type(v) end'
   g: 'Returns the type of its only argument, coded as a string. The possible'
-  r: [439, 0, 445, 25]
+  r: [506, 0, 512, 25]
   e:
-  - ['type', 'd', doc, [439, 0, 444, 0], '495411a7e8486c06']
+  - ['type', 'd', doc, [506, 0, 511, 0], '495411a7e8486c06']
 - a: '_VERSION = "Lua 5.5"'
   g: 'A global variable (not a function) that holds a string containing the'
-  r: [448, 0, 450, 75]
+  r: [515, 0, 517, 75]
   e:
-  - ['_VERSION', 'd', doc, [448, 0, 450, 75], '734fa3ae1a8b3a86']
+  - ['_VERSION', 'd', doc, [515, 0, 517, 75], '734fa3ae1a8b3a86']
 - a: 'function xpcall(f, msgh, ...) end'
-  g: 'This function is similar to `pcall`, except that it sets a new message'
-  r: [453, 0, 460, 25]
+  g: '@version >5.2, JIT'
+  r: [532, 0, 541, 31]
   e:
-  - ['xpcall', 'd', doc, [453, 0, 456, 0], 'dc8a1c68d79dae75']
+  - ['xpcall@>5.2,JIT', 'd', doc, [533, 0, 536, 0], 'dc8a1c68d79dae75']
 - a: 'function warn(msg1, ...) end'
   g: '@version >5.4'
-  r: [472, 0, 481, 31]
+  r: [553, 0, 562, 31]
   e:
-  - ['warn', 'd', doc, [473, 0, 480, 0], '2e4312489bfc7d9c']
+  - ['warn', 'd', doc, [554, 0, 561, 0], '2e4312489bfc7d9c']
 - a: '_ENV = {}'
   g: 'This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.'
-  r: [487, 0, 490, 16]
+  r: [568, 0, 571, 16]
   e:
-  - ['_ENV', 'd', doc, [487, 0, 489, 0], '0e721e4ff07c6e6b']
+  - ['_ENV', 'd', doc, [568, 0, 570, 0], '0e721e4ff07c6e6b']
 - a: 'function setfenv(f, env) end'
   g: '@version 5.1, JIT'
-  r: [493, 0, 497, 82]
+  r: [574, 0, 581, 20]
   e:
-  - ['setfenv', 'd', doc, [494, 0, 496, 0], 'd6216fe88e8cd676']
-  - ['setfenv.param.f', 'p:f', tail, [496, 34, 496, 86], '45534d1ea636fab4']
-  - ['setfenv.param.env', 'p:env', tail, [497, 34, 497, 82], '405f4286ea2c7329']
+  - ['setfenv', 'd', doc, [575, 0, 579, 0], 'a3911a9349078616']
+  - ['setfenv.param.f', 'p:f', tail, [579, 34, 579, 86], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [580, 34, 580, 82], '405f4286ea2c7329']
 - a: 'function getfenv(f) end'
   g: '@version 5.1, JIT'
-  r: [500, 0, 504, 75]
+  r: [584, 0, 588, 75]
   e:
-  - ['getfenv', 'd', doc, [501, 0, 503, 0], '7ec4ca6b1f97e9ee']
-  - ['getfenv.param.f', 'p:f', tail, [503, 32, 503, 82], '61d794dd7c91d37d']
-  - ['getfenv.return.1', 'r:1', tail, [504, 22, 504, 75], '41910412fe03bad4']
+  - ['getfenv', 'd', doc, [585, 0, 587, 0], '7ec4ca6b1f97e9ee']
+  - ['getfenv.param.f', 'p:f', tail, [587, 33, 587, 83], '61d794dd7c91d37d']
+  - ['getfenv.return.1', 'r:1', tail, [588, 22, 588, 75], '41910412fe03bad4']

@@ -36,6 +36,9 @@ std.collectgarbage_opt.item.generational: |
 std.collectgarbage_opt.item.isrunning: |
   返回一个布尔值，指示收集器是否正在运行（即未停止）。
 
+# changes and/or retrieves a collector parameter (Lua 5.5).
+std.collectgarbage_opt.item.param: ""
+
 # minor multiplier
 std.collectgarbage.param.item.minormul: ""
 
@@ -54,36 +57,26 @@ std.collectgarbage.param.item.stepmul: ""
 # step size
 std.collectgarbage.param.item.stepsize: ""
 
-collectgarbage: |
-  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+# This function is a generic interface to the garbage collector. It performs
+#  different functions according to its first argument, `opt`.
+collectgarbage@5.1: ""
 
-  ### opt
+# This function is a generic interface to the garbage collector. It performs
+#  different functions according to its first argument, `opt`.
+collectgarbage@5.2,5.3,JIT: ""
 
-  - **"collect"**: 执行完整的垃圾回收。这是默认选项。
+# This function is a generic interface to the garbage collector. It performs
+#  different functions according to its first argument, `opt`.
+collectgarbage@5.4: ""
 
-  - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
-  直到调用 restart。
+# This function is a generic interface to the garbage collector. It performs
+#  different functions according to its first argument, `opt`.
+#  See `std.collectgarbage_opt` for the complete list of options.
+collectgarbage@5.5: ""
 
-  - **"restart"**: 重启垃圾收集器的自动执行。
-
-  - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
-  乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
-
-  - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。
-  如果值为 0，收集器将执行一个基础（不可分割）步进。
-  对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。
-  如果步进完成了一个回收周期，则返回 **true**。
-
-  - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
-  返回 *pause* 的前一个值。
-
-  - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
-  垃圾收集器暂停、步进倍率和步进大小。
-
-  - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
-  垃圾收集器次要倍率和主要倍率。
-
-  - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+# Returns the number of kilobytes of memory in use by Lua.
+#  Equivalent to `collectgarbage("count")`.
+gcinfo: ""
 
 dofile: |
   打开指定的文件并将其内容作为 Lua 代码块执行。不带参数调用时，
@@ -106,6 +99,10 @@ getmetatable: |
   如果 `object` 没有元表，则返回 **nil**。否则，如果对象的元表
   具有 `"__metatable"` 字段，则返回关联的值。否则，返回给定对象的元表。
 
+# `index` is the previous key for the default `next` iterator; custom
+# `__pairs` implementations may use an arbitrary state value.
+std.ipairs_iterator: ""
+
 ipairs: |
   返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
   > `for i,v in ipairs(t) do` *body* `end`
@@ -120,36 +117,56 @@ std.loadmode.item.t: |
 std.loadmode.item.bt: |
   二进制和文本块
 
-load: |
-  加载一个代码块。
-  如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
-  `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
-  一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
+# Loads a chunk using function `chunk` to get its pieces. Each call to
+#  `chunk` must return a string that concatenates with previous results. A
+#  return of an empty string, **nil**, or no value signals the end of the
+#  chunk.
+load@5.1: ""
 
-  如果没有语法错误，则将编译后的代码块作为函数返回；
-  否则，返回 **nil** 加上错误消息。
+# Loads a chunk.
+#  If `chunk` is a string, the chunk is this string. If `chunk` is a function,
+#  `load` calls it repeatedly to get the chunk pieces. Each call to `chunk`
+#  must return a string that concatenates with previous results. A return of
+#  an empty string, **nil**, or no value signals the end of the chunk.
+# 
+#  If there are no syntactic errors, returns the compiled chunk as a function;
+#  otherwise, returns **nil** plus the error message.
+# 
+#  If the resulting function has upvalues, the first upvalue is set to the
+#  value of `env`, if that parameter is given, or to the value of the global
+#  environment. Other upvalues are initialized with **nil**. (When you load a
+#  main chunk, the resulting function will always have exactly one upvalue, the
+#  _ENV variable. However, when you load a binary chunk created from a
+#  function (see string.dump), the resulting function can have an arbitrary
+#  number of upvalues.) All upvalues are fresh, that is, they are not shared
+#  with any other function.
+# 
+#  `chunkname` is used as the name of the chunk for error messages and debug
+#  information. When absent, it defaults to `chunk`, if `chunk` is a string,
+#  or to "=(`load`)" otherwise.
+# 
+#  The string `mode` controls whether the chunk can be text or binary (that is,
+#  a precompiled chunk). It may be the string "b" (only binary chunks), "t"
+#  (only text chunks), or "bt" (both binary and text). The default is "bt".
+# 
+#  Lua does not check the consistency of binary chunks. Maliciously crafted
+#  binary chunks can crash the interpreter.
+load@>5.2,JIT: ""
 
-  如果生成的函数有上值，则第一个上值设置为 `env` 的值（如果给定了该参数），
-  或者设置为全局环境的值。其他上值初始化为 **nil**。（当你加载主代码块时，
-  生成的函数将始终只有一个上值，即 _ENV 变量。但是，当你加载从函数创建的
-  二进制代码块时（参见 string.dump），生成的函数可以有任意数量的上值。）
-  所有上值都是新的，即它们不与任何其他函数共享。
+# Loads a chunk from the given string.
+loadstring@5.1: ""
 
-  `chunkname` 用作错误消息和调试信息的代码块名称。如果省略，
-  由于 `chunk` 是字符串，默认为 `chunk`，否则默认为 "=(load)"。
+# Loads a chunk from the given string. In LuaJIT `loadstring` is an alias
+#  for `load` and also accepts `mode` and `env`.
+loadstring@JIT: ""
 
-  字符串 `mode` 控制代码块是文本还是二进制（即预编译代码块）。
-  它可以是字符串 "b"（仅二进制代码块）、"t"（仅文本代码块）
-  或 "bt"（二进制和文本）。默认为 "bt"。
+# Similar to `load`, but gets the chunk from file `filename` or from the
+#  standard input, if no file name is given.
+loadfile@5.1: ""
 
-  Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
-
-loadstring: |
-  从给定字符串加载代码块。
-
-loadfile: |
-  类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
-  则从标准输入获取。
+# Similar to `load`, but gets the chunk from file `filename` or from the
+#  standard input, if no file name is given.
+loadfile@>5.2,JIT: ""
 
 module: |
   创建一个模块。
@@ -235,6 +252,11 @@ select: |
   负数从末尾开始索引（-1 是最后一个参数）。
   否则，`index` 必须是字符串 "#"，`select` 返回接收到的额外参数的总数。
 
+# `__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3
+# (LuaJIT only with 5.2 compatibility). `@field` declarations do not support
+# per-field `@version` filtering, so these are documented here instead.
+std.metatable: ""
+
 setmetatable: |
   为给定表设置元表。（要从 Lua 代码更改其他类型的元表，必须使用调试库。）
   如果 `metatable` 为 **nil**，则移除给定表的元表。如果原始元表
@@ -262,6 +284,9 @@ tostring: |
   如果 `v` 的元表具有 `__tostring` 字段，则 `tostring` 使用 `v`
   作为参数调用相应的值，并将调用的结果作为其结果。
 
+# LuaJIT only
+std.type.item.cdata: ""
+
 type: |
   返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
   （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
@@ -271,8 +296,9 @@ _VERSION: |
   一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
   此变量的当前值是 "`Lua 5.4`"。
 
-xpcall: |
-  此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+# This function is similar to `pcall`, except that it sets a new message
+#  handler `msgh`.
+xpcall@>5.2,JIT: ""
 
 warn: |
   发出一条警告，其消息由其所有参数（应为字符串）拼接而成。
