@@ -35,6 +35,7 @@ function assert(v, ...) end
 --- | "incremental"  # Change the collector mode to incremental. This option can be followed by three numbers: the garbage-collector pause, the step multiplier, and the step size.
 --- | "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
 --- | "isrunning"    # returns a boolean that tells whether the collector is running (i.e., not stopped).
+--- | "param"        # changes and/or retrieves a collector parameter (Lua 5.5).
 
 --- @alias std.collectgarbage.param
 --- | "minormul"   # minor multiplier
@@ -48,10 +49,6 @@ function assert(v, ...) end
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
 --- See `std.collectgarbage_opt` for the complete list of options.
---- @overload fun(opt: "count"): number
---- @overload fun(opt: "step", arg?: integer): boolean
---- @overload fun(opt: "isrunning"): boolean
---- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
 --- @param opt? std.collectgarbage_opt
 --- @param ...  any
 --- @return any
@@ -103,6 +100,9 @@ _G = {}
 --- @return any
 function getmetatable(object) end
 
+--- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
+--- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
+
 ---
 --- Returns three values (an iterator function, the table `t`, and 0) so that
 --- the construction
@@ -110,14 +110,16 @@ function getmetatable(object) end
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
 --- @generic V
---- @param t V[] | table<int, V> | { [int]: V }
---- @return fun(tbl: any): int, V
+--- @param t V[] | table<integer, V> | { [integer]: V }
+--- @return (fun(tbl: V[] | table<integer, V>, index?: integer): integer, V), V[] | table<integer, V>, integer
 function ipairs(t) end
 
 --- @alias std.loadmode
 --- | "b"  # only binary chunks
 --- | "t"  # only text chunks
 --- | "bt" # both binary and text
+
+--- @alias std.load_reader fun(...: any): string?
 
 ---
 --- Loads a chunk.
@@ -148,7 +150,7 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
---- @param chunk      (fun(...: any): string) | Language<"Lua">
+--- @param chunk      Language<"Lua"> | std.load_reader
 --- @param chunkname? string
 --- @param mode?      std.loadmode
 --- @param env?       table
@@ -182,7 +184,7 @@ function loadstring(text, chunkname, mode, env) end
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT
---- @param proxy? boolean | table | userdata
+--- @param proxy? boolean | userdata
 --- @return userdata
 function newproxy(proxy) end
 
@@ -230,9 +232,9 @@ function next(table, index) end
 ---
 --- See function `next` for the caveats of modifying the table during its
 --- traversal.
---- @generic K, V, I
+--- @generic K, V
 --- @param t table<K, V> | V[] | { [K]: V }
---- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
+--- @return (fun(tbl: table<K, V>, index?: K): K, V), table<K, V>, nil
 function pairs(t) end
 
 ---
@@ -286,10 +288,11 @@ function rawlen(v) end
 --- Sets the real value of `table[index]` to `value`, without invoking the
 --- `__newindex` metamethod. `table` must be a table, `index` any value
 --- different from **nil** and NaN, and `value` any Lua value.
---- @param table table
+--- @generic T: table
+--- @param table T
 --- @param index any
 --- @param value any
---- @return table
+--- @return T
 function rawset(table, index, value) end
 
 ---
@@ -340,6 +343,7 @@ function select(index, ...) end
 --- @class std.metatable
 --- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
+--- @field __name?      string
 --- @field __tostring?  (fun(t): string)
 --- @field __gc?        fun(t)
 --- @field __add?       fun(t1, t2): any
@@ -364,7 +368,8 @@ function select(index, ...) end
 --- @field __index?     table | fun(t, k): any
 --- @field __newindex?  table | fun(t, k, v)
 --- @field __call?      fun(t, ...): any...
---- @field __pairs?     fun(t): ((fun(t, k, v): any, any), any, any)
+--- @field __pairs?     fun(t: any): std.pairs_iterator<any, any>, any, any
+--- @field __ipairs?    fun(t: any): std.ipairs_iterator<any>, any, any
 --- @field __close?     fun(t, errobj): any
 
 -- NOTE: The actual implementation of setmetatable is provided by the language server
@@ -476,7 +481,7 @@ arg = {}
 
 --- This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.
 --- For now, let's treat it as a global variable.
---- @version >5.3
+--- @version >5.2
 --- @type global
 _ENV = {}
 
@@ -485,6 +490,7 @@ _ENV = {}
 --- Sets the environment for the specified function.
 --- @param f   function | integer The function for which the environment is to be set.
 --- @param env table              The environment table to assign to the function.
+--- @return function
 function setfenv(f, env) end
 
 --- @version 5.1, JIT

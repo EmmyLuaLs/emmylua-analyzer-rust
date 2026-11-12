@@ -3,14 +3,23 @@ mod test {
     use lsp_types::NumberOrString;
     use tokio_util::sync::CancellationToken;
 
-    use crate::{Emmyrc, EmmyrcLuaVersion, VirtualWorkspace};
+    use crate::{Emmyrc, EmmyrcLuaVersion, FileId, LuaType, VirtualWorkspace};
+
+    fn decl_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
+        let model = ws.analysis.semantic_model(file_id);
+        let facts = model.file_facts().expect("file facts");
+        let decl = facts
+            .decl_named(name)
+            .unwrap_or_else(|| panic!("declaration {name} must exist"));
+        model
+            .type_of_decl(&decl.id)
+            .unwrap_or_else(|| panic!("type of {name} must exist"))
+    }
 
     fn diagnostic_codes_for(version: EmmyrcLuaVersion, source: &str) -> Vec<String> {
-        let mut ws = VirtualWorkspace::new();
         let mut config = Emmyrc::default();
         config.runtime.version = version;
-        ws.update_emmyrc(config);
-        ws.analysis.init_std_lib(None);
+        let mut ws = VirtualWorkspace::new_with_config(config);
 
         let file_id = ws.def(source);
         ws.analysis
@@ -26,11 +35,9 @@ mod test {
 
     /// Humanized type of `expr` under the given runtime version.
     fn expr_type_for(version: EmmyrcLuaVersion, expr: &str) -> String {
-        let mut ws = VirtualWorkspace::new();
         let mut config = Emmyrc::default();
         config.runtime.version = version;
-        ws.update_emmyrc(config);
-        ws.analysis.init_std_lib(None);
+        let mut ws = VirtualWorkspace::new_with_config(config);
 
         let ty = ws.expr_ty(expr);
         ws.humanize_type(ty)
@@ -336,5 +343,66 @@ mod test {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_newproxy_rejects_non_proxy_argument() {
+        let diagnostics =
+            diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, "newproxy(function() end)");
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "newproxy must reject a function: {diagnostics:?}"
+        );
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, "newproxy(true)");
+        assert!(
+            diagnostics.is_empty(),
+            "newproxy(true) must be accepted: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_load_reader_may_return_nil() {
+        let diagnostics =
+            diagnostic_codes_for(EmmyrcLuaVersion::Lua54, "load(function() return nil end)");
+        assert!(
+            diagnostics.is_empty(),
+            "a load reader may signal the end with nil: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_collectgarbage_param_value_is_optional() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua55,
+            r#"collectgarbage("param", "pause")"#,
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "collectgarbage param value must be optional: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_rawset_preserves_table_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@class RawSetTarget
+            local RawSetTarget = {}
+
+            ---@type RawSetTarget
+            local target
+
+            local result = rawset(target, "x", 1)
+            "#,
+        );
+
+        let result_ty = decl_type(&ws, file_id, "result");
+        assert_eq!(
+            ws.humanize_type(result_ty),
+            "RawSetTarget",
+            "rawset must preserve the table argument type"
+        );
     }
 }
