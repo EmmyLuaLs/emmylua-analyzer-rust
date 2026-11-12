@@ -57,6 +57,10 @@ impl VirtualWorkspace {
     /// Build a workspace with the given configuration applied before the
     /// standard library is initialized, so `---@version` filtering and JIT
     /// resource selection see the requested runtime version.
+    ///
+    /// The std lib must also be initialized before `add_main_workspace`:
+    /// adding the main workspace first makes a later `init_std_lib` populate a
+    /// database that already has a default-version std cache.
     pub fn new_with_config(emmyrc: Emmyrc) -> Self {
         let generator = VirtualUrlGenerator::new();
         let mut analysis = EmmyLuaAnalysis::new();

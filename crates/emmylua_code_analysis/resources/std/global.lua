@@ -134,6 +134,8 @@ _G = {}
 function getmetatable(object) end
 
 --- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
+--- `index` is the previous key for the default `next` iterator; custom
+--- `__pairs` implementations may use an arbitrary state value.
 --- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
 
 ---
@@ -152,7 +154,7 @@ function ipairs(t) end
 --- | "t"  # only text chunks
 --- | "bt" # both binary and text
 
---- @alias std.load_reader fun(...: any): string?
+--- @alias std.load_reader fun(): string?
 
 --- @version 5.1
 ---
@@ -408,6 +410,9 @@ function require(modname) end
 --- @return std.Select<T..., Num>
 function select(index, ...) end
 
+--- `__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3
+--- (LuaJIT only with 5.2 compatibility). `@field` declarations do not support
+--- per-field `@version` filtering, so these are documented here instead.
 --- @class std.metatable
 --- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
@@ -570,6 +575,8 @@ _ENV = {}
 --- @version 5.1, JIT
 ---
 --- Sets the environment for the specified function.
+--- When `f` is 0, `setfenv` changes the environment of the running thread and
+--- returns no values.
 --- @param f   function | integer The function for which the environment is to be set.
 --- @param env table              The environment table to assign to the function.
 --- @return function
