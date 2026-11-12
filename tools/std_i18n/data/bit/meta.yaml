@@ -1,3 +1,68 @@
 v: 2
 f: 'bit.lua'
 b:
+- a: 'bit = {}'
+  g: 'LuaJIT''s built-in 32-bit bitwise operations.'
+  r: [4, 0, 10, 17]
+  e:
+  - ['bitlib', 'd', doc, [4, 0, 10, 0], '1f37c6b503396202']
+- a: 'function bit.tobit(x) end'
+  g: 'Normalizes `x` to the numeric range used by the other functions.'
+  r: [13, 0, 16, 14]
+  e:
+  - ['bitlib.tobit', 'd', doc, [13, 0, 14, 0], '2f4b7a39e47d0e2c']
+- a: 'function bit.tohex(x, n) end'
+  g: 'Converts `x` to a hexadecimal string.'
+  r: [19, 0, 27, 14]
+  e:
+  - ['bitlib.tohex', 'd', doc, [19, 0, 24, 0], 'cda2b7f53494652f']
+- a: 'function bit.bnot(x) end'
+  g: 'Returns the bitwise NOT of `x`.'
+  r: [30, 0, 33, 14]
+  e:
+  - ['bitlib.bnot', 'd', doc, [30, 0, 31, 0], '3a0c5d0c0e1e7269']
+- a: 'function bit.bor(x, ...) end'
+  g: 'Returns the bitwise OR of all arguments.'
+  r: [36, 0, 40, 14]
+  e:
+  - ['bitlib.bor', 'd', doc, [36, 0, 37, 0], '3ce58663bcc753b0']
+- a: 'function bit.band(x, ...) end'
+  g: 'Returns the bitwise AND of all arguments.'
+  r: [43, 0, 47, 14]
+  e:
+  - ['bitlib.band', 'd', doc, [43, 0, 44, 0], '07175c3257b2ce8e']
+- a: 'function bit.bxor(x, ...) end'
+  g: 'Returns the bitwise XOR of all arguments.'
+  r: [50, 0, 54, 14]
+  e:
+  - ['bitlib.bxor', 'd', doc, [50, 0, 51, 0], 'bfd38bf4448f5562']
+- a: 'function bit.lshift(x, n) end'
+  g: 'Returns the logical left shift of `x` by `n` bits.'
+  r: [57, 0, 63, 14]
+  e:
+  - ['bitlib.lshift', 'd', doc, [57, 0, 60, 0], 'bee72161574ce926']
+- a: 'function bit.rshift(x, n) end'
+  g: 'Returns the logical right shift of `x` by `n` bits.'
+  r: [66, 0, 72, 14]
+  e:
+  - ['bitlib.rshift', 'd', doc, [66, 0, 69, 0], 'a230795cce39ee16']
+- a: 'function bit.arshift(x, n) end'
+  g: 'Returns the arithmetic right shift of `x` by `n` bits.'
+  r: [75, 0, 81, 14]
+  e:
+  - ['bitlib.arshift', 'd', doc, [75, 0, 78, 0], '3bb6641eb42de261']
+- a: 'function bit.rol(x, n) end'
+  g: 'Returns `x` rotated left by `n` bits.'
+  r: [84, 0, 90, 14]
+  e:
+  - ['bitlib.rol', 'd', doc, [84, 0, 87, 0], '9024e56dae1f22c9']
+- a: 'function bit.ror(x, n) end'
+  g: 'Returns `x` rotated right by `n` bits.'
+  r: [93, 0, 99, 14]
+  e:
+  - ['bitlib.ror', 'd', doc, [93, 0, 96, 0], '90a170d0e63360ac']
+- a: 'function bit.bswap(x) end'
+  g: 'Swaps the bytes of `x` (little-endian to big-endian or vice versa).'
+  r: [102, 0, 105, 14]
+  e:
+  - ['bitlib.bswap', 'd', doc, [102, 0, 103, 0], '7dc891680320ca62']

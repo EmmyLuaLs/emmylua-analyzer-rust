@@ -211,6 +211,73 @@ mod test {
     }
 
     #[test]
+    fn test_bit_variadic_functions_accept_one_argument() {
+        for source in [
+            "local _ = bit.band(1)",
+            "local _ = bit.bor(1)",
+            "local _ = bit.bxor(1)",
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "{source} must accept a single argument: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bit_accepts_number_operands() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local _ = bit.tobit(2^40 + 1234)
+            local _2 = bit.tohex(2^8)
+            local _3 = bit.band(2^8, 0xff)
+            "#,
+        );
+        assert!(
+            !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "number operands must be accepted: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_bit_return_types() {
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tobit(1)"),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tohex(1)"),
+            "string"
+        );
+    }
+
+    #[test]
+    fn test_bit_is_only_available_in_jit() {
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert!(
+                diagnostic_codes_for(version, "local _ = bit")
+                    .iter()
+                    .any(|code| code == "undefined-global"),
+                "bit must be undefined in {version:?}"
+            );
+        }
+        assert!(
+            !diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, "local _ = bit")
+                .iter()
+                .any(|code| code == "undefined-global"),
+            "bit must be defined in LuaJIT"
+        );
+    }
+
+    #[test]
     fn test_table_maxn_visibility_and_return_type_by_version() {
         // `table.maxn` exists in 5.1 and 5.2 (LUA_COMPAT_MAXN) and in LuaJIT,
         // and was removed in 5.3. It scans every numeric key, so a fractional
