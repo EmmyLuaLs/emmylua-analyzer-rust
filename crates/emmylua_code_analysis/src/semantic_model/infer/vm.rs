@@ -5053,6 +5053,23 @@ fn remove_false_from_type(ty: LuaType) -> LuaType {
                 _ => LuaType::Union(Rc::new(LuaUnionType::from_vec(types))),
             }
         }
+        // Mirror `remove_nil_from_type`: for `assert(f())` the first value of a
+        // multi-return is the one whose falsy result aborts the call.
+        LuaType::Variadic(variadic) => match variadic.as_ref() {
+            VariadicType::Multi(types) => {
+                let mut new_types = types.clone();
+                if let Some(first) = new_types.first_mut() {
+                    *first = remove_false_from_type(first.clone());
+                }
+                LuaType::Variadic(Rc::new(VariadicType::Multi(new_types)))
+            }
+            VariadicType::Base(base) => LuaType::Variadic(Rc::new(VariadicType::Base(
+                remove_false_from_type(base.clone()),
+            ))),
+            VariadicType::Repeat(base) => LuaType::Variadic(Rc::new(VariadicType::Repeat(
+                remove_false_from_type(base.clone()),
+            ))),
+        },
         _ => ty,
     }
 }

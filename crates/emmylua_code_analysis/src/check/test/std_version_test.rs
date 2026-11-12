@@ -570,6 +570,12 @@ mod test {
             ---@type string?
             local string_value
             local asserted_string = assert(string_value)
+
+            ---@return false | string
+            local function maybe_string()
+                return "value"
+            end
+            local asserted_union = assert(maybe_string())
             "#,
         );
 
@@ -585,6 +591,13 @@ mod test {
             ws.humanize_type(string_ty),
             "string",
             "assert must remove nil from a nullable result"
+        );
+
+        let union_ty = decl_type(&ws, file_id, "asserted_union");
+        assert_eq!(
+            ws.humanize_type(union_ty),
+            "string",
+            "assert must remove false from a union result"
         );
     }
 
