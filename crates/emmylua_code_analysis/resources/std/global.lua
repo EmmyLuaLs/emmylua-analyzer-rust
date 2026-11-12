@@ -45,11 +45,44 @@ function assert(v, ...) end
 --- | "stepmul"    # step multiplier
 --- | "stepsize"   # step size
 
+--- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"
+--- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning"
+--- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_52 | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_55 std.collectgarbage_opt_54 | "param"
+
+--- @version 5.1
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @param opt? std.collectgarbage_opt_51
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.2, 5.3, JIT
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @param opt? std.collectgarbage_opt_52
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.4
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @param opt? std.collectgarbage_opt_54
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.5
 ---
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`.
 --- See `std.collectgarbage_opt` for the complete list of options.
---- @param opt? std.collectgarbage_opt
+--- @param opt? std.collectgarbage_opt_55
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
@@ -121,6 +154,20 @@ function ipairs(t) end
 
 --- @alias std.load_reader fun(...: any): string?
 
+--- @version 5.1
+---
+--- Loads a chunk using function `chunk` to get its pieces. Each call to
+--- `chunk` must return a string that concatenates with previous results. A
+--- return of an empty string, **nil**, or no value signals the end of the
+--- chunk.
+--- @param chunk fun(): string?
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function load(chunk, chunkname) end
+
+--- @version >5.2, JIT
 ---
 --- Loads a chunk.
 --- If `chunk` is a string, the chunk is this string. If `chunk` is a function,
@@ -159,10 +206,20 @@ function ipairs(t) end
 --- @nodiscard
 function load(chunk, chunkname, mode, env) end
 
+--- @version 5.1
 ---
 --- Loads a chunk from the given string.
+--- @param text       Language<"Lua">
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadstring(text, chunkname) end
+
+--- @version JIT
 ---
---- @version 5.1, JIT
+--- Loads a chunk from the given string. In LuaJIT `loadstring` is an alias
+--- for `load` and also accepts `mode` and `env`.
 --- @param text       Language<"Lua">
 --- @param chunkname? string
 --- @param mode?      std.loadmode
@@ -172,6 +229,17 @@ function load(chunk, chunkname, mode, env) end
 --- @nodiscard
 function loadstring(text, chunkname, mode, env) end
 
+--- @version 5.1
+---
+--- Similar to `load`, but gets the chunk from file `filename` or from the
+--- standard input, if no file name is given.
+--- @param filename? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadfile(filename) end
+
+--- @version >5.2, JIT
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
@@ -446,13 +514,27 @@ function type(v) end
 _VERSION = "Lua 5.5"
 
 ---
+--- @version 5.1
+---
+--- This function is similar to `pcall`, except that it sets a new message
+--- handler `msgh`.
+--- @generic T, R
+--- @param f    sync fun(...: T...): R...
+--- @param msgh fun(err: any): any
+--- @return_overload true, R...
+--- @return_overload false, any
+function xpcall(f, msgh) end
+
+--- @version >5.2, JIT
+---
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
 --- @generic T, R
 --- @param f    sync fun(...: T...): R...
 --- @param msgh fun(err: any): any
 --- @param ...  T...
---- @return boolean, R...
+--- @return_overload true, R...
+--- @return_overload false, any
 function xpcall(f, msgh, ...) end
 
 --- @version 5.1, JIT

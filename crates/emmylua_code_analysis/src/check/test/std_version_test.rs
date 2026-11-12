@@ -384,6 +384,111 @@ mod test {
     }
 
     #[test]
+    fn test_collectgarbage_options_respect_version() {
+        let incremental = r#"collectgarbage("incremental")"#;
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, incremental);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "incremental must be hidden in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::Lua55] {
+            let diagnostics = diagnostic_codes_for(version, incremental);
+            assert!(
+                diagnostics.is_empty(),
+                "incremental must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let isrunning = r#"collectgarbage("isrunning")"#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, isrunning);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "isrunning must be hidden in Lua 5.1: {diagnostics:?}"
+        );
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, isrunning);
+            assert!(
+                diagnostics.is_empty(),
+                "isrunning must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let param = r#"collectgarbage("param", "pause")"#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, param);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "param must be hidden in Lua 5.4: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_load_string_visibility_by_version() {
+        let source = r#"load("return 1")"#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, source);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "Lua 5.1 load must reject a string chunk: {diagnostics:?}"
+        );
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.is_empty(),
+                "load must accept a string chunk in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_loadstring_and_loadfile_version_signatures() {
+        let loadstring = r#"loadstring("return 1", "chunk", "t", {})"#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, loadstring);
+        assert!(
+            diagnostics.iter().any(|code| code == "redundant-parameter"),
+            "Lua 5.1 loadstring must not accept mode/env: {diagnostics:?}"
+        );
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, loadstring);
+        assert!(
+            diagnostics.is_empty(),
+            "LuaJIT loadstring must accept mode/env: {diagnostics:?}"
+        );
+
+        let loadfile = r#"loadfile("x.lua", "t", {})"#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, loadfile);
+        assert!(
+            diagnostics.iter().any(|code| code == "redundant-parameter"),
+            "Lua 5.1 loadfile must not accept mode/env: {diagnostics:?}"
+        );
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, loadfile);
+        assert!(
+            diagnostics.is_empty(),
+            "Lua 5.4 loadfile must accept mode/env: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_xpcall_extra_arguments_by_version() {
+        let source = "xpcall(function() end, tostring, 1)";
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, source);
+        assert!(
+            diagnostics.iter().any(|code| code == "redundant-parameter"),
+            "Lua 5.1 xpcall must not accept extra arguments: {diagnostics:?}"
+        );
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.is_empty(),
+                "xpcall must accept extra arguments in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_rawset_preserves_table_type() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(
