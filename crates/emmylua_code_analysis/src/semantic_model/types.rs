@@ -814,7 +814,7 @@ impl<'db> SemanticModel<'db> {
                 let tree = self.syntax_tree_of(member_file)?;
                 let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
                 let expr = LuaExpr::cast(node)?;
-                let eval = if self.is_initializer_table_field(member, &member_def) {
+                let eval = if self.is_initializer_table_field(&member_def) {
                     flow::type_of_expr_with_cast(
                         self,
                         expr.get_syntax_id(),
@@ -848,55 +848,10 @@ impl<'db> SemanticModel<'db> {
         };
         Some(ty)
     }
-    /// Whether this is a table-literal field in a declaration initializer.
-    /// Such members keep the literal shape from table construction; explicit `t.x = v` is not an initializer field.
-    /// Evaluate a member's value expression with the same-member reentry guard.
-    /// Member resolution can recursively need this expression's type; without sharing the
-    /// SemanticModel cycle guard, `member_info -> type_of_expr -> new InferVm -> member_info`
-    /// can restart and eventually overflow the native stack.
-    pub(crate) fn is_initializer_table_field(
-        &self,
-        _member: &SemanticId,
-        member_def: &Member,
-    ) -> bool {
-        let Some(value_syntax) = member_def.value_syntax else {
-            return false;
-        };
-        let value_range = value_syntax.get_range();
-        match &member_def.owner {
-            SemanticId::Decl(decl_key) => {
-                let Some(facts) = self.file_facts_of(decl_key.file_id) else {
-                    return false;
-                };
-                let Some(decl) = facts.decl_by_id(&SemanticId::Decl(decl_key.clone())) else {
-                    return false;
-                };
-                let Some(init_syntax) = decl.value_expr_syntax else {
-                    return false;
-                };
-                let Some(tree) = self.syntax_tree_of(decl_key.file_id) else {
-                    return false;
-                };
-                let Some(node) = init_syntax.to_node_from_root(&tree.get_red_root()) else {
-                    return false;
-                };
-                LuaTableExpr::cast(node)
-                    .is_some_and(|table| table.get_range().contains(value_range.start()))
-            }
-            SemanticId::Member(table_key) => {
-                let Some(tree) = self.syntax_tree_of(table_key.file_id) else {
-                    return false;
-                };
-                let root = tree.get_red_root();
-                root.descendants()
-                    .filter_map(LuaTableExpr::cast)
-                    .any(|table| {
-                        table.get_range() == table_key.key_range
-                            && table.get_range().contains(value_range.start())
-                    })
-            }
-            _ => false,
-        }
+    /// 表构造字段的来源由 facts 记录, 无需查找表节点或声明初始化表达式.
+    pub(crate) fn is_initializer_table_field(&self, member_def: &Member) -> bool {
+        member_def.value_syntax.is_some()
+            && matches!(member_def.source, MemberSource::TableField { .. })
     }
     /// If the member belongs to an `---@enum` table and its value is an integer literal, return the corresponding IntegerConst.
     pub(crate) fn enum_member_const(
@@ -1039,7 +994,7 @@ impl<'db> SemanticModel<'db> {
             && let Some(resolved) = self.resolve_member(index_expr)
         {
             let prefix_ty = self.type_of_expr(prefix.get_syntax_id());
-            let key = LuaMemberKey::Name(resolved.name.clone());
+            let key = resolved.key.clone();
             let candidate_set = match &resolved.member_id {
                 Some(member_id) => {
                     infer::callable::CallableCandidateSet::from_prefix_type_for_member(

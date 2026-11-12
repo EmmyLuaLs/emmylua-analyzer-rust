@@ -1,5 +1,5 @@
 use crate::semantic_model::type_check::TypeCheckFailReason;
-use crate::{IndexInfo, MemberList, OperatorDef};
+use crate::{IndexInfo, OperatorDef};
 
 use super::prelude::*;
 
@@ -15,33 +15,6 @@ fn needs_rich_doc_type(ty: &LuaType) -> bool {
 }
 
 impl<'db> SemanticModel<'db> {
-    /// Members whose owner is a `SemanticId` (cross-file).
-    pub fn members_of_owner(&self, owner: &SemanticId) -> MemberList {
-        if let Some(cached) = self.cache.borrow().members_of_owner.get(owner) {
-            return cached.clone();
-        }
-        let result = self.analysis().members_of_owner(owner.clone());
-        self.cache
-            .borrow_mut()
-            .members_of_owner
-            .insert(owner.clone(), result.clone());
-        result
-    }
-    /// Members of an owner with a specific name.
-    pub fn members_of_owner_named(&self, owner: &SemanticId, name: &str) -> MemberList {
-        let key = (owner.clone(), SmolStr::new(name));
-        if let Some(cached) = self.cache.borrow().members_of_owner_named.get(&key) {
-            return cached.clone();
-        }
-        let result = self
-            .analysis()
-            .members_of_owner_named(owner.clone(), SmolStr::new(name));
-        self.cache
-            .borrow_mut()
-            .members_of_owner_named
-            .insert(key, result.clone());
-        result
-    }
     /// Constructor attributes for a type definition (`---@[constructor("init")]` from the `meta("Class")` factory).
     pub fn constructor_attribute_of_type(
         &self,
@@ -138,9 +111,6 @@ impl<'db> SemanticModel<'db> {
     }
     // -- Type / member association --
 
-    pub fn member_keys_of_owner(&self, owner: &SemanticId) -> Vec<SmolStr> {
-        self.analysis().member_keys_of_owner(owner.clone())
-    }
     pub fn resolve_owner(&self, owner: &SemanticId) -> Option<SemanticId> {
         self.analysis().resolve_owner(owner.clone())
     }

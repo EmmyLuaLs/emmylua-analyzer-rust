@@ -6,7 +6,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
+use emmylua_parser::{LuaChunk, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
@@ -19,8 +19,8 @@ use crate::{
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, OwnerId,
-    Scope, SemanticId, Signature, TypeDef, TypeScope,
+    AccessPath, ConstructorAttribute, Decl, DocGenericParam, LuaMemberKey, Member, MemberRef,
+    MemberUse, ModuleExport, NameUse, OwnerId, Scope, SemanticId, Signature, TypeDef, TypeScope,
 };
 use super::exports::FileExports;
 use super::facts::FileFacts;
@@ -347,19 +347,12 @@ impl<'db> AnalysisView<'db> {
         Some(member_type(self.db, file_id, self.db.config()?, member))
     }
 
-    /// Index expression (by syntax position) → `(owner, name)` member reference (for deprecated etc. checks).
-    pub fn member_ref_of_index(
-        &self,
-        file_id: FileId,
-        index_syntax: LuaSyntaxId,
-    ) -> Option<(SemanticId, SmolStr)> {
-        let facts = self.db.file_facts_of(file_id)?;
-        let tree = self.db.syntax_tree_of(file_id)?;
-        let expr = query::find_expr_by_syntax_id(tree, &index_syntax)?;
-        let LuaExpr::IndexExpr(index_expr) = expr else {
-            return None;
-        };
-        query::member_ref_from_index_expr(facts, &index_expr)
+    pub fn member_use(&self, file_id: FileId, index_syntax: LuaSyntaxId) -> Option<&'db MemberUse> {
+        self.db.file_facts_of(file_id)?.member_use(index_syntax)
+    }
+
+    pub fn members_of_receiver_key(&self, receiver: &AccessPath, key: &LuaMemberKey) -> MemberList {
+        MemberList::from(query::members_of_receiver_key(self.db, receiver, key))
     }
 
     /// Direct member names of a local declaration (completion candidates).

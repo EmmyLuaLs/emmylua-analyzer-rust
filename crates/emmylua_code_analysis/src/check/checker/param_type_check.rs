@@ -14,7 +14,7 @@ use emmylua_parser::{
 use crate::semantic_model::infer::callable::CallableCandidateSet;
 use crate::semantic_model::infer::function_solver::functions_compatible;
 use crate::semantic_model::infer::unify;
-use crate::semantic_model::infer::vm::unify_call_bindings;
+use crate::semantic_model::infer::vm::{InferVm, unify_call_bindings};
 use crate::semantic_model::render::humanize_type;
 use crate::semantic_model::table_constructor::table_expr;
 use crate::semantic_model::type_check::{check_type_at, is_compatible};
@@ -170,7 +170,7 @@ fn index_expr_callable_candidates(
 
     if let Some(prefix) = index_expr.get_prefix_expr() {
         let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
-        let key = LuaMemberKey::Name(resolved.name.clone());
+        let key = resolved.key.clone();
         let candidates = match &resolved.member_id {
             Some(member_id) => CallableCandidateSet::from_prefix_type_for_member(
                 semantic_model,
@@ -182,13 +182,14 @@ fn index_expr_callable_candidates(
         };
         let mut candidates = candidates.into_candidates();
         // A partial class can have both `@field` overloads and runtime methods on its local owner.
-        for member in semantic_model
-            .members_of_owner_named(&resolved.owner, &resolved.name)
-            .iter()
-        {
+        let runtime_members = resolved
+            .receiver
+            .as_ref()
+            .map(|receiver| semantic_model.members_of_receiver_key(receiver, &key))
+            .unwrap_or_default();
+        for member in runtime_members.iter() {
             if let Some(functions) =
-                crate::semantic_model::infer::vm::InferVm::new(semantic_model, &[])
-                    .callable_candidates_for_owner_single(&member.id)
+                InferVm::new(semantic_model, &[]).callable_candidates_for_owner_single(&member.id)
             {
                 candidates.extend(functions);
             }

@@ -6,6 +6,7 @@ use emmylua_parser::{
 };
 
 use crate::DiagnosticCode;
+use crate::semantic_db::def::MemberSource;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::member::class_fields;
 use crate::semantic_model::table_constructor::table_expr;
@@ -386,37 +387,30 @@ fn check_self_member_assign(
     if name_expr.get_text() != "self" {
         return None;
     }
-    let key = index_expr
-        .get_index_key()
-        .map(|key| key.get_path_part())
-        .unwrap_or_default();
     let closure = index_expr.ancestors::<LuaClosureExpr>().next()?;
     let facts = semantic_model.file_facts()?;
-    let methods: Vec<_> = facts
-        .members
-        .iter()
-        .filter(|member| member.value_syntax == Some(closure.get_syntax_id()))
-        .collect();
-    let method = methods.into_iter().find(|member| member.is_method)?;
+    let usage = facts.member_use(index_expr.get_syntax_id())?;
+    let receiver = usage.receiver.as_ref()?;
+    let method = facts
+        .member_by_value_syntax(closure.get_syntax_id())
+        .filter(|member| member.is_method)?;
     let owner_ty = semantic_model
         .type_of_decl(&method.owner)
         .unwrap_or(LuaType::Unknown);
     // The owner's VM type may be Unknown: directly take the declaration type of the same-named runtime member on the owner.
     let target = facts
-        .members
-        .iter()
-        .find(|member| {
-            member.owner == method.owner
-                && member.key.name() == Some(key.as_str())
-                && member.value_syntax != Some(value_expr.get_syntax_id())
-        })
+        .members_of_receiver_key(receiver, &usage.key)
+        .chain(facts.members_of_owner(&method.owner).filter(|member| {
+            usage.has_direct_owner()
+                && member.key == usage.key
+                && !matches!(member.source, MemberSource::Runtime { .. })
+        }))
+        .find(|member| member.value_syntax != Some(value_expr.get_syntax_id()))
         .map(|member| {
             semantic_model
                 .type_of_member_assign_target_at(&member.id, index_expr.get_range().start())
         })
-        .or_else(|| {
-            semantic_model.member_type(&owner_ty, &LuaMemberKey::Name(key.clone().into()))
-        })?;
+        .or_else(|| semantic_model.member_type(&owner_ty, &usage.key))?;
     check_value_against(context, semantic_model, &target, value_expr);
     Some(())
 }

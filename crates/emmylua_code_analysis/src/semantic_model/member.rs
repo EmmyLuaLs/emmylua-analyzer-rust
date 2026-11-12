@@ -1031,7 +1031,7 @@ pub(super) fn projected_member_type(
         if member_ref.file_id == model.file_id() {
             let expr_ty = model.type_of_expr(value_syntax);
             // Table literal closure fields need a callable real signature; class methods keep the original wide Function projection.
-            if model.is_initializer_table_field(&member_ref.id, &member)
+            if model.is_initializer_table_field(&member)
                 && let Some(fun) = model.type_of_signature_in_file(member_ref.file_id, value_syntax)
             {
                 typ = LuaType::DocFunction(Rc::new(fun));
