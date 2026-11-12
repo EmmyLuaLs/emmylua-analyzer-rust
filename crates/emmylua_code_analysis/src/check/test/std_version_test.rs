@@ -226,6 +226,21 @@ mod test {
     }
 
     #[test]
+    fn test_bit_variadic_functions_require_first_argument() {
+        for source in [
+            "local _ = bit.band()",
+            "local _ = bit.bor()",
+            "local _ = bit.bxor()",
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "missing-parameter"),
+                "{source} must require the first argument: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_bit_accepts_number_operands() {
         let diagnostics = diagnostic_codes_for(
             EmmyrcLuaVersion::LuaJIT,
@@ -250,6 +265,14 @@ mod test {
         assert_eq!(
             expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tohex(1)"),
             "string"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tobit(2^40 + 1234)"),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.band(1, 2)"),
+            "integer"
         );
     }
 
