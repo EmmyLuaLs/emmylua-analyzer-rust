@@ -18,6 +18,7 @@ pub fn check_simple_type_compact(
 ) -> TypeCheckResult {
     match source {
         LuaType::Unknown | LuaType::Any => return Ok(()),
+        LuaType::Global if matches!(compact_type, LuaType::Table) => return Ok(()),
         LuaType::Table | LuaType::TableConst(_) => {
             if let (LuaType::TableConst(table), LuaType::Array(array)) = (source, compact_type) {
                 return check_table_entries(context, table, &LuaType::Integer, array.get_base());

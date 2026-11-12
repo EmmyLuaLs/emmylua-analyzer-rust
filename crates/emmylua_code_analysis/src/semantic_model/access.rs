@@ -713,7 +713,8 @@ impl<'db> SemanticModel<'db> {
                 {
                     ty = param_ty;
                 }
-                return self.attach_param_decl_constraint(&decl, ty);
+                let ty = self.attach_param_decl_constraint(&decl, ty);
+                return self.generic_constraint_at(&ty, expr).unwrap_or(ty);
             }
         }
         self.type_of_expr(expr.get_syntax_id())

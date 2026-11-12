@@ -2,6 +2,7 @@ use super::prelude::*;
 use crate::LuaTypeIdentifier;
 use crate::semantic_db::TypeDefList;
 use crate::semantic_model::type_eval::substitute_named_refs;
+use emmylua_parser::{LuaForStat, LuaTableExpr};
 
 impl<'db> SemanticModel<'db> {
     pub(crate) fn type_evaluation_errors(&self) -> Vec<Option<LuaTypeDeclId>> {
@@ -155,9 +156,10 @@ impl<'db> SemanticModel<'db> {
             {
                 return Some(ty);
             }
-            // `for k, v in pairs(x)`: iteration variables are inferred from the iterator's return slots.
+            // Loop variables of both `for i = a, b, step` and `for k, v in pairs(x)` have no initializer expression,
+            // so their types come from the loop header.
             if matches!(decl.kind, DeclKind::Local { is_iter: true, .. })
-                && let Some(ty) = self.infer_for_range_var(decl)
+                && let Some(ty) = self.infer_for_loop_var(decl)
                 && !matches!(ty, LuaType::Unknown)
             {
                 return Some(ty);
@@ -262,6 +264,10 @@ impl<'db> SemanticModel<'db> {
                 && let Some(facts) = self.file_facts()
                 && let Some((signature, param_index)) =
                     facts.signature_and_param_index_of_decl(decl)
+                && !signature
+                    .docs
+                    .as_ref()
+                    .is_some_and(|docs| docs.param_types.iter().any(|(name, _)| name == &decl.name))
             {
                 let closure_syntax = signature.closure_syntax;
                 let ty = infer::closure_param_lua(self, closure_syntax, param_index);
@@ -327,6 +333,35 @@ impl<'db> SemanticModel<'db> {
         }
         self.analysis().decl_type_lua(self.file_id(), decl.clone())
     }
+    /// 表达式所在词法作用域内的泛型约束, 同名声明由内向外遮蔽.
+    pub(crate) fn generic_constraint_at(&self, ty: &LuaType, expr: &LuaExpr) -> Option<LuaType> {
+        let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
+            return None;
+        };
+        if self.type_def_of(id).is_some() {
+            return None;
+        }
+        let facts = self.file_facts()?;
+        for closure in expr.ancestors::<LuaClosureExpr>() {
+            let Some(docs) = facts
+                .signature_by_closure(closure.get_syntax_id())
+                .and_then(|signature| signature.docs.as_ref())
+            else {
+                continue;
+            };
+            let Some(param) = docs
+                .generic_params
+                .iter()
+                .find(|param| param.name.as_str() == id.get_name())
+            else {
+                continue;
+            };
+            let constraint = self.doc_type_lua(param.constraint?);
+            return (!matches!(constraint, LuaType::Unknown)).then_some(constraint);
+        }
+        None
+    }
+
     /// Parameter declarations may lose generic constraints in `type_of_decl`'s fallback path; re-attach them here.
     pub(crate) fn attach_param_decl_constraint(&self, decl: &SemanticId, ty: LuaType) -> LuaType {
         let Some(facts) = self.file_facts() else {
@@ -432,12 +467,28 @@ impl<'db> SemanticModel<'db> {
             _ => Some(LuaType::from_vec(types)),
         }
     }
-    /// Iteration variable types for `for k, v in pairs(x)`:
-    /// taken from the return function slots of the iteration expression's callee (pairs/ipairs/next or custom `__pairs` members).
-    pub(crate) fn infer_for_range_var(&self, decl: &Decl) -> Option<LuaType> {
+    /// Loop variable type of a `for` statement:
+    /// numeric loops derive it from the initial value and step (integer only when both are integers),
+    /// while `for k, v in pairs(x)` takes it from the iterator's return slots.
+    pub(crate) fn infer_for_loop_var(&self, decl: &Decl) -> Option<LuaType> {
         let owner = decl.owner_syntax?;
         let tree = self.syntax_tree()?;
         let node = owner.to_node_from_root(&tree.get_red_root())?;
+        if let Some(stat) = LuaForStat::cast(node.clone()) {
+            let mut bounds = stat.get_iter_expr();
+            let initial = bounds.next()?;
+            let initial_ty = self.type_of_expr_at(initial.get_syntax_id(), initial.get_position());
+            // The limit does not affect whether the loop stays integral, only the initial value and step do.
+            let step_ty = bounds
+                .nth(1)
+                .map(|step| self.type_of_expr_at(step.get_syntax_id(), step.get_position()))
+                .unwrap_or(LuaType::Integer);
+            return Some(if initial_ty.is_integer() && step_ty.is_integer() {
+                LuaType::Integer
+            } else {
+                LuaType::Number
+            });
+        }
         let stat = LuaForRangeStat::cast(node)?;
         let vars = stat.get_var_name_list().collect::<Vec<_>>();
         let index = vars
@@ -799,6 +850,13 @@ impl<'db> SemanticModel<'db> {
         if let Some(enum_const) = self.enum_member_const(member_file, member) {
             return Some(enum_const);
         }
+        if let Some(syntax) = self.file_facts_of(member_file).and_then(|facts| {
+            facts
+                .member_by_id(member)
+                .and_then(|def| def.doc_type_syntax)
+        }) {
+            return Some(self.doc_type_lua_rich_in(member_file, syntax));
+        }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
         // Cycles/reentry are handled by `CacheEntry::InProgress` in the shared cache.
@@ -853,6 +911,14 @@ impl<'db> SemanticModel<'db> {
         member_def.value_syntax.is_some()
             && matches!(member_def.source, MemberSource::TableField { .. })
     }
+    /// 枚举声明绑定的运行时表.
+    pub(crate) fn enum_table_owner(&self, def: &TypeDef) -> Option<SemanticId> {
+        let tree = self.syntax_tree_of(def.file_id)?;
+        let owner = def.owner_syntax?.to_node_from_root(&tree.get_red_root())?;
+        let table = owner.children().find_map(LuaTableExpr::cast)?;
+        Some(SemanticId::member(def.file_id, table.get_range()))
+    }
+
     /// If the member belongs to an `---@enum` table and its value is an integer literal, return the corresponding IntegerConst.
     pub(crate) fn enum_member_const(
         &self,

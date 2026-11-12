@@ -884,7 +884,7 @@ impl<'a> InferVm<'a> {
                     }) else {
                         return Value::plain(LuaType::Unknown);
                     };
-                    let Some(enum_owner) = enum_runtime_owner(self.model, &def) else {
+                    let Some(enum_owner) = self.model.enum_table_owner(&def) else {
                         return Value::plain(LuaType::Unknown);
                     };
                     let mut types = Vec::new();
@@ -969,7 +969,16 @@ impl<'a> InferVm<'a> {
     /// signature's value type without adding nil.
     fn index_member_dynamic_string(&mut self, owner: Value) -> Value {
         if !matches!(&owner.ty, LuaType::TableConst(_)) {
-            return Value::plain(LuaType::Unknown);
+            let ty = self
+                .model
+                .applicable_index_infos(&owner.ty, &LuaType::String)
+                .ok()
+                .filter(|infos| !infos.is_empty())
+                .map(|infos| {
+                    LuaType::from_vec(infos.into_iter().map(|info| info.value_type).collect())
+                })
+                .unwrap_or(LuaType::Unknown);
+            return Value::plain(ty);
         }
         let infos = self.model.member_infos(&owner.ty);
         let mut named_types = Vec::new();
@@ -2999,7 +3008,7 @@ impl<'a> InferVm<'a> {
                         String::new()
                     }
                 });
-            let ty = match param.get_type() {
+            let mut ty = match param.get_type() {
                 Some(doc_ty) => self.doc_type_lua_with_generics(
                     file_id,
                     doc_ty.get_syntax_id(),
@@ -3007,6 +3016,9 @@ impl<'a> InferVm<'a> {
                 ),
                 None => LuaType::Unknown,
             };
+            if param.is_nullable() && !ty.is_nullable() {
+                ty = LuaType::from_vec(vec![ty, LuaType::Nil]);
+            }
             params.push((name, Some(ty)));
         }
 
@@ -4113,9 +4125,7 @@ pub(crate) fn unify_call_bindings(
                 }
             } else {
                 let pv = param_union.into_vec();
-                // A generic union like `` `T`|T `` allows T to be bound through any generic
-                // component; ordinary unions still require all non-nil components to be
-                // compatible (caller may pass any member).
+                // 泛型联合优先绑定模板分支, 普通联合按兼容的具体成员匹配.
                 if matches!(arg, Function | DocFunction(_) | Signature(_)) {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
@@ -4131,12 +4141,16 @@ pub(crate) fn unify_call_bindings(
                 } else if pv.iter().any(|p| matches!(p, TplRef(_))) {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
-                } else if pv.contains(&Nil) {
-                    pv.iter()
-                        .filter(|t| !matches!(t, Nil))
-                        .all(|p| unify_call_bindings(model, p, arg, bindings))
                 } else {
-                    false
+                    pv.iter().any(|p| {
+                        let mut trial = bindings.clone();
+                        if unify_call_bindings(model, p, arg, &mut trial) {
+                            *bindings = trial;
+                            true
+                        } else {
+                            false
+                        }
+                    })
                 }
             }
         }
@@ -4959,16 +4973,6 @@ fn is_enum_like_dynamic_key(model: &SemanticModel, ty: &LuaType) -> bool {
         return false;
     };
     matches!(def.kind, TypeDefKind::Enum)
-}
-
-/// `---@enum T` usually decorates a runtime table (`local Op = {...}`); use
-/// `def.owner_syntax` to find the corresponding declaration, on which enum members hang.
-fn enum_runtime_owner(model: &SemanticModel, def: &TypeDef) -> Option<SemanticId> {
-    let facts = model.file_facts_of(def.file_id)?;
-    let decl = facts.decl_by_owner_syntax(def.owner_syntax?)?;
-    // A global enum table `Op = { ... }`'s fields hang on the synthetic table identity.
-    let value_syntax = decl.value_expr_syntax?;
-    Some(SemanticId::member(def.file_id, value_syntax.get_range()))
 }
 
 /// Unary operation (including operator overloads unm/len).

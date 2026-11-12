@@ -1,9 +1,195 @@
 #[cfg(test)]
 mod test {
+    use emmylua_parser::{LuaAstNode, LuaIndexExpr};
     use lsp_types::NumberOrString;
     use tokio_util::sync::CancellationToken;
 
+    use crate::check::test::{check_source, count_by_code};
     use crate::{DiagnosticCode, VirtualWorkspace};
+
+    // 判空后的命名 cast 可以重新加入 nil, 成员投影不得再次使用旧 guard 将其移除.
+    #[test]
+    fn test_member_cast_restores_nil_after_guard() {
+        for assignment in ["", "self.values = values"] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Holder
+                ---@field values? table
+                local M = {{}}
+                ---@param values? table
+                function M:read(values)
+                    {assignment}
+                    if not self.values then return end
+                    ---@cast self.values +?
+                    return self.values[1]
+                end
+                return M
+                "#,
+            ));
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+                1,
+                "{assignment}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 泛型字段最近写入的 nil 不能被接收者的声明类型覆盖.
+    #[test]
+    fn test_generic_member_write_preserves_nil() {
+        let diagnostics = check_source(
+            r#"
+            ---@class Holder<T>
+            ---@field value T
+            local M = {}
+            ---@param obj Holder<table>
+            local function read(obj)
+                ---@cast obj.value +?
+                obj.value = nil
+                return obj.value[1]
+            end
+            return M, read
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 可选别名参与逻辑表达式时, 非空默认表应消除结果中的 nil.
+    #[test]
+    fn test_logical_alias_table_fallback_is_non_nil() {
+        for (fallback, expected) in [("{}", 0), ("{ name = 'fallback' }", 0), ("nil", 1)] {
+            let source = format!(
+                r#"
+                ---@param message table
+                local function read(message)
+                    local chat = type(message.chat) == 'table' and message.chat or nil
+                    local sender = chat and chat.sender or {fallback}
+                    return sender.name
+                end
+                return read
+                "#,
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+                expected,
+                "{fallback}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 当前方法的字段赋值应覆盖其他方法中的初始化, 同时保留当前方法的 nil 写入.
+    #[test]
+    fn test_member_assignment_uses_current_method_flow() {
+        for (value, expected) in [("state", 0), ("nil", 1)] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class State
+                ---@field start fun(self: State)
+
+                ---@class Holder
+                ---@field state State
+                local M = {{}}
+
+                function M:init()
+                    self.state = nil
+                end
+
+                ---@param state State
+                function M:setup(state)
+                    self.state = {value}
+                    self.state:start()
+                end
+                return M
+                "#,
+            ));
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+                expected,
+                "{value}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 显式排除 nil 的行内 cast 应保护后续的成员访问.
+    #[test]
+    fn test_inline_cast_on_nullable_member_prefix() {
+        let diagnostics = check_source(
+            r#"
+            ---@class Value
+            ---@field read fun(self: Value, value: integer): integer
+
+            ---@class Holder
+            ---@field member? Value
+            local Holder = {}
+
+            function Holder:read()
+                ---@diagnostic disable-next-line: undefined-field
+                if not self.handle then
+                    return
+                end
+                local value = self.member--[[@cast -?]]:read(1)
+                self.member:read(2)
+                return value
+            end
+            return Holder
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 带类型标注的模块字典成员在动态索引时应保留值类型.
+    #[test]
+    fn test_annotated_member_dynamic_index() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let expected = ws.ty("table<string, { value: integer }>");
+        let file_id = ws.def(
+            r#"
+            local M = {}
+            ---@type table<string, { value: integer }>
+            M.trees = {}
+
+            ---@param name string
+            function M.remove(name)
+                if M.trees[name] then
+                    return M.trees[name].value
+                end
+            end
+            return M
+            "#,
+        );
+        let model = ws.analysis.semantic_model(file_id);
+        let index = model
+            .chunk()
+            .expect("chunk")
+            .descendants::<LuaIndexExpr>()
+            .find(|index| index.syntax().text() == "M.trees")
+            .expect("dictionary member");
+        let member = model
+            .resolve_member(&index)
+            .and_then(|resolved| resolved.member_id)
+            .expect("member declaration");
+        assert_eq!(model.type_of_member(&member), Some(expected));
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .expect("diagnostics");
+        assert!(
+            diagnostics.iter().all(|diagnostic| diagnostic.code
+                != Some(NumberOrString::String(
+                    DiagnosticCode::NeedCheckNil.get_name().to_string()
+                ))),
+            "{diagnostics:#?}"
+        );
+    }
 
     fn check_class_array_guard(element_type: &str, body: &str, expected_codes: &[DiagnosticCode]) {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();

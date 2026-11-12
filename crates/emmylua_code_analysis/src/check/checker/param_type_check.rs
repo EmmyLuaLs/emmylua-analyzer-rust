@@ -854,7 +854,7 @@ fn check_arg_pairs(
         let leaf_compat = (!matches!(call_arg_ty, LuaType::Function)
             || matches!(param_ty, LuaType::Any))
             && param_generic_base_match(semantic_model, &call_arg_ty, &param_ty);
-        if leaf_compat || enum_name_compatible(semantic_model, &call_arg_ty, &param_ty) {
+        if leaf_compat {
             continue;
         }
         out.push(Mismatch {
@@ -932,8 +932,9 @@ fn call_argument_type(
     arg: &LuaExpr,
     arg_ty: &LuaType,
 ) -> LuaType {
-    let constrained =
-        generic_constraint_type(semantic_model, arg_ty).unwrap_or_else(|| arg_ty.clone());
+    let constrained = semantic_model
+        .generic_constraint_at(arg_ty, arg)
+        .unwrap_or_else(|| arg_ty.clone());
     if let LuaExpr::ClosureExpr(closure) = arg {
         if let Some(func) = semantic_model.type_of_signature(closure.get_syntax_id()) {
             return LuaType::DocFunction(Rc::new(func));
@@ -964,33 +965,6 @@ fn call_argument_type(
         }
     }
     constrained
-}
-
-/// `Ref("T")` with a signature declaring `---@generic T: Animal` -> project to the constraint Animal.
-fn generic_constraint_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaType> {
-    let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
-        return None;
-    };
-    if semantic_model.type_def_of(id).is_some() {
-        return None;
-    }
-    let name = id.get_name();
-    let signatures = semantic_model.signatures()?;
-    for signature in signatures {
-        let docs = signature.docs.as_ref()?;
-        if let Some(param) = docs
-            .generic_params
-            .iter()
-            .find(|param| param.name.as_str() == name)
-            && let Some(constraint) = param.constraint
-        {
-            let constraint_ty = semantic_model.doc_type_lua(constraint);
-            if !matches!(constraint_ty, LuaType::Unknown) {
-                return Some(constraint_ty);
-            }
-        }
-    }
-    None
 }
 
 /// Callback parameters vs function arguments: use the explicit work-queue function solver for structural/contravariant checks.
@@ -1053,47 +1027,6 @@ fn doc_function_of(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<L
         }
         _ => None,
     }
-}
-
-/// Preserve the argument checker's acceptance of enum member-name strings.
-fn enum_name_compatible(
-    semantic_model: &SemanticModel<'_>,
-    arg_ty: &LuaType,
-    param_ty: &LuaType,
-) -> bool {
-    let (LuaType::StringConst(name) | LuaType::DocStringConst(name)) = arg_ty else {
-        return false;
-    };
-    let mut pending = vec![param_ty.clone()];
-    let mut visited = Vec::new();
-    while let Some(ty) = pending.pop() {
-        match ty {
-            LuaType::Union(union) => pending.extend(union.into_vec()),
-            LuaType::Ref(id) | LuaType::Def(id) => {
-                if visited.contains(&id) {
-                    continue;
-                }
-                visited.push(id.clone());
-                let Some(def) = semantic_model.type_def_of(&id) else {
-                    continue;
-                };
-                if def.kind == TypeDefKind::Alias {
-                    pending.extend(semantic_model.alias_target(&def));
-                } else if def.kind == TypeDefKind::Enum
-                    && let Some(facts) = semantic_model.file_facts_of(def.file_id)
-                    && let Some(decl) = facts.decl_named(def.name.as_str())
-                    && semantic_model
-                        .members_of_owner(&decl.id)
-                        .iter()
-                        .any(|member| member.name.as_str() == name.as_ref())
-                {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-    }
-    false
 }
 
 /// Unknown/any/never arguments are not checked.

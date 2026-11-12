@@ -2,11 +2,348 @@
 mod test {
     use std::{ops::Deref, sync::Arc};
 
-    use lsp_types::{Diagnostic, NumberOrString};
+    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaIndexExpr};
+    use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
     use tokio_util::sync::CancellationToken;
 
     use crate::check::test::{check_source, check_source_with_emmyrc};
-    use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
+    use crate::{DiagnosticCode, Emmyrc, LuaType, VirtualWorkspace};
+
+    // 普通联合参数接受其中的具体类型, 保留返回信息并拒绝不属于联合的实参.
+    #[test]
+    fn test_concrete_union_argument_preserves_return() {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(
+            r#"
+            local M = {}
+            ---@param value string | integer
+            ---@return string
+            function M.normalize(value) return '' end
+
+            ---@param value string
+            local function consume(value) end
+            ---@param value? string
+            function M.fill(value)
+                if not value then
+                    value = M.normalize(1)
+                end
+                consume(value)
+            end
+
+            local text = M.normalize('name')
+            local invalid = M.normalize(true)
+            return M, text, invalid
+            "#,
+        );
+        let model = ws.analysis.semantic_model(file);
+        for call in model.chunk().unwrap().descendants::<LuaCallExpr>() {
+            let source = call.syntax().text().to_string();
+            if source.starts_with("M.normalize(") {
+                assert_eq!(
+                    model.type_of_expr(call.get_syntax_id()),
+                    if source == "M.normalize(true)" {
+                        LuaType::Unknown
+                    } else {
+                        LuaType::String
+                    },
+                    "{source}"
+                );
+            }
+        }
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file, CancellationToken::new())
+            .unwrap();
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(&diagnostic.code,
+                    Some(NumberOrString::String(code)) if code == "param-type-mismatch"))
+                .count(),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 泛型约束取自调用所在函数, 跳过无注释方法并区分不同函数的同名泛型.
+    #[test]
+    fn test_parameter_constraint_uses_enclosing_signature() {
+        let source = r#"
+            ---@param value table
+            local function consume(value) end
+
+            ---@class Host
+            local M = {}
+            function M:other() end
+
+            ---@generic T: table
+            ---@param obj T | function
+            function M:bind(obj)
+                if type(obj) == 'table' then
+                    consume(obj)
+                end
+            end
+
+            ---@generic T: string
+            ---@param invalid T
+            function M:reject(invalid)
+                consume(invalid)
+            end
+
+            ---@generic T: table
+            function M:outer()
+                ---@generic T: string
+                ---@param invalid T
+                local function inner(invalid)
+                    consume(invalid)
+                end
+                return inner
+            end
+            return M
+            "#;
+        let diagnostics = check_source(source);
+        let mismatches: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+            .collect();
+        assert_eq!(mismatches.len(), 2, "{diagnostics:#?}");
+        assert_eq!(
+            mismatches
+                .iter()
+                .map(|diagnostic| u32::from(diagnostic.range.start()) as usize)
+                .collect::<Vec<_>>(),
+            source
+                .match_indices("consume(invalid)")
+                .map(|(start, _)| start + "consume(".len())
+                .collect::<Vec<_>>(),
+            "{mismatches:#?}"
+        );
+    }
+
+    // 重载参数名后的可选标记应影响参数数量筛选和显式 nil 的类型检查.
+    #[test]
+    fn test_overload_optional_parameter_marker() {
+        for (args, expected) in [
+            ("'message'", 0),
+            ("'message', nil", 0),
+            ("'message', 1", 0),
+            ("'message', false", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                local M = {{}}
+                ---@overload fun(message: string, level?: integer): string
+                ---@param thread thread
+                ---@return string
+                function M.trace(thread) return '' end
+                M.trace({args})
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                    .count(),
+                expected,
+                "{args}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 显式参数注释优先于字段签名, 未标注的参数仍从字段类型推断.
+    #[test]
+    fn test_member_callback_explicit_param_overrides_context() {
+        for (annotation, expected) in [
+            ("---@param value integer", 0),
+            ("---@param value string", 1),
+            ("", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Data
+                ---@field callback fun(value: string, count: integer)
+                local Data = {{}}
+
+                ---@param number integer
+                local function consume(number) return number end
+                ---@param data Data
+                local function wrap(data)
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    {annotation}
+                    data.callback = function(value, count)
+                        consume(value)
+                        consume(count)
+                    end
+                end
+                return wrap
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                    .count(),
+                expected,
+                "{annotation}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 联合接收者的同名函数重载仍应完整参与调用检查.
+    #[test]
+    fn test_union_member_overloads_remain_available() {
+        let diagnostics = check_source(
+            r#"
+            ---@class A
+            ---@field run fun(value: string)
+            ---@field run fun(value: integer)
+            local A = {}
+            ---@class B
+            ---@field run fun(value: string)
+            ---@field run fun(value: integer)
+            local B = {}
+            ---@param obj A|B
+            local function run(obj)
+                obj.run('a')
+                obj.run(1)
+            end
+            return A, B, run
+            "#,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 联合类型的每个分支都应使用派生类覆盖后的字段, 未覆盖的分支仍保留 nil.
+    #[test]
+    fn test_union_member_overrides_base_field() {
+        for (receiver, expected_mismatches) in [("A|B", 0), ("A|Base", 1)] {
+            let mut ws = VirtualWorkspace::new();
+            let expected_type = ws.ty("integer|string");
+            let file_id = ws.def(&format!(
+                r#"
+                ---@class Base
+                ---@field handle? unknown
+                local Base = {{}}
+                ---@class A: Base
+                ---@field handle integer
+                local A = {{}}
+                ---@class B: Base
+                ---@field handle string
+                local B = {{}}
+
+                ---@param handle integer|string
+                local function consume(handle) return handle end
+                ---@param obj {receiver}
+                local function read(obj) return consume(obj.handle) end
+                return Base, A, B, read
+                "#,
+            ));
+            let model = ws.analysis.semantic_model(file_id);
+            let index = model
+                .chunk()
+                .expect("chunk")
+                .descendants::<LuaIndexExpr>()
+                .next()
+                .expect("member access");
+            let ty = model.type_of_expr(index.get_syntax_id());
+            if expected_mismatches == 0 {
+                assert_eq!(ty, expected_type);
+            } else {
+                assert!(ty.is_nullable(), "{ty:?}");
+            }
+            let diagnostics = ws
+                .analysis
+                .diagnose_file(file_id, CancellationToken::new())
+                .expect("diagnostics");
+            let count = diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    diagnostic.code
+                        == Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string(),
+                        ))
+                })
+                .count();
+            assert_eq!(count, expected_mismatches, "{receiver}: {diagnostics:#?}");
+        }
+    }
+
+    // 全局环境是表, 应可用作 load 环境和普通表参数, 但不能用作字符串.
+    #[test]
+    fn test_global_environment_table_compatibility() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@param env table
+            local function accept(env)
+                return env
+            end
+            accept(_G)
+            accept(_ENV)
+            load('return 1', nil, 't', _G)
+
+            ---@type table
+            local globals = _G
+
+            ---@return table
+            local function environment()
+                return _ENV
+            end
+
+            ---@type string
+            local invalid = _G
+            return globals, environment, invalid
+            "#,
+        );
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .expect("diagnostics");
+        let codes = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == Some(DiagnosticSeverity::WARNING))
+            .map(|diagnostic| diagnostic.code.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            codes,
+            vec![Some(NumberOrString::String(
+                DiagnosticCode::AssignTypeMismatch.get_name().to_string()
+            ))],
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 绑定到模块成员的枚举应接受已声明的值, 并拒绝枚举之外的值.
+    #[test]
+    fn test_enum_declared_on_member_assignment() {
+        for (attribute, valid, invalid) in [("", "1", "2"), ("(key)", "'circle'", "'other'")] {
+            let diagnostics = check_source(&format!(
+                r#"
+                local M = {{}}
+                ---@enum{attribute} Shape
+                M.shape = {{ circle = 1 }}
+
+                ---@param shape Shape
+                local function draw(shape)
+                    return shape
+                end
+                draw({valid})
+                draw({invalid})
+                return M
+                "#,
+            ));
+            let mismatches = diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                .collect::<Vec<_>>();
+            assert_eq!(mismatches.len(), 1, "{attribute}: {diagnostics:#?}");
+        }
+    }
 
     #[test]
     fn test_pcall_preserves_the_declared_callback_type() {

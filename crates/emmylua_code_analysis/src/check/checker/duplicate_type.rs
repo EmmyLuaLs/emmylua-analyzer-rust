@@ -50,6 +50,7 @@ fn count_flags(locations: &[TypeDef]) -> (usize, usize, usize) {
             partial,
             constructor,
             meta,
+            ..
         } = location.flags;
         if meta {
             continue;

@@ -493,6 +493,9 @@ fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &Lu
     if table_key.is_unknown() || table_key.is_any() {
         return true;
     }
+    if let Some(expanded) = expand_alias_type(semantic_model, key) {
+        return key_matches(semantic_model, &expanded, table_key);
+    }
     match table_key {
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
             is_string_key(key)

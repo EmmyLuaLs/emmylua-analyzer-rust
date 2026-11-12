@@ -279,7 +279,7 @@ impl<'db> SemanticModel<'db> {
     ) -> Vec<(LuaType, rowan::TextRange)> {
         infer::infer_expr_list_types(self, exprs, var_count)
     }
-    /// Unified signature return type projection: TypeShell takes priority, with rich projection as fallback for Unknown.
+    /// 函数签名的返回类型投影, 显式标注优先于函数体推断.
     pub(crate) fn signature_return_type(
         &self,
         file_id: FileId,

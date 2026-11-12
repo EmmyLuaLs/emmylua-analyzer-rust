@@ -2500,6 +2500,10 @@ pub(crate) fn member_type(
         return TypeShell::from_module_ref(module_file);
     }
 
+    if let Some(syntax) = member.doc_type_syntax {
+        return lower_doc_type(db, file_id, syntax, &[]);
+    }
+
     // Value: owner is `TypeDef` (@field) -> doc type node; otherwise -> expression.
     if let Some(value_syntax) = member.value_syntax {
         match &member.owner {
@@ -3264,6 +3268,21 @@ fn expr_type_node(
                 Some(BinaryOperator::OpOr) | Some(BinaryOperator::OpAnd) => {
                     if let Some((left, right)) = binary.get_exprs() {
                         let mut shell = expr_type(db, facts, file, config, left).first_result();
+                        if op == Some(BinaryOperator::OpOr) {
+                            // or 的左侧只保留真值, 右侧继续参与固定点合并.
+                            shell.candidates.retain_mut(|candidate| match candidate {
+                                TypeCandidate::Primitive(PrimitiveType::Nil)
+                                | TypeCandidate::Literal(
+                                    LiteralShell::Nil | LiteralShell::Boolean(false),
+                                ) => false,
+                                TypeCandidate::Primitive(PrimitiveType::Boolean) => {
+                                    *candidate =
+                                        TypeCandidate::Literal(LiteralShell::Boolean(true));
+                                    true
+                                }
+                                _ => true,
+                            });
+                        }
                         shell.merge(&expr_type(db, facts, file, config, right).first_result());
                         return shell;
                     }

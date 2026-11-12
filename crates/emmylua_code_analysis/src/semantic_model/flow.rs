@@ -774,17 +774,17 @@ pub(crate) fn type_of_expr_at_node(
     expr: LuaExpr,
     offset: TextSize,
 ) -> LuaType {
-    let apply_casts = |base, mode| apply_expr_casts_to_node(model, expr.syntax(), base, mode);
+    let apply_casts = |base| apply_expr_casts_to_node(model, expr.syntax(), base, All);
     match &expr {
         LuaExpr::NameExpr(name_expr) => {
             if let Some(decl) = model.resolve_name(name_expr.get_position()) {
-                return apply_casts(model.type_of_decl_at(&decl, offset), AsOnly);
+                return apply_casts(model.type_of_decl_at(&decl, offset));
             }
-            apply_casts(model.type_of_expr_node(&expr), AsOnly)
+            apply_casts(model.type_of_expr_node(&expr))
         }
         LuaExpr::IndexExpr(index_expr) => {
             if let Some(ty) = array::last_element_type(model, index_expr, offset) {
-                return apply_casts(ty, All);
+                return apply_casts(ty);
             }
             if let Some(resolved) = model.resolve_member(index_expr)
                 && let Some(member_id) = resolved.member_id.clone().or_else(|| {
@@ -871,7 +871,7 @@ pub(crate) fn type_of_expr_at_node(
                         } else {
                             prefix_member_ty
                         };
-                        return apply_casts(ty, All);
+                        return apply_casts(ty);
                     }
                 }
                 // Computed-key fields in table literals (`[key] = 1`) keep literal values in type queries:
@@ -894,23 +894,38 @@ pub(crate) fn type_of_expr_at_node(
                             // Dynamic access to a computed key `[key] = 1` can return `integer`;
                             // named fields still keep `number` through the existing projection.
                             LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-                                return apply_casts(LuaType::Integer, All);
+                                return apply_casts(LuaType::Integer);
                             }
                             LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-                                return apply_casts(expr_ty, All);
+                                return apply_casts(expr_ty);
                             }
                             _ => {}
                         }
                     }
                     if let Some(ty) = model.member_type(&prefix_ty, &member_def.key) {
-                        return apply_casts(ty, All);
+                        return apply_casts(ty);
                     }
                 }
                 if !resolved_is_runtime
                     && let Some(receiver) = &resolved.receiver
+                    && let Some(access_path) = model
+                        .member_use(index_expr.get_syntax_id())
+                        .and_then(|usage| usage.access_path.as_ref())
+                    && let Some(facts) = model.file_facts()
                     && let Some(runtime_member) = model
                         .members_of_receiver_key(receiver, &resolved.key)
-                        .first()
+                        .iter()
+                        .find(|candidate| {
+                            let Some(member) = facts.member_by_id(&candidate.id) else {
+                                return false;
+                            };
+                            let MemberSource::Runtime { access } = member.source else {
+                                return false;
+                            };
+                            facts.member_use(access).is_some_and(|usage| {
+                                usage.access_path.as_ref() == Some(access_path)
+                            })
+                        })
                     && runtime_member
                         .id
                         .member_key_range()
@@ -918,7 +933,7 @@ pub(crate) fn type_of_expr_at_node(
                 {
                     let runtime_ty = type_of_member_at(model, &runtime_member.id, offset);
                     if !matches!(runtime_ty, LuaType::Unknown) {
-                        return apply_casts(runtime_ty, All);
+                        return apply_casts(runtime_ty);
                     }
                 }
                 // If the prefix was narrowed to a more specific instance/object type on the same flow path,
@@ -932,23 +947,23 @@ pub(crate) fn type_of_expr_at_node(
                         && (member_type_more_specific(model, &prefix_member_ty, &member_ty)
                             || matches!(&prefix_ty, LuaType::Generic(_)))
                     {
-                        return apply_casts(prefix_member_ty, All);
+                        return apply_casts(prefix_member_ty);
                     }
                 }
                 let member_ty =
                     guarded_index_type(model, index_expr, offset, &member_ty).unwrap_or(member_ty);
-                return apply_casts(member_ty, AsOnly);
+                return apply_casts(member_ty);
             }
             // Inside a `#d == n` branch, `d[1]` no longer carries nil when the array length is known.
             if let Some(known_ty) = array_index_with_known_len(model, &index_expr, offset) {
-                return apply_casts(known_ty, All);
+                return apply_casts(known_ty);
             }
             let ty = model.type_of_expr_node(&expr);
             let ty = guarded_index_type(model, index_expr, offset, &ty).unwrap_or(ty);
-            apply_casts(ty, All)
+            apply_casts(ty)
         }
         LuaExpr::CallExpr(_) | LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) => {
-            apply_casts(model.type_of_expr_node(&expr), All)
+            apply_casts(model.type_of_expr_node(&expr))
         }
         LuaExpr::ClosureExpr(closure_expr) => {
             // Anonymous closure keeps its actual signature on the flow path, avoiding the assigned function value degrading to bare `Function`.
@@ -956,14 +971,14 @@ pub(crate) fn type_of_expr_at_node(
                 .type_of_signature(closure_expr.get_syntax_id())
                 .map(|fun| LuaType::DocFunction(Rc::new(fun)))
                 .unwrap_or_else(|| model.type_of_expr_node(&expr));
-            apply_casts(base, All)
+            apply_casts(base)
         }
         LuaExpr::BinaryExpr(binary_expr) => {
             let Some(op_token) = binary_expr.get_op_token() else {
-                return apply_casts(model.type_of_expr_node(&expr), All);
+                return apply_casts(model.type_of_expr_node(&expr));
             };
             let Some((left_expr, right_expr)) = binary_expr.get_exprs() else {
-                return apply_casts(model.type_of_expr_node(&expr), All);
+                return apply_casts(model.type_of_expr_node(&expr));
             };
             // Preserve the legacy semantics that "array table literals in short-circuit expressions are tuple":
             // only when the right side is a sequential array table and the left side is a logical short-circuit, replace the right table type with tuple.
@@ -975,7 +990,7 @@ pub(crate) fn type_of_expr_at_node(
                 let left_ty =
                     model.type_of_expr_at(left_expr.get_syntax_id(), left_expr.get_position());
                 let result = logical_binary_type(model, op_token.get_op(), left_ty, tuple_ty);
-                return apply_casts(result, All);
+                return apply_casts(result);
             }
             // General binary expressions: subexpressions first use flow-sensitive types (member/variable branch narrowing),
             // then merge with the same VM operator rules, ensuring `right.value + 1` uses the narrow type of `right.value` in the branch.
@@ -997,12 +1012,12 @@ pub(crate) fn type_of_expr_at_node(
             ) && (matches!(&left_ty, LuaType::Unknown | LuaType::Any)
                 || matches!(&right_ty, LuaType::Unknown | LuaType::Any))
             {
-                return apply_casts(LuaType::Unknown, All);
+                return apply_casts(LuaType::Unknown);
             }
             let result = binary_type(model, op_token.get_op(), &left_ty, &right_ty);
-            apply_casts(result, All)
+            apply_casts(result)
         }
-        _ => apply_casts(model.type_of_expr_node(&expr), AsOnly),
+        _ => apply_casts(model.type_of_expr_node(&expr)),
     }
 }
 
@@ -1563,7 +1578,7 @@ pub(super) fn apply_expr_casts(
     apply_expr_casts_to_node(model, &node, base, mode)
 }
 
-fn inline_cast_target(tag: &emmylua_parser::LuaDocTagAs) -> Option<LuaExpr> {
+fn inline_cast_target(tag: &impl LuaAstNode) -> Option<LuaExpr> {
     let owner = tag.get_parent::<LuaComment>()?.get_owner()?;
     // Statement comments cast the last value, never its operands or later reads.
     LuaExpr::cast(owner.syntax().clone()).or_else(|| owner.children::<LuaExpr>().last())
@@ -1636,9 +1651,12 @@ fn apply_expr_casts_to_node(
                     // Declaration/member tracing handles named casts with a unique target.
                     // Ambiguous union members have no member ID; retain their immediate
                     // cast only for the exact owner/path, never an enclosing expression.
-                    if let Some(target) = cast.get_key_expr()
-                        && !ambiguous_cast_target_matches(model, &target, expr_syntax)
-                    {
+                    let matches_target = match cast.get_key_expr() {
+                        Some(target) => ambiguous_cast_target_matches(model, &target, expr_syntax),
+                        None => inline_cast_target(&cast)
+                            .is_some_and(|target| target.get_syntax_id() == expr_syntax),
+                    };
+                    if !matches_target {
                         continue;
                     }
                     for op_type in cast.get_op_types() {

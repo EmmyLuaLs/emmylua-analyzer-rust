@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
@@ -787,12 +787,13 @@ fn collect_members(
         LuaType::Union(union) => {
             for component in union.iter() {
                 let mut component_members = Vec::new();
+                let mut component_visited = visited.clone();
                 collect_members(
                     model,
                     component,
                     bindings,
                     name_bindings,
-                    visited,
+                    &mut component_visited,
                     &mut component_members,
                     filter,
                 );
@@ -887,6 +888,8 @@ fn expand_table_multi_return_member(
 }
 
 /// Named type members: this class's `@field` → parent type recursion → runtime value members.
+///
+/// Each layer shadows the layers before it by key, while overloads inside one layer stay complete.
 fn collect_type_def_members(
     model: &SemanticModel,
     def: &TypeDef,
@@ -900,17 +903,22 @@ fn collect_type_def_members(
         return;
     }
     visited.push(def.id.clone());
+    let mut shadowed = HashSet::new();
+    let mut layer = Vec::new();
 
     // 1. This class's `@field` (workspace member index, cross-file).
     for member_ref in owner_member_refs(model, &def.id, filter) {
         if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
-            push_member_info(out, filter, info);
+            push_member_info(&mut layer, filter, info);
         }
     }
+    push_member_layer(out, &mut shadowed, layer);
 
     // 2. Parent types
     for super_type in inherited_base_types(model, def, bindings, name_bindings) {
-        collect_members(model, &super_type, None, None, visited, out, filter);
+        let mut layer = Vec::new();
+        collect_members(model, &super_type, None, None, visited, &mut layer, filter);
+        push_member_layer(out, &mut shadowed, layer);
     }
 
     // 3. Runtime value members: members of the type's runtime value decl (same-file same-name `local M = {}`) (`M.x = 1`).
@@ -918,12 +926,27 @@ fn collect_type_def_members(
         if owner == def.id {
             continue;
         }
+        let mut layer = Vec::new();
         for member_ref in owner_member_refs(model, &owner, filter) {
             if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
-                push_member_info(out, filter, info);
+                push_member_info(&mut layer, filter, info);
             }
         }
+        push_member_layer(out, &mut shadowed, layer);
     }
+}
+
+fn push_member_layer(
+    out: &mut Vec<MemberInfo>,
+    shadowed: &mut HashSet<LuaMemberKey>,
+    layer: Vec<MemberInfo>,
+) {
+    let visible: Vec<_> = layer
+        .into_iter()
+        .filter(|info| !shadowed.contains(&info.key))
+        .collect();
+    shadowed.extend(visible.iter().map(|info| info.key.clone()));
+    out.extend(visible);
 }
 
 /// `---@version` visibility: the member is visible if any version condition on its closure signature matches.

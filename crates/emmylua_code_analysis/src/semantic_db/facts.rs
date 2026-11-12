@@ -2831,7 +2831,7 @@ fn type_visibility(flag: Option<LuaDocTypeFlag>) -> TypeVisibility {
     visibility
 }
 
-/// Type definition flags (mirrors old `get_type_flag_value`: partial / constructor + file-level meta).
+/// Type definition flags
 fn type_def_flags(flag: Option<LuaDocTypeFlag>, is_meta: bool) -> TypeDefFlags {
     let mut flags = TypeDefFlags {
         meta: is_meta,
@@ -2844,6 +2844,7 @@ fn type_def_flags(flag: Option<LuaDocTypeFlag>, is_meta: bool) -> TypeDefFlags {
         match token.get_name_text() {
             "partial" => flags.partial = true,
             "constructor" => flags.constructor = true,
+            "key" => flags.enum_key = true,
             _ => {}
         }
     }
