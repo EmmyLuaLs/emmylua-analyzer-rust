@@ -688,12 +688,6 @@ pub struct WorkspaceDeclIndex {
 }
 
 impl WorkspaceDeclIndex {
-    pub(crate) fn global_decl_named(&self, name: &SmolStr) -> Option<SemanticId> {
-        self.global_by_name
-            .get(name)
-            .and_then(|decls| decls.last().cloned())
-    }
-
     /// All global declarations with this name (cross-file overload candidates).
     pub(crate) fn global_decls_named(&self, name: &SmolStr) -> &[SemanticId] {
         self.global_by_name
@@ -827,14 +821,59 @@ pub(crate) fn workspace_decl_index_for(
 pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Option<SemanticId> {
     let roots = db.workspace_roots();
     if roots.is_empty() {
-        return workspace_decl_index_for(db, WorkspaceId::Main).global_decl_named(&name);
+        let decls = workspace_decl_index_for(db, WorkspaceId::Main).global_decls_named(&name);
+        return first_version_visible_decl(db, decls);
     }
     for root in roots.iter() {
-        if let Some(decl) = workspace_decl_index_for(db, root.id).global_decl_named(&name) {
+        let decls = workspace_decl_index_for(db, root.id).global_decls_named(&name);
+        if let Some(decl) = first_version_visible_decl(db, decls) {
             return Some(decl);
         }
     }
     None
+}
+
+/// Pick the first declaration whose `---@version` conditions match the
+/// configured runtime. Version-hidden declarations must not be used as a
+/// fallback: otherwise names removed in a newer Lua release (for example
+/// `loadstring` in Lua 5.2+) keep resolving to their old signatures.
+fn first_version_visible_decl(db: &SemanticDatabase, decls: &[SemanticId]) -> Option<SemanticId> {
+    decls
+        .iter()
+        .find(|decl| decl_version_visible(db, decl))
+        .cloned()
+}
+
+fn decl_version_visible(db: &SemanticDatabase, decl_id: &SemanticId) -> bool {
+    let Some(version) = db.lua_version() else {
+        return true;
+    };
+    let SemanticId::Decl(key) = decl_id else {
+        return true;
+    };
+    let Some(facts) = db.file_facts_of(key.file_id) else {
+        return true;
+    };
+    let Some(decl) = facts.decl_by_id(decl_id) else {
+        return true;
+    };
+    let signature = decl
+        .value_expr_syntax
+        .and_then(|syntax| facts.signature_by_closure(syntax))
+        .or_else(|| {
+            decl.owner_syntax
+                .and_then(|syntax| facts.signature_by_closure(syntax))
+        });
+    let Some(signature) = signature else {
+        return true;
+    };
+    signature.docs.as_ref().is_none_or(|docs| {
+        docs.versions.is_empty()
+            || docs
+                .versions
+                .iter()
+                .any(|condition| condition.check(&version))
+    })
 }
 
 /// All global declarations with this name in one workspace.

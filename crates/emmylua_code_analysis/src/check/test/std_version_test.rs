@@ -445,6 +445,29 @@ mod test {
     }
 
     #[test]
+    fn test_loadstring_visibility_by_version() {
+        for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::LuaJIT] {
+            let ty = expr_type_for(version, "loadstring");
+            assert_ne!(
+                ty, "unknown",
+                "loadstring must be visible in {version:?}: {ty}"
+            );
+        }
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            let ty = expr_type_for(version, "loadstring");
+            assert_eq!(
+                ty, "unknown",
+                "loadstring must be hidden in {version:?}: {ty}"
+            );
+        }
+    }
+
+    #[test]
     fn test_loadstring_and_loadfile_version_signatures() {
         let loadstring = r#"loadstring("return 1", "chunk", "t", {})"#;
         let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, loadstring);
