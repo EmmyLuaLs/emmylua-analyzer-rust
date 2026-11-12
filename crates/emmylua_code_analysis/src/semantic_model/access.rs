@@ -2,6 +2,7 @@ use super::prelude::*;
 use crate::check::checker::generic_constraint_mismatch::resolved_call_signatures;
 use crate::check::checker::param_count::callable_functions;
 use crate::check::checker::param_type_check::callable_candidates_uncached;
+use emmylua_parser::LuaIndexKey;
 
 impl<'db> SemanticModel<'db> {
     /// Currently configured runtime version (used for `---@version` visibility checks).
@@ -35,6 +36,129 @@ impl<'db> SemanticModel<'db> {
             return true;
         };
         member::member_version_visible(self, facts, member)
+    }
+
+    /// Whether a declaration/member is visible under the configured Lua version.
+    pub(crate) fn semantic_id_version_visible(&self, id: &SemanticId) -> bool {
+        let Some(version) = self.lua_version() else {
+            return true;
+        };
+        let Some((file_id, signature_syntax)) = self.versioned_signature_syntax(id) else {
+            return true;
+        };
+        let Some(facts) = self.file_facts_of(file_id) else {
+            return true;
+        };
+        let Some(signature) = facts.signature_by_closure(signature_syntax) else {
+            return true;
+        };
+        signature.docs.as_ref().is_none_or(|docs| {
+            docs.versions.is_empty()
+                || docs
+                    .versions
+                    .iter()
+                    .any(|condition| condition.check(&version))
+        })
+    }
+
+    /// Whether a callee expression refers to a declaration/member that is
+    /// visible under the configured Lua version. Used to avoid cascading
+    /// parameter diagnostics for version-gated callees.
+    pub(crate) fn is_callee_version_visible(&self, callee: &LuaExpr) -> bool {
+        match callee {
+            LuaExpr::NameExpr(name_expr) => {
+                let Some(name) = name_expr.get_name_text() else {
+                    return true;
+                };
+                if let Some(local) = self.resolve_local_name(name_expr.get_position()) {
+                    return self.semantic_id_version_visible(&local);
+                }
+                let decls = self.global_decls_named_for_file(self.file_id(), name.as_str());
+                decls.is_empty()
+                    || decls
+                        .iter()
+                        .any(|decl| self.semantic_id_version_visible(decl))
+            }
+            LuaExpr::IndexExpr(index_expr) => !self.is_version_hidden_member_access(index_expr),
+            _ => true,
+        }
+    }
+
+    /// Whether a static index access resolves to a member that exists only in
+    /// declarations hidden by `---@version` for the configured runtime.
+    ///
+    /// `member_infos_with_key` already filters version-hidden members, so an
+    /// empty result plus a hidden resolved member means there is no visible
+    /// candidate with this key. Owner types whose members `collect_members`
+    /// cannot enumerate keep the optimistic "visible" default.
+    pub(crate) fn is_version_hidden_member_access(&self, index_expr: &LuaIndexExpr) -> bool {
+        let Some(index_key) = index_expr.get_index_key() else {
+            return false;
+        };
+        let Some(key) = static_index_member_key(&index_key) else {
+            return false;
+        };
+        let Some(prefix) = index_expr.get_prefix_expr() else {
+            return false;
+        };
+        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
+        if !member_surface_is_enumerable(&prefix_ty) {
+            return false;
+        }
+        // `member_infos_with_key` covers `@field`, table literals, string
+        // methods and class methods; if it finds a visible member, the access
+        // is not hidden.
+        if !self.member_infos_with_key(&prefix_ty, &key).is_empty() {
+            return false;
+        }
+        let Some(resolved) = self.resolve_member(index_expr) else {
+            return false;
+        };
+        let Some(member_id) = resolved.member_id.as_ref() else {
+            return false;
+        };
+        if self.semantic_id_version_visible(member_id) {
+            return false;
+        }
+        // Global std tables keep their runtime members under `Name("os")`
+        // rather than the class `Ref`, so `member_infos_with_key` is empty for
+        // them. Check the resolved owner for a visible sibling declaration
+        // (e.g. `string.dump` exists in 5.1/5.2 and in 5.3+).
+        if let LuaMemberKey::Name(name) = &key
+            && self
+                .members_of_owner_named(&resolved.owner, name)
+                .iter()
+                .any(|member| self.member_ref_versions_visible(member))
+        {
+            return false;
+        }
+        true
+    }
+
+    /// Whether a global name exists only in declarations hidden by `---@version`.
+    pub(crate) fn is_version_hidden_global(&self, name: &str) -> bool {
+        let decls = self.global_decls_named_for_file(self.file_id(), name);
+        !decls.is_empty()
+            && decls
+                .iter()
+                .all(|decl| !self.semantic_id_version_visible(decl))
+    }
+
+    fn versioned_signature_syntax(&self, id: &SemanticId) -> Option<(FileId, LuaSyntaxId)> {
+        match id {
+            SemanticId::Decl(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let decl = facts.decl_by_id(id)?;
+                let syntax = decl.value_expr_syntax.or(decl.owner_syntax)?;
+                Some((key.file_id, syntax))
+            }
+            SemanticId::Member(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let member = facts.member_by_id(id)?;
+                Some((key.file_id, member.value_syntax?))
+            }
+            _ => None,
+        }
     }
     /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
@@ -1325,4 +1449,35 @@ impl<'db> SemanticModel<'db> {
             _ => None,
         }
     }
+}
+
+/// Static member key of an index expression (`t.x`, `t["x"]`, `t[1]`).
+fn static_index_member_key(key: &LuaIndexKey) -> Option<LuaMemberKey> {
+    match key {
+        LuaIndexKey::Name(name) => Some(LuaMemberKey::Name(name.get_name_text().into())),
+        LuaIndexKey::String(string) => Some(LuaMemberKey::Name(string.get_value().into())),
+        LuaIndexKey::Integer(integer) => match integer.get_number_value() {
+            NumberResult::Int(value) => Some(LuaMemberKey::Integer(value)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Owner types handled by `member::collect_members`; only for these can
+/// `member_infos_with_key` authoritatively decide whether a visible member exists.
+fn member_surface_is_enumerable(ty: &LuaType) -> bool {
+    matches!(
+        ty,
+        LuaType::Ref(_)
+            | LuaType::Def(_)
+            | LuaType::TableConst(_)
+            | LuaType::Object(_)
+            | LuaType::Generic(_)
+            | LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::DocStringConst(_)
+            | LuaType::Intersection(_)
+            | LuaType::Union(_)
+    )
 }

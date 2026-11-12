@@ -436,4 +436,35 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn test_issue_1248_version_gated_callee_params() {
+        let chunk = r#"
+            local ok, err = pcall(function() error("boom") end)
+            if not ok then
+                local x = err:unpack()
+                print(x)
+            end
+        "#;
+
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::LuaJIT;
+        let mut ws = VirtualWorkspace::new_with_config(config);
+        assert!(
+            ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+            "version-hidden string.unpack must not report missing parameters"
+        );
+        assert!(
+            ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+            "version-hidden string.unpack must not report parameter mismatches"
+        );
+
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::Lua54;
+        let mut ws = VirtualWorkspace::new_with_config(config);
+        assert!(
+            !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+            "string.unpack is available in Lua 5.4 and must still be checked"
+        );
+    }
 }

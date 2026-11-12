@@ -53,6 +53,11 @@ fn check_call(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
+    // A callee hidden by `---@version` does not exist in the configured runtime;
+    // do not re-derive candidates from its type in the fallbacks below.
+    if !semantic_model.is_callee_version_visible(&callee) {
+        return;
+    }
     let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
     let analysis = semantic_model.call_site_analysis(call_expr);
     let mut candidates = analysis.candidates;

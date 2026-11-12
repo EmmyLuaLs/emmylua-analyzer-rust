@@ -578,4 +578,28 @@ mod test {
             "rawset must preserve the table argument type"
         );
     }
+
+    #[test]
+    fn test_hidden_local_function_skips_param_diagnostics() {
+        let source = r#"
+            ---@version 5.1
+            ---@param x integer
+            local function hidden(x) end
+            hidden("bad")
+        "#;
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, source);
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|code| code == "missing-parameter" || code == "param-type-mismatch"),
+            "hidden local function must not be param-checked: {diagnostics:?}"
+        );
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, source);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "visible local function must still be param-checked: {diagnostics:?}"
+        );
+    }
 }
