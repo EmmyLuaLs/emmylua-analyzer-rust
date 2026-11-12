@@ -115,8 +115,8 @@ pub(crate) fn callable_candidates_uncached(
     callee: &LuaExpr,
 ) -> Vec<LuaFunctionType> {
     // Do not run parameter checks for callees hidden by the configured Lua
-    // version: the access check reports those, and parameter diagnostics would
-    // only be cascading noise (for example `err:unpack()` under LuaJIT).
+    // version: the API does not exist in this runtime, so parameter diagnostics
+    // would only be cascading noise (for example `err:unpack()` under LuaJIT).
     if !semantic_model.is_callee_version_visible(callee) {
         return Vec::new();
     }

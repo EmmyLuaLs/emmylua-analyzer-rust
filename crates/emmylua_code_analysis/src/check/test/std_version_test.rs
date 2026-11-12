@@ -827,4 +827,33 @@ mod test {
             "the version-visible last declaration must win in its runtime"
         );
     }
+
+    #[test]
+    fn test_visible_class_member_sibling_is_not_undefined() {
+        let source = r#"
+            ---@class VersionedClass
+            local VersionedClass = {}
+
+            ---@version 5.1
+            ---@param x integer
+            function VersionedClass:action(x) end
+
+            ---@version >5.2
+            ---@param x integer
+            function VersionedClass:action(x) end
+
+            local instance = setmetatable({}, { __index = VersionedClass })
+            instance:action("bad")
+        "#;
+
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, source);
+        assert!(
+            !diagnostics.iter().any(|code| code == "undefined-field"),
+            "a visible sibling member must not be reported as undefined: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "the visible sibling member must still be param-checked: {diagnostics:?}"
+        );
+    }
 }

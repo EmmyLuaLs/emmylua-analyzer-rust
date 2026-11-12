@@ -466,5 +466,16 @@ mod test {
             !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
             "string.unpack is available in Lua 5.4 and must still be checked"
         );
+        assert!(
+            !ws.has_no_diagnostic(
+                DiagnosticCode::MissingParameter,
+                r#"
+                ---@type string
+                local s
+                s:sub()
+                "#
+            ),
+            "visible members must still report missing parameters"
+        );
     }
 }
