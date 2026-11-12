@@ -386,4 +386,54 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn test_issue_1250_table_literal_is_single_variadic_argument() {
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let mut config = Emmyrc::default();
+            config.runtime.version = version;
+            let mut ws = VirtualWorkspace::new_with_config(config);
+
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "pcall()"),
+                "pcall() must still report the required callback in {version:?}"
+            );
+
+            let chunk = r#"
+                local ok = pcall(function() end, { 1, 2, 3 })
+                print(ok)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "pcall must accept a table literal as one argument in {version:?}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+                "pcall table literal must not mismatch in {version:?}"
+            );
+
+            let chunk = r#"
+                local home = assert(os.getenv("HOME"), { 1, 2, 3 })
+                print(home)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "assert must accept a table literal as one argument in {version:?}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+                "assert table literal must not mismatch in {version:?}"
+            );
+
+            let chunk = r#"
+                local err = { 1, 2, 3 }
+                local home = assert(os.getenv("HOME"), err)
+                print(home)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "assert must accept a table variable as one argument in {version:?}"
+            );
+        }
+    }
 }
