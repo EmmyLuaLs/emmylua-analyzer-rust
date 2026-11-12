@@ -209,7 +209,7 @@ fn is_valid_member(
             let Some((decl, def)) = table_binding(semantic_model, table.file_id, table.value)
             else {
                 // Unbound table: a local export table is still checked against the export surface (old check_export semantics).
-                return !is_export_surface_missing(semantic_model, table, index_expr, index_key);
+                return !is_export_surface_missing(semantic_model, table, index_key);
             };
             // Members of std built-in tables (table/string/...) are not checked for undefined fields.
             if matches!(
@@ -338,10 +338,7 @@ fn valid_named_member(
         return true;
     }
     // `[]` inside a conditional expression is allowed broadly (old check_field semantics).
-    if in_conditional_statement(index_expr) && has_bracket(index_expr) {
-        return true;
-    }
-    false
+    in_conditional_statement(index_expr) && has_bracket(index_expr)
 }
 
 fn enum_table_access(
@@ -648,7 +645,6 @@ fn is_enum_like_key_inner(
 fn is_export_surface_missing(
     semantic_model: &SemanticModel<'_>,
     table: &InFiled<TextRange>,
-    index_expr: &LuaIndexExpr,
     index_key: &LuaIndexKey,
 ) -> bool {
     let Some(facts) = semantic_model.file_facts_of(table.file_id) else {
@@ -672,7 +668,7 @@ fn is_export_surface_missing(
         return semantic_model.member_info(&export_ty, &key).is_none();
     }
     // Dynamic keys are not checked against the export surface.
-    !in_conditional_statement(index_expr) && false
+    false
 }
 
 fn static_member_key(

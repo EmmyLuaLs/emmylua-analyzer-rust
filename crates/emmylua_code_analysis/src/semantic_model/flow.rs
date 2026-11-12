@@ -1681,9 +1681,9 @@ fn ambiguous_cast_target_matches(
     let Some(LuaExpr::IndexExpr(index)) = LuaExpr::cast(node) else {
         return false;
     };
-    !model
+    model
         .resolve_member(&index)
-        .is_some_and(|member| member.member_id.is_some())
+        .is_none_or(|member| member.member_id.is_none())
         && same_member_access(model, target, &LuaExpr::IndexExpr(index))
 }
 
