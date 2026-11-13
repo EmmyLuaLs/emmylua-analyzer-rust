@@ -4943,4 +4943,65 @@ _ = a[2]
         let ty = ws.expr_ty("B");
         assert_eq!(ws.humanize_type(ty), "string");
     }
+
+    /// The false branch of a member test keeps an owner whose member can be falsy, and drops one
+    /// whose member is always truthy.
+    #[test]
+    fn test_member_false_branch_keeps_owner_whose_member_can_be_falsy() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Res
+        ---@field ok boolean
+        ---@field maybe boolean?
+        ---@field name string
+
+        ---@param res Res?
+        local function and_guard(res)
+            if res and res.ok then return end
+            AND_GUARD = res
+        end
+
+        ---@param res Res?
+        local function nested(res)
+            if res then
+                if res.ok then return end
+            end
+            NESTED = res
+        end
+
+        ---@param res Res?
+        local function negated(res)
+            if not (res and res.ok) then
+                NEGATED = res
+            end
+        end
+
+        ---@param res Res?
+        local function optional_member(res)
+            if res and res.maybe then return end
+            OPTIONAL_MEMBER = res
+        end
+
+        ---@param res Res
+        local function plain_owner(res)
+            if res.ok then return end
+            PLAIN_OWNER = res
+        end
+
+        ---@param res Res?
+        local function always_truthy_member(res)
+            if res and res.name then return end
+            ALWAYS_TRUTHY_MEMBER = res
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("AND_GUARD"), ws.ty("Res?"));
+        assert_eq!(ws.expr_ty("NESTED"), ws.ty("Res?"));
+        assert_eq!(ws.expr_ty("NEGATED"), ws.ty("Res?"));
+        assert_eq!(ws.expr_ty("OPTIONAL_MEMBER"), ws.ty("Res?"));
+        assert_eq!(ws.expr_ty("PLAIN_OWNER"), ws.ty("Res"));
+        assert_eq!(ws.expr_ty("ALWAYS_TRUTHY_MEMBER"), ws.ty("nil"));
+    }
 }
