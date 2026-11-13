@@ -76,7 +76,9 @@ package.loaded = {}
 --- systems that support the `dlfcn` standard).
 --- @param libname  string
 --- @param funcname string
---- @return function?, string?
+--- @return function? func
+--- @return string? err
+--- @return ('open'|'init')? where
 function package.loadlib(libname, funcname) end
 
 ---
