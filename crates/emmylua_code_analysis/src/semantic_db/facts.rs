@@ -1108,7 +1108,14 @@ impl FactsBuilder {
         let mut field_deprecated: HashSet<usize> = HashSet::new();
         let mut owner_type_deprecated = false;
         for (idx, tag) in tags.iter().enumerate() {
-            if matches!(tag, LuaDocTag::Deprecated(_)) {
+            let deprecated = match tag {
+                LuaDocTag::Deprecated(_) => true,
+                LuaDocTag::AttributeUse(attribute_use_tag) => {
+                    attribute_use_has_deprecated(attribute_use_tag)
+                }
+                _ => false,
+            };
+            if deprecated {
                 if matches!(tags.get(idx + 1), Some(LuaDocTag::Field(_))) {
                     field_deprecated.insert(idx + 1);
                 } else {
@@ -1286,6 +1293,18 @@ impl FactsBuilder {
                         }
                         if is_lsp_delayed_definition(attribute_use_tag) {
                             self.delayed_definition_owners.insert(owner_syntax);
+                        }
+                        // `---@[deprecated]` / `---@[deprecated("message")]`: the attribute form
+                        // of `---@deprecated`. A following `@field` marks only that field (handled
+                        // above); otherwise it applies to the type/signature/declaration owner.
+                        if owner_type_deprecated
+                            && attribute_use_has_deprecated(attribute_use_tag)
+                        {
+                            self.signature_doc_map
+                                .entry(owner_syntax)
+                                .or_default()
+                                .deprecated = true;
+                            self.doc_deprecated_owners.insert(owner_syntax);
                         }
                     }
                 }
@@ -2554,9 +2573,6 @@ fn doc_type_name(doc_type: &LuaDocType) -> Option<SmolStr> {
     }
 }
 
-/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
-/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
-/// `---@operator call(name, root_class, strip_self, return_mode)`.
 /// Whether `---@[lsp_optimization("delayed_definition")]` is the delayed-definition attribute.
 fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     for attribute_use in tag.get_attribute_uses() {
@@ -2583,6 +2599,19 @@ fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     false
 }
 
+/// Whether the attribute-use tag contains `---@[deprecated]` or `---@[deprecated("message")]`.
+fn attribute_use_has_deprecated(tag: &LuaDocTagAttributeUse) -> bool {
+    tag.get_attribute_uses().any(|attribute_use| {
+        attribute_use
+            .get_type()
+            .and_then(|name_type| name_type.get_name_text())
+            .is_some_and(|name| name == "deprecated")
+    })
+}
+
+/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
+/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
+/// `---@operator call(name, root_class, strip_self, return_mode)`.
 fn collect_constructor_attribute(tag: &LuaDocTagAttributeUse) -> Option<ConstructorAttribute> {
     for attribute_use in tag.get_attribute_uses() {
         let name = attribute_use.get_type()?.get_name_text()?;
