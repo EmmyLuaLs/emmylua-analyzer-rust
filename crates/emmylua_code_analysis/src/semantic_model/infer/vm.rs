@@ -1508,11 +1508,12 @@ impl<'a> InferVm<'a> {
                         return Value::plain(self.model.require_module_type(&module_name));
                     }
                 }
-                // assert(x, ...): returns x when truthy (removing nil) and passes through
+                // assert(x, ...): returns x when truthy (removing nil and false) and passes through
                 // any following multi-returns.
                 "assert" => {
                     if let Some(arg) = args.first() {
                         let ty = remove_nil_from_type(arg.ty.clone());
+                        let ty = remove_false_from_type(ty);
                         return Value::plain(ty);
                     }
                     return Value::plain(LuaType::Unknown);
@@ -5024,6 +5025,49 @@ fn remove_nil_from_type(ty: LuaType) -> LuaType {
             ))),
             VariadicType::Repeat(base) => LuaType::Variadic(Rc::new(VariadicType::Repeat(
                 remove_nil_from_type(base.clone()),
+            ))),
+        },
+        _ => ty,
+    }
+}
+
+/// Remove `false` from a type (for `assert`): a successful assert guarantees
+/// that the value is neither nil nor false.
+fn remove_false_from_type(ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::Boolean => LuaType::BooleanConst(true),
+        LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => LuaType::Never,
+        LuaType::Union(union) => {
+            let types = union
+                .into_vec()
+                .into_iter()
+                .filter_map(|ty| match ty {
+                    LuaType::Boolean => Some(LuaType::BooleanConst(true)),
+                    LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => None,
+                    other => Some(other),
+                })
+                .collect::<Vec<_>>();
+            match types.len() {
+                0 => LuaType::Never,
+                1 => types.into_iter().next().unwrap_or(LuaType::Never),
+                _ => LuaType::Union(Rc::new(LuaUnionType::from_vec(types))),
+            }
+        }
+        // Mirror `remove_nil_from_type`: for `assert(f())` the first value of a
+        // multi-return is the one whose falsy result aborts the call.
+        LuaType::Variadic(variadic) => match variadic.as_ref() {
+            VariadicType::Multi(types) => {
+                let mut new_types = types.clone();
+                if let Some(first) = new_types.first_mut() {
+                    *first = remove_false_from_type(first.clone());
+                }
+                LuaType::Variadic(Rc::new(VariadicType::Multi(new_types)))
+            }
+            VariadicType::Base(base) => LuaType::Variadic(Rc::new(VariadicType::Base(
+                remove_false_from_type(base.clone()),
+            ))),
+            VariadicType::Repeat(base) => LuaType::Variadic(Rc::new(VariadicType::Repeat(
+                remove_false_from_type(base.clone()),
             ))),
         },
         _ => ty,

@@ -114,6 +114,12 @@ pub(crate) fn callable_candidates_uncached(
     semantic_model: &SemanticModel<'_>,
     callee: &LuaExpr,
 ) -> Vec<LuaFunctionType> {
+    // Do not run parameter checks for callees hidden by the configured Lua
+    // version: the API does not exist in this runtime, so parameter diagnostics
+    // would only be cascading noise (for example `err:unpack()` under LuaJIT).
+    if !semantic_model.is_callee_version_visible(callee) {
+        return Vec::new();
+    }
     // Unified path for name callees: global cross-file overloads must be visible
     // here exactly as they are in the VM call-selection path.
     if let Some(candidates) = semantic_model.callable_candidates_for_name_expr(callee) {
@@ -229,6 +235,13 @@ fn check_call(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
+    // Do not report parameter diagnostics for a callee hidden by `---@version`.
+    // `callable_candidates_uncached` already applies this gate, but
+    // `callable_candidates_for_expr` has name/member fast paths; keep the
+    // checker itself conservative.
+    if !semantic_model.is_callee_version_visible(&callee) {
+        return;
+    }
     let analysis = semantic_model.call_site_analysis(call_expr);
     let candidates = analysis.candidates;
 

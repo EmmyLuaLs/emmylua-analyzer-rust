@@ -1,4 +1,4 @@
-use emmylua_parser::LuaSyntaxId;
+use emmylua_parser::{LuaSyntaxId, LuaVersionCondition};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
@@ -55,6 +55,9 @@ pub struct Decl {
     pub readonly: bool,
     /// `---@[lsp_optimization("delayed_definition")]`: type resolution is deferred to a later assignment.
     pub delayed_definition: bool,
+    /// `---@version` conditions owned by this declaration (works for non-function
+    /// declarations such as `bit = {}` as well as closures).
+    pub version_conds: Vec<LuaVersionCondition>,
 }
 
 impl Decl {
@@ -80,6 +83,7 @@ impl Decl {
             deprecated: false,
             readonly: false,
             delayed_definition: false,
+            version_conds: Vec::new(),
         }
     }
 }

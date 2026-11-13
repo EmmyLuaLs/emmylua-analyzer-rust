@@ -36,7 +36,7 @@ fn check_contract_in(ws: &mut VirtualWorkspace, code: &str) -> Vec<String> {
             .iter()
             .filter(|diagnostic| diagnostic.range.start.line as usize == line)
             .collect();
-        if expected != !actual.is_empty() {
+        if expected == actual.is_empty() {
             failures.push(format!(
                 "line {}: {text}\n  expected error: {expected}; {actual:?}",
                 line + 1

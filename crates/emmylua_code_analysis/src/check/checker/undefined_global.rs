@@ -36,8 +36,12 @@ impl Checker for UndefinedGlobal {
             {
                 continue;
             }
-            // Lua built-in global.
-            if is_builtin_global(use_.name.as_str()) {
+            // Lua built-in global. A name whose declarations are all hidden by
+            // `---@version` is not a built-in for the configured runtime, so it
+            // falls through and is reported as undefined.
+            if is_builtin_global(use_.name.as_str())
+                && !semantic_model.is_version_hidden_global(use_.name.as_str())
+            {
                 continue;
             }
             // `emmyrc.diagnostics.globals` / `globals_regex` whitelist.

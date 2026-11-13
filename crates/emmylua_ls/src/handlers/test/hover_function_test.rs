@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult, check};
+    use emmylua_code_analysis::EmmyrcLuaVersion;
     use googletest::prelude::*;
 
     // M3 batch 2 retirement: function signature rendering stack (old HoverBuilder/overload matching/generic substitution); see migration notes §M3.
@@ -636,6 +637,9 @@ mod tests {
     #[gtest]
     fn test_annotation_search() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.runtime.version = EmmyrcLuaVersion::Lua54;
+        ws.update_emmyrc(emmyrc);
         ws.def_file(
             "a.lua",
             r#"

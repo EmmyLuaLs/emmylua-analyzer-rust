@@ -36,6 +36,9 @@ std.collectgarbage_opt.item.generational: |
 std.collectgarbage_opt.item.isrunning: |
   返回一个布尔值，指示收集器是否正在运行（即未停止）。
 
+std.collectgarbage_opt.item.param: |
+  更改和/或获取收集器参数（Lua 5.5）。
+
 # minor multiplier
 std.collectgarbage.param.item.minormul: ""
 
@@ -54,36 +57,25 @@ std.collectgarbage.param.item.stepmul: ""
 # step size
 std.collectgarbage.param.item.stepsize: ""
 
-collectgarbage: |
+collectgarbage@5.1: |
   此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
 
-  ### opt
+collectgarbage@5.2: |
+  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
 
-  - **"collect"**: 执行完整的垃圾回收。这是默认选项。
+collectgarbage@5.3,JIT: |
+  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
 
-  - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
-  直到调用 restart。
+collectgarbage@5.4: |
+  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
 
-  - **"restart"**: 重启垃圾收集器的自动执行。
+collectgarbage@5.5: |
+  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+  完整的选项列表参见 `std.collectgarbage_opt`。
 
-  - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
-  乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
-
-  - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。
-  如果值为 0，收集器将执行一个基础（不可分割）步进。
-  对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。
-  如果步进完成了一个回收周期，则返回 **true**。
-
-  - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
-  返回 *pause* 的前一个值。
-
-  - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
-  垃圾收集器暂停、步进倍率和步进大小。
-
-  - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
-  垃圾收集器次要倍率和主要倍率。
-
-  - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+gcinfo: |
+  返回 Lua 使用的内存千字节数。
+  等价于 `collectgarbage("count")`。
 
 dofile: |
   打开指定的文件并将其内容作为 Lua 代码块执行。不带参数调用时，
@@ -106,6 +98,9 @@ getmetatable: |
   如果 `object` 没有元表，则返回 **nil**。否则，如果对象的元表
   具有 `"__metatable"` 字段，则返回关联的值。否则，返回给定对象的元表。
 
+std.pairs_iterator: |
+  `index` 是默认 `next` 迭代器的前一个键；自定义 `__pairs` 实现可以使用任意状态值。
+
 ipairs: |
   返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
   > `for i,v in ipairs(t) do` *body* `end`
@@ -120,7 +115,11 @@ std.loadmode.item.t: |
 std.loadmode.item.bt: |
   二进制和文本块
 
-load: |
+load@5.1: |
+  使用函数 `chunk` 获取代码块片段来加载代码块。每次调用 `chunk` 都必须返回
+  一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
+
+load@>5.2,JIT: |
   加载一个代码块。
   如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
   `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
@@ -144,10 +143,18 @@ load: |
 
   Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
 
-loadstring: |
+loadstring@5.1: |
   从给定字符串加载代码块。
 
-loadfile: |
+loadstring@JIT: |
+  从给定字符串加载代码块。在 LuaJIT 中，`loadstring` 是 `load` 的别名，
+  并且也接受 `mode` 和 `env`。
+
+loadfile@5.1: |
+  类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+  则从标准输入获取。
+
+loadfile@>5.2,JIT: |
   类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
   则从标准输入获取。
 
@@ -235,6 +242,11 @@ select: |
   负数从末尾开始索引（-1 是最后一个参数）。
   否则，`index` 必须是字符串 "#"，`select` 返回接收到的额外参数的总数。
 
+std.metatable: |
+  `__pairs` 在 Lua 5.2+ 可用，`__ipairs` 在 Lua 5.2/5.3 可用
+  （LuaJIT 仅在启用 5.2 兼容模式时可用）。`@field` 声明不支持按字段的
+  `@version` 过滤，因此在此处说明。
+
 setmetatable: |
   为给定表设置元表。（要从 Lua 代码更改其他类型的元表，必须使用调试库。）
   如果 `metatable` 为 **nil**，则移除给定表的元表。如果原始元表
@@ -262,16 +274,23 @@ tostring: |
   如果 `v` 的元表具有 `__tostring` 字段，则 `tostring` 使用 `v`
   作为参数调用相应的值，并将调用的结果作为其结果。
 
+std.type.item.cdata: |
+  仅 LuaJIT
+
 type: |
   返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
   （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
   "`table`"、"`function`"、"`thread`" 和 "`userdata`"。
+  LuaJIT 对 FFI cdata 值还会返回 "`cdata`"。
 
 _VERSION: |
   一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
-  此变量的当前值是 "`Lua 5.4`"。
+  此变量的当前值是 "`Lua 5.5`"。
 
-xpcall: |
+xpcall@5.1: |
+  此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+
+xpcall@>5.2,JIT: |
   此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
 
 warn: |

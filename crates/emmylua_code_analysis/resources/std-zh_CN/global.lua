@@ -33,6 +33,7 @@ function assert(v, ...) end
 --- | "incremental"  # 将收集器模式更改为增量模式。此选项后面可以跟三个数字：垃圾收集器暂停、步进倍率和步进大小。
 --- | "generational" # 将收集器模式更改为分代模式。此选项后面可以跟两个数字：垃圾收集器次要倍率和主要倍率。
 --- | "isrunning"    # 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+--- | "param"        # 更改和/或获取收集器参数（Lua 5.5）。
 
 --- @alias std.collectgarbage.param
 --- | "minormul"   # minor multiplier
@@ -42,40 +43,69 @@ function assert(v, ...) end
 --- | "stepmul"    # step multiplier
 --- | "stepsize"   # step size
 
+--- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"
+--- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning" | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_53 std.collectgarbage_opt_51 | "isrunning"
+--- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_53 | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_55 "collect" | "stop" | "restart" | "count" | "step" | "isrunning" | "incremental" | "generational" | "param"
+
+--- @version 5.1
 --- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
----
---- ### opt
----
---- - **"collect"**: 执行完整的垃圾回收。这是默认选项。
----
---- - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
---- 直到调用 restart。
----
---- - **"restart"**: 重启垃圾收集器的自动执行。
----
---- - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
---- 乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
----
---- - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。
---- 如果值为 0，收集器将执行一个基础（不可分割）步进。
---- 对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。
---- 如果步进完成了一个回收周期，则返回 **true**。
----
---- - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
---- 返回 *pause* 的前一个值。
----
---- - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
---- 垃圾收集器暂停、步进倍率和步进大小。
----
---- - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
---- 垃圾收集器次要倍率和主要倍率。
----
---- - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
---- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
---- @param opt? std.collectgarbage_opt
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @param opt? std.collectgarbage_opt_51
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
+
+--- @version 5.2
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_52
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.3, JIT
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_53
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.4
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_54
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.5
+--- 此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+--- 完整的选项列表参见 `std.collectgarbage_opt`。
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @overload fun(opt: "param", param: string, value?: integer): integer
+--- @param opt? std.collectgarbage_opt_55
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.1, JIT
+--- 返回 Lua 使用的内存千字节数。
+--- 等价于 `collectgarbage("count")`。
+--- @return integer
+--- @nodiscard
+function gcinfo() end
 
 --- 打开指定的文件并将其内容作为 Lua 代码块执行。不带参数调用时，
 --- `dofile` 执行标准输入（`stdin`）的内容。返回代码块返回的所有值。
@@ -105,12 +135,17 @@ _G = {}
 --- @return any
 function getmetatable(object) end
 
+--- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
+
+--- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
+--- `index` 是默认 `next` 迭代器的前一个键；自定义 `__pairs` 实现可以使用任意状态值。
+
 --- 返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
 --- > `for i,v in ipairs(t) do` *body* `end`
 --- 将遍历键值对 (1,`t[1]`), (2,`t[2]`), ...，直到第一个不存在的索引。
 --- @generic V
---- @param t V[] | table<int, V> | { [int]: V }
---- @return fun(tbl: any): int, V
+--- @param t V[] | table<integer, V> | { [integer]: V }
+--- @return (fun(tbl: V[] | table<integer, V>, index?: integer): integer, V), V[] | table<integer, V>, integer
 function ipairs(t) end
 
 --- @alias std.loadmode
@@ -118,6 +153,19 @@ function ipairs(t) end
 --- | "t"  # 仅文本块
 --- | "bt" # 二进制和文本块
 
+--- @alias std.load_reader fun(): string?
+
+--- @version 5.1
+--- 使用函数 `chunk` 获取代码块片段来加载代码块。每次调用 `chunk` 都必须返回
+--- 一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
+--- @param chunk fun(): string?
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function load(chunk, chunkname) end
+
+--- @version >5.2, JIT
 --- 加载一个代码块。
 --- 如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
 --- `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
@@ -140,7 +188,7 @@ function ipairs(t) end
 --- 或 "bt"（二进制和文本）。默认为 "bt"。
 ---
 --- Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
---- @param chunk      (fun(...: any): string) | Language<"Lua">
+--- @param chunk      Language<"Lua"> | std.load_reader
 --- @param chunkname? string
 --- @param mode?      std.loadmode
 --- @param env?       table
@@ -149,8 +197,18 @@ function ipairs(t) end
 --- @nodiscard
 function load(chunk, chunkname, mode, env) end
 
+--- @version 5.1
 --- 从给定字符串加载代码块。
---- @version 5.1, JIT
+--- @param text       Language<"Lua">
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadstring(text, chunkname) end
+
+--- @version JIT
+--- 从给定字符串加载代码块。在 LuaJIT 中，`loadstring` 是 `load` 的别名，
+--- 并且也接受 `mode` 和 `env`。
 --- @param text       Language<"Lua">
 --- @param chunkname? string
 --- @param mode?      std.loadmode
@@ -160,6 +218,16 @@ function load(chunk, chunkname, mode, env) end
 --- @nodiscard
 function loadstring(text, chunkname, mode, env) end
 
+--- @version 5.1
+--- 类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+--- 则从标准输入获取。
+--- @param filename? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadfile(filename) end
+
+--- @version >5.2, JIT
 --- 类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
 --- 则从标准输入获取。
 --- @param filename? string
@@ -171,7 +239,7 @@ function loadstring(text, chunkname, mode, env) end
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT
---- @param proxy boolean | table | userdata
+--- @param proxy? boolean | userdata
 --- @return userdata
 function newproxy(proxy) end
 
@@ -206,9 +274,9 @@ function next(table, index) end
 --- 因此结构 `for k,v in pairs(t) do *body* end` 会遍历表 `t` 的所有键值对。
 ---
 --- 关于在遍历过程中修改表的注意事项，请参见函数 `next`。
---- @generic K, V, I
+--- @generic K, V
 --- @param t table<K, V> | V[] | { [K]: V }
---- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
+--- @return (fun(tbl: table<K, V>, index?: K): K, V), table<K, V>, nil
 function pairs(t) end
 
 --- 以 *保护模式* 调用给定参数的函数 `f`。这意味着 `f` 内部的任何错误
@@ -252,10 +320,11 @@ function rawlen(v) end
 --- 将 `table[index]` 的实际值设置为 `value`，不调用 `__newindex` 元方法。
 --- `table` 必须是一个表，`index` 是除 **nil** 和 NaN 之外的任何值，
 --- `value` 是任何 Lua 值。
---- @param table table
+--- @generic T: table
+--- @param table T
 --- @param index any
 --- @param value any
---- @return table
+--- @return T
 function rawset(table, index, value) end
 
 --- 加载给定的模块。该函数首先在 'package.loaded' 表中查找 `modname`
@@ -295,9 +364,13 @@ function require(modname) end
 --- @return std.Select<T..., Num>
 function select(index, ...) end
 
+--- `__pairs` 在 Lua 5.2+ 可用，`__ipairs` 在 Lua 5.2/5.3 可用
+--- （LuaJIT 仅在启用 5.2 兼容模式时可用）。`@field` 声明不支持按字段的
+--- `@version` 过滤，因此在此处说明。
 --- @class std.metatable
 --- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
+--- @field __name?      string
 --- @field __tostring?  (fun(t): string)
 --- @field __gc?        fun(t)
 --- @field __add?       fun(t1, t2): any
@@ -322,7 +395,8 @@ function select(index, ...) end
 --- @field __index?     table | fun(t, k): any
 --- @field __newindex?  table | fun(t, k, v)
 --- @field __call?      fun(t, ...): any...
---- @field __pairs?     fun(t): ((fun(t, k, v): any, any), any, any)
+--- @field __pairs?     fun(t: any): std.pairs_iterator<any, any>, any, any
+--- @field __ipairs?    fun(t: any): std.ipairs_iterator<any>, any, any
 --- @field __close?     fun(t, errobj): any
 
 -- NOTE: The actual implementation of setmetatable is provided by the language server
@@ -373,24 +447,38 @@ function tostring(v) end
 --- | "function"
 --- | "thread"
 --- | "userdata"
+--- | "cdata" # 仅 LuaJIT
 
 --- 返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
 --- （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
 --- "`table`"、"`function`"、"`thread`" 和 "`userdata`"。
+--- LuaJIT 对 FFI cdata 值还会返回 "`cdata`"。
 --- @param v any
 --- @return std.type type
 function type(v) end
 
 --- 一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
---- 此变量的当前值是 "`Lua 5.4`"。
+--- 此变量的当前值是 "`Lua 5.5`"。
+--- @type string
 _VERSION = "Lua 5.5"
 
+--- @version 5.1
+--- 此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+--- @generic R
+--- @param f    sync fun(): R...
+--- @param msgh fun(err: any): any
+--- @return_overload true, R...
+--- @return_overload false, any
+function xpcall(f, msgh) end
+
+--- @version >5.2, JIT
 --- 此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
 --- @generic T, R
 --- @param f    sync fun(...: T...): R...
 --- @param msgh fun(err: any): any
 --- @param ...  T...
---- @return boolean, R...
+--- @return_overload true, R...
+--- @return_overload false, any
 function xpcall(f, msgh, ...) end
 
 --- @version 5.1, JIT
@@ -416,18 +504,20 @@ function warn(msg1, ...) end
 arg = {}
 
 --- 这是一个不正确的注解，但真正支持 _ENV 会完全破坏变量分析路径；目前将其视为一个全局变量。
---- @version >5.3
+--- @version >5.2
 --- @type global
 _ENV = {}
 
 --- @version 5.1, JIT
 --- 设置指定函数的环境。
+--- @overload fun(f: 0, env: table)
 --- @param f   function | integer 要设置环境的函数。
 --- @param env table              要分配给函数的环境表。
+--- @return function
 function setfenv(f, env) end
 
 --- @version 5.1, JIT
 --- 检索指定函数的环境表。
---- @param f function | integer 要检索环境的函数。
+--- @param f? function | integer 要检索环境的函数。
 --- @return table The 与给定函数关联的环境表。
 function getfenv(f) end
