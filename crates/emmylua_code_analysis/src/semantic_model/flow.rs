@@ -2214,15 +2214,33 @@ fn trace_decl(
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
-    // On a loop-free graph every route to a flow node crosses the same guards, so
-    // a state's value depends on the node and the purpose alone — never on the
-    // route. That makes the state cacheable, which matters because a nested
+    // On a loop-free graph a state for an empty incoming path depends on the node and
+    // the purpose alone. That makes it cacheable, which matters because a nested
     // conditional chain otherwise re-derives the same states along exponentially
     // many routes. Only nodes that can reach a loop backwards keep the uncached
     // path (see the type note on `cache::TraceStateKey`), so a loop in one function
     // does not disable memoization for the rest of the file.
     if tree.is_loop_reachable(flow_id) {
         return trace_decl_uncached(model, decl, tree, flow_id, purpose, mode, visited, path);
+    }
+    // The memo holds the state for an empty incoming path. Guards collected between the query
+    // and this node narrow that state (see `narrows_a_merged_state`). A query with incoming casts
+    // keeps the memo as before.
+    if !path.narrowings.is_empty()
+        && path.casts.is_empty()
+        && path.narrowings.iter().all(narrows_a_merged_state)
+    {
+        let state = trace_decl(
+            model,
+            decl,
+            tree,
+            flow_id,
+            purpose,
+            mode,
+            visited,
+            &mut PathState::default(),
+        )?;
+        return Some(finalize(model, state, path));
     }
     let key = decl_trace_key(model, decl, flow_id, purpose, mode);
     {
@@ -2839,6 +2857,31 @@ fn finalize(model: &SemanticModel, mut base: LuaType, path: &PathState) -> LuaTy
         }
     }
     base
+}
+
+/// Whether a guard collected before a memoized node may narrow that node's state, which can be a
+/// merge of branches. The uncached walk applies a guard to each branch's value; this applies it to
+/// their union. The two agree for a guard `f` with `f(A | B) = f(A) | f(B)`: one that keeps or
+/// drops each component of the value (`Remove`, `Truthy`, `Falsy`, `NotNil`, `FilterPrimitive`,
+/// `MemberDiscriminant`, `MemberTruthy`), or that maps every value to one type (`Replace`).
+/// They can differ where a guard looks at the whole value: `Remove` widens a lone integer constant
+/// it would empty, and `ArrayLen`/`ArrayMinLen` touch only a value that is wholly an array. There
+/// the merged answer can be less precise, but the guard still applies. `Correlated` keeps the
+/// whole value when no row matches and reads the call that produced it, so it stays out.
+fn narrows_a_merged_state(narrowing: &Narrowing) -> bool {
+    match narrowing {
+        Narrowing::Replace(_)
+        | Narrowing::Remove(_)
+        | Narrowing::Truthy
+        | Narrowing::Falsy
+        | Narrowing::NotNil
+        | Narrowing::FilterPrimitive { .. }
+        | Narrowing::MemberDiscriminant { .. }
+        | Narrowing::MemberTruthy { .. }
+        | Narrowing::ArrayLen(_)
+        | Narrowing::ArrayMinLen(_) => true,
+        Narrowing::Correlated { .. } => false,
+    }
 }
 
 /// Apply narrowing: replacement returns directly; removal removes components.

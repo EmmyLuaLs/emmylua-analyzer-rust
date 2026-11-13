@@ -220,10 +220,9 @@ pub(crate) enum TraceSubject {
 /// Original-signature traces keep incoming PathState empty and memoize each
 /// node's transfer during unwind, so a cached node never contains later casts.
 ///
-/// The incoming path is deliberately absent. It is safe to omit only for flow
-/// graphs without loops, where every route to a flow node crosses the same
-/// guards, so the path is a function of the node. [`super::flow`] consults this
-/// memo only in that case and recomputes otherwise.
+/// The state is the one for an empty incoming path: [`super::flow`] applies the
+/// guards a query collected before reaching the node on top of it. The memo is
+/// consulted only for nodes with no loop behind them, and recomputed otherwise.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TraceStateKey {
     pub(crate) file_id: FileId,
