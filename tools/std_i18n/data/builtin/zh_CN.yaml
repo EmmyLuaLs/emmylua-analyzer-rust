@@ -15,6 +15,10 @@ number: |
   对于小型机器和嵌入式系统来说，同时使用 32 位整数和 32 位浮点数的选项特别有吸引力。
   （参见 `luaconf.h` 文件中的宏 `LUA_32BITS`。）
 
+integer: |
+  *number* 的子类型，用于表示整数值（Lua 5.3+）。在类型注解中，integer 可以赋值给
+  number，但 number 不能赋值给 integer。
+
 userdata: |
   *userdata* 类型用于允许将任意 C 数据存储在 Lua 变量中。userdata 值
   表示一块原始内存。有两种 userdata：*full userdata*，是一个由 Lua
@@ -22,6 +26,10 @@ userdata: |
   Lua 中没有预定义的操作，除了赋值和相等性测试。通过使用 *metatables*，程序员
   可以为 full userdata 值定义操作。userdata 值不能在 Lua 中创建或修改，
   只能通过 C API 进行。这保证了宿主程序所拥有数据的完整性。
+
+lightuserdata: |
+  *lightuserdata* 类型保存一个裸 C 指针。在 Lua 中它和 *userdata* 一样只支持赋值和
+  相等比较，例如 `debug.upvalueid` 会返回这种值。
 
 thread: |
   *thread* 类型表示独立的执行线程，用于实现协程。Lua 线程与操作系统
@@ -45,17 +53,63 @@ table: |
   `i` 和 `j` 原始相等（即不使用元方法的相等）时表示相同的表元素。特别地，
   具有整数值的浮点数等于其对应的整数。为避免歧义，任何用作键的具有整数值
   的浮点数都会转换为其对应的整数。例如，如果你写 `a[2.0] = true`，
-  插入表中的实际键将是整数 `2`。（另一方面，2 和 "`2`" 是不同的 Lua 值，
+  插入表中的实际键将是整数 `2`。（另一方面，`2` 和 `"2"` 是不同的 Lua 值，
   因此表示不同的表条目。）
 
+any: |
+  *any* 类型会关闭类型检查：任何值都可以赋值给 `any`，`any` 也可以赋值给任何类型。
+
+void: |
+  *void* 类型表示没有返回值。分析器会将它投影为 `nil`，因此
+  `fun(): void` 等价于 `fun(): nil`。
+
+unknown: |
+  *unknown* 类型用于无法推断出类型的情况。它和 `any` 一样与所有类型兼容，
+  但同时表示推断失败。对于有意不检查的值，请优先使用 `any`。
+
+never: |
+  *never* 是底类型：它可以赋值给任何类型，但没有任何值可以赋值给它。主要用于条件类型
+  的结果，例如 `Exclude` 条件为真时、`Extract` 条件为假时。
+
+self: |
+  方法内部隐式 `self` 参数的类型，会被替换为所属类的实例；在方法外使用没有意义。
+
+int: |
+  `integer` 的别名，保留用于 C 风格的注解。
+
+namespace: |
+  用于命名空间限定类型的保留类型名。命名空间通过 `---@namespace` 标签声明；
+  这个类只是避免 `namespace<"...">` 被解析为未知类型。
+
+function: |
+  原始 *function* 类型的保留名称。`@type function` 会解析为内建的函数类型，
+  而不是这个类。
+
+std.NotNull: |
+  从 `T` 中移除 `nil`；等价于 `Exclude<T, nil>`。
+
+std.Nullable: |
+  为 `T` 添加 `nil`；等价于 `T | nil`。
+
 std.Select: |
-  Select 函数的内置类型
+  `select` 返回值元组的标记类型。分析器会直接计算 `select` 调用；`unknown`
+  只是占位符。
 
 std.Unpack: |
-  Unpack 函数的内置类型
+  `table.unpack`/`unpack` 多个返回值的标记类型。分析器会展开元组 `T` 的所有值；
+  `Start` 和 `End` 暂时保留，尚未生效。
 
 std.RawGet: |
-  Rawget 的内置类型
+  `rawget(T, K)` 的标记类型：`T` 中键 `K` 对应的值类型。
+
+TypeGuard: |
+  自定义类型守卫。标注 `---@return TypeGuard<T>` 的函数会在真值分支中把参数
+  窄化为 `T`。
+
+Language: |
+  标记包含 `T` 语言源代码的字符串参数（例如 `load`/`loadstring` 的代码块参数可
+  标记为 `Language<"Lua">`）。分析器目前会将它投影为 `string`，因此不会应用
+  内嵌语言高亮。
 
 Parameters: |
   以元组形式获取函数的参数

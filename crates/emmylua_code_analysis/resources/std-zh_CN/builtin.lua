@@ -33,6 +33,8 @@
 --- （参见 `luaconf.h` 文件中的宏 `LUA_32BITS`。）
 --- @class number
 
+--- *number* 的子类型，用于表示整数值（Lua 5.3+）。在类型注解中，integer 可以赋值给
+--- number，但 number 不能赋值给 integer。
 --- @class integer
 
 --- *userdata* 类型用于允许将任意 C 数据存储在 Lua 变量中。userdata 值
@@ -43,6 +45,8 @@
 --- 只能通过 C API 进行。这保证了宿主程序所拥有数据的完整性。
 --- @class userdata
 
+--- *lightuserdata* 类型保存一个裸 C 指针。在 Lua 中它和 *userdata* 一样只支持赋值和
+--- 相等比较，例如 `debug.upvalueid` 会返回这种值。
 --- @class lightuserdata
 
 --- *thread* 类型表示独立的执行线程，用于实现协程。Lua 线程与操作系统
@@ -66,40 +70,58 @@
 --- `i` 和 `j` 原始相等（即不使用元方法的相等）时表示相同的表元素。特别地，
 --- 具有整数值的浮点数等于其对应的整数。为避免歧义，任何用作键的具有整数值
 --- 的浮点数都会转换为其对应的整数。例如，如果你写 `a[2.0] = true`，
---- 插入表中的实际键将是整数 `2`。（另一方面，2 和 "`2`" 是不同的 Lua 值，
+--- 插入表中的实际键将是整数 `2`。（另一方面，`2` 和 `"2"` 是不同的 Lua 值，
 --- 因此表示不同的表条目。）
 --- @class table
 
+--- *any* 类型会关闭类型检查：任何值都可以赋值给 `any`，`any` 也可以赋值给任何类型。
 --- @class any
 
+--- *void* 类型表示没有返回值。分析器会将它投影为 `nil`，因此
+--- `fun(): void` 等价于 `fun(): nil`。
 --- @class void
 
+--- *unknown* 类型用于无法推断出类型的情况。它和 `any` 一样与所有类型兼容，
+--- 但同时表示推断失败。对于有意不检查的值，请优先使用 `any`。
 --- @class unknown
 
+--- *never* 是底类型：它可以赋值给任何类型，但没有任何值可以赋值给它。主要用于条件类型
+--- 的结果，例如 `Exclude` 条件为真时、`Extract` 条件为假时。
 --- @class never
 
+--- 方法内部隐式 `self` 参数的类型，会被替换为所属类的实例；在方法外使用没有意义。
 --- @class self
 
+--- `integer` 的别名，保留用于 C 风格的注解。
 --- @alias int integer
 
+--- 用于命名空间限定类型的保留类型名。命名空间通过 `---@namespace` 标签声明；
+--- 这个类只是避免 `namespace<"...">` 被解析为未知类型。
 --- @class namespace<T: string>
 
+--- 原始 *function* 类型的保留名称。`@type function` 会解析为内建的函数类型，
+--- 而不是这个类。
 --- @class function
 
---- @alias std.NotNull<T> T -?
+--- 从 `T` 中移除 `nil`；等价于 `Exclude<T, nil>`。
+--- @alias std.NotNull<T> Exclude<T, nil>
 
---- @alias std.Nullable<T> T +?
+--- 为 `T` 添加 `nil`；等价于 `T | nil`。
+--- @alias std.Nullable<T> T | nil
 
---- Select 函数的内置类型
---- @alias std.Select<T, StartOrLen> unknown
+--- `select` 返回值元组的标记类型。分析器会直接计算 `select` 调用；`unknown`
+--- 只是占位符。
+--- @alias std.Select<T, Num> unknown
 
---- Unpack 函数的内置类型
+--- `table.unpack`/`unpack` 多个返回值的标记类型。分析器会展开元组 `T` 的所有值；
+--- `Start` 和 `End` 暂时保留，尚未生效。
 --- @alias std.Unpack<T, Start, End> unknown
 
---- Rawget 的内置类型
+--- `rawget(T, K)` 的标记类型：`T` 中键 `K` 对应的值类型。
 --- @alias std.RawGet<T, K> unknown
 
---- compact luals
+-- LuaLS compatibility aliases: allow annotations written for LuaLS to resolve
+-- without the `std.` prefix.
 
 --- @alias type std.type
 
@@ -107,8 +129,13 @@
 
 --- @alias metatable std.metatable
 
+--- 自定义类型守卫。标注 `---@return TypeGuard<T>` 的函数会在真值分支中把参数
+--- 窄化为 `T`。
 --- @alias TypeGuard<T> boolean
 
+--- 标记包含 `T` 语言源代码的字符串参数（例如 `load`/`loadstring` 的代码块参数可
+--- 标记为 `Language<"Lua">`）。分析器目前会将它投影为 `string`，因此不会应用
+--- 内嵌语言高亮。
 --- @alias Language<T: string> string
 
 --- 以元组形式获取函数的参数
