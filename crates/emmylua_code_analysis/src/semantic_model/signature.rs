@@ -897,71 +897,6 @@ impl<'db> SemanticModel<'db> {
         }
         Some(out)
     }
-    /// `---@param` / `---@return` annotations on table-literal fields override the closure's bare signature.
-    /// semantic currently does not merge these field-level docs into `Signature.docs`, but `setmetatable`'s
-    /// `__call` / `__index` metamethod fields depend on them to preserve the function signature.
-    pub(crate) fn table_field_signature_override(
-        &self,
-        file_id: FileId,
-        closure_syntax: LuaSyntaxId,
-        mut params: Vec<(String, Option<LuaType>)>,
-        mut ret: LuaType,
-    ) -> Option<(Vec<(String, Option<LuaType>)>, LuaType)> {
-        let facts = self.file_facts_of(file_id)?;
-        facts
-            .members
-            .iter()
-            .find(|member| member.value_syntax == Some(closure_syntax))?;
-        let tree = self.syntax_tree_of(file_id)?;
-        let node = closure_syntax.to_node_from_root(&tree.get_red_root())?;
-        let field = node.ancestors().find_map(LuaTableField::cast)?;
-        let mut has_param = false;
-        let mut has_return = false;
-        let mut returns = Vec::new();
-        for comment in field.get_comments() {
-            for tag in comment.get_doc_tags() {
-                match tag {
-                    LuaDocTag::Param(param) => {
-                        if let Some(name_token) = param.get_name_token()
-                            && let Some(doc_ty) = param.get_type()
-                        {
-                            let mut ty = self.doc_type_lua_rich_in(file_id, doc_ty.get_syntax_id());
-                            if param.is_nullable() {
-                                ty = LuaType::from_vec(vec![ty, LuaType::Nil]);
-                            }
-                            let name = name_token.get_name_text().to_string();
-                            if let Some(slot) = params.iter_mut().find(|(n, _)| n == &name) {
-                                slot.1 = Some(ty);
-                                has_param = true;
-                            }
-                        }
-                    }
-                    LuaDocTag::Return(return_tag) => {
-                        has_return = true;
-                        for doc_ty in return_tag.get_types() {
-                            let ty = self.doc_type_lua_rich_in(file_id, doc_ty.get_syntax_id());
-                            if !matches!(ty, LuaType::Unknown) {
-                                returns.push(ty);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        if has_return && !returns.is_empty() {
-            ret = if returns.len() == 1 {
-                returns.pop()?
-            } else {
-                LuaType::Variadic(Rc::new(VariadicType::Multi(returns)))
-            };
-        }
-        if has_param || has_return {
-            Some((params, ret))
-        } else {
-            None
-        }
-    }
     /// Signature structure of a closure in any file (used for cross-file member/global function signature resolution).
     pub fn type_of_signature_in_file(
         &self,
@@ -1023,17 +958,6 @@ impl<'db> SemanticModel<'db> {
             if !matches!(inferred, LuaType::Unknown | LuaType::Any) {
                 ret = inferred;
             }
-        }
-        if signature.docs.is_none()
-            && let Some((new_params, new_ret)) = self.table_field_signature_override(
-                file_id,
-                closure_syntax,
-                params.clone(),
-                ret.clone(),
-            )
-        {
-            params = new_params;
-            ret = new_ret;
         }
         let is_variadic = signature.is_variadic;
         let async_state = signature
