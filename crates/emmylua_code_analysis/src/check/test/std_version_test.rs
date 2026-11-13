@@ -932,4 +932,113 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_io_type_accepts_any_value() {
+        // `io.type` only inspects the value at runtime (`luaL_checkany`); it
+        // must not require an actual file handle.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local _n = io.type(42)
+            local _s = io.type("file")
+            local _t = io.type({})
+            "#,
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "io.type must accept any value: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_seek_arguments_are_optional() {
+        // `whence` defaults to "cur" and `offset` to 0, so all three call
+        // shapes are valid; the previous `@overload fun()` is no longer
+        // needed once both parameters are optional.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local f = io.open("test.txt", "w") --[[@as file]]
+            f:seek()
+            f:seek("set")
+            f:seek("end", 0)
+            "#,
+        );
+
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|code| code == "missing-parameter" || code == "redundant-parameter"),
+            "file:seek arguments must be optional: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_union_parameters_keep_return_types() {
+        // `io.open` has an optional union-typed `mode`, and `file:seek` has an
+        // optional union-typed `whence`. Calls must still resolve to the main
+        // signature instead of falling back to `unknown`.
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua54, "io.open('test.txt', 'w')"),
+            "file?"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::Lua54,
+                "(assert(io.open('test.txt', 'w'))):seek()"
+            ),
+            "integer?"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::Lua54,
+                "(assert(io.open('test.txt', 'w'))):seek('set')"
+            ),
+            "integer?"
+        );
+    }
+
+    #[test]
+    fn test_io_literal_options_reject_unknown_values() {
+        // `luaL_checkoption` only accepts the documented literals; dropping the
+        // redundant `string |` lets the checker catch typos.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local f = io.open("test.txt", "w") --[[@as file]]
+            f:seek("seet")
+            f:setvbuf("bogus")
+            "#,
+        );
+
+        let mismatches = diagnostics
+            .iter()
+            .filter(|code| *code == "param-type-mismatch")
+            .count();
+        assert_eq!(
+            mismatches, 2,
+            "unknown seek/setvbuf options must be rejected: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_close_visible_in_every_version() {
+        // `io.close` is split into version-gated blocks; every supported
+        // runtime must still resolve it.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "io.close()");
+            assert!(
+                !diagnostics.iter().any(|code| code == "undefined-global"),
+                "io.close must be available in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
 }

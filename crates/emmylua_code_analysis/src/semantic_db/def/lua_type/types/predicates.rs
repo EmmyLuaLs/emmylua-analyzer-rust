@@ -343,6 +343,19 @@ impl LuaType {
     pub fn is_module_ref(&self) -> bool {
         matches!(self, LuaType::ModuleRef(_))
     }
+
+    /// Returns `ty` unchanged when it is already nullable, otherwise `ty | nil`.
+    ///
+    /// Unlike building `Union(ty, Nil)` directly, this flattens an existing
+    /// union (`A | B` becomes a single `A | B | nil`) instead of nesting a
+    /// `Nullable(Union(...))` that call matching cannot unwrap.
+    pub fn make_nullable(ty: Self) -> Self {
+        if ty.is_nullable() {
+            ty
+        } else {
+            Self::from_vec(vec![ty, Self::Nil])
+        }
+    }
 }
 
 fn union_contains_multi_return(union: &LuaUnionType) -> bool {

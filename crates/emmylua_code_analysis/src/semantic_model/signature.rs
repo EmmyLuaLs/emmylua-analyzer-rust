@@ -435,8 +435,8 @@ impl<'db> SemanticModel<'db> {
             ty = type_eval::expand_alias_generic(self, &ty);
             // Do not evaluate conditional types here: before function generics are substituted, `T extends ...` would incorrectly take the false branch.
             // Call sites/diagnostics should call `eval_conditionals` after bindings are substituted.
-            if nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }
@@ -1007,8 +1007,8 @@ impl<'db> SemanticModel<'db> {
             ty = infer::vm::bind_signature_generics(&ty, &generic_params);
             ty = type_eval::expand_alias_generic(self, &ty);
             // See `type_of_signature`: do not evaluate conditional types before function generics are substituted.
-            if nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }

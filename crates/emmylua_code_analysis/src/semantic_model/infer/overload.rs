@@ -131,6 +131,42 @@ fn expand_non_generic_alias(model: &SemanticModel, ty: &LuaType) -> LuaType {
     model.alias_target(&def).unwrap_or_else(|| ty.clone())
 }
 
+/// Expand aliases nested in a union parameter type.
+///
+/// Optional alias parameters (`---@param mode? MyAlias`) are projected as
+/// `Alias | nil`, so the union hides the alias from the top-level `Ref`/`Def`
+/// head expansion. Expanding the members and re-flattening the union lets the
+/// argument match the alias target (`MyAlias`'s literal union) instead of the
+/// bare reference.
+fn expand_union_alias_members(model: &SemanticModel, ty: &mut LuaType) {
+    let LuaType::Union(union) = ty else {
+        return;
+    };
+    let has_alias = union.iter().any(|member| {
+        let (LuaType::Ref(id) | LuaType::Def(id)) = member else {
+            return false;
+        };
+        model
+            .type_def_of(id)
+            .is_some_and(|def| def.kind == TypeDefKind::Alias)
+    });
+    if !has_alias {
+        return;
+    }
+    let mut changed = false;
+    let members: Vec<LuaType> = union
+        .iter()
+        .map(|member| {
+            let expanded = expand_non_generic_alias(model, member);
+            changed |= expanded != *member;
+            expanded
+        })
+        .collect();
+    if changed {
+        *ty = LuaType::from_vec(members);
+    }
+}
+
 /// Resolve the `self` type of a callable type.
 ///
 /// Mirrors the old `call_operator_self_type`: only `---@overload` /
@@ -465,6 +501,11 @@ fn match_call_candidate_impl(
         } else if type_eval::contains_conditional_infer(&expanded) {
             param_ty = type_eval::eval_conditionals(model, &expanded);
         }
+        // Optional alias parameters (`---@param mode? MyAlias`) are projected as
+        // `Alias | nil`, so the top-level type is a union and the `Ref`/`Def`
+        // branch above never sees the alias. Expand aliases nested in the union
+        // so the argument matches the alias target rather than the bare `Ref`.
+        expand_union_alias_members(model, &mut param_ty);
         if name == "..." || matches!(param_ty, LuaType::Variadic(_)) {
             let base = variadic_base_type(&param_ty).unwrap_or(LuaType::Unknown);
             // `T...` variadic generic (param itself is Variadic): bind the remaining args
