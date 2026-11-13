@@ -622,6 +622,206 @@ mod tests {
     }
 
     #[gtest]
+    fn test_accessors_explicit_getter_and_setter() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@[field_accessor("camelCase", "readAge", "writeAge")]
+            ---@field age number
+            local A
+
+            ---@private
+            function A:readAge()
+            end
+
+            ---@private
+            function A:writeAge(value)
+            end
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.age<??> = 1
+            "#,
+            vec![
+                Expected {
+                    file: "".to_string(),
+                    line: 3,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 7,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 11,
+                }
+            ],
+        ));
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_accessors_pascal_case_convention() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@[field_accessor("PascalCase")]
+            ---@field age number
+            local A
+
+            ---@private
+            function A:GetAge()
+            end
+
+            ---@private
+            function A:SetAge(value)
+            end
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.age<??> = 1
+            "#,
+            vec![
+                Expected {
+                    file: "".to_string(),
+                    line: 3,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 7,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 11,
+                }
+            ],
+        ));
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_accessors_snake_case_convention() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@[field_accessor("snake_case")]
+            ---@field firstName string
+            local A
+
+            ---@private
+            function A:get_first_name()
+            end
+
+            ---@private
+            function A:set_first_name(value)
+            end
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.firstName<??> = "x"
+            "#,
+            vec![
+                Expected {
+                    file: "".to_string(),
+                    line: 3,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 7,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 11,
+                }
+            ],
+        ));
+
+        Ok(())
+    }
+
+    /// `field_accessor` applies to the immediately following `@field` only.
+    #[gtest]
+    fn test_accessors_are_scoped_to_the_following_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field age number
+            ---@[field_accessor]
+            ---@field name string
+            local A
+
+            ---@private
+            function A:getName()
+            end
+
+            ---@private
+            function A:setName(value)
+            end
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.name<??> = "x"
+            "#,
+            vec![
+                Expected {
+                    file: "".to_string(),
+                    line: 4,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 8,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 12,
+                }
+            ],
+        ));
+
+        // The previous field has no `field_accessor` attribute: only the field
+        // definition itself is returned.
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.age<??> = 1
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 2,
+            }],
+        ));
+
+        Ok(())
+    }
+
+    #[gtest]
     fn test_intersection() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(

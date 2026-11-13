@@ -9,8 +9,9 @@ use emmylua_code_analysis::{
     Emmyrc, LuaMemberKey, MemberInfo, SemanticDatabase, SemanticId, SemanticModel, WorkspaceId,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocDescription, LuaExpr, LuaIndexExpr, LuaLocalStat,
-    LuaNameExpr, LuaSyntaxToken, LuaTableExpr, LuaTableField, LuaTokenKind,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocAttributeUse, LuaDocDescription, LuaDocFieldKey,
+    LuaDocTag, LuaExpr, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr,
+    LuaSyntaxToken, LuaTableExpr, LuaTableField, LuaTokenKind,
 };
 use lsp_types::{GotoDefinitionResponse, Location};
 use rowan::TextSize;
@@ -198,32 +199,24 @@ fn add_field_accessor_locations(
         return;
     };
     let field = field.as_str();
-    let mut chars = field.chars();
-    let Some(first) = chars.next() else {
-        return;
-    };
-    let rest = chars.as_str();
-    let capitalized = format!("{}{}", first.to_uppercase(), rest);
-    for method_name in [format!("get{}", capitalized), format!("set{}", capitalized)] {
-        let method_key = LuaMemberKey::Name(method_name.clone().into());
-        for prefix_type in prefix_types {
-            let type_id = match prefix_type {
-                emmylua_code_analysis::LuaType::Ref(id)
-                | emmylua_code_analysis::LuaType::Def(id) => Some(id),
-                emmylua_code_analysis::LuaType::Generic(generic) => {
-                    Some(generic.get_base_type_id_ref())
-                }
-                _ => None,
-            };
-            let Some(type_id) = type_id else {
-                continue;
-            };
-            let Some(def) = model.type_def_of(type_id) else {
-                continue;
-            };
-            if !type_has_field_accessor(model, &def) {
-                continue;
-            }
+    for prefix_type in prefix_types {
+        let type_id = match prefix_type {
+            emmylua_code_analysis::LuaType::Ref(id)
+            | emmylua_code_analysis::LuaType::Def(id) => Some(id),
+            emmylua_code_analysis::LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
+            _ => None,
+        };
+        let Some(type_id) = type_id else {
+            continue;
+        };
+        let Some(def) = model.type_def_of(type_id) else {
+            continue;
+        };
+        let Some(spec) = field_accessor_for(model, &def, field) else {
+            continue;
+        };
+        for method_name in spec.accessor_names(field) {
+            let method_key = LuaMemberKey::Name(method_name.into());
             for info in model.member_infos_with_key_all(prefix_type, &method_key) {
                 if let Some(id) = info.id
                     && let Some(range) = id.member_key_range()
@@ -238,30 +231,174 @@ fn add_field_accessor_locations(
     }
 }
 
-fn type_has_field_accessor(
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum AccessorConvention {
+    #[default]
+    CamelCase,
+    PascalCase,
+    SnakeCase,
+}
+
+impl AccessorConvention {
+    fn from_name(name: &str) -> Self {
+        match name {
+            "PascalCase" => Self::PascalCase,
+            "snake_case" => Self::SnakeCase,
+            _ => Self::CamelCase,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct FieldAccessorSpec {
+    convention: AccessorConvention,
+    getter: Option<String>,
+    setter: Option<String>,
+}
+
+impl FieldAccessorSpec {
+    /// Explicit getter/setter names take precedence over the naming convention.
+    fn accessor_names(&self, field: &str) -> Vec<String> {
+        let mut names = Vec::with_capacity(2);
+        names.push(
+            self.getter
+                .clone()
+                .unwrap_or_else(|| accessor_name(self.convention, "get", field)),
+        );
+        names.push(
+            self.setter
+                .clone()
+                .unwrap_or_else(|| accessor_name(self.convention, "set", field)),
+        );
+        names
+    }
+}
+
+fn accessor_name(convention: AccessorConvention, prefix: &str, field: &str) -> String {
+    let base = field.trim_start_matches('_');
+    let pascal = to_pascal_word(base);
+    match convention {
+        AccessorConvention::CamelCase => format!("{prefix}{pascal}"),
+        AccessorConvention::PascalCase => {
+            let mut chars = prefix.chars();
+            let Some(first) = chars.next() else {
+                return pascal;
+            };
+            format!(
+                "{}{}{}",
+                first.to_ascii_uppercase(),
+                chars.as_str(),
+                pascal
+            )
+        }
+        AccessorConvention::SnakeCase => format!("{prefix}_{}", to_snake_word(base)),
+    }
+}
+
+fn to_pascal_word(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    for part in value.split(['_', '-', '.']) {
+        let mut chars = part.chars();
+        let Some(first) = chars.next() else {
+            continue;
+        };
+        result.push(first.to_ascii_uppercase());
+        result.push_str(chars.as_str());
+    }
+    result
+}
+
+fn to_snake_word(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    for (index, ch) in value.chars().enumerate() {
+        if ch.is_uppercase() && index != 0 {
+            result.push('_');
+        }
+        result.push(ch.to_ascii_lowercase());
+    }
+    result
+}
+
+/// Finds the `---@[field_accessor(...)]` attribute that applies to `field`.
+///
+/// The attribute belongs to the immediately following `---@field` tag; an
+/// attribute placed before `---@class` applies to the first field as well.
+fn field_accessor_for(
     model: &SemanticModel<'_>,
     def: &emmylua_code_analysis::TypeDef,
-) -> bool {
-    let Some(owner_syntax) = def.owner_syntax else {
-        return false;
-    };
+    field: &str,
+) -> Option<FieldAccessorSpec> {
+    let owner_syntax = def.owner_syntax?;
     let owner_range = owner_syntax.get_range();
     let def_model = model.model_for(def.file_id);
-    let Some(chunk) = def_model.chunk() else {
-        return false;
+    let chunk = def_model.chunk()?;
+    for comment in chunk.descendants::<LuaComment>() {
+        let owns_definition = comment.get_owner().is_some_and(|owner| {
+            let owner_range_of_comment = owner.syntax().text_range();
+            owner_range_of_comment.contains_range(owner_range)
+                || owner_range_of_comment.start() == owner_range.start()
+        });
+        if !owns_definition {
+            continue;
+        }
+        let mut pending: Option<FieldAccessorSpec> = None;
+        for tag in comment.get_doc_tags() {
+            match tag {
+                LuaDocTag::AttributeUse(attr_tag) => {
+                    if let Some(spec) = attr_tag
+                        .get_attribute_uses()
+                        .find_map(field_accessor_spec)
+                    {
+                        pending = Some(spec);
+                    }
+                }
+                LuaDocTag::Field(field_tag) => {
+                    let matches = field_tag
+                        .get_field_key()
+                        .and_then(|key| match key {
+                            LuaDocFieldKey::Name(name) => {
+                                Some(name.get_name_text() == field)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or(false);
+                    if matches {
+                        if let Some(spec) = pending {
+                            return Some(spec);
+                        }
+                    } else {
+                        pending = None;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn field_accessor_spec(attribute: LuaDocAttributeUse) -> Option<FieldAccessorSpec> {
+    if attribute.get_type()?.get_name_text()? != "field_accessor" {
+        return None;
+    }
+    let args: Vec<_> = attribute
+        .get_arg_list()
+        .map(|list| list.get_args().collect())
+        .unwrap_or_default();
+    let mut spec = FieldAccessorSpec::default();
+    if let Some(convention) = args.first().and_then(string_literal_arg) {
+        spec.convention = AccessorConvention::from_name(&convention);
+    }
+    spec.getter = args.get(1).and_then(string_literal_arg);
+    spec.setter = args.get(2).and_then(string_literal_arg);
+    Some(spec)
+}
+
+fn string_literal_arg(arg: &LuaLiteralExpr) -> Option<String> {
+    let LuaLiteralToken::String(token) = arg.get_literal()? else {
+        return None;
     };
-    chunk.descendants::<LuaComment>().any(|comment| {
-        comment
-            .syntax()
-            .text()
-            .to_string()
-            .contains("field_accessor")
-            && comment.get_owner().is_some_and(|owner| {
-                let owner_range_of_comment = owner.syntax().text_range();
-                owner_range_of_comment.contains_range(owner_range)
-                    || owner_range_of_comment.start() == owner_range.start()
-            })
-    })
+    Some(token.get_value().to_string())
 }
 
 fn location_of(
