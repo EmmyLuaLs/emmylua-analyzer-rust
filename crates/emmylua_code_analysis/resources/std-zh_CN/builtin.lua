@@ -156,11 +156,14 @@
 --- 提取 T 中可以赋值给 U 的类型
 --- @alias Extract<T, U> T extends U and T or never
 
---- attribute
+-- attribute
 
+--- 通过 `---@[...]` 语法应用的内建特性的基类。
 --- @class Attribute
 
---- 标记为`已弃用`。接收一个可选的消息参数。
+--- 将声明标记为已弃用。可以接收一个可选消息。
+---
+--- 既支持传统的 `---@deprecated` 标签，也支持 `---@[deprecated("message")]` 形式。
 --- @class deprecated: Attribute
 --- @overload fun(message?: string)
 
@@ -172,31 +175,38 @@
 --- @class lsp_optimization: Attribute
 --- @overload fun(code: "delayed_definition")
 
---- 为 `[int]` 字段设置一个字符串别名，这个别名仅在 `hint` 与 `completion` 中生效。
+--- 整数索引字段（例如 `---@field [1] string`）的别名。别名会代替原始索引显示在
+--- inlay hint 和补全中。
 ---
 --- 接收一个字符串参数作为别名名称。
 --- @class index_alias: Attribute
 --- @overload fun(name: string)
 
---- 用于指定类的默认构造函数。
---- 此属性必须应用于函数参数，且函数参数类型必须是字符串模板泛型。
+--- 用于指定工厂函数所创建类的默认构造函数。
+--- 此属性必须应用于函数参数，并紧邻对应的 `---@param` 标签；参数类型必须是
+--- 字符串模板泛型。
 ---
 --- ### 参数
 ---
---- - `name`: 作为构造函数的方法名。
---- - `root_class`: 用于标记根类，以本特性创建的类会隐式继承此类，例如 C# 中的 `System.Object`。默认为空。
+--- - `name`: 作为构造函数的方法名（必填）。
+--- - `root_class`: 为兼容 LuaLS 保留；当前分析器接受该参数，但不会添加隐式继承。默认为空。
 --- - `strip_self`: 调用构造函数时是否可以省略 `self` 参数，默认为 `true`。
---- - `return_mode`: 构造函数返回策略。`"self"` 强制返回 `self`，`"doc"` 使用注解的返回类型，
---- `"default"` 优先使用注解的返回类型，并在没有声明注解时回退到 `self`。默认为 `"default"`。
+--- - `return_mode`: 构造函数返回策略。`"self"` 返回类实例，`"doc"` 使用构造函数注解的返回类型，
+---   `"default"` 优先使用注解的返回类型，并在没有声明注解时回退到实例类型。默认为 `"default"`。
 --- @class constructor: Attribute
 --- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self" | "doc" | "default")
 
---- 将 `getter` 和 `setter` 方法与字段关联。目前仅提供定义跳转功能，
---- 且目标方法必须位于同一个类中。
+--- 将 `getter` 和 `setter` 方法与字段关联。目前仅提供定义跳转功能：
+--- 跳转到字段时也会跳转到该字段所属类上匹配的访问器方法。
+---
+--- 该属性作用于其后的 `@field` 标签；放在 `@class` 之前时会作用于第一个字段。
 ---
 --- ### 参数
 ---
---- - `convention`: 命名约定，默认为 `camelCase`。隐式添加 `get` 和 `set` 前缀，例如 `_age` -> `getAge`、`setAge`。
+--- - `convention`: 生成访问器名称的命名约定。将 `get`/`set` 前缀与字段名组合，
+---   默认为 `camelCase`（`_age` -> `getAge`、`setAge`；`first_name` -> `getFirstName`、
+---   `setFirstName`）。`"PascalCase"` 生成 `GetAge`/`SetAge`，`"snake_case"` 生成
+---   `get_age`/`set_age`。
 --- - `getter`: Getter 方法名。优先级高于 `convention`。
 --- - `setter`: Setter 方法名。优先级高于 `convention`。
 --- @class field_accessor: Attribute

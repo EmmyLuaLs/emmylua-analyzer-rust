@@ -213,12 +213,17 @@
 --- Extract from T those types that are assignable to U
 --- @alias Extract<T, U> T extends U and T or never
 
---- attribute
+-- attribute
 
+---
+--- Base class for built-in attributes applied with the `---@[...]` syntax.
 --- @class Attribute
 
 ---
---- Deprecated. Receives an optional message parameter.
+--- Marks the declaration as deprecated. Receives an optional message.
+---
+--- Both the classic `---@deprecated` tag and the attribute form
+--- `---@[deprecated("message")]` are supported.
 --- @class deprecated: Attribute
 --- @overload fun(message?: string)
 
@@ -232,33 +237,47 @@
 --- @overload fun(code: "delayed_definition")
 
 ---
---- Index field alias, will be displayed in `hint` and `completion`.
+--- Alias for an integer index field (for example, `---@field [1] string`).
+--- The alias is shown in inlay hints and completion instead of the raw index.
 ---
 --- Receives a string parameter for the alias name.
 --- @class index_alias: Attribute
 --- @overload fun(name: string)
 
 ---
---- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
---- used to specify the default constructor of a class.
+--- This attribute must be applied to function parameters, immediately before
+--- the corresponding `---@param` tag, and the parameter's type must be a string
+--- template generic; it specifies the default constructor of the class produced
+--- by the factory function.
 ---
 --- Parameters:
---- - `name`: The name of the method as a constructor.
---- - `root_class`: Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
---- - `strip_self`: Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
---- - `return_mode`: Constructor return strategy. `"self"` forces `self`, `"doc"` uses the documented return type,
----                 and `"default"` prefers the documented return type and falls back to `self`.
----                 Defaults to `"default"`
+--- - `name`: Name of the method used as the constructor (required).
+--- - `root_class`: Reserved for LuaLS compatibility; accepted, but no implicit
+---   inheritance is added by the current analyzer. Defaults to empty.
+--- - `strip_self`: Whether the `self` parameter may be omitted when calling the
+---   constructor. Defaults to `true`.
+--- - `return_mode`: Constructor return strategy. `"self"` returns the class
+---   instance, `"doc"` uses the constructor's documented return type, and
+---   `"default"` prefers the documented return type and falls back to the
+---   instance type. Defaults to `"default"`.
 --- @class constructor: Attribute
 --- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self" | "doc" | "default")
 
 ---
---- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
---- and the target methods must reside within the same class.
+--- Associates `getter` and `setter` methods with a field. Currently only
+--- definition navigation is provided: jumping to the field also jumps to the
+--- matching accessor methods on the field's class.
+---
+--- The attribute applies to the `@field` tag that follows it; an attribute
+--- placed before `@class` applies to the first field.
 ---
 --- Parameters:
---- - `convention`: Naming convention, defaults to `camelCase`. Implicitly adds `get` and `set` prefixes. eg: `_age` -> `getAge`, `setAge`.
---- - `getter`: Getter method name. Takes precedence over `convention`.
---- - `setter`: Setter method name. Takes precedence over `convention`.
+--- - `convention`: Naming convention for the generated accessor names. Matches
+---   the prefixes `get`/`set` with the field name and defaults to `camelCase`
+---   (`_age` -> `getAge`, `setAge`; `first_name` -> `getFirstName`,
+---   `setFirstName`). `"PascalCase"` produces `GetAge`/`SetAge`, `"snake_case"`
+---   produces `get_age`/`set_age`.
+--- - `getter`: Explicit getter method name. Takes precedence over `convention`.
+--- - `setter`: Explicit setter method name. Takes precedence over `convention`.
 --- @class field_accessor: Attribute
 --- @overload fun(convention?: "camelCase" | "PascalCase" | "snake_case", getter?: string, setter?: string)

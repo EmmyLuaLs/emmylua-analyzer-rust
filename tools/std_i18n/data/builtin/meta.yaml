@@ -141,33 +141,38 @@ b:
   r: [207, 0, 209, 51]
   e:
   - ['Exclude', 'd', doc, [207, 0, 209, 0], 'c2be9cb3445d8d15']
-- a: '--- attribute'
+- a: '-- attribute'
   g: 'Extract from T those types that are assignable to U'
   r: [211, 0, 213, 51]
   e:
   - ['Extract', 'd', doc, [211, 0, 213, 0], '2f8fbc960e3f2128']
 - a: '---'
-  g: 'Deprecated. Receives an optional message parameter.'
-  r: [219, 0, 222, 35]
+  g: 'Base class for built-in attributes applied with the `---@[...]` syntax.'
+  r: [217, 0, 219, 20]
   e:
-  - ['deprecated', 'd', doc, [219, 0, 221, 0], '4da00bd2a6b8c523']
+  - ['Attribute', 'd', doc, [217, 0, 219, 0], '447122ccca030132']
+- a: '---'
+  g: 'Marks the declaration as deprecated. Receives an optional message.'
+  r: [221, 0, 227, 35]
+  e:
+  - ['deprecated', 'd', doc, [221, 0, 226, 0], '3a24e601daf59452']
 - a: '---'
   g: 'Language Server Optimization Items.'
-  r: [224, 0, 231, 45]
+  r: [229, 0, 236, 45]
   e:
-  - ['lsp_optimization', 'd', doc, [224, 0, 230, 0], '8e73659bb68f6d93']
+  - ['lsp_optimization', 'd', doc, [229, 0, 235, 0], '8e73659bb68f6d93']
 - a: '---'
-  g: 'Index field alias, will be displayed in `hint` and `completion`.'
-  r: [233, 0, 238, 31]
+  g: 'Alias for an integer index field (for example, `---@field [1] string`).'
+  r: [238, 0, 244, 31]
   e:
-  - ['index_alias', 'd', doc, [233, 0, 237, 0], 'c584595d5bbff3f2']
+  - ['index_alias', 'd', doc, [238, 0, 243, 0], 'b8f902474bb5c6dc']
 - a: '---'
-  g: 'This attribute must be applied to function parameters, and the function parameter''s type must be a string template generic,'
-  r: [240, 0, 252, 116]
+  g: 'This attribute must be applied to function parameters, immediately before'
+  r: [246, 0, 263, 116]
   e:
-  - ['constructor', 'd', doc, [240, 0, 251, 0], 'b030cc80bc98b6b6']
+  - ['constructor', 'd', doc, [246, 0, 262, 0], '66e77d56a633d1bd']
 -
-  g: 'Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,'
-  r: [254, 0, 263, 107]
+  g: 'Associates `getter` and `setter` methods with a field. Currently only'
+  r: [265, 0, 282, 107]
   e:
-  - ['field_accessor', 'd', doc, [254, 0, 262, 0], 'b33112567ace0c1c']
+  - ['field_accessor', 'd', doc, [265, 0, 281, 0], '1902c6cdf297a2ee']
