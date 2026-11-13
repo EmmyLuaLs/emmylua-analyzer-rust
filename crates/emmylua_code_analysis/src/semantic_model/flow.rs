@@ -76,7 +76,33 @@ fn decl_owner_syntax_start(model: &SemanticModel, decl: &SemanticId) -> Option<T
 /// When `offset` lies on the assignment flow node for `x = value`, **this assignment does not participate in the target type** —
 /// the query answers "what x was before the assignment" (`---@cast x +T` / narrowing still applies).
 pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSize) -> LuaType {
-    let fallback = || model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
+    type_of_decl_read_at(model, decl, offset, &DeclTracePurpose::ReadValue)
+}
+
+pub(super) fn type_of_decl_contract_at(
+    model: &SemanticModel,
+    decl: &SemanticId,
+    offset: TextSize,
+    contract: LuaType,
+) -> LuaType {
+    type_of_decl_read_at(
+        model,
+        decl,
+        offset,
+        &DeclTracePurpose::ReadContract(contract),
+    )
+}
+
+fn type_of_decl_read_at(
+    model: &SemanticModel,
+    decl: &SemanticId,
+    offset: TextSize,
+    purpose: &DeclTracePurpose,
+) -> LuaType {
+    let fallback = || match purpose {
+        DeclTracePurpose::ReadContract(contract) => contract.clone(),
+        _ => model.type_of_decl(decl).unwrap_or(LuaType::Unknown),
+    };
     let Some(tree) = model.flow_tree() else {
         return fallback();
     };
@@ -102,7 +128,7 @@ pub fn type_of_decl_at(model: &SemanticModel, decl: &SemanticId, offset: TextSiz
         decl,
         &tree,
         start,
-        &DeclTracePurpose::ReadValue,
+        purpose,
         TraceMode::Point,
         &mut visited,
         &mut path,
@@ -156,7 +182,20 @@ pub fn type_of_decl_assign_target_at(
     decl: &SemanticId,
     offset: TextSize,
 ) -> LuaType {
-    let fallback = || model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
+    type_of_decl_assign_contract_at(model, decl, offset, None)
+}
+
+fn type_of_decl_assign_contract_at(
+    model: &SemanticModel,
+    decl: &SemanticId,
+    offset: TextSize,
+    contract: Option<LuaType>,
+) -> LuaType {
+    let fallback = || {
+        contract
+            .clone()
+            .unwrap_or_else(|| model.type_of_decl(decl).unwrap_or(LuaType::Unknown))
+    };
     let Some(tree) = model.flow_tree() else {
         return fallback();
     };
@@ -179,7 +218,7 @@ pub fn type_of_decl_assign_target_at(
         decl,
         &tree,
         start,
-        &DeclTracePurpose::AssignTarget,
+        &DeclTracePurpose::AssignTarget(contract.clone()),
         TraceMode::Point,
         &mut visited,
         &mut path,
@@ -2147,8 +2186,12 @@ fn decl_trace_base(
     path: &PathState,
 ) -> Option<LuaType> {
     match purpose {
-        DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget => {
+        DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget(None) => {
             model.type_of_decl(decl).map(|ty| finalize(model, ty, path))
+        }
+        DeclTracePurpose::ReadContract(contract)
+        | DeclTracePurpose::AssignTarget(Some(contract)) => {
+            Some(finalize(model, contract.clone(), path))
         }
         DeclTracePurpose::OriginalSignatures(seed) => Some(LuaType::from_vec(
             seed.signatures
@@ -2246,6 +2289,28 @@ fn trace_decl_uncached(
         let Some(node) = tree.get_flow_node(current) else {
             break 'trace None;
         };
+        if let DeclTracePurpose::ReadContract(contract) = purpose
+            && let Some(assignment) = node.kind.assignment_syntax()
+            && tree.get_flow_effects(current).iter().any(|effect| {
+                matches!(effect, FlowEffect::AssignDecl { decl: assigned, value_syntax }
+                    if assigned == decl && !is_decl_self_assignment(model, decl, *value_syntax))
+            })
+        {
+            // A write invalidates earlier guards. Keep the declared contract and
+            // casts, then apply only the guards collected after this write.
+            if mode == TraceMode::MergeBranch
+                && !assignment_antecedent_reachable(model, tree, node.antecedent.as_ref())
+            {
+                break 'trace Some(LuaType::Never);
+            }
+            let base = type_of_decl_assign_contract_at(
+                model,
+                decl,
+                assignment.get_range().start(),
+                Some(contract.clone()),
+            );
+            break 'trace Some(finalize(model, base, path));
+        }
         if let DeclTracePurpose::OriginalSignatures(seed) = purpose {
             for effect in tree.get_flow_effects(current) {
                 if let FlowEffect::AssignDecl {
@@ -2346,7 +2411,9 @@ fn trace_decl_uncached(
             }
             FlowNodeKind::CallExprStat(call_stat_ptr) => {
                 if match purpose {
-                    DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget => {
+                    DeclTracePurpose::ReadValue
+                    | DeclTracePurpose::ReadContract(_)
+                    | DeclTracePurpose::AssignTarget(_) => {
                         mode == TraceMode::MergeBranch
                             && call_stat_returns_never(model, call_stat_ptr)
                     }
@@ -2375,7 +2442,9 @@ fn trace_decl_uncached(
                 let truthy = matches!(node.kind, FlowNodeKind::TrueCondition(_));
                 if let Some(cond) = flow_condition_expr(model, cond_ptr)
                     && match purpose {
-                        DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget => {
+                        DeclTracePurpose::ReadValue
+                        | DeclTracePurpose::ReadContract(_)
+                        | DeclTracePurpose::AssignTarget(_) => {
                             mode == TraceMode::MergeBranch
                                 && condition_branch_unreachable(model, &cond, truthy)
                         }
@@ -2394,21 +2463,24 @@ fn trace_decl_uncached(
                 } else {
                     narrow_condition_false
                 };
-                if matches!(purpose, DeclTracePurpose::ReadValue)
-                    && let Some(narrowing) = narrow(
-                        model,
-                        tree,
-                        decl,
-                        cond_ptr,
-                        current,
-                        antecedent_has_narrowing(tree, node.antecedent.clone()),
-                    )
-                {
+                if matches!(
+                    purpose,
+                    DeclTracePurpose::ReadValue | DeclTracePurpose::ReadContract(_)
+                ) && let Some(narrowing) = narrow(
+                    model,
+                    tree,
+                    decl,
+                    cond_ptr,
+                    current,
+                    antecedent_has_narrowing(tree, node.antecedent.clone()),
+                ) {
                     path.narrowings.push(narrowing);
                 }
             }
             FlowNodeKind::TagCast(cast_ptr) => match purpose {
-                DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget => {
+                DeclTracePurpose::ReadValue
+                | DeclTracePurpose::ReadContract(_)
+                | DeclTracePurpose::AssignTarget(_) => {
                     collect_decl_cast(model, decl, cast_ptr, path)
                 }
                 DeclTracePurpose::OriginalSignatures(_) => {
@@ -5755,8 +5827,10 @@ fn decl_branch_is_pure(
             FlowNodeKind::Assignment(_) | FlowNodeKind::ImplFunc(_) => {
                 if match purpose {
                     DeclTracePurpose::ReadValue => matches!(node.kind, FlowNodeKind::Assignment(_)),
-                    DeclTracePurpose::AssignTarget => false,
-                    DeclTracePurpose::OriginalSignatures(_) => true,
+                    DeclTracePurpose::AssignTarget(_) => false,
+                    DeclTracePurpose::ReadContract(_) | DeclTracePurpose::OriginalSignatures(_) => {
+                        true
+                    }
                 } && tree.get_flow_effects(current).iter().any(
                     |effect| matches!(effect, FlowEffect::AssignDecl { decl: d, .. } if d == decl),
                 ) {
@@ -5765,10 +5839,10 @@ fn decl_branch_is_pure(
             }
             FlowNodeKind::TrueCondition(cond_ptr) | FlowNodeKind::FalseCondition(cond_ptr) => {
                 if match purpose {
-                    DeclTracePurpose::ReadValue => {
+                    DeclTracePurpose::ReadValue | DeclTracePurpose::ReadContract(_) => {
                         condition_may_narrow_decl(model, tree, decl, cond_ptr)
                     }
-                    DeclTracePurpose::AssignTarget => false,
+                    DeclTracePurpose::AssignTarget(_) => false,
                     DeclTracePurpose::OriginalSignatures(_) => flow_condition_expr(model, cond_ptr)
                         .is_some_and(|cond| {
                             original_condition_unreachable(
@@ -5784,7 +5858,9 @@ fn decl_branch_is_pure(
             }
             FlowNodeKind::CallExprStat(call_stat_ptr) => {
                 if match purpose {
-                    DeclTracePurpose::ReadValue | DeclTracePurpose::AssignTarget => {
+                    DeclTracePurpose::ReadValue
+                    | DeclTracePurpose::ReadContract(_)
+                    | DeclTracePurpose::AssignTarget(_) => {
                         call_stat_returns_never(model, call_stat_ptr)
                     }
                     DeclTracePurpose::OriginalSignatures(_) => {
@@ -5869,8 +5945,10 @@ fn walk_decl(
                                 (left, right) => LuaType::from_vec(vec![left, right]),
                             }
                         }
-                        DeclTracePurpose::ReadValue => merge_types(merged, branch_ty),
-                        DeclTracePurpose::AssignTarget => intersect_types(merged, branch_ty),
+                        DeclTracePurpose::ReadValue | DeclTracePurpose::ReadContract(_) => {
+                            merge_types(merged, branch_ty)
+                        }
+                        DeclTracePurpose::AssignTarget(_) => intersect_types(merged, branch_ty),
                     };
                 }
             }

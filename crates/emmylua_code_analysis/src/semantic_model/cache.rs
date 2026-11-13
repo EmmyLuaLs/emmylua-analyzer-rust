@@ -26,6 +26,10 @@ use crate::IndexInfo;
 pub(crate) enum BuiltinKey {
     Expression(LuaSyntaxId),
     Flow(SemanticId, FlowId),
+    /// All writes, seeded by the point value or the declaration initializer.
+    Declaration(SemanticId, Option<FlowId>),
+    /// Standard global value before any workspace writes.
+    InitialGlobal(SmolStr),
 }
 
 /// Keep provisional memo entries while dependent queries still need them.
@@ -177,12 +181,15 @@ pub(crate) struct OriginalSignatures {
     pub(super) signatures: Rc<Vec<LuaFunctionType>>,
 }
 
-/// The three declaration queries supported by the shared flow walk.
+/// Declaration queries supported by the shared flow walk.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum DeclTracePurpose {
     ReadValue,
-    /// Use the declaration type and casts, without assignments or branch guards.
-    AssignTarget,
+    /// Use this contract with guards and casts, without assignment types.
+    /// The seed is part of the key because globals can combine several declarations.
+    ReadContract(LuaType),
+    /// Use the supplied contract (or declaration type) and casts, without assignments or guards.
+    AssignTarget(Option<LuaType>),
     OriginalSignatures(OriginalSignatures),
 }
 

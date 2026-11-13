@@ -9,6 +9,555 @@ mod test {
     use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
 
     #[test]
+    fn test_pcall_preserves_the_declared_callback_type() {
+        for callback_type in [
+            "fun(x: string|boolean): integer",
+            "Callback",
+            "(fun(x: string): integer) | (fun(x: boolean): integer)",
+            "OverloadedCallback",
+        ] {
+            let source = format!(
+                r#"
+                ---@alias Callback fun(x: string|boolean): integer
+                ---@alias OverloadedCallback (fun(x: string): integer) | (fun(x: boolean): integer)
+                ---@type {callback_type}
+                ---@return integer
+                local callback = function(x) return x and 1 or 0 end
+                callback('ok')
+                callback(true)
+                pcall(callback, 'ok')
+                pcall(callback, true)
+                callback(1)
+                pcall(callback, 1)
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 2, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "1");
+            }
+        }
+    }
+
+    #[test]
+    fn test_callable_contracts_keep_branch_guards() {
+        let source = r#"
+            ---@class NumberCallback
+            ---@overload fun(value: number)
+            local NumberCallback = {}
+            ---@type (fun(value: string)) | NumberCallback
+            local accept
+            if type(accept) == 'function' then
+                accept('ok')
+                pcall(accept, 'ok')
+                accept = (accept)
+                accept(42)
+                pcall(accept, 42)
+            end
+            return NumberCallback
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
+        for diagnostic in diagnostics {
+            assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(&source[diagnostic.range], "42");
+        }
+    }
+
+    #[test]
+    fn test_callable_contract_guards_follow_writes_and_branch_joins() {
+        for (body, expected) in [
+            (
+                "if type(accept) == 'function' then accept = replacement; accept(42); pcall(accept, 42) end",
+                0,
+            ),
+            (
+                "if type(accept) == 'function' then accept('ok') else accept(42) end\naccept('ok'); pcall(accept, 'ok'); accept(42); pcall(accept, 42)",
+                0,
+            ),
+            (
+                "---@cast accept fun(value: boolean)|NumberCallback\nif type(accept) == 'function' then accept = replacement; accept(true); pcall(accept, true); accept('wrong'); pcall(accept, 'wrong') end",
+                2,
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@class NumberCallback
+                ---@overload fun(value: number)
+                local NumberCallback = {{}}
+                ---@type (fun(value: string)) | NumberCallback
+                local accept
+                ---@type NumberCallback
+                local replacement
+                {body}
+                return NumberCallback
+                "#
+            );
+            let diagnostics = check_source(&source)
+                .into_iter()
+                .filter(|diagnostic| {
+                    matches!(
+                        diagnostic.code,
+                        DiagnosticCode::ParamTypeMismatch | DiagnosticCode::AssignTypeMismatch
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_callable_contracts_include_later_named_casts() {
+        for (arguments, expected) in [("'ok', 1", 0), ("'ok', 'wrong'", 2)] {
+            let source = format!(
+                r#"
+                ---@type fun(value: string)
+                local accept
+                accept('ok')
+                ---@cast accept fun(value: string, count: number)
+                accept({arguments})
+                pcall(accept, {arguments})
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_overloads_preserve_nested_function_generics() {
+        for (overload, extra_argument) in [
+            ("fun()", ""),
+            (
+                "fun(item: T, values: {[K in 'x']: {[P in 'y']: T}}, mode: boolean)",
+                ", true",
+            ),
+        ] {
+            for (value, expected) in [("42", 0), ("'wrong'", 2)] {
+                let source = format!(
+                    r#"
+                    ---@generic T: number
+                    ---@param item T
+                    ---@param values {{[K in 'x']: {{[P in 'y']: T}}}}
+                    ---@overload {overload}
+                    local function accept(item, values) return item, values end
+                    accept(42, {{x = {{y = {value}}}}}{extra_argument})
+                    pcall(accept, 42, {{x = {{y = {value}}}}}{extra_argument})
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(diagnostic.code, DiagnosticCode::AssignTypeMismatch);
+                    assert_eq!(&source[diagnostic.range], "'wrong'");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_replacement_casts_do_not_restore_original_overloads() {
+        for returns in ["", ": number"] {
+            let source = format!(
+                r#"
+                ---@param value number
+                ---@return number
+                ---@overload fun(value: string): string
+                local function accept(value) return value end
+                ---@type number|string
+                local other
+                ---@cast other string
+                accept('ok')
+                pcall(accept, 'ok')
+                ---@cast accept fun(value: number){returns}
+                accept(42)
+                pcall(accept, 42)
+                accept('wrong')
+                pcall(accept, 'wrong')
+                return other
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 2, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_removal_casts_do_not_restore_removed_overloads() {
+        for (cast, expected) in [("-nil", 0), ("-fun(value: string)", 2)] {
+            let source = format!(
+                r#"
+                ---@param value number
+                ---@overload fun(value: string)
+                ---@overload fun(value: boolean)
+                local function accept(value) return value end
+                ---@cast accept {cast}
+                accept(42)
+                pcall(accept, 42)
+                accept(true)
+                pcall(accept, true)
+                accept('text')
+                pcall(accept, 'text')
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'text'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_typed_globals_keep_contracts_from_each_file() {
+        let mut ws = VirtualWorkspace::new();
+        for (file, domain) in [("strings.lua", "string"), ("numbers.lua", "number")] {
+            ws.def_file(
+                file,
+                &format!(
+                    r#"
+                    ---@alias Callback_{domain} fun(value: {domain}): {domain}
+                    ---@type Callback_{domain}
+                    ---@param value any
+                    ---@return any
+                    function accept(value) return value end
+                    "#
+                ),
+            );
+        }
+        for (argument, expected) in [("42", 0), ("'text'", 0), ("false", 2)] {
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!("accept({argument})\npcall(accept, {argument})"),
+            );
+            assert_eq!(diagnostics.len(), expected, "{argument}: {diagnostics:#?}");
+        }
+    }
+
+    #[test]
+    fn test_typed_global_contracts_apply_casts_after_collecting_files() {
+        for domains in [["string", "number"], ["number", "string"]] {
+            let mut ws = VirtualWorkspace::new();
+            for domain in domains {
+                ws.def_file(
+                    &format!("{domain}.lua"),
+                    &format!(
+                        "---@type fun(value: {domain})\n---@param value any\nfunction accept(value) return value end"
+                    ),
+                );
+            }
+            for (cast, accepted) in [
+                ("+fun(value: boolean)", [true, true, true]),
+                ("-fun(value: string)", [false, true, false]),
+                ("fun(value: boolean)", [false, false, true]),
+                ("", [true, true, false]),
+            ] {
+                for (argument, accepted) in ["'text'", "42", "false"].into_iter().zip(accepted) {
+                    let source = format!(
+                        "{}\naccept({argument})\npcall(accept, {argument})",
+                        if cast.is_empty() {
+                            String::new()
+                        } else {
+                            format!("---@cast accept {cast}")
+                        }
+                    );
+                    let diagnostics = param_type_diagnostics(&mut ws, &source);
+                    assert_eq!(
+                        diagnostics.len(),
+                        if accepted { 0 } else { 2 },
+                        "{domains:?}, {source}: {diagnostics:#?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_typed_global_contracts_keep_function_guards() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "strings.lua",
+            "---@type fun(value: string)\naccept = function(value) return value end",
+        );
+        ws.def_file(
+            "numbers.lua",
+            r#"
+            ---@class NumberCallback
+            ---@overload fun(value: number)
+            local NumberCallback = {}
+            ---@type NumberCallback
+            accept = function(value) return value end
+            return NumberCallback
+        "#,
+        );
+        let diagnostics = param_type_diagnostics(
+            &mut ws,
+            r#"
+            if type(accept) == 'function' then
+                accept('ok')
+                pcall(accept, 'ok')
+                accept(42)
+                pcall(accept, 42)
+            else
+                accept(42)
+                pcall(accept, 42)
+                accept('wrong')
+                pcall(accept, 'wrong')
+            end
+            accept('ok')
+            accept(42)
+            ---@type NumberCallback
+            local replacement
+            ---@cast accept +fun(value: boolean)
+            if type(accept) == 'function' then
+                accept = replacement
+                accept('ok')
+                pcall(accept, 'ok')
+                accept(true)
+                pcall(accept, true)
+                accept(42)
+                pcall(accept, 42)
+            end
+        "#,
+        );
+        assert_eq!(diagnostics.len(), 4, "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn test_custom_pcall_checks_its_own_parameters() {
+        for (definition, self_assignment) in [
+            ("local function pcall", "pcall = pcall"),
+            ("function pcall", ""),
+        ] {
+            for (options, expected) in [("42", 0), ("'wrong'", 1)] {
+                let source = format!(
+                    r#"
+                    ---@alias Callback fun(value: string)
+                    ---@param callback Callback
+                    local function run(callback)
+                        ---@type Callback
+                        local target = callback
+                        ---@param cb Callback
+                        ---@param options integer
+                        {definition}(cb, options) return cb, options end
+                        {self_assignment}
+                        return pcall(target, {options})
+                    end
+                    return run
+                "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                    assert_eq!(&source[diagnostic.range], "'wrong'");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_local_pcall_alias_keeps_builtin_forwarding() {
+        for alias in [
+            "",
+            "local pcall = pcall",
+            "local original = pcall; local pcall = original",
+            "local pcall = (pcall)",
+            "local pcall = pcall; pcall = pcall",
+            "local original = pcall; local pcall; pcall = original",
+        ] {
+            for (callback, valid, invalid) in [
+                (
+                    "---@type fun(fields: {value: number})\nlocal accept",
+                    "{value = 42}",
+                    "{value = 'wrong'}",
+                ),
+                (
+                    "---@param value number\nlocal function accept(value) return value end",
+                    "42",
+                    "'wrong'",
+                ),
+            ] {
+                for (argument, accepted) in [(valid, true), (invalid, false)] {
+                    let source = format!("{alias}\n{callback}\npcall(accept, {argument})");
+                    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                    let file_id = ws.def(&source);
+                    let diagnostics = ws
+                        .analysis
+                        .diagnose_file(file_id, CancellationToken::new())
+                        .unwrap();
+                    assert_eq!(
+                        diagnostics.is_empty(),
+                        accepted,
+                        "{source}: {diagnostics:#?}"
+                    );
+                    for diagnostic in diagnostics {
+                        assert!(matches!(
+                            diagnostic.code,
+                            Some(NumberOrString::String(code))
+                                if code == DiagnosticCode::AssignTypeMismatch.get_name()
+                                    || code == DiagnosticCode::ParamTypeMismatch.get_name()
+                        ));
+                        // Report the bad argument, not a mismatch on the callback itself.
+                        assert!(diagnostic.range.start.character >= "pcall(accept, ".len() as u32);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_builtin_forwarding() {
+        for (setup, before, after) in [
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do",
+                "end\npcall = pcall",
+            ),
+            (
+                "local pcall = pcall",
+                "local function run()",
+                "end\npcall = (pcall)\nreturn run",
+            ),
+            ("pcall = pcall", "", ""),
+            (
+                "local original = pcall; local pcall = original",
+                "for _ = 1, 2 do",
+                "end\npcall = original",
+            ),
+            (
+                "local original = pcall; local pcall; pcall = original",
+                "for _ = 1, 2 do\npcall = original",
+                "end",
+            ),
+            (
+                "local original = pcall; local pcall = original",
+                "local function run()",
+                "end\npcall = original\nreturn run",
+            ),
+            ("local original = pcall; pcall = original", "", ""),
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do\nlocal previous = pcall; pcall = previous",
+                "end",
+            ),
+        ] {
+            for (value, accepted) in [("42", true), ("'wrong'", false)] {
+                let source = format!(
+                    "{setup}\n---@type fun(fields: {{value: number}})\nlocal accept\n{before}\npcall(accept, {{value = {value}}})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(
+                    diagnostics.is_empty(),
+                    accepted,
+                    "{source}: {diagnostics:#?}"
+                );
+                for diagnostic in diagnostics {
+                    assert!(matches!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(code))
+                            if code == DiagnosticCode::AssignTypeMismatch.get_name()
+                                || code == DiagnosticCode::ParamTypeMismatch.get_name()
+                    ));
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, {value = ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_replacement_parameters() {
+        for (before, after) in [
+            ("for _ = 1, 2 do", "end"),
+            ("local function run()", "end\nreturn run"),
+        ] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let source = format!(
+                    "---@type function\nlocal pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\n---@param callback fun(fields: {{value: number}})\n---@param options integer\nlocal function replacement(callback, options) return callback, options end\npcall = replacement\n{before}\npcall(accept, {value})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_global_pcall_self_assignment_keeps_cross_file_replacements() {
+        let custom = "---@param callback fun(fields: {value: number})\n---@param options integer\nfunction pcall(callback, options) return callback, options end";
+        for custom_first in [true, false] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                if custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let source = format!(
+                    "pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\npcall(accept, {value})"
+                );
+                let file_id = ws.def_file("calls.lua", &source);
+                if !custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     #[ignore = "Known bug before ef507415: overload contracts and candidate selection"]
     fn test_overloaded_function_values_keep_each_supported_contract() {
         for (setup, value) in [
@@ -332,7 +881,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: dictionary key and value validation"]
     fn test_dictionary_overload_requires_matching_keys_values_and_mode() {
         for (call, valid) in [
             ("accept({'a'}, 'a')", true),
@@ -341,7 +889,10 @@ mod test {
             ("accept({'a'}, 1)", false),
             ("accept({[key] = 1}, 1)", true),
             ("accept({[key] = 1}, 'a')", false),
+            ("accept({count = nil}, 'a')", true),
+            ("accept({count = nil}, 1)", true),
         ] {
+            let protected_call = call.replacen("accept(", "pcall(accept, ", 1);
             let diagnostics = check_source(&format!(
                 r#"
                 local key = 'count'
@@ -350,10 +901,15 @@ mod test {
                 ---@overload fun(values: table<string, integer>, mode: integer)
                 local function accept(values, mode) return values, mode end
                 {call}
+                {protected_call}
                 return key
                 "#,
             ));
-            assert_eq!(diagnostics.is_empty(), valid, "{call}: {diagnostics:?}");
+            assert_eq!(
+                diagnostics.len(),
+                if valid { 0 } else { 2 },
+                "{call}: {diagnostics:?}"
+            );
             assert!(
                 diagnostics
                     .iter()
@@ -390,7 +946,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: dictionary key and value validation"]
     fn test_dictionary_arguments_check_the_final_value_of_repeated_keys() {
         for (constructor, valid) in [
             ("{entry = 42, [key] = 'ok'}", true),
@@ -399,11 +954,11 @@ mod test {
             ("{entry = 42, [key] = nil}", true),
         ] {
             let diagnostics = check_source(&format!(
-                "local key = 'entry'\n---@param values table<string, string>\nlocal function accept(values) return values end\naccept({constructor})\nreturn key"
+                "local key = 'entry'\n---@param values table<string, string>\nlocal function accept(values) return values end\naccept({constructor})\npcall(accept, {constructor})\nreturn key"
             ));
             assert_eq!(
-                diagnostics.is_empty(),
-                valid,
+                diagnostics.len(),
+                if valid { 0 } else { 2 },
                 "{constructor}: {diagnostics:?}"
             );
             assert!(
@@ -411,6 +966,32 @@ mod test {
                     .iter()
                     .all(|d| d.code == DiagnosticCode::ParamTypeMismatch),
                 "{diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_dictionary_arguments_allow_absent_nullable_entries() {
+        for (value_type, expected) in [("integer|nil", 0), ("string|nil", 2)] {
+            let source = format!(
+                r#"
+                ---@param values table<string, integer>
+                local function accept(values) return values end
+                ---@param value {value_type}
+                local function use(value)
+                    accept({{entry = value}})
+                    pcall(accept, {{entry = value}})
+                end
+                return use
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            assert!(
+                diagnostics
+                    .iter()
+                    .all(|d| d.code == DiagnosticCode::ParamTypeMismatch),
+                "{diagnostics:#?}"
             );
         }
     }
@@ -682,7 +1263,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: overload contracts and candidate selection"]
     fn test_protected_calls_use_count_matching_overloads() {
         for (fields, valid) in [("{value = 2}", true), ("{value = 'text'}", false)] {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
@@ -704,7 +1284,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: protected calls select incompatible overloads"]
     fn test_protected_calls_keep_fixed_arguments_with_varargs() {
         for (fields, valid) in [("{value = 2}", true), ("{value = 'text'}", false)] {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
@@ -1014,7 +1593,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: replaced pcall still uses builtin forwarding"]
     fn test_replaced_pcall_uses_its_new_parameters() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(
