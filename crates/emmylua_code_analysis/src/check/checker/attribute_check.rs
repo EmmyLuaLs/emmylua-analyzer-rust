@@ -108,9 +108,13 @@ fn select_attribute_overload(
     let overloads: Vec<LuaFunctionType> = def
         .call_overloads
         .iter()
-        .filter_map(|syntax| match semantic_model.doc_type_lua(*syntax) {
-            LuaType::DocFunction(func) => Some(func.as_ref().clone()),
-            _ => None,
+        .filter_map(|syntax| {
+            // Overloads live in the file that declares the attribute class (for built-in
+            // attributes this is the standard library), so project in `def.file_id`.
+            match semantic_model.doc_type_lua_in(def.file_id, *syntax, &def.generic_params) {
+                LuaType::DocFunction(func) => Some(func.as_ref().clone()),
+                _ => None,
+            }
         })
         .collect();
     if overloads.is_empty() {
