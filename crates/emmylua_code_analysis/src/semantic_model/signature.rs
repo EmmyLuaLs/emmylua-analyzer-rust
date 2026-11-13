@@ -863,7 +863,11 @@ impl<'db> SemanticModel<'db> {
             .and_then(|prefix| self.declared_path_type(&prefix))
             .unwrap_or(owner_ty);
 
-        let infos = member::member_infos_with_key_all(self, &owner_ty, &key);
+        let infos = if let Some((_, writes)) = self.directional_member_views(&owner_ty, &key) {
+            writes
+        } else {
+            member::member_infos_with_key_all(self, &owner_ty, &key)
+        };
         let mut out = Vec::new();
         for info in &infos {
             let typ = match &info.typ {
