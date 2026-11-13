@@ -1008,9 +1008,22 @@ impl<'db> SemanticModel<'db> {
                 && (self.prefix_has_named_member(index_expr, &name)
                     || self.require_module_has_member(index_expr, &name));
             if !prefer_typed {
-                let member_id = same_name
+                let typed_here = same_name
                     .iter()
-                    .find(|member| member.doc_type_syntax.is_some())
+                    .find(|member| member.doc_type_syntax.is_some());
+                // Across files too: a write here is held to a global member's `---@type` elsewhere.
+                if typed_here.is_none()
+                    && !same_name.is_empty()
+                    && let Some(typed) = self.typed_member_of_owner(&owner, &name)
+                {
+                    return Some(self.resolved_member(
+                        Some(typed.id),
+                        Some(typed.file_id),
+                        owner,
+                        name,
+                    ));
+                }
+                let member_id = typed_here
                     .or_else(|| same_name.first())
                     .map(|member| member.id.clone());
                 if let Some(member_id) = member_id {
@@ -1315,6 +1328,17 @@ impl<'db> SemanticModel<'db> {
         self.members_of_owner(&def.id)
             .iter()
             .any(|member| member.name == *name)
+    }
+    /// The owner's member of this name that carries a `---@type`, in any file.
+    fn typed_member_of_owner(&self, owner: &SemanticId, name: &SmolStr) -> Option<MemberRef> {
+        self.members_of_owner_named(owner, name.as_str())
+            .iter()
+            .find(|member| {
+                self.file_facts_of(member.file_id)
+                    .and_then(|facts| facts.member_by_id(&member.id))
+                    .is_some_and(|member| member.doc_type_syntax.is_some())
+            })
+            .cloned()
     }
     /// Whether the require module export declares this member (same-name assignments do not shadow exported members).
     pub(crate) fn require_module_has_member(

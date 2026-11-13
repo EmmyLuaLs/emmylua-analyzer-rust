@@ -81,6 +81,21 @@ pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diag
     check_file(&model, config)
 }
 
+/// Run all checks on the last of several files, the others being the rest of its workspace.
+pub(crate) fn check_last_file(sources: &[&str]) -> Vec<Diagnostic> {
+    let emmyrc = Arc::new(Emmyrc::default());
+    let mut db = SemanticDatabase::new();
+    db.update_config(emmyrc.clone());
+    let mut last = None;
+    for (index, source) in sources.iter().enumerate() {
+        let uri = Uri::from_str(&format!("file:///C:/ws/test{index}.lua")).expect("uri");
+        last = Some(db.set_file_content(&uri, Some(source.to_string())));
+    }
+    db.update_main_root(std::path::PathBuf::from("C:/ws"));
+    let model = SemanticModel::new(&db, last.expect("a file"));
+    check_file(&model, Arc::new(CheckConfig::new(&emmyrc)))
+}
+
 /// Count diagnostics for the specified code.
 pub(crate) fn count_by_code(diagnostics: &[Diagnostic], code: DiagnosticCode) -> usize {
     diagnostics.iter().filter(|d| d.code == code).count()
