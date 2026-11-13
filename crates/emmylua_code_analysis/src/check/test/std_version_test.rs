@@ -932,4 +932,38 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_bit32_replace_returns_integer() {
+        // `bit32.replace` was missing its `@return`; the result is always an
+        // unsigned 32-bit value, which the std library types as `integer`.
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua52, "bit32.replace(0, 1, 0)"),
+            "integer"
+        );
+    }
+
+    #[test]
+    fn test_bit32_vararg_operands_are_numbers() {
+        // Lua 5.2 normalizes and truncates any numeric operand, so fractional
+        // numbers are valid too. The negative case proves that the annotation
+        // is actually applied to each variadic function.
+        for function in ["band", "bor", "bxor", "btest"] {
+            for args in ["1, 2, 3", "1.5, 2.5"] {
+                let source = format!("bit32.{function}({args})");
+                let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, &source);
+                assert!(
+                    !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                    "numeric operands must be accepted in {source}: {diagnostics:?}"
+                );
+            }
+
+            let source = format!("bit32.{function}(1, \"x\")");
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, &source);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "a string operand must be reported in {source}: {diagnostics:?}"
+            );
+        }
+    }
 }
