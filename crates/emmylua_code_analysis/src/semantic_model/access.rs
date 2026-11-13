@@ -20,6 +20,22 @@ impl<'db> SemanticModel<'db> {
         };
         versions.is_empty() || versions.iter().any(|condition| condition.check(&version))
     }
+    /// Whether a cross-file member reference is visible under the configured runtime version.
+    ///
+    /// Used where raw members are selected by key (e.g. stdlib global-table members): a
+    /// `---@version`-hidden declaration must not shadow a later visible one.
+    ///
+    /// Missing file facts / member data is treated as visible: that is the safe
+    /// default, so incomplete indexes do not hide declarations.
+    pub(crate) fn member_ref_versions_visible(&self, member_ref: &MemberRef) -> bool {
+        let Some(facts) = self.file_facts_of(member_ref.file_id) else {
+            return true;
+        };
+        let Some(member) = facts.member_by_id(&member_ref.id) else {
+            return true;
+        };
+        member::member_version_visible(self, facts, member)
+    }
     /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
         Self {

@@ -228,4 +228,113 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn test_os_difftime_arity_by_version() {
+        // PUC Lua 5.1/5.2 and LuaJIT implement `t1` via `luaL_optnumber`
+        // (default 0); Lua 5.3+ require both arguments.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.difftime(1)");
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.difftime(1) must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.difftime(1)");
+            assert!(
+                diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.difftime(1) must require t1 in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_os_time_return_type_by_version() {
+        // 5.1/5.2/LuaJIT push a Lua number; 5.3+ push an integer. From 5.3 on,
+        // an invalid time raises instead of returning nil; 5.1/5.2/LuaJIT can
+        // still return nil when mktime fails, which the normal-path annotation
+        // intentionally does not model (same as `os.date`).
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "os.time()"),
+                "number",
+                "os.time must return number in {version:?}"
+            );
+        }
+
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "os.time()"),
+                "integer",
+                "os.time must return integer in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_os_setlocale_locale_is_optional() {
+        // All supported runtimes accept `os.setlocale()` and return the
+        // current locale for the default category.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "local _ = os.setlocale()");
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "os.setlocale() must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_os_remove_reports_error_code() {
+        // `os.remove`/`os.rename` return the errno as their third result on
+        // failure (the third result is absent on success, hence `nil`).
+        // `select(3, ...)` selects that declared result statically; this test
+        // only checks the annotation and never executes the Lua code.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            for (call, name) in [
+                ("select(3, os.remove('/nonexistent'))", "os.remove"),
+                (
+                    "select(3, os.rename('/nonexistent', '/nonexistent2'))",
+                    "os.rename",
+                ),
+            ] {
+                let ty = expr_type_for(version, call);
+                assert_eq!(
+                    ty, "integer?",
+                    "{name} must expose an integer errcode in {version:?}"
+                );
+            }
+        }
+    }
 }

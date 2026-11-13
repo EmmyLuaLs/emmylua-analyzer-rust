@@ -38,57 +38,67 @@ b:
   e:
   - ['oslib.date', 'd', doc, [46, 0, 78, 0], '7d09adea10d81f1c']
 - a: 'function os.difftime(t2, t1) end'
-  g: 'Returns the difference, in seconds, from time `t1` to time `t2`. (where the'
-  r: [85, 0, 91, 18]
+  g: '@version 5.1, 5.2, JIT'
+  r: [85, 0, 92, 18]
   e:
-  - ['oslib.difftime', 'd', doc, [85, 0, 89, 0], '43413a584706c19f']
+  - ['oslib.difftime@5.1,5.2,JIT', 'd', doc, [86, 0, 90, 0], '43413a584706c19f']
+- a: 'function os.difftime(t2, t1) end'
+  g: '@version >5.3'
+  r: [95, 0, 102, 18]
+  e:
+  - ['oslib.difftime@>5.3', 'd', doc, [96, 0, 100, 0], '43413a584706c19f']
 - a: 'function os.execute(command) end'
   g: '@version >5.2'
-  r: [94, 0, 112, 19]
+  r: [105, 0, 123, 19]
   e:
-  - ['oslib.execute@>5.2', 'd', doc, [95, 0, 108, 0], '048fc98673135403']
+  - ['oslib.execute@>5.2', 'd', doc, [106, 0, 119, 0], '048fc98673135403']
 - a: 'function os.execute(command) end'
   g: '@version 5.1, JIT'
-  r: [115, 0, 122, 19]
+  r: [126, 0, 133, 19]
   e:
-  - ['oslib.execute@5.1,JIT', 'd', doc, [116, 0, 121, 0], '591ce990cca64597']
+  - ['oslib.execute@5.1,JIT', 'd', doc, [127, 0, 132, 0], '591ce990cca64597']
 - a: 'function os.exit(code, close) end'
   g: '@version >5.2, JIT'
-  r: [125, 0, 135, 25]
+  r: [136, 0, 146, 25]
   e:
-  - ['oslib.exit@>5.2,JIT', 'd', doc, [126, 0, 134, 0], '959a0fc368af4eeb']
+  - ['oslib.exit@>5.2,JIT', 'd', doc, [137, 0, 145, 0], '959a0fc368af4eeb']
 - a: 'function os.exit(code) end'
   g: '@version 5.1'
-  r: [138, 0, 142, 24]
+  r: [149, 0, 153, 24]
   e:
-  - ['oslib.exit@5.1', 'd', doc, [139, 0, 142, 0], '0737442ecb98fb28']
+  - ['oslib.exit@5.1', 'd', doc, [150, 0, 153, 0], '0737442ecb98fb28']
 - a: 'function os.getenv(varname) end'
   g: 'Returns the value of the process environment variable `varname`, or'
-  r: [145, 0, 149, 19]
+  r: [156, 0, 160, 19]
   e:
-  - ['oslib.getenv', 'd', doc, [145, 0, 148, 0], '86d5390aaead2953']
+  - ['oslib.getenv', 'd', doc, [156, 0, 159, 0], '86d5390aaead2953']
 - a: 'function os.remove(filename) end'
   g: 'Deletes the file (or empty directory, on POSIX systems) with the given name.'
-  r: [152, 0, 158, 22]
+  r: [163, 0, 170, 28]
   e:
-  - ['oslib.remove', 'd', doc, [152, 0, 156, 0], 'f885cf84385d6f76']
+  - ['oslib.remove', 'd', doc, [163, 0, 167, 0], 'f885cf84385d6f76']
 - a: 'function os.rename(oldname, newname) end'
   g: 'Renames the file or directory named `oldname` to `newname`. If this function'
-  r: [161, 0, 168, 22]
+  r: [173, 0, 181, 28]
   e:
-  - ['oslib.rename', 'd', doc, [161, 0, 165, 0], '6ba16cc17d958c2d']
+  - ['oslib.rename', 'd', doc, [173, 0, 177, 0], '6ba16cc17d958c2d']
 - a: 'function os.setlocale(locale, category) end'
   g: 'Sets the current locale of the program. `locale` is a system-dependent'
-  r: [171, 0, 190, 22]
+  r: [184, 0, 203, 22]
   e:
-  - ['oslib.setlocale', 'd', doc, [171, 0, 188, 0], 'daf3f33062f25c95']
+  - ['oslib.setlocale', 'd', doc, [184, 0, 201, 0], 'daf3f33062f25c95']
 - a: 'function os.time(date) end'
-  g: 'Returns the current time when called without arguments, or a time'
-  r: [193, 0, 216, 19]
+  g: '@version 5.1, 5.2, JIT'
+  r: [206, 0, 230, 18]
   e:
-  - ['oslib.time', 'd', doc, [193, 0, 215, 0], '06fbd3c08f3140b4']
+  - ['oslib.time@5.1,5.2,JIT', 'd', doc, [207, 0, 229, 0], '06fbd3c08f3140b4']
+- a: 'function os.time(date) end'
+  g: '@version >5.3'
+  r: [233, 0, 257, 19]
+  e:
+  - ['oslib.time@>5.3', 'd', doc, [234, 0, 256, 0], '06fbd3c08f3140b4']
 - a: 'function os.tmpname() end'
   g: 'Returns a string with a file name that can be used for a temporary'
-  r: [219, 0, 232, 18]
+  r: [260, 0, 273, 18]
   e:
-  - ['oslib.tmpname', 'd', doc, [219, 0, 232, 0], 'f2fe09d004acaf8d']
+  - ['oslib.tmpname', 'd', doc, [260, 0, 273, 0], 'f2fe09d004acaf8d']
