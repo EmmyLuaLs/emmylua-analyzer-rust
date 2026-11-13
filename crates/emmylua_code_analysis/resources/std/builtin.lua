@@ -112,9 +112,9 @@
 
 --- @class function
 
---- @alias std.NotNull<T> T -?
+--- @alias std.NotNull<T> Exclude<T, nil>
 
---- @alias std.Nullable<T> T +?
+--- @alias std.Nullable<T> T | nil
 
 ---
 --- built-in type for Select function
