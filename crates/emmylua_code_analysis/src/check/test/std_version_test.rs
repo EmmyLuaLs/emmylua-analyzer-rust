@@ -932,4 +932,208 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_debug_sethook_hook_first() {
+        // `debug.sethook([thread,] hook, mask [, count])`: the common
+        // hook-first form must not be checked against the leading `thread`,
+        // and the turn-off forms must stay accepted.
+        let source = r#"
+            local function hook(event, line) end
+            local mask = "l"
+            debug.sethook()
+            debug.sethook(nil)
+            debug.sethook(hook, "l")
+            debug.sethook(hook, "l", 1)
+            debug.sethook(hook, "l", nil)
+            debug.sethook(hook, mask)
+            debug.sethook(hook, mask, 1)
+            local co = coroutine.create(function() end)
+            debug.sethook(co)
+            debug.sethook(co, nil)
+            debug.sethook(co, hook, "l")
+            debug.sethook(co, hook, "l", 1)
+        "#;
+
+        let versions = [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ];
+        for version in versions {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"
+                    || code == "redundant-parameter"
+                    || code == "missing-parameter"),
+                "valid debug.sethook calls must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        // The mask is required whenever a hook is given, including the
+        // thread-first form that does not go through the hook-first overload.
+        let bad = [
+            (
+                "hook-only",
+                "local function hook(event, line) end\ndebug.sethook(hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first without mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first with nil mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook, nil)",
+                &["param-type-mismatch"][..],
+            ),
+        ];
+        for version in versions {
+            for (case, source, expected) in bad {
+                let diagnostics = diagnostic_codes_for(version, source);
+                assert!(
+                    diagnostics
+                        .iter()
+                        .any(|code| expected.contains(&code.as_str())),
+                    "debug.sethook must reject {case} in {version:?}: {diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_debug_setuservalue_value_type_by_version() {
+        // Lua 5.2 and LuaJIT (LJ_52) only accept a table (5.2 also accepts
+        // nil); Lua 5.3+ accept any value.
+        let source = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, 1)
+            end
+        "#;
+
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "setuservalue must reject a non-table value in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "setuservalue must accept any value in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let nil_value = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, nil)
+            end
+        "#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, nil_value);
+        assert!(
+            !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "Lua 5.2 setuservalue must accept nil: {diagnostics:?}"
+        );
+
+        // LuaJIT only accepts a table as the user value, so nil is invalid.
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, nil_value);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "LuaJIT setuservalue must reject nil: {diagnostics:?}"
+        );
+
+        // The index is absent in 5.2/5.3 and optional from 5.4 on; LuaJIT
+        // ignores it.
+        let with_index = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, {}, 1)
+            end
+        "#;
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::Lua53] {
+            let diagnostics = diagnostic_codes_for(version, with_index);
+            assert!(
+                diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "setuservalue must not expose the index in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, with_index);
+            assert!(
+                !diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "setuservalue must accept the index in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_debug_getuservalue_index_by_version() {
+        // The index is absent in 5.2/5.3 and optional from 5.4 on. LuaJIT
+        // ignores it, so the annotation accepts an extra argument.
+        let source = r#"
+            ---@param u userdata
+            local function f(u)
+                return debug.getuservalue(u, 1)
+            end
+        "#;
+
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::Lua53] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "getuservalue must not expose the index in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "getuservalue must accept the index in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let no_index = r#"
+            ---@param u userdata
+            local function f(u)
+                return debug.getuservalue(u)
+            end
+        "#;
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, no_index);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"
+                    || code == "redundant-parameter"
+                    || code == "missing-parameter"),
+                "getuservalue must be callable without an index in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_debug_uservalue_hidden_in_lua51() {
+        for call in ["debug.getuservalue(u)", "debug.setuservalue(u, {})"] {
+            let source = format!("---@param u userdata\nlocal function f(u)\n    {call}\nend");
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, &source);
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-field"),
+                "Lua 5.1 must not expose {call}: {diagnostics:?}"
+            );
+        }
+    }
 }

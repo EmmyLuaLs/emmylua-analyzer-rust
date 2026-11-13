@@ -41,7 +41,7 @@ function debug.getfenv(o) end
 --- current hook function, the current hook mask, and the current hook count
 --- (as set by the `debug.sethook` function).
 --- @param thread? thread
---- @return function? hook
+--- @return debuglib.Hook? hook
 --- @return string mask
 --- @return integer count
 function debug.gethook(thread) end
@@ -186,10 +186,31 @@ function debug.getupvalue(f, up) end
 ---
 --- Returns the `n`-th user value associated to the userdata `u` plus a boolean,
 --- **false** if the userdata does not have that value.
+--- @version >5.4
 --- @param u userdata
---- @param n integer
+--- @param n? integer
 --- @return any
---- @return boolean
+--- @return boolean?
+function debug.getuservalue(u, n) end
+
+--- @version 5.2
+--- Returns the user value associated to the userdata `u`, or **nil**.
+--- @param u userdata
+--- @return table?
+function debug.getuservalue(u) end
+
+--- @version 5.3
+--- Returns the user value associated to the userdata `u`, or **nil**.
+--- @param u userdata
+--- @return any
+function debug.getuservalue(u) end
+
+--- @version JIT
+--- Returns the environment table associated to the userdata `u`, or **nil**.
+--- LuaJIT ignores the index argument.
+--- @param u userdata
+--- @param n? integer
+--- @return table?
 function debug.getuservalue(u, n) end
 
 ---
@@ -214,6 +235,8 @@ function debug.setcstacklimit(limit) end
 --- @param env    table
 --- @return T object
 function debug.setfenv(object, env) end
+
+--- @alias debuglib.Hook fun(event: string, line: integer?): any
 
 --- @alias debuglib.Hookmask
 --- |+ "c" # Calls hook when Lua calls a function.
@@ -241,10 +264,14 @@ function debug.setfenv(object, env) end
 --- call `getinfo` with level 2 to get more information about the running
 --- function (level 0 is the `getinfo` function, and level 1 is the hook
 --- function)
---- @param thread? thread
---- @param hook?   fun(event: string): any
---- @param mask?   debuglib.Hookmask | string
---- @param count?  integer
+--- @overload fun()
+--- @overload fun(thread: thread?)
+--- @overload fun(thread: thread?, hook: nil)
+--- @overload fun(hook: debuglib.Hook, mask: debuglib.Hookmask|string, count: integer?)
+--- @param thread thread
+--- @param hook   debuglib.Hook
+--- @param mask   debuglib.Hookmask | string
+--- @param count? integer
 function debug.sethook(thread, hook, mask, count) end
 
 ---
@@ -286,10 +313,37 @@ function debug.setupvalue(f, up, value) end
 --- `udata` must be a full userdata.
 ---
 --- Returns `udata`, or **nil** if the userdata does not have that value.
+--- @version >5.4
 --- @param udata userdata
 --- @param value any
---- @param n     integer
+--- @param n?    integer
 --- @return userdata?
+function debug.setuservalue(udata, value, n) end
+
+--- @version 5.2
+--- Sets the given value as the user value of the given `udata`.
+--- `value` must be a table or **nil**.
+--- @param udata userdata
+--- @param value table?
+--- @return userdata
+function debug.setuservalue(udata, value) end
+
+--- @version 5.3
+--- Sets the given value as the user value of the given `udata`.
+--- `udata` must be a full userdata.
+---
+--- Returns `udata`.
+--- @param udata userdata
+--- @param value any
+--- @return userdata
+function debug.setuservalue(udata, value) end
+
+--- @version JIT
+--- LuaJIT only accepts a table as the user value and ignores the index.
+--- @param udata userdata
+--- @param value table
+--- @param n?    integer
+--- @return userdata
 function debug.setuservalue(udata, value, n) end
 
 --- @version 5.1, JIT
