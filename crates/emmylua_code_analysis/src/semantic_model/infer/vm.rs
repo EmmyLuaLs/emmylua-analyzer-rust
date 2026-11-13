@@ -3313,22 +3313,42 @@ fn constructor_candidate(
     let member = facts.member_by_id(&member_id)?;
     let value_syntax = member.value_syntax?;
     let method_fun = model.type_of_signature_in_file(member_file, value_syntax)?;
+    // `return_mode = "default"` prefers the constructor's documented return type and
+    // falls back to the class instance when the method has no explicit `@return`.
+    let has_documented_return = facts
+        .signature_by_closure(value_syntax)
+        .and_then(|signature| signature.docs.as_ref())
+        .is_some_and(|docs| !docs.returns.is_empty());
 
     let class_generics = model.generic_tpls_with_metadata(def.file_id, &def.generic_params);
 
     let mut params = Vec::new();
+    let mut has_self_param = false;
     for (name, ty) in method_fun.get_params() {
-        if name == "self" || matches!(&ty, Some(LuaType::SelfInfer)) {
+        let is_self = name == "self" || matches!(&ty, Some(LuaType::SelfInfer));
+        has_self_param |= is_self;
+        if attribute.strip_self && is_self {
             continue;
         }
         let ty = ty
             .as_ref()
-            .map(|ty| bind_signature_generics(ty, &class_generics));
+            .map(|ty| bind_signature_generics(ty, &class_generics))
+            // An implicit `self` parameter often has no declared type; give the
+            // retained receiver an explicit `self` type so arity/type checks see it.
+            .or_else(|| is_self.then_some(LuaType::SelfInfer));
         params.push((name.clone(), ty));
+    }
+    // Colon-defined methods (`function Class:init(...)`) do not list the implicit
+    // receiver in their signature; add it back when `self` is not stripped.
+    if !attribute.strip_self && member_info.is_method && !has_self_param {
+        params.insert(0, ("self".to_string(), Some(LuaType::SelfInfer)));
     }
 
     let ret = match attribute.return_mode {
         ConstructorReturnMode::Doc => {
+            bind_signature_generics(method_fun.get_ret(), &class_generics)
+        }
+        ConstructorReturnMode::Default if has_documented_return => {
             bind_signature_generics(method_fun.get_ret(), &class_generics)
         }
         ConstructorReturnMode::SelfType | ConstructorReturnMode::Default => {
@@ -3344,6 +3364,20 @@ fn constructor_candidate(
         ret,
         Some(class_generics),
     ))
+}
+
+/// Constructor call candidate for a class-table callee, using the `---@[constructor("name")]`
+/// attribute attached to the `meta`-style factory that created the class.
+pub(crate) fn constructor_call_candidate(
+    model: &SemanticModel<'_>,
+    class_ty: &LuaType,
+) -> Option<LuaFunctionType> {
+    let def = match class_ty {
+        LuaType::Ref(id) | LuaType::Def(id) => model.type_def_of(id)?,
+        _ => return None,
+    };
+    let attribute = model.constructor_attribute_of_type(&def.id)?;
+    constructor_candidate(model, class_ty, &attribute)
 }
 
 fn constructor_return_instance(class_ty: &LuaType, generics: &[GenericTpl]) -> LuaType {
