@@ -28,6 +28,7 @@ struct Comparison {
     source: LuaType,
     target: Target,
     strict_subtype: bool,
+    strict_literals: bool,
 }
 
 struct Node {
@@ -36,6 +37,7 @@ struct Node {
     parents: HashSet<usize>,
     dependencies: Vec<usize>,
     queued: bool,
+    structural: bool,
 }
 
 #[derive(Default)]
@@ -65,6 +67,7 @@ impl Comparisons {
             parents: HashSet::new(),
             dependencies: Vec::new(),
             queued: true,
+            structural: false,
         });
         self.pending.push_back(id);
         id
@@ -90,6 +93,13 @@ impl Comparisons {
         result
     }
 
+    /// A table constructor is being checked through its fields or entries.
+    pub(super) fn mark_structural(&mut self) {
+        if let Some(current) = self.current {
+            self.nodes[current].structural = true;
+        }
+    }
+
     /// Only a cycle through data constructors can justify a recursive match.
     /// Alias forwarding and union alternatives alone provide no evidence.
     fn guarded_cycle(&self, key: usize) -> bool {
@@ -111,8 +121,10 @@ impl Comparisons {
         let mut seen = HashSet::new();
         let mut guarded_cycle = false;
         while let Some((previous, guarded)) = pending.pop() {
-            let comparison = &self.nodes[previous].key;
+            let node = &self.nodes[previous];
+            let comparison = &node.key;
             let guarded = guarded
+                || node.structural
                 || (is_structure(&comparison.source)
                     && matches!(&comparison.target, Target::Type(ty) if is_structure(ty)));
             if !seen.insert((previous, guarded)) {
@@ -200,6 +212,7 @@ pub(super) fn check_target(
         source: source.clone(),
         target,
         strict_subtype: context.strict_subtype,
+        strict_literals: context.strict_literals,
     };
     let comparisons = context.comparisons.clone();
     if comparisons.borrow().current.is_some() {
@@ -245,6 +258,7 @@ fn evaluate(context: &TypeCheckContext, id: usize, key: &Comparison) -> TypeChec
     }
     let mut current = TypeCheckContext {
         strict_subtype: key.strict_subtype,
+        strict_literals: key.strict_literals,
         ..context.clone()
     };
     let result = match &key.target {
