@@ -447,13 +447,21 @@ impl PartialEq for LuaUnionMembers {
         {
             return false;
         }
-        let mut types: HashSet<_> = self.types.iter().collect();
-        for ty in &other.types {
-            if !types.remove(ty) {
-                return false;
-            }
+        if self.types == other.types {
+            return true;
         }
-        types.is_empty()
+        // Counted, not a set: a member can repeat, and a union must equal itself.
+        let mut counts = HashMap::<_, usize>::with_capacity(self.types.len());
+        for ty in &self.types {
+            *counts.entry(ty).or_default() += 1;
+        }
+        other.types.iter().all(|ty| match counts.get_mut(ty) {
+            Some(count) if *count > 0 => {
+                *count -= 1;
+                true
+            }
+            _ => false,
+        })
     }
 }
 
@@ -1299,7 +1307,9 @@ mod tests {
 
     use rustc_hash::FxBuildHasher;
 
-    use crate::{LuaArrayType, LuaMultiLineUnion, LuaObjectType, LuaType, LuaUnionType};
+    use crate::{
+        LuaArrayType, LuaMultiLineUnion, LuaObjectType, LuaType, LuaTypeDeclId, LuaUnionType,
+    };
 
     #[test]
     fn array_types_keep_structural_identity_after_hashing() {
@@ -1309,6 +1319,31 @@ mod tests {
         let hash = FxBuildHasher.hash_one(&array);
         assert_eq!(array, equal);
         assert_eq!(FxBuildHasher.hash_one(&equal), hash);
+    }
+
+    #[test]
+    fn union_with_a_repeated_member_equals_itself() {
+        let named = |name| LuaType::Ref(LuaTypeDeclId::global(name));
+        let union = || LuaUnionType::from_vec(vec![named("A"), named("A"), named("B")]);
+        assert!(matches!(union(), LuaUnionType::Multi(_)));
+        assert_eq!(union(), union());
+        // Eq is a multiset compare, and the hash is a sum over members: order does not count,
+        // repeats do.
+        let reordered = LuaUnionType::from_vec(vec![named("B"), named("A"), named("A")]);
+        assert_eq!(union(), reordered);
+        assert_eq!(
+            FxBuildHasher.hash_one(union()),
+            FxBuildHasher.hash_one(&reordered)
+        );
+        assert_ne!(
+            FxBuildHasher.hash_one(union()),
+            FxBuildHasher.hash_one(LuaUnionType::from_vec(vec![named("A"), named("B")]))
+        );
+        // Same length and members, other counts: their hashes differ, so they must not be equal.
+        assert_ne!(
+            union(),
+            LuaUnionType::from_vec(vec![named("A"), named("B"), named("B")])
+        );
     }
 
     #[test]
