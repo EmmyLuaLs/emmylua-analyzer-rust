@@ -3439,9 +3439,30 @@ fn expr_type_call(
             return shell;
         }
     }
-    match callee_closure_syntax(facts, prefix) {
-        Some(closure_syntax) => {
-            let mut slots = signature_returns(db, file, config, closure_syntax);
+    let callee = match callee_closure_syntax(facts, prefix.clone()) {
+        Some(closure_syntax) => Some((file, closure_syntax)),
+        None => match &prefix {
+            LuaExpr::IndexExpr(index_expr) => {
+                member_closure_across_files(db, facts, file, config, index_expr)
+            }
+            _ => None,
+        },
+    };
+    match callee {
+        Some((callee_file, closure_syntax)) => {
+            let mut slots = signature_returns(db, callee_file, config, closure_syntax);
+            // The shell does not bind arguments, so the callee's own generics stay uninstantiated:
+            // unknown, not a `T` that projects as a global name (`local M = defer('m', {...})`).
+            if let Some(docs) = file_facts(db, callee_file)
+                .signature_by_closure(closure_syntax)
+                .and_then(|sig| sig.docs.as_ref())
+                && !docs.generic_params.is_empty()
+            {
+                let unbound = vec![TypeShell::unknown(); docs.generic_params.len()];
+                for slot in &mut slots {
+                    *slot = substitute_generics(slot, &docs.generic_params, &unbound);
+                }
+            }
             if slots.is_empty() {
                 TypeShell::unknown()
             } else if slots.len() == 1 {
@@ -3468,6 +3489,60 @@ fn expr_type_call(
             TypeShell::unknown()
         }
     }
+}
+
+/// The closure behind a member call whose function lives in another file (`req.f()` with
+/// `function M.f() ... end` in the required module). A closure-valued member's shell is a bare
+/// `function`, so its returns come from the closure's own signature in its declaring file;
+/// without this, an undocumented `function V.f() return req.g() end` returned unknown.
+fn member_closure_across_files(
+    db: &SemanticDatabase,
+    facts: &FileFacts,
+    file: FileId,
+    config: &Emmyrc,
+    index_expr: &LuaIndexExpr,
+) -> Option<(FileId, LuaSyntaxId)> {
+    let (owner, name) = member_ref_from_index_expr(facts, index_expr)?;
+    let mut owners = vec![owner];
+    let prefix_shell = expr_type_of(
+        db,
+        file,
+        config,
+        index_expr.get_prefix_expr()?.get_syntax_id(),
+    );
+    for candidate in &prefix_shell.candidates {
+        match candidate {
+            TypeCandidate::Table(table_id) => owners.push(SemanticId::member(
+                FileId::new(table_id.file_id),
+                TextRange::new(TextSize::from(table_id.start), TextSize::from(table_id.end)),
+            )),
+            TypeCandidate::Named(type_name) => owners.push(SemanticId::name(type_name.clone())),
+            _ => {}
+        }
+    }
+    for owner in owners {
+        for resolved in resolve_owner_set(db, owner) {
+            for member in members_of_owner(db, resolved).iter() {
+                if member.name != name {
+                    continue;
+                }
+                let Some(member_file) = db.file_data_id(member.file_id) else {
+                    continue;
+                };
+                let member_facts = file_facts(db, member_file);
+                let Some(value_syntax) = member_facts
+                    .member_by_id(&member.id)
+                    .and_then(|member| member.value_syntax)
+                else {
+                    continue;
+                };
+                if member_facts.signature_by_closure(value_syntax).is_some() {
+                    return Some((member_file, value_syntax));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Phase 2 member type: union of members by owner key + resolved concrete id key (cross-file).
@@ -3598,6 +3673,21 @@ fn substitute_generics(
                     fun.is_colon_define,
                     fun.is_variadic,
                 ));
+            }
+            // `Box<V>`: the instance's arguments name the generics too.
+            TypeCandidate::GenericInstance(instance) => {
+                out.merge(&TypeShell {
+                    candidates: vec![TypeCandidate::GenericInstance(Arc::new(
+                        super::types::GenericInstanceRef {
+                            name: instance.name.clone(),
+                            args: instance
+                                .args
+                                .iter()
+                                .map(|arg| substitute_generics(arg, params, args))
+                                .collect(),
+                        },
+                    ))],
+                });
             }
             _ => out.merge(&TypeShell {
                 candidates: vec![candidate.clone()],
