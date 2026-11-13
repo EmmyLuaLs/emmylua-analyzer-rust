@@ -932,4 +932,85 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_math_randomseed_seed_visibility_by_version() {
+        fn has_code(version: EmmyrcLuaVersion, source: &str, code: &str) -> bool {
+            diagnostic_codes_for(version, source)
+                .iter()
+                .any(|candidate| candidate.as_str() == code)
+        }
+
+        // LuaJIT's math.randomseed([x]) accepts an omitted seed and seeds from
+        // system entropy. It also takes a double, so a fractional seed is valid.
+        for source in [
+            "math.randomseed()",
+            "math.randomseed(1)",
+            "math.randomseed(1.5)",
+        ] {
+            assert!(
+                diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source).is_empty(),
+                "LuaJIT must accept {source:?}"
+            );
+        }
+        assert!(
+            has_code(
+                EmmyrcLuaVersion::LuaJIT,
+                "math.randomseed(\"x\")",
+                "param-type-mismatch"
+            ),
+            "LuaJIT must reject a non-number seed"
+        );
+        assert!(
+            has_code(
+                EmmyrcLuaVersion::LuaJIT,
+                "math.randomseed(1, 2)",
+                "redundant-parameter"
+            ),
+            "LuaJIT must reject a second seed"
+        );
+
+        // Lua 5.1-5.3 require exactly one seed argument.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+        ] {
+            assert!(
+                has_code(version, "math.randomseed()", "missing-parameter"),
+                "math.randomseed() must require a seed in {version:?}"
+            );
+            assert!(
+                diagnostic_codes_for(version, "math.randomseed(1)").is_empty(),
+                "math.randomseed(1) must be accepted in {version:?}"
+            );
+            assert!(
+                has_code(version, "math.randomseed(1, 2)", "redundant-parameter"),
+                "math.randomseed(1, 2) must be rejected in {version:?}"
+            );
+        }
+
+        // Lua 5.4+ accepts the no-argument form and the two-seed form, but its
+        // seeds are integers: luaL_checkinteger rejects a fractional seed.
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::Lua55] {
+            for source in [
+                "math.randomseed()",
+                "math.randomseed(1)",
+                "math.randomseed(1, 2)",
+            ] {
+                assert!(
+                    diagnostic_codes_for(version, source).is_empty(),
+                    "{source:?} must be accepted in {version:?}"
+                );
+            }
+            assert!(
+                has_code(version, "math.randomseed(1.5)", "param-type-mismatch"),
+                "math.randomseed(1.5) must be rejected in {version:?}"
+            );
+            assert!(
+                has_code(version, "math.randomseed(1, 2, 3)", "redundant-parameter"),
+                "math.randomseed(1, 2, 3) must be rejected in {version:?}"
+            );
+        }
+    }
 }
