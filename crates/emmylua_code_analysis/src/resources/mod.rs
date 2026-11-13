@@ -144,11 +144,7 @@ fn check_need_dump_to_file_system() -> bool {
         return true;
     };
     let version = content.trim();
-    if version != VERSION {
-        return true;
-    }
-
-    false
+    version != VERSION
 }
 
 pub fn load_resource_from_include_dir() -> Vec<LuaFileInfo> {
