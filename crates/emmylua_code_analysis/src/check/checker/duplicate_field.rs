@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaSyntaxId, LuaSyntaxNode, LuaVarExpr,
+    LuaAssignStat, LuaAstNode, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaSyntaxId, LuaSyntaxNode,
+    LuaSyntaxTree, LuaVarExpr, PathTrait,
 };
 
 use crate::DiagnosticCode;
@@ -32,20 +33,26 @@ impl Checker for DuplicateFieldChecker {
         let Some(facts) = semantic_model.file_facts() else {
             return;
         };
-        if let Some(tree) = semantic_model.syntax_tree() {
-            let root = tree.get_red_root();
-            check_cross_file_member_assign(context, semantic_model, &root);
+        let tree = semantic_model.syntax_tree();
+        let root = tree.map(|tree| tree.get_red_root());
+        if let Some(root) = &root {
+            check_cross_file_member_assign(context, semantic_model, root);
         }
 
-        let mut by_owner: HashMap<(&SemanticId, Option<LuaSyntaxId>), Vec<&Member>> =
-            HashMap::new();
+        // Also group by the table a key is set on: a member set through a local root is owned by
+        // that root, so `M.A:init` and `M.B:init` share the owner `M`.
+        let mut by_owner: HashMap<
+            (&SemanticId, Option<LuaSyntaxId>, Option<String>),
+            Vec<&Member>,
+        > = HashMap::new();
         for member in &facts.members {
+            let table_path = root.as_ref().and_then(|root| set_table_path(root, member));
             by_owner
-                .entry((&member.owner, member.implicit_self))
+                .entry((&member.owner, member.implicit_self, table_path))
                 .or_default()
                 .push(member);
         }
-        for ((owner, _), members) in by_owner {
+        for ((owner, _, _), members) in by_owner {
             let mut by_key: HashMap<LuaMemberKey, Vec<(Option<LuaType>, Vec<&Member>)>> =
                 HashMap::new();
             for member in members {
@@ -82,7 +89,7 @@ impl Checker for DuplicateFieldChecker {
                     }
                     let all_function = dupes
                         .iter()
-                        .all(|member| is_function_like(semantic_model, member));
+                        .all(|member| is_function_like(semantic_model, tree, member));
                     // `@field a fun()` may be declared repeatedly (function overloads);
                     // ordinary repeated non-function field writes are also intentional
                     // (for example a global config table assigning the same key twice).
@@ -145,9 +152,11 @@ fn check_cross_file_member_assign(
             let Some(module_facts) = semantic_model.file_facts_of(module_file) else {
                 continue;
             };
+            // A field set to `nil` in the module (`{ to = nil }`) holds no function to reimplement.
+            let module_tree = semantic_model.syntax_tree_of(module_file);
             if !module_facts
                 .members_named(resolved.name.as_str())
-                .any(|member| member.value_syntax.is_some())
+                .any(|member| is_function_like(semantic_model, module_tree, member))
             {
                 continue;
             }
@@ -175,11 +184,8 @@ fn check_cross_file_member_assign(
 }
 
 /// require local variable -> module file (`local A = require("mod")`).
-fn required_module_file(
-    semantic_model: &SemanticModel<'_>,
-    prefix: &emmylua_parser::LuaExpr,
-) -> Option<FileId> {
-    let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix else {
+fn required_module_file(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> Option<FileId> {
+    let LuaExpr::NameExpr(name_expr) = prefix else {
         return None;
     };
     let decl = semantic_model.resolve_name(name_expr.get_position())?;
@@ -198,10 +204,31 @@ fn required_module_file(
     semantic_model.module_file_of(&module_name)
 }
 
-/// Whether a member resolves to a function or has a closure value.
-fn is_function_like(semantic_model: &SemanticModel<'_>, member: &Member) -> bool {
+/// The access path of the table a member is set on (`M.A` for `function M.A:init()`), or `None`
+/// for a table-constructor field.
+fn set_table_path(root: &LuaSyntaxNode, member: &Member) -> Option<String> {
+    let key_range = member.id.member_key_range()?;
+    let token = root.token_at_offset(key_range.start()).right_biased()?;
+    let index_expr = token.parent_ancestors().find_map(LuaIndexExpr::cast)?;
+    if index_expr.get_index_key()?.get_range()? != key_range {
+        return None;
+    }
+    match index_expr.get_prefix_expr()? {
+        LuaExpr::NameExpr(name) => name.get_access_path(),
+        LuaExpr::IndexExpr(prefix) => prefix.get_access_path(),
+        _ => None,
+    }
+}
+
+/// Whether a member resolves to a function or has a closure value. `tree` is the syntax tree of
+/// the file declaring `member`.
+fn is_function_like(
+    semantic_model: &SemanticModel<'_>,
+    tree: Option<&LuaSyntaxTree>,
+    member: &Member,
+) -> bool {
     if let Some(value_syntax) = member.value_syntax
-        && let Some(tree) = semantic_model.syntax_tree()
+        && let Some(tree) = tree
         && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
         && LuaClosureExpr::cast(node).is_some()
     {
