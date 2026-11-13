@@ -932,4 +932,223 @@ mod test {
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
     }
+
+    #[test]
+    fn test_string_buffer_new_accepts_options() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            buffer.new()
+            buffer.new(nil)
+            buffer.new(nil, {})
+            buffer.new(1024)
+            buffer.new({ dict = { "a", "b" } })
+            buffer.new({ dict = { "a", false }, metatable = { false } })
+            buffer.new(1024, {})
+            buffer.new(1024, { dict = { "a" } })
+            "#,
+        );
+        for code in ["param-type-mismatch", "missing-fields", "missing-parameter"] {
+            assert!(
+                !diagnostics.iter().any(|diagnostic| diagnostic == code),
+                "buffer.new must accept the documented arguments ({code}): {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_writers_accept_documented_arguments() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            local ffi = require("ffi")
+            local buf = buffer.new()
+            buf:put()
+            buf:put("x", 1, {})
+            buf:putf("%s", true)
+            buf:set("x")
+            buf:set(ffi.new("char[4]"), 4)
+            "#,
+        );
+        for code in [
+            "param-type-mismatch",
+            "missing-parameter",
+            "redundant-parameter",
+        ] {
+            assert!(
+                !diagnostics.iter().any(|diagnostic| diagnostic == code),
+                "buffer writers must accept the documented arguments ({code}): {diagnostics:?}"
+            );
+        }
+
+        for expression in [
+            "require('string.buffer').new():put()",
+            "require('string.buffer').new():put('x', 1)",
+            "require('string.buffer').new():putf('%s', true)",
+            "require('string.buffer').new():set('x')",
+            "require('string.buffer').new():set(require('ffi').new('char[4]'), 4)",
+        ] {
+            assert_eq!(
+                expr_type_for(EmmyrcLuaVersion::LuaJIT, expression),
+                "string.buffer",
+                "{expression} must return the buffer"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_put_rejects_invalid_arguments() {
+        for source in [
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put(true)
+            "#,
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put("x", true)
+            "#,
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put(nil)
+            "#,
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic == "param-type-mismatch"),
+                "{source} must be rejected: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_set_rejects_non_string_arguments() {
+        for argument in ["1", "{}"] {
+            let source = format!(
+                r#"
+                local buffer = require("string.buffer")
+                local buf = buffer.new()
+                buf:set({argument})
+                "#
+            );
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, &source);
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic == "param-type-mismatch"),
+                "{source} must be rejected: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_serializer_accepts_supported_values() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            local ffi = require("ffi")
+            local buf = buffer.new()
+            buf:encode(nil)
+            buf:encode(false)
+            buf:encode(true)
+            buf:encode(1)
+            buf:encode("x")
+            buf:encode({})
+            buf:encode(ffi.new("int64_t", 1))
+            buf:decode()
+            buffer.encode(true)
+            buffer.decode("x")
+            "#,
+        );
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic == "param-type-mismatch"),
+            "the serializer must accept supported Lua types: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_free_returns_buffer() {
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "require('string.buffer').new():free()"
+            ),
+            "string.buffer"
+        );
+
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            buffer.new():free():reset():commit(0)
+            "#,
+        );
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic == "param-type-mismatch"
+                    || diagnostic == "missing-parameter"
+                    || diagnostic == "call-non-callable"),
+            "free() must return the buffer for chaining: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_operators() {
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "#(require('string.buffer').new())"
+            ),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "require('string.buffer').new() .. 'x'"
+            ),
+            "string"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "'x' .. require('string.buffer').new()"
+            ),
+            "string"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_is_only_available_in_jit() {
+        let source = r#"local _ = require("string.buffer")"#;
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert!(
+                diagnostic_codes_for(version, source)
+                    .iter()
+                    .any(|code| code == "unresolved-require"),
+                "string.buffer must be unavailable in {version:?}"
+            );
+        }
+        assert!(
+            !diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source)
+                .iter()
+                .any(|code| code == "unresolved-require"),
+            "string.buffer must be available in LuaJIT"
+        );
+    }
 }
