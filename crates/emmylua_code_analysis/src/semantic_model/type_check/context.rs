@@ -16,7 +16,7 @@ use crate::semantic_model::render::humanize_type;
 pub struct TypeCheckContext<'db> {
     pub detail: bool,
     pub model: &'db SemanticModel<'db>,
-    /// Subtype proofs also check object fields and generic inheritance arguments.
+    /// Subtype proofs keep precise tuple/table and generic inheritance checks.
     pub strict_subtype: bool,
     pub(super) comparisons: std::rc::Rc<std::cell::RefCell<super::comparison::Comparisons>>,
 }
