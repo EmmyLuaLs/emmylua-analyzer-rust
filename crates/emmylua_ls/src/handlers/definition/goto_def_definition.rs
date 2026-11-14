@@ -201,9 +201,12 @@ fn add_field_accessor_locations(
     let field = field.as_str();
     for prefix_type in prefix_types {
         let type_id = match prefix_type {
-            emmylua_code_analysis::LuaType::Ref(id)
-            | emmylua_code_analysis::LuaType::Def(id) => Some(id),
-            emmylua_code_analysis::LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
+            emmylua_code_analysis::LuaType::Ref(id) | emmylua_code_analysis::LuaType::Def(id) => {
+                Some(id)
+            }
+            emmylua_code_analysis::LuaType::Generic(generic) => {
+                Some(generic.get_base_type_id_ref())
+            }
             _ => None,
         };
         let Some(type_id) = type_id else {
@@ -259,18 +262,14 @@ struct FieldAccessorSpec {
 impl FieldAccessorSpec {
     /// Explicit getter/setter names take precedence over the naming convention.
     fn accessor_names(&self, field: &str) -> Vec<String> {
-        let mut names = Vec::with_capacity(2);
-        names.push(
+        vec![
             self.getter
                 .clone()
                 .unwrap_or_else(|| accessor_name(self.convention, "get", field)),
-        );
-        names.push(
             self.setter
                 .clone()
                 .unwrap_or_else(|| accessor_name(self.convention, "set", field)),
-        );
-        names
+        ]
     }
 }
 
@@ -284,12 +283,7 @@ fn accessor_name(convention: AccessorConvention, prefix: &str, field: &str) -> S
             let Some(first) = chars.next() else {
                 return pascal;
             };
-            format!(
-                "{}{}{}",
-                first.to_ascii_uppercase(),
-                chars.as_str(),
-                pascal
-            )
+            format!("{}{}{}", first.to_ascii_uppercase(), chars.as_str(), pascal)
         }
         AccessorConvention::SnakeCase => format!("{prefix}_{}", to_snake_word(base)),
     }
@@ -309,20 +303,44 @@ fn to_pascal_word(value: &str) -> String {
 }
 
 fn to_snake_word(value: &str) -> String {
+    let chars: Vec<char> = value.chars().collect();
     let mut result = String::with_capacity(value.len());
-    for (index, ch) in value.chars().enumerate() {
-        if ch.is_uppercase() && index != 0 {
-            result.push('_');
+    let mut previous_was_separator = false;
+    for (index, ch) in chars.iter().copied().enumerate() {
+        if matches!(ch, '_' | '-' | '.') {
+            if !result.is_empty() && !previous_was_separator {
+                result.push('_');
+                previous_was_separator = true;
+            }
+            continue;
+        }
+        if ch.is_uppercase() {
+            let previous = index.checked_sub(1).and_then(|prev| chars.get(prev));
+            let previous_is_lower_or_digit =
+                previous.is_some_and(|prev| prev.is_lowercase() || prev.is_ascii_digit());
+            let previous_is_upper = previous.is_some_and(|prev| prev.is_uppercase());
+            let next_is_lower = chars.get(index + 1).is_some_and(|next| next.is_lowercase());
+            if !result.is_empty()
+                && !result.ends_with('_')
+                && (previous_is_lower_or_digit || (previous_is_upper && next_is_lower))
+            {
+                result.push('_');
+            }
         }
         result.push(ch.to_ascii_lowercase());
+        previous_was_separator = false;
+    }
+    while result.ends_with('_') {
+        result.pop();
     }
     result
 }
 
 /// Finds the `---@[field_accessor(...)]` attribute that applies to `field`.
 ///
-/// The attribute belongs to the immediately following `---@field` tag; an
-/// attribute placed before `---@class` applies to the first field as well.
+/// The attribute belongs to the `---@field` tag that follows it; an attribute
+/// placed before `---@class` applies to the first field as well. Only named
+/// fields (`---@field name type`, `---@field ["name"] type`) are supported.
 fn field_accessor_for(
     model: &SemanticModel<'_>,
     def: &emmylua_code_analysis::TypeDef,
@@ -330,48 +348,58 @@ fn field_accessor_for(
 ) -> Option<FieldAccessorSpec> {
     let owner_syntax = def.owner_syntax?;
     let owner_range = owner_syntax.get_range();
+    let owner_start = owner_range.start();
     let def_model = model.model_for(def.file_id);
     let chunk = def_model.chunk()?;
+    let mut fallback = None;
     for comment in chunk.descendants::<LuaComment>() {
-        let owns_definition = comment.get_owner().is_some_and(|owner| {
-            let owner_range_of_comment = owner.syntax().text_range();
-            owner_range_of_comment.contains_range(owner_range)
-                || owner_range_of_comment.start() == owner_range.start()
-        });
-        if !owns_definition {
+        let Some(owner) = comment.get_owner() else {
+            continue;
+        };
+        let comment_owner_range = owner.syntax().text_range();
+        let exact_owner = comment_owner_range.start() == owner_start;
+        if !exact_owner && !comment_owner_range.contains_range(owner_range) {
             continue;
         }
-        let mut pending: Option<FieldAccessorSpec> = None;
-        for tag in comment.get_doc_tags() {
-            match tag {
-                LuaDocTag::AttributeUse(attr_tag) => {
-                    if let Some(spec) = attr_tag
-                        .get_attribute_uses()
-                        .find_map(field_accessor_spec)
-                    {
-                        pending = Some(spec);
-                    }
+        let Some(spec) = field_accessor_in_comment(&comment, field) else {
+            continue;
+        };
+        if exact_owner {
+            return Some(spec);
+        }
+        fallback.get_or_insert(spec);
+    }
+    fallback
+}
+
+fn field_accessor_in_comment(comment: &LuaComment, field: &str) -> Option<FieldAccessorSpec> {
+    let mut pending: Option<FieldAccessorSpec> = None;
+    for tag in comment.get_doc_tags() {
+        match tag {
+            LuaDocTag::AttributeUse(attr_tag) => {
+                if let Some(spec) = attr_tag.get_attribute_uses().find_map(field_accessor_spec) {
+                    pending = Some(spec);
                 }
-                LuaDocTag::Field(field_tag) => {
-                    let matches = field_tag
-                        .get_field_key()
-                        .and_then(|key| match key {
-                            LuaDocFieldKey::Name(name) => {
-                                Some(name.get_name_text() == field)
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or(false);
-                    if matches {
-                        if let Some(spec) = pending {
-                            return Some(spec);
-                        }
-                    } else {
-                        pending = None;
-                    }
-                }
-                _ => {}
             }
+            LuaDocTag::Field(field_tag) => {
+                let matches = match field_tag.get_field_key() {
+                    Some(LuaDocFieldKey::Name(name)) => name.get_name_text() == field,
+                    Some(LuaDocFieldKey::String(name)) => name.get_value() == field,
+                    // Index and type keys are not addressable by a named member.
+                    Some(LuaDocFieldKey::Integer(_) | LuaDocFieldKey::Type(_)) | None => {
+                        pending = None;
+                        continue;
+                    }
+                };
+                if matches {
+                    if pending.is_some() {
+                        return pending;
+                    }
+                } else {
+                    pending = None;
+                }
+            }
+            _ => {}
         }
     }
     None
@@ -624,4 +652,40 @@ fn infos_to_locations(
         }
     }
     (!locations.is_empty()).then_some(GotoDefinitionResponse::Array(locations))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AccessorConvention, accessor_name, to_pascal_word, to_snake_word};
+
+    #[test]
+    fn snake_case_handles_acronyms_and_repeated_separators() {
+        for (input, expected) in [
+            ("firstName", "first_name"),
+            ("URL", "url"),
+            ("ID", "id"),
+            ("foo__bar", "foo_bar"),
+            ("get_HTTP", "get_http"),
+            ("URLValue", "url_value"),
+        ] {
+            assert_eq!(to_snake_word(input), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn accessor_names_follow_the_configured_convention() {
+        assert_eq!(
+            accessor_name(AccessorConvention::CamelCase, "get", "_age"),
+            "getAge"
+        );
+        assert_eq!(
+            accessor_name(AccessorConvention::PascalCase, "get", "age"),
+            "GetAge"
+        );
+        assert_eq!(
+            accessor_name(AccessorConvention::SnakeCase, "set", "firstName"),
+            "set_first_name"
+        );
+        assert_eq!(to_pascal_word("first_name"), "FirstName");
+    }
 }
