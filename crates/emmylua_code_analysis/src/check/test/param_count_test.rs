@@ -434,3 +434,33 @@ fn test_incomplete_signature_doc_missing_param() {
         1
     );
 }
+
+/// The checker path must use the same constructor `strip_self` semantics as VM
+/// call inference: `strip_self = false` keeps the explicit receiver argument.
+#[test]
+fn test_constructor_checker_honors_strip_self() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "init.lua",
+        r#"
+        ---@class Attribute
+        ---@class constructor: Attribute
+        ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
+
+        ---@generic T
+        ---@[constructor("__init", nil, false)]
+        ---@param name `T`
+        ---@return T
+        function class(name) end
+
+        ---@class ClassA
+        ClassA = class("ClassA")
+
+        ---@param value number
+        function ClassA:__init(value) end
+        "#,
+    );
+
+    assert!(!ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA(1)"));
+    assert!(ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA({}, 1)"));
+}

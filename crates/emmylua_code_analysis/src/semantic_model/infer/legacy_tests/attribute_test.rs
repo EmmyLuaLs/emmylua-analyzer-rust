@@ -322,6 +322,22 @@ mod test {
     }
 
     #[test]
+    fn test_constructor_return_mode_default_without_documented_return_uses_instance() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init")]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            function ClassA:__init()
+            end
+            "#,
+        );
+
+        let ty = ws.expr_ty("ClassA()");
+        assert_eq!(ws.humanize_type(ty), "ClassA");
+    }
+
+    #[test]
     fn test_constructor_return_mode_self_ignores_documented_return() {
         let mut ws = VirtualWorkspace::new();
         define_meta(&mut ws, r#"---@[constructor("__init", nil, true, "self")]"#);

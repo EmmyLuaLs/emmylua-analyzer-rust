@@ -3313,6 +3313,7 @@ fn constructor_candidate(
     let member = facts.member_by_id(&member_id)?;
     let value_syntax = member.value_syntax?;
     let method_fun = model.type_of_signature_in_file(member_file, value_syntax)?;
+    // `member.value_syntax` is the closure-syntax key used by `signature_by_closure`.
     // `return_mode = "default"` prefers the constructor's documented return type and
     // falls back to the class instance when the method has no explicit `@return`.
     let has_documented_return = facts
