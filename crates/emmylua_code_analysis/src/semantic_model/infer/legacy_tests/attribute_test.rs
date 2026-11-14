@@ -233,4 +233,125 @@ mod test {
         let ty_desc = ws.humanize_type(ty);
         assert_eq!(ty_desc, "ClassA");
     }
+
+    /// Defines the `constructor` attribute class and a `meta`-style factory whose
+    /// first parameter is annotated with the given attribute line.
+    fn define_meta(ws: &mut VirtualWorkspace, attribute_line: &str) {
+        ws.def_file(
+            "init.lua",
+            &format!(
+                r#"
+                ---@class Attribute
+                ---@class constructor: Attribute
+                ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
+
+                ---@generic T
+                {attribute_line}
+                ---@param name `T`
+                ---@return T
+                function class(name)
+                end
+                "#
+            ),
+        );
+    }
+
+    fn define_constructor_class(ws: &mut VirtualWorkspace, init: &str) {
+        ws.def(&format!(
+            r#"
+            ---@class ClassA
+            ClassA = class("ClassA")
+
+            {init}
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_constructor_strip_self_default_omits_self() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init")]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            ---@param value number
+            function ClassA:__init(value)
+                self.value = value
+            end
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA(1)"));
+    }
+
+    #[test]
+    fn test_constructor_strip_self_false_requires_self_argument() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init", nil, false)]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            ---@param value number
+            function ClassA:__init(value)
+                self.value = value
+            end
+            "#,
+        );
+
+        // `self` is not stripped, so the explicit receiver becomes the first argument.
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA(1)"));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA({}, 1)"));
+    }
+
+    #[test]
+    fn test_constructor_return_mode_default_uses_documented_return() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init")]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            ---@return number
+            function ClassA:__init()
+                return 1
+            end
+            "#,
+        );
+
+        let ty = ws.expr_ty("ClassA()");
+        assert_eq!(ws.humanize_type(ty), "number");
+    }
+
+    #[test]
+    fn test_constructor_return_mode_default_without_documented_return_uses_instance() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init")]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            function ClassA:__init()
+            end
+            "#,
+        );
+
+        let ty = ws.expr_ty("ClassA()");
+        assert_eq!(ws.humanize_type(ty), "ClassA");
+    }
+
+    #[test]
+    fn test_constructor_return_mode_self_ignores_documented_return() {
+        let mut ws = VirtualWorkspace::new();
+        define_meta(&mut ws, r#"---@[constructor("__init", nil, true, "self")]"#);
+        define_constructor_class(
+            &mut ws,
+            r#"
+            ---@return number
+            function ClassA:__init()
+                return 1
+            end
+            "#,
+        );
+
+        let ty = ws.expr_ty("ClassA()");
+        assert_eq!(ws.humanize_type(ty), "ClassA");
+    }
 }

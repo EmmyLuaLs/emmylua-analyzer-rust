@@ -46,3 +46,6 @@ required-features = ["cli"]
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:mimalloc"]
+
+[lints]
+workspace = true

@@ -323,7 +323,7 @@ fn multiline_continue_group(
                 li += 1
             }
             rowan::NodeOrToken::Node(n) => {
-                if let Some(tag) = emmylua_parser::LuaDocTag::cast(n) {
+                if let Some(tag) = LuaDocTag::cast(n) {
                     after_alias = matches!(tag, LuaDocTag::Alias(_));
                 }
             }
