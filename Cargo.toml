@@ -16,7 +16,6 @@ emmylua_formatter = { path = "crates/emmylua_formatter", version = "0.30.0" }
 emmylua_parser = { path = "crates/emmylua_parser", version = "0.30.0" }
 emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.30.0" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.5.0" }
-schema_to_emmylua = { path = "crates/schema_to_emmylua", version = "0.2.0" }
 
 # external
 lsp-server = "0.10.0"

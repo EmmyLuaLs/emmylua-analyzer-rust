@@ -26,7 +26,7 @@ impl JsonOutputWriter {
                     std::fs::create_dir_all(parent).unwrap();
                 }
 
-                Some(std::fs::File::create(path).unwrap())
+                Some(File::create(path).unwrap())
             }
         };
         JsonOutputWriter {

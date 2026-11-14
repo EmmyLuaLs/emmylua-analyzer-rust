@@ -16,7 +16,7 @@ pub fn generate_type_markdown(
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    let mut context = tera::Context::new();
+    let mut context = Context::new();
     let typ_name = simple_type_name(doc_type);
     let mut doc = Doc {
         name: typ_name,
