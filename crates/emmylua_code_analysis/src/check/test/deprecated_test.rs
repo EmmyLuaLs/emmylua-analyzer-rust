@@ -93,6 +93,15 @@ mod tests {
         assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
     }
 
+    /// The field-scoped attribute does not leak to the next `@field`.
+    #[test]
+    fn test_deprecated_attribute_field_scope_is_adjacent() {
+        let diags = check_source(
+            "---@class C\n---@[deprecated]\n---@field old number\n---@field fresh number\nlocal C = {}\nlocal old_value = C.old\nlocal fresh_value = C.fresh",
+        );
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
     /// Attribute before `@class`: the type itself is marked.
     #[test]
     fn test_deprecated_attribute_class_reference() {

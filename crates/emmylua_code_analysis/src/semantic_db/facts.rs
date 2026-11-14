@@ -1106,6 +1106,9 @@ impl FactsBuilder {
         // 2) otherwise → mark the type (`@class`/`@alias`/`@enum`) + statement owner (decl/member/signature).
         // Consecutive doc lines in one comment block are merged into one LuaComment by the parser; tag order is line order.
         let mut field_deprecated: HashSet<usize> = HashSet::new();
+        // Set only for owner-level deprecation. A deprecated tag immediately
+        // followed by `@field` is recorded in `field_deprecated` instead and
+        // must not mark the type or signature below.
         let mut owner_type_deprecated = false;
         for (idx, tag) in tags.iter().enumerate() {
             let deprecated = match tag {
@@ -1297,8 +1300,7 @@ impl FactsBuilder {
                         // `---@[deprecated]` / `---@[deprecated("message")]`: the attribute form
                         // of `---@deprecated`. A following `@field` marks only that field (handled
                         // above); otherwise it applies to the type/signature/declaration owner.
-                        if owner_type_deprecated
-                            && attribute_use_has_deprecated(attribute_use_tag)
+                        if owner_type_deprecated && attribute_use_has_deprecated(attribute_use_tag)
                         {
                             self.signature_doc_map
                                 .entry(owner_syntax)
