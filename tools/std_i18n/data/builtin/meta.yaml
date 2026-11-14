@@ -95,7 +95,7 @@ b:
   g: 'Marker type for the result tuple of `select`. The analyzer evaluates'
   r: [156, 0, 159, 37]
   e:
-  - ['std.Select', 'd', doc, [156, 0, 159, 0], '033c83eb03eefdcc']
+  - ['std.Select', 'd', doc, [156, 0, 159, 0], 'b6c72352b899df2f']
 - a: '---'
   g: 'Marker type for the multiple returns of `table.unpack`/`unpack`.'
   r: [161, 0, 165, 44]
@@ -153,26 +153,26 @@ b:
   - ['Attribute', 'd', doc, [217, 0, 219, 0], '447122ccca030132']
 - a: '---'
   g: 'Marks the declaration as deprecated. Receives an optional message.'
-  r: [221, 0, 227, 35]
+  r: [221, 0, 228, 35]
   e:
-  - ['deprecated', 'd', doc, [221, 0, 226, 0], '3a24e601daf59452']
+  - ['deprecated', 'd', doc, [221, 0, 227, 0], '789245ee8ad8cccf']
 - a: '---'
   g: 'Language Server Optimization Items.'
-  r: [229, 0, 236, 45]
+  r: [230, 0, 237, 45]
   e:
-  - ['lsp_optimization', 'd', doc, [229, 0, 235, 0], '8e73659bb68f6d93']
+  - ['lsp_optimization', 'd', doc, [230, 0, 236, 0], '8e73659bb68f6d93']
 - a: '---'
   g: 'Alias for an integer index field (for example, `---@field [1] string`).'
-  r: [238, 0, 244, 31]
+  r: [239, 0, 245, 31]
   e:
-  - ['index_alias', 'd', doc, [238, 0, 243, 0], 'b8f902474bb5c6dc']
+  - ['index_alias', 'd', doc, [239, 0, 244, 0], 'b8f902474bb5c6dc']
 - a: '---'
   g: 'This attribute must be applied to function parameters, immediately before'
-  r: [246, 0, 263, 116]
+  r: [247, 0, 264, 116]
   e:
-  - ['constructor', 'd', doc, [246, 0, 262, 0], '66e77d56a633d1bd']
+  - ['constructor', 'd', doc, [247, 0, 263, 0], '66e77d56a633d1bd']
 -
   g: 'Associates `getter` and `setter` methods with a field. Currently only'
-  r: [265, 0, 282, 107]
+  r: [266, 0, 285, 107]
   e:
-  - ['field_accessor', 'd', doc, [265, 0, 281, 0], '1902c6cdf297a2ee']
+  - ['field_accessor', 'd', doc, [266, 0, 284, 0], '8efd33afe9060d8c']

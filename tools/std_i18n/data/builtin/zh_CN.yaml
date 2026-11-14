@@ -92,8 +92,8 @@ std.Nullable: |
   为 `T` 添加 `nil`；等价于 `T | nil`。
 
 std.Select: |
-  `select` 返回值元组的标记类型。分析器会直接计算 `select` 调用；`unknown`
-  只是占位符。
+  `select` 返回值元组的标记类型。分析器会直接计算 `select` 调用；`Num` 和
+  `unknown` 主体都只是占位符。
 
 std.Unpack: |
   `table.unpack`/`unpack` 多个返回值的标记类型。分析器会展开元组 `T` 的所有值；
@@ -136,6 +136,7 @@ deprecated: |
   将声明标记为已弃用。可以接收一个可选消息。
 
   既支持传统的 `---@deprecated` 标签，也支持 `---@[deprecated("message")]` 形式。
+  紧邻 `@field` 之前时，仅标记该字段。
 
 lsp_optimization: |
   语言服务器优化项。
@@ -168,6 +169,8 @@ field_accessor: |
   跳转到字段时也会跳转到该字段所属类上匹配的访问器方法。
 
   该属性作用于其后的 `@field` 标签；放在 `@class` 之前时会作用于第一个字段。
+  仅支持命名字段（`---@field name type` 或 `---@field ["name"] type`），
+  索引字段会被忽略。
 
   ### 参数
 

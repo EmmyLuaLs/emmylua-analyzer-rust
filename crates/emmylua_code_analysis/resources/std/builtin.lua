@@ -156,7 +156,7 @@
 
 ---
 --- Marker type for the result tuple of `select`. The analyzer evaluates
---- `select` calls directly; the `unknown` body is a placeholder.
+--- `select` calls directly; `Num` and the `unknown` body are placeholders.
 --- @alias std.Select<T, Num> unknown
 
 ---
@@ -223,7 +223,8 @@
 --- Marks the declaration as deprecated. Receives an optional message.
 ---
 --- Both the classic `---@deprecated` tag and the attribute form
---- `---@[deprecated("message")]` are supported.
+--- `---@[deprecated("message")]` are supported. When placed immediately before
+--- an `@field`, only that field is marked.
 --- @class deprecated: Attribute
 --- @overload fun(message?: string)
 
@@ -269,7 +270,9 @@
 --- matching accessor methods on the field's class.
 ---
 --- The attribute applies to the `@field` tag that follows it; an attribute
---- placed before `@class` applies to the first field.
+--- placed before `@class` applies to the first field. Only named fields are
+--- supported (`---@field name type` or `---@field ["name"] type`); index fields
+--- are ignored.
 ---
 --- Parameters:
 --- - `convention`: Naming convention for the generated accessor names. Matches
