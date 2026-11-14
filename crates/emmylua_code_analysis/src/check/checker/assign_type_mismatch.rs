@@ -545,7 +545,8 @@ fn resolve_unbound_generic(semantic_model: &SemanticModel<'_>, ty: LuaType) -> L
             .find(|param| param.name.as_str() == name)
             && let Some(constraint) = param.constraint
         {
-            let constraint_ty = semantic_model.doc_type_lua_rich(constraint);
+            let constraint_ty =
+                semantic_model.project_doc_type(semantic_model.file_id(), constraint, &[]);
             if !matches!(constraint_ty, LuaType::Unknown) {
                 return constraint_ty;
             }

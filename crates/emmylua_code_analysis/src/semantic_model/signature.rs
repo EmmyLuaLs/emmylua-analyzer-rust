@@ -43,7 +43,7 @@ impl<'db> SemanticModel<'db> {
                 .as_ref()
             && docs.returns.len() == 1
         {
-            let rich = self.doc_type_lua_rich(docs.returns[0]);
+            let rich = self.project_doc_type(self.file_id(), docs.returns[0], &[]);
             if !matches!(rich, LuaType::Unknown) {
                 ty = rich;
             }
@@ -312,7 +312,7 @@ impl<'db> SemanticModel<'db> {
         if let Some(docs) = signature.docs.as_ref()
             && docs.returns.len() == 1
         {
-            let rich = self.doc_type_lua_rich_in(file_id, docs.returns[0]);
+            let rich = self.project_doc_type(file_id, docs.returns[0], &[]);
             if !matches!(rich, LuaType::Unknown)
                 && rich.any_type(|ty| matches!(ty, LuaType::Conditional(_)))
             {
@@ -324,7 +324,7 @@ impl<'db> SemanticModel<'db> {
             && let Some(docs) = signature.docs.as_ref()
             && docs.returns.len() == 1
         {
-            let rich = self.doc_type_lua_rich_in(file_id, docs.returns[0]);
+            let rich = self.project_doc_type(file_id, docs.returns[0], &[]);
             if !matches!(rich, LuaType::Unknown) {
                 ret = rich;
             }
@@ -345,7 +345,7 @@ impl<'db> SemanticModel<'db> {
             .map(|syntax| {
                 (
                     String::new(),
-                    Some(self.doc_type_lua_rich_in(file_id, *syntax)),
+                    Some(self.project_doc_type(file_id, *syntax, &[])),
                 )
             })
             .collect::<Vec<_>>();
@@ -357,7 +357,7 @@ impl<'db> SemanticModel<'db> {
             false,
             is_variadic,
             params,
-            self.doc_type_lua_rich_in(file_id, op.returns),
+            self.project_doc_type(file_id, op.returns, &[]),
             None,
         )
     }
@@ -388,7 +388,7 @@ impl<'db> SemanticModel<'db> {
                     .iter()
                     .find(|(param_name, _)| param_name == name)
             {
-                let rich = self.doc_type_lua_rich(*syntax);
+                let rich = self.project_doc_type(self.file_id(), *syntax, &[]);
                 if !matches!(rich, LuaType::Unknown) {
                     ty = rich;
                 }
@@ -420,7 +420,7 @@ impl<'db> SemanticModel<'db> {
                 docs.overloads
                     .iter()
                     .filter_map(|syntax| {
-                        match self.doc_type_lua_rich_in(self.view.file_id(), *syntax) {
+                        match self.project_doc_type(self.view.file_id(), *syntax, &[]) {
                             LuaType::DocFunction(fun) => Some(fun.as_ref().clone()),
                             _ => None,
                         }
@@ -723,7 +723,7 @@ impl<'db> SemanticModel<'db> {
         if let Some(doc_syntax) = member.doc_type_syntax {
             let mut doc_ty = type_eval::expand_alias_generic(
                 self,
-                &self.doc_type_lua_rich_in(member_file, doc_syntax),
+                &self.project_doc_type(member_file, doc_syntax, &[]),
             );
             // When an inline field `---@type test` points to a plain alias, `expand_alias_generic` only expands
             // the `Alias<...>` form; bare `Ref(test)` needs to continue along the alias chain to the function type.
@@ -768,7 +768,8 @@ impl<'db> SemanticModel<'db> {
         {
             let mut out = Vec::new();
             for syntax in &docs.overloads {
-                if let LuaType::DocFunction(fun) = self.doc_type_lua_rich_in(member_file, *syntax) {
+                if let LuaType::DocFunction(fun) = self.project_doc_type(member_file, *syntax, &[])
+                {
                     out.push(fun.as_ref().clone());
                 }
             }
@@ -883,7 +884,8 @@ impl<'db> SemanticModel<'db> {
                         if let Some(name_token) = param.get_name_token()
                             && let Some(doc_ty) = param.get_type()
                         {
-                            let mut ty = self.doc_type_lua_rich_in(file_id, doc_ty.get_syntax_id());
+                            let mut ty =
+                                self.project_doc_type(file_id, doc_ty.get_syntax_id(), &[]);
                             if param.is_nullable() {
                                 ty = LuaType::from_vec(vec![ty, LuaType::Nil]);
                             }
@@ -897,7 +899,7 @@ impl<'db> SemanticModel<'db> {
                     LuaDocTag::Return(return_tag) => {
                         has_return = true;
                         for doc_ty in return_tag.get_types() {
-                            let ty = self.doc_type_lua_rich_in(file_id, doc_ty.get_syntax_id());
+                            let ty = self.project_doc_type(file_id, doc_ty.get_syntax_id(), &[]);
                             if !matches!(ty, LuaType::Unknown) {
                                 returns.push(ty);
                             }
@@ -957,7 +959,7 @@ impl<'db> SemanticModel<'db> {
                         docs.param_types
                             .iter()
                             .find(|(param_name, _)| param_name == name)
-                            .map(|(_, syntax)| self.doc_type_lua_rich_in(file_id, *syntax))
+                            .map(|(_, syntax)| self.project_doc_type(file_id, *syntax, &[]))
                     })
                 })
                 .unwrap_or(LuaType::Any);

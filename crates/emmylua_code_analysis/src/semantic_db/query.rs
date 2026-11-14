@@ -2258,7 +2258,7 @@ pub(crate) fn lower_doc_type(
     lower_doc_type_node(db, file_id, generics, &doc_type)
 }
 
-fn lower_doc_type_node(
+pub(crate) fn lower_doc_type_node(
     db: &SemanticDatabase,
     file: FileId,
     generics: &[DocGenericParam],

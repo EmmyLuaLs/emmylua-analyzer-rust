@@ -246,7 +246,7 @@ fn project_return_annotation_in(
             return LuaType::Variadic(Rc::new(VariadicType::Base(inner)));
         }
     }
-    semantic_model.doc_type_lua_rich_in(file_id, syntax)
+    semantic_model.project_doc_type(file_id, syntax, &[])
 }
 
 /// Only check return statements belonging to this closure itself.

@@ -192,7 +192,7 @@ impl<'db> SemanticModel<'db> {
                     };
                     // Rich projection takes priority: structural annotations like Object / Intersection / keyof must not be
                     // overridden by shell's broad Table / Nil fallback.
-                    let rich = self.doc_type_lua_rich(doc_syntax);
+                    let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                     if !matches!(rich, LuaType::Unknown) && rich != ty {
                         let rich_is_index_not_precise = matches!(
                             &rich,
@@ -215,7 +215,7 @@ impl<'db> SemanticModel<'db> {
                         ty,
                         LuaType::String | LuaType::Number | LuaType::Integer | LuaType::Boolean
                     ) {
-                        let rich = self.doc_type_lua_rich(doc_syntax);
+                        let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                         if matches!(
                             rich,
                             LuaType::Union(_)
@@ -231,7 +231,7 @@ impl<'db> SemanticModel<'db> {
                     }
                     return Some(ty);
                 }
-                let rich = self.doc_type_lua_rich(doc_syntax);
+                let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                 if !matches!(rich, LuaType::Unknown) {
                     return Some(rich);
                 }
@@ -643,7 +643,7 @@ impl<'db> SemanticModel<'db> {
                 .is_none_or(|ty| matches!(ty, LuaType::Table))
                 && let Some(syntax) = def.alias_type
             {
-                let rich = self.doc_type_lua_rich_in(def.file_id, syntax);
+                let rich = self.project_doc_type(def.file_id, syntax, &[]);
                 if !matches!(rich, LuaType::Unknown) {
                     target = Some(rich);
                 }
@@ -850,12 +850,24 @@ impl<'db> SemanticModel<'db> {
         if let Some(enum_const) = self.enum_member_const(member_file, member) {
             return Some(enum_const);
         }
-        if let Some(syntax) = self.file_facts_of(member_file).and_then(|facts| {
-            facts
-                .member_by_id(member)
-                .and_then(|def| def.doc_type_syntax)
-        }) {
-            return Some(self.doc_type_lua_rich_in(member_file, syntax));
+        if let Some(facts) = self.file_facts_of(member_file)
+            && let Some(def) = facts.member_by_id(member)
+        {
+            let doc_syntax = match def.source {
+                MemberSource::DocField => def.value_syntax,
+                _ => def.doc_type_syntax,
+            };
+            if let Some(syntax) = doc_syntax {
+                let generics = facts
+                    .type_def_by_id(&def.owner)
+                    .map(|owner| owner.generic_params.as_slice())
+                    .unwrap_or(&[]);
+                let mut ty = self.project_doc_type(member_file, syntax, generics);
+                if def.is_nullable && !ty.is_nullable() {
+                    ty = LuaType::from_vec(vec![ty, LuaType::Nil]);
+                }
+                return Some(ty);
+            }
         }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
@@ -1590,7 +1602,7 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
         }
     }
     if matches!(doc_type, LuaDocType::Object(_)) {
-        return model.doc_type_lua_rich_in(def.file_id, doc_type.get_syntax_id());
+        return model.project_doc_type(def.file_id, doc_type.get_syntax_id(), &[]);
     }
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
 }

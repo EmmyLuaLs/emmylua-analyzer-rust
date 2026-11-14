@@ -513,7 +513,7 @@ fn check_candidate(
     // Explicit call generics `test--[[@<number | string>]]()` fill bindings first instead of inferring from arguments.
     for (index, syntax) in explicit_generics.iter().enumerate() {
         if let Some(tpl) = func.get_generic_params().get(index) {
-            let ty = semantic_model.doc_type_lua_rich(*syntax);
+            let ty = semantic_model.project_doc_type(semantic_model.file_id(), *syntax, &[]);
             bindings.insert(tpl.get_tpl_id(), ty);
         }
     }
@@ -951,7 +951,7 @@ fn call_argument_type(
             && let Some(decl) = facts.decl_by_id(&decl)
             && let Some(doc_syntax) = decl.doc_type_syntax
         {
-            let ty = semantic_model.doc_type_lua_rich(doc_syntax);
+            let ty = semantic_model.project_doc_type(semantic_model.file_id(), doc_syntax, &[]);
             if let LuaType::DocFunction(func) = ty {
                 return LuaType::DocFunction(func);
             }

@@ -5,13 +5,12 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
-use crate::semantic_model::type_eval::{map_type, substitute_named_refs, with_expanded_alias};
+use crate::semantic_model::type_eval::{substitute_named_refs, with_expanded_alias};
 use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaObjectType, LuaType};
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
 use super::SemanticModel;
-use super::infer::vm::reassign_function_generics_to_func_ids;
 use super::table_constructor::expanded_results;
 
 /// Maximum inheritance/parent-type depth expanded during member lookup.
@@ -1083,15 +1082,6 @@ pub(super) fn projected_member_type(
     {
         typ = LuaType::from_vec(vec![typ, LuaType::Nil]);
     }
-    // Function generics need separate IDs before class substitution, including
-    // functions inside lazy alias arguments.
-    typ = map_type(&typ, &mut |ty| match ty {
-        LuaType::DocFunction(fun) if !fun.get_generic_params().is_empty() => {
-            let fun = reassign_function_generics_to_func_ids(fun.as_ref().clone());
-            Some(LuaType::DocFunction(Rc::new(fun)))
-        }
-        _ => None,
-    });
     if let Some(bindings) = bindings {
         typ = unify::substitute(&typ, bindings);
     }
