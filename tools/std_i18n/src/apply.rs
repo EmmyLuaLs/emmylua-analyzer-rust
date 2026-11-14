@@ -1153,6 +1153,23 @@ function coroutine.status(co) end
         assert!(translated.contains(r#"--- | "running" # 正在运行。"#));
     }
 
+    // Verify generated meta translates builtin.lua, including blocks whose
+    // anchor is a following doc/comment line (`--- Alias ...`, `-- LuaLS ...`).
+    #[test]
+    fn test_apply_generated_meta_to_builtin_source() {
+        let meta: MetaFile = serde_yaml_ng::from_str(&read_data_yaml("builtin/meta.yaml")).unwrap();
+        let translations: HashMap<String, String> =
+            serde_yaml_ng::from_str(&read_data_yaml("builtin/zh_CN.yaml")).unwrap();
+        let source = read_std_source("builtin.lua");
+
+        let translated = apply_meta_translations(&source, &meta, &translations);
+
+        assert!(translated.contains("方法内部隐式 `self` 参数的类型"));
+        assert!(translated.contains("`rawget(T, K)` 的标记类型"));
+        assert!(!translated.contains("The type of the implicit `self` parameter"));
+        assert!(!translated.contains("Marker type for `rawget(T, K)`"));
+    }
+
     fn offsets_to_range(line_starts: &[usize], start: usize, end: usize) -> [u32; 4] {
         let (start_line, start_col) = offset_to_line_col(line_starts, start);
         let (end_line, end_col) = offset_to_line_col(line_starts, end);
