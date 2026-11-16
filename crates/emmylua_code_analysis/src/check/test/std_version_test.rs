@@ -16,10 +16,14 @@ mod test {
             .unwrap_or_else(|| panic!("type of {name} must exist"))
     }
 
-    fn diagnostic_codes_for(version: EmmyrcLuaVersion, source: &str) -> Vec<String> {
+    fn workspace_for(version: EmmyrcLuaVersion) -> VirtualWorkspace {
         let mut config = Emmyrc::default();
         config.runtime.version = version;
-        let mut ws = VirtualWorkspace::new_with_config(config);
+        VirtualWorkspace::new_with_config(config)
+    }
+
+    fn diagnostic_codes_for(version: EmmyrcLuaVersion, source: &str) -> Vec<String> {
+        let mut ws = workspace_for(version);
 
         let file_id = ws.def(source);
         ws.analysis
@@ -35,11 +39,20 @@ mod test {
 
     /// Humanized type of `expr` under the given runtime version.
     fn expr_type_for(version: EmmyrcLuaVersion, expr: &str) -> String {
-        let mut config = Emmyrc::default();
-        config.runtime.version = version;
-        let mut ws = VirtualWorkspace::new_with_config(config);
+        let mut ws = workspace_for(version);
 
         let ty = ws.expr_ty(expr);
+        ws.humanize_type(ty)
+    }
+
+    /// Humanized type of the local declaration `name` under the given runtime
+    /// version. Useful for checking secondary return values, which
+    /// `expr_type_for` cannot observe.
+    fn local_type_for(version: EmmyrcLuaVersion, source: &str, name: &str) -> String {
+        let mut ws = workspace_for(version);
+
+        let file_id = ws.def(source);
+        let ty = decl_type(&ws, file_id, name);
         ws.humanize_type(ty)
     }
 
@@ -931,5 +944,192 @@ mod test {
             ty, "function",
             "setfenv(0, env) returns no values, not the function at a stack level"
         );
+    }
+
+    #[test]
+    fn test_coroutine_isyieldable_signature_by_version() {
+        // `coroutine.isyieldable` appeared in Lua 5.3 without arguments; LuaJIT
+        // exposes the same no-argument form. Lua 5.1 and Lua 5.2 do not have it.
+        for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::Lua52] {
+            assert_eq!(
+                expr_type_for(version, "coroutine.isyieldable()"),
+                "unknown",
+                "coroutine.isyieldable must be hidden in {version:?}"
+            );
+            let diagnostics = diagnostic_codes_for(version, "coroutine.isyieldable()");
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-field"),
+                "hidden coroutine.isyieldable must be reported as undefined in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::LuaJIT,
+            EmmyrcLuaVersion::LuaJIT2,
+            EmmyrcLuaVersion::LuaJIT3,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "coroutine.isyieldable()"),
+                "boolean",
+                "coroutine.isyieldable() must return boolean in {version:?}"
+            );
+            let source = "local co = coroutine.running()\ncoroutine.isyieldable(co)";
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "coroutine.isyieldable must not accept `co` in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        // Lua 5.4 added the optional `co` argument.
+        for version in [
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaLatest,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "coroutine.isyieldable()"),
+                "boolean",
+                "coroutine.isyieldable() must return boolean in {version:?}"
+            );
+            let source = "local co = coroutine.running()\ncoroutine.isyieldable(co)";
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.is_empty(),
+                "coroutine.isyieldable(co) must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_coroutine_close_signature_by_version() {
+        let call = "coroutine.close(coroutine.create(function() end))";
+
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::LuaJIT,
+            EmmyrcLuaVersion::LuaJIT2,
+            EmmyrcLuaVersion::LuaJIT3,
+        ] {
+            assert_eq!(
+                expr_type_for(version, call),
+                "unknown",
+                "coroutine.close must be hidden in {version:?}"
+            );
+            let diagnostics = diagnostic_codes_for(version, call);
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-field"),
+                "hidden coroutine.close must be reported as undefined in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        // Lua 5.4 requires `co`.
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua54, "coroutine.close()");
+        assert!(
+            diagnostics.iter().any(|code| code == "missing-parameter"),
+            "coroutine.close() must require `co` in Lua 5.4: {diagnostics:?}"
+        );
+
+        // Lua 5.5 made `co` optional (defaults to the running coroutine).
+        for version in [
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaLatest,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, call);
+            assert!(
+                diagnostics.is_empty(),
+                "coroutine.close(co) must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua55, EmmyrcLuaVersion::LuaLatest] {
+            let diagnostics = diagnostic_codes_for(version, "coroutine.close()");
+            assert!(
+                diagnostics.is_empty(),
+                "coroutine.close() must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_coroutine_running_shape_by_version() {
+        // 5.1/LuaJIT return only the running coroutine; 5.2+ add a boolean.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::LuaJIT,
+            EmmyrcLuaVersion::LuaJIT2,
+            EmmyrcLuaVersion::LuaJIT3,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "coroutine.running()"),
+                "thread?",
+                "coroutine.running() must return thread? in {version:?}"
+            );
+        }
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaLatest,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "coroutine.running()"),
+                "thread",
+                "coroutine.running() must return thread in {version:?}"
+            );
+            assert_eq!(
+                local_type_for(version, "local co, ismain = coroutine.running()", "ismain"),
+                "boolean",
+                "coroutine.running() must return a boolean second value in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_coroutine_resume_and_wrap_annotations() {
+        let source = r#"
+            local co = coroutine.create(function(a) return a end)
+            local ok, value = coroutine.resume(co, 1)
+            if ok then
+                print(value)
+            end
+            local wrapped = coroutine.wrap(function(a) return a end)
+            print(wrapped(1))
+        "#;
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+            EmmyrcLuaVersion::LuaJIT2,
+            EmmyrcLuaVersion::LuaJIT3,
+            EmmyrcLuaVersion::LuaLatest,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.is_empty(),
+                "coroutine.resume/wrap annotations must typecheck in {version:?}: {diagnostics:?}"
+            );
+            // `@return_overload true, any...` / `false, any` yields the
+            // literal boolean union for the success flag. Both the success and
+            // error payloads are `any`, so there is no further branch
+            // narrowing to distinguish here.
+            assert_eq!(
+                local_type_for(version, source, "ok"),
+                "(true|false)",
+                "coroutine.resume's first result must be a boolean union in {version:?}"
+            );
+            assert_eq!(
+                local_type_for(version, source, "value"),
+                "any",
+                "coroutine.resume's second result must be any in {version:?}"
+            );
+        }
     }
 }
