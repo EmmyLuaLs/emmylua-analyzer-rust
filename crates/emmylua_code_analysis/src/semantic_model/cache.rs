@@ -235,12 +235,12 @@ pub(crate) enum TraceSubject {
     },
 }
 
-/// Memo key for one flow-trace state on a loop-free graph: `(file, subject, flow node)`.
+/// Memo key for one flow-trace state outside a cycle: `(file, subject, flow node)`.
 /// Original-signature traces keep incoming PathState empty and memoize each
 /// node's transfer during unwind, so a cached node never contains later casts.
 ///
 /// The incoming path is deliberately absent. It is safe to omit only for flow
-/// graphs without loops, where every route to a flow node crosses the same
+/// nodes outside a cycle, where every route to the node crosses the same
 /// guards, so the path is a function of the node. [`super::flow`] consults this
 /// memo only in that case and recomputes otherwise.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -288,7 +288,7 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
     /// Whole-function, syntax-only check for the local-table last-element proof.
     pub(crate) array_length_stable: HashMap<(FileId, SemanticId), bool>,
-    /// Memoized declaration/member-trace states for loop-free flow graphs. See
+    /// Memoized declaration/member-trace states for flow nodes outside a cycle. See
     /// [`TraceStateKey`] for why the path may be omitted from the key.
     pub(crate) trace_state: HashMap<TraceStateKey, CacheEntry<Option<LuaType>>>,
     /// Fast negative/positive cache for `---@return_cast` lookup by call syntax.
