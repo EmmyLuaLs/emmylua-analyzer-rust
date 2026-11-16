@@ -1219,6 +1219,24 @@ items.<??>
     }
 
     #[gtest]
+    fn test_name_completion_in_table_list_constructor() -> Result<()> {
+        for source in [
+            "aaa_value = 1\nlocal d = {\n    aaa<??>\n}",
+            "aaa_value = 1\nlocal d = { 1, aaa<??> }",
+            "aaa_value = 1\nlocal d = { key = aaa<??> }",
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            let items = get_completion_items(&mut ws, source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items.iter().any(|item| item.label == "aaa_value"),
+                "{source:?}: {:?}",
+                items.iter().map(|item| &item.label).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_enum_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
