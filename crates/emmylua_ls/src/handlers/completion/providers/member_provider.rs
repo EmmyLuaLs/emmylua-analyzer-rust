@@ -143,13 +143,13 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     // `emmyrc.doc.private_name` (e.g. `_*`): hide private members when accessing through
     // local variables/parameters; do not hide when accessing directly through a type name (global surface).
     if is_local_prefix(&builder.semantic_model, &prefix_expr) {
-        let patterns = &builder.get_emmyrc().doc.private_name;
+        let doc = &builder.get_emmyrc().doc;
         members.retain(|member| {
             let name = match &member.key {
                 LuaMemberKey::Name(name) => name.as_str(),
                 _ => return true,
             };
-            !matches_private_name(name, patterns)
+            !doc.is_private_name(name)
         });
     }
 
@@ -388,18 +388,6 @@ fn is_local_prefix(model: &SemanticModel<'_>, prefix_expr: &emmylua_parser::LuaE
         .file_facts()
         .and_then(|facts| facts.decl_by_id(&decl))
         .is_some_and(|decl| matches!(decl.kind, DeclKind::Local { .. } | DeclKind::Param))
-}
-
-fn matches_private_name(name: &str, patterns: &[String]) -> bool {
-    patterns.iter().any(|pattern| {
-        if let Some(prefix) = pattern.strip_suffix('*') {
-            name.starts_with(prefix)
-        } else if let Some(suffix) = pattern.strip_prefix('*') {
-            name.ends_with(suffix)
-        } else {
-            name == pattern
-        }
-    })
 }
 
 fn constraint_refers_to_tpl(constraint: &LuaType, tpl_name: &str) -> bool {

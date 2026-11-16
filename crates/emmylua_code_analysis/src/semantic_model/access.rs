@@ -578,7 +578,19 @@ impl<'db> SemanticModel<'db> {
             && let Some(member) = facts.member_by_id(decl)
         {
             use VisibilityKind;
-            return match member.visibility {
+            // `doc.privateName`: a public member whose name matches is private.
+            let visibility = match member.visibility {
+                VisibilityKind::Public
+                    if member
+                        .key
+                        .name()
+                        .is_some_and(|name| self.db().is_private_name(name)) =>
+                {
+                    VisibilityKind::Private
+                }
+                visibility => visibility,
+            };
+            return match visibility {
                 VisibilityKind::Public | VisibilityKind::Internal => true,
                 VisibilityKind::Package | VisibilityKind::Private | VisibilityKind::Protected => {
                     decl_file == self.view.file_id()

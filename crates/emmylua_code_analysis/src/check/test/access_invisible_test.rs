@@ -87,6 +87,43 @@ mod tests {
     }
 
     #[test]
+    fn test_private_name_members_are_private() {
+        let mut ws = VirtualWorkspace::new();
+        let mut config = Emmyrc::default();
+        config.doc.private_name = vec!["_*".to_string()];
+        ws.analysis.update_config(config.into());
+        ws.def_file(
+            "test.lua",
+            r#"
+            ---@class A
+            ---@field _secret integer
+            local A = {}
+
+            function A:init()
+                self._count = 1
+                self.count = 1
+                print(self._secret)
+            end
+
+            return A
+            "#,
+        );
+        for access in ["a._count", "a._secret"] {
+            assert!(
+                !ws.has_no_diagnostic(
+                    DiagnosticCode::AccessInvisible,
+                    &format!("---@type A\nlocal a\nprint({access})"),
+                ),
+                "{access}"
+            );
+        }
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AccessInvisible,
+            "---@type A\nlocal a\nprint(a.count)",
+        ));
+    }
+
+    #[test]
     fn test_4_statement_private_cross_file() {
         let mut ws = VirtualWorkspace::new();
         ws.def_file(

@@ -413,6 +413,12 @@ impl SemanticDatabase {
             .unwrap_or(true)
     }
 
+    pub(crate) fn is_private_name(&self, name: &str) -> bool {
+        self.config
+            .as_ref()
+            .is_some_and(|config| config.doc.is_private_name(name))
+    }
+
     /// Run `f` for every workspace file on scoped worker threads.
     ///
     /// Each worker creates its own `SemanticModel` view over the shared read-only
