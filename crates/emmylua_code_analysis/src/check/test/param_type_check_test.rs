@@ -223,6 +223,30 @@ mod test {
     }
 
     #[test]
+    fn test_function_type_optional_params_can_be_omitted() {
+        let source = r#"
+            ---@param thread? thread
+            ---@param a? integer
+            ---@param b? string
+            ---@overload fun(a: integer, b?: string)
+            local function accept(thread, a, b) return thread, a, b end
+            accept(1)
+            accept(1, 'x')
+            pcall(accept, 1)
+            accept('wrong')
+
+            ---@type fun(a: integer, b?: string)
+            local typed
+            typed(1)
+            typed(1, 'x')
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&source[diagnostics[0].range], "'wrong'");
+    }
+
+    #[test]
     fn test_typed_globals_keep_contracts_from_each_file() {
         let mut ws = VirtualWorkspace::new();
         for (file, domain) in [("strings.lua", "string"), ("numbers.lua", "number")] {
