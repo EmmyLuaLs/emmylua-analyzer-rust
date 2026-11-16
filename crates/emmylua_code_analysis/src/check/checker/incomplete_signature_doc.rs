@@ -9,6 +9,7 @@ use crate::DiagnosticCode;
 use crate::LuaType;
 use crate::semantic_db::def::{DeclKind, Signature};
 use crate::semantic_model::SemanticModel;
+use crate::semantic_model::type_eval::expand_alias_head;
 
 use super::{CheckContext, Checker};
 
@@ -62,6 +63,9 @@ fn check_signature(
     let Some(closure) = LuaClosureExpr::cast(node) else {
         return;
     };
+    if has_declared_function_type(semantic_model, signature) {
+        return;
+    }
 
     let Some(docs) = &signature.docs else {
         // No comment: always report for global functions; for local functions only when there are parameters/return values.
@@ -146,6 +150,25 @@ fn check_signature(
             }
         }
     }
+}
+
+/// Whether the function is declared with a `---@type fun(...)` (or an alias of one), which
+/// already documents its parameters and returns.
+fn has_declared_function_type(semantic_model: &SemanticModel<'_>, signature: &Signature) -> bool {
+    let Some(facts) = semantic_model.file_facts() else {
+        return false;
+    };
+    let closure = signature.closure_syntax;
+    facts
+        .decl_by_value_syntax(closure)
+        .and_then(|decl| decl.doc_type_syntax)
+        .or_else(|| {
+            facts
+                .member_by_value_syntax(closure)
+                .and_then(|member| member.doc_type_syntax)
+        })
+        .and_then(|syntax| expand_alias_head(semantic_model, &semantic_model.doc_type_lua(syntax)))
+        .is_some_and(|ty| matches!(ty, LuaType::DocFunction(_)))
 }
 
 /// Whether there is a comment directly before the function statement (a pure `---` also counts).
