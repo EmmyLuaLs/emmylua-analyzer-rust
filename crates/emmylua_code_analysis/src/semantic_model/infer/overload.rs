@@ -727,13 +727,16 @@ pub fn pcall_return_type(callback_ret: LuaType, include_error_string: bool) -> L
     }
 
     // Only Multi lists separate result slots. Keep a repeated tail as a sequence.
-    let callback_slots = if let LuaType::Variadic(variadic) = &callback_ret
+    let mut callback_slots = if let LuaType::Variadic(variadic) = &callback_ret
         && let VariadicType::Multi(types) = variadic.as_ref()
     {
         types.clone()
     } else {
         vec![callback_ret]
     };
+    if callback_slots.is_empty() && include_error_string {
+        callback_slots.push(LuaType::Nil);
+    }
     let mut slots = vec![LuaType::Boolean];
     for (index, ty) in callback_slots.into_iter().enumerate() {
         let slot = if index == 0 && include_error_string {
