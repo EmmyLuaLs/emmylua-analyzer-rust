@@ -32,6 +32,25 @@ pub(crate) enum BuiltinKey {
     InitialGlobal(SmolStr),
 }
 
+impl super::SemanticModel<'_> {
+    /// An unfinished semantic dependency cannot prove either outcome.
+    pub(crate) fn require_complete<T>(
+        &self,
+        query: impl FnOnce() -> T,
+    ) -> Result<T, super::type_check::TypeCheckFailReason> {
+        let revision = self.cache.borrow().revision();
+        let result = query();
+        let cache = self.cache.borrow();
+        if cache.evaluation_exhausted {
+            Err(super::type_check::TypeCheckFailReason::TooComplex)
+        } else if cache.is_complete(revision) {
+            Ok(result)
+        } else {
+            Err(super::type_check::TypeCheckFailReason::Unresolved)
+        }
+    }
+}
+
 /// Keep provisional memo entries while dependent queries still need them.
 /// Discard them at the outer query boundary so the next query can retry.
 #[must_use = "keep the scope alive until the query finishes"]

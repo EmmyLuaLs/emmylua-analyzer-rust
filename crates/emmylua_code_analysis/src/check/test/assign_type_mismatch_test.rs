@@ -5,6 +5,136 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     #[test]
+    fn test_constructor_errors_point_to_the_invalid_value() {
+        for (target, constructor, invalid_value) in [
+            (
+                "{item: {count: integer}}",
+                "{item = {count = 'bad'}}",
+                "'bad'",
+            ),
+            ("integer[]", "{1, 'bad'}", "'bad'"),
+            ("table<integer, integer>", "{1, 'bad'}", "'bad'"),
+            ("{item: integer}|{other: string}", "{item = 'bad'}", "'bad'"),
+            ("{[1]: string, [2]: integer}", "{pair()}", "pair()"),
+        ] {
+            let source = format!(
+                "local function pair() return 'ok', false end\n---@type {target}\nlocal value = ({constructor})\nreturn value, pair"
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| (d.code, &source[d.range]))
+                    .collect::<Vec<_>>(),
+                [(DiagnosticCode::AssignTypeMismatch, invalid_value)],
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_class_initializers_can_omit_instance_fields() {
+        for (setup, scope) in [("", "local "), ("", ""), ("local Record, Broken", "")] {
+            for (initializers, valid, invalid) in [
+                ("", "{}", "{count = 'bad'}"),
+                ("", "({})", "({count = 'bad'})"),
+                (
+                    "local valid = {}; local invalid = {count = 'bad'}",
+                    "valid",
+                    "invalid",
+                ),
+                (
+                    "local function valid() return {} end; local function invalid() return {count = 'bad'} end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid() return {}, 1 end; local function invalid() return {count = 'bad'}, 1 end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid(flag) if flag then return {} end return {count = 1} end; local function invalid(flag) if flag then return {} end return {count = 'bad'} end",
+                    "valid(true)",
+                    "invalid(false)",
+                ),
+            ] {
+                let source = format!(
+                    r#"
+                    {setup}
+                    {initializers}
+                    ---@class Record
+                    ---@field count integer
+                    {scope}Record = {valid}
+                    ---@class Broken
+                    ---@field count integer
+                    {scope}Broken = {invalid}
+                    ---@type Record
+                    local instance = {{}}
+                    instance = {{}}
+                    return Record, Broken, instance
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(
+                    diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                    [
+                        DiagnosticCode::AssignTypeMismatch,
+                        DiagnosticCode::MissingFields,
+                        DiagnosticCode::MissingFields,
+                    ],
+                    "{source}\n{diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_class_factory_initializers_check_nested_fields_across_files() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def_file(
+            "class_factory.lua",
+            r#"
+            local factory = {}
+            function factory.empty() return {} end
+            function factory.valid() return {child = {count = 1}} end
+            function factory.invalid() return {child = {}} end
+            return factory
+            "#,
+        );
+        let source = r#"
+            local factory = require('class_factory')
+            ---@class Child
+            ---@field count integer
+            local _Child = {}
+            ---@class Empty
+            ---@field child Child
+            local Empty = factory.empty()
+            ---@class Valid
+            ---@field child Child
+            local Valid = factory.valid()
+            ---@class Invalid
+            ---@field child Child
+            local Invalid = factory.invalid()
+            return Empty, Valid, Invalid
+        "#;
+        let file = ws.def(source);
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file, CancellationToken::new())
+            .unwrap();
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                DiagnosticCode::AssignTypeMismatch.get_name().into()
+            )),
+            "{diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].range.start.line, 13, "{diagnostics:?}");
+    }
+
+    #[test]
     fn test_numeric_member_guards_use_equivalent_integer_keys() {
         for (key, write, accepted) in [
             ("1.0", "", true),
@@ -1505,6 +1635,31 @@ mod tests {
     }
 
     #[test]
+    fn test_table_constructor_intersection_checks_all_fields() {
+        let source = r#"
+            ---@type {a: string} & {b: integer}
+            local valid = {a = 'ok', b = 1}
+            ---@type {a: string} & {b: integer}
+            local wrong = {a = 'ok', b = false}
+            ---@type {a: string} & {b: integer}
+            local missing = {a = 'ok'}
+            return valid, wrong, missing
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| (d.code, &source[d.range]))
+                .collect::<Vec<_>>(),
+            [
+                (DiagnosticCode::AssignTypeMismatch, "false"),
+                (DiagnosticCode::MissingFields, "{a = 'ok'}"),
+            ],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn test_intersection_assign_tableconst_conflict() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1636,7 +1791,8 @@ t.x = {}
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        // Test cases that should fail (type mismatch)
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -1649,7 +1805,6 @@ t.x = {}
             "#
         ));
 
-        // Test cases that should fail (type mismatch)
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -2405,7 +2560,7 @@ return t
     fn test_param_tbale() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class ability
                 ---@field t abilityType
@@ -2454,7 +2609,7 @@ return t
         "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             name({
                 toBe = 1,

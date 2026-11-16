@@ -856,7 +856,7 @@ impl FactsBuilder {
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
 
-        // Post-processing 4: index `setmetatable(table, meta)` initializer calls once.
+        // Post-processing 4: index `setmetatable(table, meta)` calls once.
         self.collect_setmetatable_calls(chunk);
 
         let mut name_use_by_start = self
@@ -2329,25 +2329,12 @@ impl FactsBuilder {
         // assigning by member id's key_range here is not feasible, so it is set at the collection point).
     }
 
-    /// Top-level `return X` → module export target (the last top-level return wins).
-    /// Indexes `setmetatable(table, meta)` calls that initialize a declaration or member.
+    /// Indexes `setmetatable(table, meta)` calls, including arguments and returns.
     ///
     /// Table member lookup otherwise has to scan every declaration to find the
     /// matching `setmetatable` call for a table literal.
     fn collect_setmetatable_calls(&mut self, chunk: &LuaChunk) {
-        let root = chunk.get_root();
-        let values = self
-            .decls
-            .iter()
-            .filter_map(|decl| decl.value_expr_syntax)
-            .chain(self.members.iter().filter_map(|member| member.value_syntax));
-        for value_syntax in values {
-            let Some(node) = value_syntax.to_node_from_root(&root) else {
-                continue;
-            };
-            let Some(call) = LuaCallExpr::cast(node) else {
-                continue;
-            };
+        for call in chunk.descendants::<LuaCallExpr>() {
             let is_setmetatable = match call.get_prefix_expr() {
                 Some(LuaExpr::NameExpr(name_expr)) => {
                     name_expr.get_name_text().as_deref() == Some("setmetatable")
@@ -2490,6 +2477,7 @@ fn member_key_from_index_key(key: LuaIndexKey) -> Option<LuaMemberKey> {
         }
         LuaIndexKey::Integer(num) => match num.get_number_value() {
             NumberResult::Int(i) => Some(LuaMemberKey::Integer(i)),
+            NumberResult::Float(i) => super::types::exact_integer(i).map(LuaMemberKey::Integer),
             _ => None,
         },
         LuaIndexKey::Idx(idx) => Some(LuaMemberKey::Integer(idx as i64)),

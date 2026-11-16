@@ -1306,14 +1306,19 @@ impl<'db> SemanticModel<'db> {
             target
         }
     }
-    /// Member assignment contract, keeping explicit field annotations exact.
-    pub(crate) fn member_assignment_type(&self, member: &SemanticId, target: LuaType) -> LuaType {
+    /// Stable field type for writes and whole-table checks. Inferred literals
+    /// widen; explicit field annotations keep their declared types.
+    pub(crate) fn member_contract_type(
+        &self,
+        member: Option<&SemanticId>,
+        target: LuaType,
+    ) -> LuaType {
         let inferred = match member {
-            SemanticId::Member(key) => self.file_facts_of(key.file_id),
+            Some(SemanticId::Member(key)) => self.file_facts_of(key.file_id),
             _ => None,
         }
-        .and_then(|facts| facts.member_by_id(member))
-        .is_some_and(|member| {
+        .and_then(|facts| facts.member_by_id(member?))
+        .is_none_or(|member| {
             member.doc_type_syntax.is_none() && !matches!(member.owner, SemanticId::TypeDef(_))
         });
         if inferred {

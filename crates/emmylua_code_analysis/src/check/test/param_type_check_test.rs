@@ -157,8 +157,8 @@ mod test {
                 let diagnostics = check_source(&source);
                 assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
                 for diagnostic in diagnostics {
-                    assert_eq!(diagnostic.code, DiagnosticCode::AssignTypeMismatch);
-                    assert_eq!(&source[diagnostic.range], "'wrong'");
+                    assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                    assert_eq!(&source[diagnostic.range], "{x = {y = 'wrong'}}");
                 }
             }
         }
@@ -480,7 +480,7 @@ mod test {
                     ));
                     assert_eq!(
                         diagnostic.range.start.character,
-                        "pcall(accept, {value = ".len() as u32
+                        "pcall(accept, ".len() as u32
                     );
                 }
             }
@@ -997,11 +997,15 @@ mod test {
     }
 
     #[test]
-    fn test_dictionary_argument_checks_do_not_read_later_mutations() {
+    fn test_dictionary_arguments_check_the_completed_stable_interface() {
         let diagnostics = check_source(
             "---@param values table<string, string>\nlocal function accept(values) return values end\nlocal values = {}\naccept(values)\nvalues.count = 1\nreturn values",
         );
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [DiagnosticCode::ParamTypeMismatch],
+            "{diagnostics:?}"
+        );
     }
 
     #[test]
@@ -1268,7 +1272,7 @@ mod test {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
             assert_eq!(
                 ws.has_no_diagnostic(
-                    DiagnosticCode::AssignTypeMismatch,
+                    DiagnosticCode::ParamTypeMismatch,
                     &format!(
                         r#"
                         ---@type fun() | fun(fields: {{[string]: number}})
@@ -1289,7 +1293,7 @@ mod test {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
             assert_eq!(
                 ws.has_no_diagnostic(
-                    DiagnosticCode::AssignTypeMismatch,
+                    DiagnosticCode::ParamTypeMismatch,
                     &format!(
                         r#"
                         ---@type fun() | fun(fields: {{[string]: number}}, ...: any)
@@ -1707,13 +1711,13 @@ mod test {
     }
 
     #[test]
-    fn test_table_argument_fields_keep_assignment_diagnostic_settings() {
+    fn test_table_argument_fields_use_parameter_diagnostic_settings() {
         for (disabled, expected) in [
             (
-                DiagnosticCode::ParamTypeMismatch,
-                vec![DiagnosticCode::AssignTypeMismatch],
+                DiagnosticCode::AssignTypeMismatch,
+                vec![DiagnosticCode::ParamTypeMismatch],
             ),
-            (DiagnosticCode::AssignTypeMismatch, vec![]),
+            (DiagnosticCode::ParamTypeMismatch, vec![]),
         ] {
             let mut emmyrc = Emmyrc::default();
             emmyrc.diagnostics.disable.push(disabled);
@@ -1778,6 +1782,64 @@ mod test {
                     "{diagnostics:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_table_overloads_use_the_same_candidates_through_pcall() {
+        for (valid, invalid) in [
+            ("accept({count = 1}, true)", "accept({count = 1})"),
+            (
+                "pcall(accept, {count = 1}, true)",
+                "pcall(accept, {count = 1})",
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@param entries table<integer, string>
+                ---@overload fun(entries: table<string, integer>, required: boolean)
+                local function accept(entries) return entries end
+                {valid}
+                {invalid}
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(
+                usize::from(diagnostics[0].range.start()),
+                source.rfind("{count = 1}").unwrap(),
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_table_constructor_record_literals_use_the_same_rules() {
+        for (declaration, valid, invalid) in [
+            (
+                "---@param value {mode: 'read'}",
+                "{mode = 'read'}",
+                "{mode = 'write'}",
+            ),
+            (
+                "---@class Options\n---@field mode 'read'\n\n---@param value Options",
+                "{mode = 'read'}",
+                "{mode = 'write'}",
+            ),
+            (
+                "---@alias Options {mode: 'read'}\n\n---@param value table<integer, Options>",
+                "{{mode = 'read'}}",
+                "{{mode = 'write'}}",
+            ),
+        ] {
+            let source = format!(
+                "{declaration}\nlocal function accept(value) return value end\naccept({valid})\naccept({invalid})"
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(&source[diagnostics[0].range], invalid);
         }
     }
 
