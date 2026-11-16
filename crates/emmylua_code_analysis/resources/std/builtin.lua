@@ -41,6 +41,10 @@
 --- macro LUA_32BITS in file luaconf.h.)
 --- @class number
 
+---
+--- The subtype of *number* used for integer values (Lua 5.3+). In annotations
+--- an integer is assignable to a number, but a number is not assignable to an
+--- integer.
 --- @class integer
 
 ---
@@ -55,6 +59,10 @@
 --- integrity of data owned by the host program.
 --- @class userdata
 
+---
+--- The type *lightuserdata* stores a bare C pointer. In Lua it has the same
+--- predefined operations as *userdata* (assignment and identity comparison)
+--- and is used, for example, by `debug.upvalueid`.
 --- @class lightuserdata
 
 ---
@@ -71,8 +79,8 @@
 --- standard to represent undefined or unrepresentable numerical results, such
 --- as `0/0`.) Tables can be heterogeneous; that is, they can contain values of
 --- all types (except **nil**). Any key with value **nil** is not considered
---- part oft he table. Conversely, any key that is not part of a table has an
---- a ssociated value **nil**.
+--- part of the table. Conversely, any key that is not part of a table has an
+--- associated value **nil**.
 ---
 --- Tables are the sole data-structuring mechanism in Lua; they can be used to
 --- represent ordinary arrays, lists, symbol tables, sets, records, graphs,
@@ -92,43 +100,77 @@
 --- their respective integers. To avoid ambiguities, any float with integral
 --- value used as a key is converted to its respective integer. For instance,
 --- if you write `a[2.0] = true`, the actual key inserted into the table will
---- be the integer `2`. (On the other hand, 2 and "`2`" are different Lua
+--- be the integer `2`. (On the other hand, `2` and `"2"` are different Lua
 --- values and therefore denote different table entries.)
 --- @class table
 
+---
+--- The *any* type disables type checking: any value is assignable to `any`,
+--- and `any` is assignable to any type.
 --- @class any
 
+---
+--- The *void* type represents the absence of a return value. The analyzer
+--- projects it to `nil`, so `fun(): void` behaves like `fun(): nil`.
 --- @class void
 
+---
+--- The *unknown* type is used when a type cannot be inferred. Like `any`, it is
+--- compatible with every type, but it also signals that inference failed.
+--- Prefer `any` for values that are intentionally unchecked.
 --- @class unknown
 
+---
+--- The *never* type is the bottom type: it is assignable to every type, but no
+--- value is assignable to it. It is used mainly as the result of conditional
+--- types such as `Exclude` (when the condition is true) and `Extract` (when the
+--- condition is false).
 --- @class never
 
+---
+--- The type of the implicit `self` parameter inside a method. It is replaced by
+--- the owning class instance; using it outside a method is not meaningful.
 --- @class self
 
+--- Alias for `integer`, kept for C-style annotations.
 --- @alias int integer
 
+---
+--- Reserved type name for namespace-qualified types. Namespaces are declared
+--- with the `---@namespace` tag; this class only prevents `namespace<"...">`
+--- from resolving to an unknown type.
 --- @class namespace<T: string>
 
+---
+--- Reserved name for the primitive *function* type. `@type function` resolves
+--- to the built-in function type, not to this class.
 --- @class function
 
---- @alias std.NotNull<T> T -?
-
---- @alias std.Nullable<T> T +?
+---
+--- Removes `nil` from `T`; equivalent to `Exclude<T, nil>`.
+--- @alias std.NotNull<T> Exclude<T, nil>
 
 ---
---- built-in type for Select function
---- @alias std.Select<T, StartOrLen> unknown
+--- Adds `nil` to `T`; equivalent to `T | nil`.
+--- @alias std.Nullable<T> T | nil
 
 ---
---- built-in type for Unpack function
+--- Marker type for the result tuple of `select`. The analyzer evaluates
+--- `select` calls directly; `Num` and the `unknown` body are placeholders.
+--- @alias std.Select<T, Num> unknown
+
+---
+--- Marker type for the multiple returns of `table.unpack`/`unpack`.
+--- The analyzer expands all values of the tuple `T`; `Start` and `End` are
+--- reserved and currently ignored.
 --- @alias std.Unpack<T, Start, End> unknown
 
 ---
---- built-in type for Rawget
+--- Marker type for `rawget(T, K)`: the value type stored at key `K` in `T`.
 --- @alias std.RawGet<T, K> unknown
 
---- compact luals
+-- LuaLS compatibility aliases: allow annotations written for LuaLS to resolve
+-- without the `std.` prefix.
 
 --- @alias type std.type
 
@@ -136,8 +178,16 @@
 
 --- @alias metatable std.metatable
 
+---
+--- A custom type guard. A function annotated with `---@return TypeGuard<T>`
+--- narrows its argument to `T` in the truthy branch.
 --- @alias TypeGuard<T> boolean
 
+---
+--- Marks a string argument that contains source code in the language named by
+--- `T` (for example, `Language<"Lua">` for `load`/`loadstring` chunks). The
+--- analyzer currently projects it to `string`, so embedded-language
+--- highlighting is not applied.
 --- @alias Language<T: string> string
 
 ---
@@ -163,12 +213,18 @@
 --- Extract from T those types that are assignable to U
 --- @alias Extract<T, U> T extends U and T or never
 
---- attribute
+-- attribute
 
+---
+--- Base class for built-in attributes applied with the `---@[...]` syntax.
 --- @class Attribute
 
 ---
---- Deprecated. Receives an optional message parameter.
+--- Marks the declaration as deprecated. Receives an optional message.
+---
+--- Both the classic `---@deprecated` tag and the attribute form
+--- `---@[deprecated("message")]` are supported. When placed immediately before
+--- an `@field`, only that field is marked.
 --- @class deprecated: Attribute
 --- @overload fun(message?: string)
 
@@ -182,33 +238,49 @@
 --- @overload fun(code: "delayed_definition")
 
 ---
---- Index field alias, will be displayed in `hint` and `completion`.
+--- Alias for an integer index field (for example, `---@field [1] string`).
+--- The alias is shown in inlay hints and completion instead of the raw index.
 ---
 --- Receives a string parameter for the alias name.
 --- @class index_alias: Attribute
 --- @overload fun(name: string)
 
 ---
---- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
---- used to specify the default constructor of a class.
+--- This attribute must be applied to function parameters, immediately before
+--- the corresponding `---@param` tag, and the parameter's type must be a string
+--- template generic; it specifies the default constructor of the class produced
+--- by the factory function.
 ---
 --- Parameters:
---- - `name`: The name of the method as a constructor.
---- - `root_class`: Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
---- - `strip_self`: Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
---- - `return_mode`: Constructor return strategy. `"self"` forces `self`, `"doc"` uses the documented return type,
----                 and `"default"` prefers the documented return type and falls back to `self`.
----                 Defaults to `"default"`
+--- - `name`: Name of the method used as the constructor (required).
+--- - `root_class`: Reserved for LuaLS compatibility; accepted, but no implicit
+---   inheritance is added by the current analyzer. Defaults to empty.
+--- - `strip_self`: Whether the `self` parameter may be omitted when calling the
+---   constructor. Defaults to `true`.
+--- - `return_mode`: Constructor return strategy. `"self"` returns the class
+---   instance, `"doc"` uses the constructor's documented return type, and
+---   `"default"` prefers the documented return type and falls back to the
+---   instance type. Defaults to `"default"`.
 --- @class constructor: Attribute
 --- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self" | "doc" | "default")
 
 ---
---- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
---- and the target methods must reside within the same class.
+--- Associates `getter` and `setter` methods with a field. Currently only
+--- definition navigation is provided: jumping to the field also jumps to the
+--- matching accessor methods on the field's class.
+---
+--- The attribute applies to the `@field` tag that follows it; an attribute
+--- placed before `@class` applies to the first field. Only named fields are
+--- supported (`---@field name type` or `---@field ["name"] type`); index fields
+--- are ignored.
 ---
 --- Parameters:
---- - `convention`: Naming convention, defaults to `camelCase`. Implicitly adds `get` and `set` prefixes. eg: `_age` -> `getAge`, `setAge`.
---- - `getter`: Getter method name. Takes precedence over `convention`.
---- - `setter`: Setter method name. Takes precedence over `convention`.
+--- - `convention`: Naming convention for the generated accessor names. Matches
+---   the prefixes `get`/`set` with the field name and defaults to `camelCase`
+---   (`_age` -> `getAge`, `setAge`; `first_name` -> `getFirstName`,
+---   `setFirstName`). `"PascalCase"` produces `GetAge`/`SetAge`, `"snake_case"`
+---   produces `get_age`/`set_age`.
+--- - `getter`: Explicit getter method name. Takes precedence over `convention`.
+--- - `setter`: Explicit setter method name. Takes precedence over `convention`.
 --- @class field_accessor: Attribute
 --- @overload fun(convention?: "camelCase" | "PascalCase" | "snake_case", getter?: string, setter?: string)

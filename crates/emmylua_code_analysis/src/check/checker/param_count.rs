@@ -832,7 +832,9 @@ pub(crate) fn callable_functions(
             };
             let mut out = Vec::new();
             for syntax in &def.call_overloads {
-                if let LuaType::DocFunction(func) = semantic_model.doc_type_lua(*syntax) {
+                if let LuaType::DocFunction(func) =
+                    semantic_model.doc_type_lua_in(def.file_id, *syntax, &def.generic_params)
+                {
                     out.push(func.as_ref().clone());
                 }
             }
@@ -841,6 +843,14 @@ pub(crate) fn callable_functions(
                 && let Some(op) = facts.operator_of(&def.id, "call")
             {
                 out.push(semantic_model.call_operator_type(def.file_id, op));
+            }
+            // `meta("Class")` + `---@[constructor("init")]`: calling the class table
+            // forwards to the constructor method, exactly as VM call inference does.
+            if out.is_empty()
+                && let Some(candidate) =
+                    crate::semantic_model::infer::vm::constructor_call_candidate(semantic_model, ty)
+            {
+                out.push(candidate);
             }
             out
         }
