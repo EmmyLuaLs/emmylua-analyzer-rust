@@ -4,7 +4,7 @@ use crate::context::{RequestOutcome, ServerContextSnapshot, analysis_query};
 use build_signature_helper::build_signature_helper;
 pub use build_signature_helper::get_current_param_index;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxKind, LuaTokenKind};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxKind};
 use lsp_types::Position;
 use lsp_types::{
     ClientCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpContext,
@@ -75,15 +75,6 @@ pub fn signature_help(
             // todo
             LuaSyntaxKind::TypeGeneric | LuaSyntaxKind::DocTypeList => None,
             _ => None,
-        }
-    } else if matches!(
-        token.kind().into(),
-        LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine
-    ) {
-        if token.parent()?.kind() == LuaSyntaxKind::CallArgList.into() {
-            param_context.active_signature_help
-        } else {
-            None
         }
     } else {
         let node = token.parent_ancestors().find(|node| {
