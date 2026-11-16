@@ -4893,6 +4893,51 @@ _ = a[2]
     }
 
     #[test]
+    fn test_discriminant_narrows_a_union_alias() {
+        for (param, node_kind) in [
+            ("GraphLine", "'node'"),
+            ("GraphLine", "'node' | 'remove'"),
+            ("NodeLine | BranchLine", "'node' | 'remove'"),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            assert!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::AssignTypeMismatch,
+                    &format!(
+                        r#"
+                        ---@class NodeLine
+                        ---@field kind {node_kind}
+                        ---@field node integer
+
+                        ---@class BranchLine
+                        ---@field kind 'branch'
+                        ---@field node integer[]
+
+                        ---@alias GraphLine NodeLine | BranchLine
+
+                        ---@param line {param}
+                        local function render(line)
+                            if line.kind == 'node' then
+                                ---@type integer
+                                local seq = line.node
+                                print(seq)
+                            end
+                            if line.kind ~= 'branch' then
+                                ---@type integer
+                                local seq = line.node
+                                print(seq)
+                            end
+                        end
+                        return render
+                        "#
+                    )
+                ),
+                "{param} {node_kind}"
+            );
+        }
+    }
+
+    #[test]
     fn test_discriminant_sibling_projection_preserves_missing_member_nil() {
         let mut ws = VirtualWorkspace::new();
 

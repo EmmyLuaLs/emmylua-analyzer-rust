@@ -5591,12 +5591,19 @@ fn filter_type_by_member_discriminant(
                 && def.kind == TypeDefKind::Alias
                 && let Some(target) = model.alias_target(&def)
             {
-                let expanded =
-                    filter_type_by_member_discriminant(model, target, key, literal, keep_matching);
-                // Member discriminant should keep the original named type (`Ref(A)`) rather than expanding into an anonymous object.
-                // `Never` means the alias is completely excluded under this branch.
-                if !matches!(expanded, LuaType::Unknown | LuaType::Never) {
-                    kept.push(component);
+                let expanded = filter_type_by_member_discriminant(
+                    model,
+                    target.clone(),
+                    key,
+                    literal,
+                    keep_matching,
+                );
+                // Member discriminant should keep the original named type (`Ref(A)`) rather than expanding into an anonymous object,
+                // unless it narrowed the members of a union alias. `Never` means the alias is completely excluded under this branch.
+                match expanded {
+                    LuaType::Unknown | LuaType::Never => {}
+                    narrowed if narrowed == target => kept.push(component),
+                    narrowed => kept.push(narrowed),
                 }
                 continue;
             }
