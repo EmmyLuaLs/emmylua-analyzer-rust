@@ -15,10 +15,11 @@
 //! Leaf-type decisions reuse `type_check::is_compatible` (named types/alias/union etc.);
 //! this module only makes the function structure iterative.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use crate::LuaFunctionType;
 use crate::LuaType;
+use crate::LuaTypeNode;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_check::{function_param_pairs, is_compatible};
 
@@ -49,7 +50,15 @@ pub fn functions_compatible(
     expected: &LuaFunctionType,
     bindings: &TplBindings,
 ) -> bool {
+    // Solving substitutes again and again, so a binding that mentions a bound generic would grow
+    // each pair and `seen_pairs` would never see one twice. Dropped, its generic stays open, also
+    // for a self-mention that would have stopped growing: this can lose a catch, not add one.
     let mut bindings = bindings.clone();
+    let bound: HashSet<_> = bindings.keys().cloned().collect();
+    bindings.retain(|_, value| {
+        !value
+            .any_type(|ty| matches!(ty, LuaType::TplRef(tpl) if bound.contains(&tpl.get_tpl_id())))
+    });
     let mut queue = VecDeque::new();
     queue.push_back(Constraint::FnPair(ActualExpected {
         actual: actual.clone(),
@@ -59,7 +68,7 @@ pub fn functions_compatible(
     // Cycle guard: expand each function pair at most once.
     // Type keys are immutable; their OnceCell only caches a stable hash.
     #[allow(clippy::mutable_key_type)]
-    let mut seen_pairs = std::collections::HashSet::new();
+    let mut seen_pairs = HashSet::new();
     while let Some(constraint) = queue.pop_front() {
         match constraint {
             Constraint::FnPair(pair) => {
