@@ -7,12 +7,11 @@ pub(crate) use std::collections::HashSet;
 pub(crate) use std::rc::Rc;
 
 pub(crate) use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaCommentOwner,
-    LuaDocConditionalType, LuaDocNameType, LuaDocObjectFieldKey, LuaDocTag, LuaDocTagAlias,
-    LuaDocTagClass, LuaDocType, LuaExpr, LuaForRangeStat, LuaIndexExpr, LuaLiteralExpr,
-    LuaLiteralToken, LuaParseError, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
-    LuaSyntaxTree, LuaTableExpr, LuaTableField, LuaTypeBinaryOperator, LuaTypeUnaryOperator,
-    LuaVersionNumber, NumberResult, VisibilityKind,
+    LuaAssignStat, LuaAstNode, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaDocConditionalType,
+    LuaDocNameType, LuaDocObjectFieldKey, LuaDocTagAlias, LuaDocTagClass, LuaDocType, LuaExpr,
+    LuaForRangeStat, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaParseError, LuaSyntaxId,
+    LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaSyntaxTree, LuaTableExpr,
+    LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVersionNumber, NumberResult, VisibilityKind,
 };
 pub(crate) use hashbrown::HashMap;
 pub(crate) use rowan::TextSize;
