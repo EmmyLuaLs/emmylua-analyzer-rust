@@ -5,7 +5,7 @@ mod test {
     use tokio_util::sync::CancellationToken;
 
     use crate::check::test::{check_source, count_by_code};
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     // 判空后的命名 cast 可以重新加入 nil, 成员投影不得再次使用旧 guard 将其移除.
     #[test]
@@ -464,6 +464,124 @@ mod test {
         for i = 1, #calls do
             calls[i](...)
         end
+        "#,
+        ));
+    }
+
+    // `not` 守卫的 else 分支同样应去掉 nil, 不再要求判空.
+    #[test]
+    fn test_not_member_else_branch_narrows() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+        ---@class Fix01
+        ---@field _main Fix01.T?
+        local M = {}
+
+        ---@class Fix01.T
+        ---@field get fun(): boolean
+
+        function M:bind()
+            if not self._main then
+                return true
+            else
+                local child = self._main:get()
+                return child
+            end
+        end
+        return M
+        "#,
+        ));
+    }
+
+    // `not` 的真分支把成员收窄为 nil, 其中的成员访问仍应判空.
+    #[test]
+    fn test_not_member_true_branch_narrows_to_nil() {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(
+            r#"
+        ---@class Fix01
+        ---@field _main Fix01.T?
+        local M = {}
+
+        ---@class Fix01.T
+        ---@field get fun(): boolean
+
+        function M:bind()
+            if not self._main then
+                local child = self._main:get()
+                return child
+            end
+        end
+        return M
+        "#,
+        );
+        let model = ws.analysis.semantic_model(file);
+        let chunk = model.chunk().expect("chunk");
+        let access = chunk
+            .descendants::<LuaIndexExpr>()
+            .filter(|index| index.syntax().text() == "self._main")
+            .last()
+            .expect("member access");
+        assert_eq!(
+            model.type_of_expr_at(access.get_syntax_id(), access.get_position()),
+            LuaType::Nil
+        );
+    }
+
+    // 运行时成员写入之后, `and` / `if` 守卫仍应把同一访问路径收窄为非空.
+    #[test]
+    fn test_runtime_member_write_then_guard_narrows() {
+        for body in [
+            "local aid = runtime.client and runtime.client.aid",
+            "if runtime.client then local aid = runtime.client.aid end",
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            let source = format!(
+                r#"
+        ---@class Fix01.Client
+        ---@field aid integer
+        ---@class Fix01.Runtime
+        ---@field client? Fix01.Client
+        ---@type Fix01.Runtime
+        local runtime = {{}}
+        local M = {{}}
+        runtime.client = runtime.client or nil
+        function M.next_request_id()
+            {body}
+        end
+        return M
+        "#
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, &source),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_not_member_early_return_guard() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+        ---@class Fix01
+        ---@field _main Fix01.T?
+        local M = {}
+
+        ---@class Fix01.T
+        ---@field get fun(): boolean
+
+        function M:bind()
+            if not self._main then
+                return
+            end
+            local child = self._main:get()
+            return child
+        end
+        return M
         "#,
         ));
     }

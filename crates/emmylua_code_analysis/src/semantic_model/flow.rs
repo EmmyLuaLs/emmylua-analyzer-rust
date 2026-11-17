@@ -931,7 +931,9 @@ pub(crate) fn type_of_expr_at_node(
                         .member_key_range()
                         .is_none_or(|range| range.start() <= offset)
                 {
-                    let runtime_ty = type_of_member_at(model, &runtime_member.id, offset);
+                    // The runtime member shares this access path, so guards on the path must narrow it too.
+                    let runtime_ty =
+                        member_type_at(model, &runtime_member.id, offset, false, Some(index_expr));
                     if !matches!(runtime_ty, LuaType::Unknown) {
                         return apply_casts(runtime_ty);
                     }
@@ -2739,12 +2741,8 @@ fn trace_member_uncached(
                             }
                             MemberWrite::Exact => {}
                         }
-                        // Member assignment overrides earlier guard narrowing; cast widening is retained.
-                        let assign_path = PathState {
-                            narrowings: Vec::new(),
-                            casts: path.casts.clone(),
-                            ignore_guards: path.ignore_guards,
-                        };
+                        // The write replaces earlier guards, but guards collected between the query
+                        // and this assignment are later than the write and still narrow its value.
                         let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly);
                         if let Some(annotation) = member_annotation_type(model, member) {
                             if model.type_check(&value_ty, &annotation) {
@@ -2753,7 +2751,7 @@ fn trace_member_uncached(
                                 value_ty = annotation;
                             }
                         }
-                        return Some(finalize(model, value_ty, &assign_path));
+                        return Some(finalize(model, value_ty, path));
                     }
                 }
                 // A dynamic-key write can lack a member ID and still replace
@@ -2766,7 +2764,7 @@ fn trace_member_uncached(
                 }
             }
             FlowNodeKind::TagCast(cast_ptr) => {
-                collect_member_cast(model, member, cast_ptr, path);
+                collect_member_cast(model, member, access, cast_ptr, path);
             }
             FlowNodeKind::TrueCondition(cond_ptr) => {
                 if !path.ignore_guards
@@ -2948,6 +2946,39 @@ fn cast_targets_decl(
         if model.resolve_name(name.get_position()).as_ref() == Some(decl))
 }
 
+/// Path operation of one `---@cast` operand: `T` replaces, `+T` widens, `-T` narrows,
+/// and the bare `?` operand adds (`+?`) or removes (`-?`) nil.
+fn cast_op_from_op_type(
+    model: &SemanticModel,
+    op_type: &emmylua_parser::LuaDocOpType,
+) -> Option<CastOp> {
+    let op = op_type.get_op().map(|op| op.get_op());
+    let Some(doc_type) = op_type.get_type() else {
+        if !op_type.is_nullable() {
+            return None;
+        }
+        return match op {
+            Some(BinaryOperator::OpAdd) => Some(CastOp::Add(LuaType::Nil)),
+            Some(BinaryOperator::OpSub) => Some(CastOp::Remove(LuaType::Nil)),
+            _ => None,
+        };
+    };
+    let ty = if doc_type.get_text().trim() == "?" {
+        LuaType::Nil
+    } else {
+        model.doc_type_lua(doc_type.get_syntax_id())
+    };
+    if matches!(ty, LuaType::Unknown) {
+        return None;
+    }
+    match op {
+        None => Some(CastOp::Replace(ty)),
+        Some(BinaryOperator::OpAdd) => Some(CastOp::Add(ty)),
+        Some(BinaryOperator::OpSub) => Some(CastOp::Remove(ty)),
+        _ => None,
+    }
+}
+
 /// Collect named casts that target this declaration.
 fn collect_decl_cast(
     model: &SemanticModel,
@@ -2964,38 +2995,17 @@ fn collect_decl_cast(
     if !cast_targets_decl(model, decl, &cast) {
         return;
     }
-    for op_type in cast.get_op_types() {
-        let Some(doc_type) = op_type.get_type() else {
-            // `-?`: subtraction with no DocType → remove nil.
-            if op_type
-                .get_op()
-                .is_some_and(|op| op.get_op() == BinaryOperator::OpSub)
-            {
-                path.casts.push(CastOp::Remove(LuaType::Nil));
-            }
-            continue;
-        };
-        let ty = if doc_type.get_text().trim() == "?" {
-            LuaType::Nil
-        } else {
-            model.doc_type_lua(doc_type.get_syntax_id())
-        };
-        if matches!(ty, LuaType::Unknown) {
-            continue;
-        }
-        match op_type.get_op().map(|op| op.get_op()) {
-            None => path.casts.push(CastOp::Replace(ty)),
-            Some(BinaryOperator::OpAdd) => path.casts.push(CastOp::Add(ty)),
-            Some(BinaryOperator::OpSub) => path.casts.push(CastOp::Remove(ty)),
-            _ => {}
-        }
-    }
+    path.casts.extend(
+        cast.get_op_types()
+            .filter_map(|op_type| cast_op_from_op_type(model, &op_type)),
+    );
 }
 
-/// `---@cast t.x +T`: after matching a member, add T to the path type.
+/// `---@cast t.x +T`: after matching the accessed member, add T to the path type.
 fn collect_member_cast(
     model: &SemanticModel,
     member: &SemanticId,
+    access: Option<&LuaIndexExpr>,
     cast_ptr: &emmylua_parser::LuaAstPtr<emmylua_parser::LuaDocTagCast>,
     path: &mut PathState,
 ) {
@@ -3005,48 +3015,16 @@ fn collect_member_cast(
     let Some(cast) = cast_ptr.to_node(&chunk) else {
         return;
     };
-    let Some(key_expr) = cast.get_key_expr() else {
+    let Some(LuaExpr::IndexExpr(index_expr)) = cast.get_key_expr() else {
         return;
     };
-    let matches = match &key_expr {
-        LuaExpr::IndexExpr(index_expr) => {
-            model
-                .resolve_member(index_expr)
-                .and_then(|resolved| resolved.member_id)
-                .as_ref()
-                == Some(member)
-        }
-        _ => false,
-    };
-    if !matches {
+    if !member_access_matches(model, member, access, &index_expr) {
         return;
     }
-    for op_type in cast.get_op_types() {
-        let Some(doc_type) = op_type.get_type() else {
-            // `-?`: subtraction with no DocType → remove nil.
-            if op_type
-                .get_op()
-                .is_some_and(|op| op.get_op() == BinaryOperator::OpSub)
-            {
-                path.casts.push(CastOp::Remove(LuaType::Nil));
-            }
-            continue;
-        };
-        let ty = if doc_type.get_text().trim() == "?" {
-            LuaType::Nil
-        } else {
-            model.doc_type_lua(doc_type.get_syntax_id())
-        };
-        if matches!(ty, LuaType::Unknown) {
-            continue;
-        }
-        match op_type.get_op().map(|op| op.get_op()) {
-            None => path.casts.push(CastOp::Replace(ty)),
-            Some(BinaryOperator::OpAdd) => path.casts.push(CastOp::Add(ty)),
-            Some(BinaryOperator::OpSub) => path.casts.push(CastOp::Remove(ty)),
-            _ => {}
-        }
-    }
+    path.casts.extend(
+        cast.get_op_types()
+            .filter_map(|op_type| cast_op_from_op_type(model, &op_type)),
+    );
 }
 
 /// RHS type of an assignment: if decl is a multi-return slot on this assignment, take the matching return type by `return_index`;
@@ -4312,6 +4290,7 @@ fn narrow_condition(
 }
 
 /// Condition narrowing of a member expression itself: the true/false branches of `t.x == "foo"` narrow `t.x`.
+/// Negations and parentheses are transparent to the guard they contain.
 fn narrow_member_condition(
     model: &SemanticModel,
     member: &SemanticId,
@@ -4321,6 +4300,7 @@ fn narrow_member_condition(
 ) -> Option<Narrowing> {
     let chunk = model.chunk()?;
     let cond = LuaExpr::cast(cond_ptr.to_node(&chunk)?.syntax().clone())?;
+    let (cond, branch_is_true) = normalize_condition(cond, branch_is_true)?;
     if let LuaExpr::CallExpr(call) = &cond {
         if let Some((arg, guard_ty)) = type_guard_call_target(model, call)
             && let LuaExpr::IndexExpr(index_expr) = &arg
@@ -4343,6 +4323,11 @@ fn narrow_member_condition(
         if let Some(narrowing) = alias_member_condition_narrowing(model, member, access, &cond) {
             return Some(narrowing);
         }
+    } else if let LuaExpr::IndexExpr(index_expr) = &cond
+        && member_access_matches(model, member, access, index_expr)
+    {
+        // A falsy member keeps only the falsy components on this path, so `if not t.x then` holds nil.
+        return Some(Narrowing::Falsy);
     }
     direct_narrow_member_condition(model, member, access, &cond, branch_is_true)
 }
