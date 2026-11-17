@@ -294,4 +294,48 @@ mod test {
         "#,
         ));
     }
+
+    /// `need-check-nil` hits on the fixture of the next two tests, with `read` as its last line.
+    fn need_check_nil_after_merge(read: &str) -> usize {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(&format!(
+            r#"
+            ---@class St
+            ---@field sig string
+
+            ---@return St?
+            local function decode() end
+
+            ---@return boolean
+            local function ok() return true end
+
+            local prev = decode()
+            if prev and ok() then end
+            {read}
+        "#
+        ));
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap_or_default();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::NeedCheckNil.get_name().to_string(),
+        ));
+        diagnostics.iter().filter(|diag| diag.code == code).count()
+    }
+
+    #[test]
+    fn test_and_narrows_after_merge_of_earlier_guard() {
+        // After `if prev and ok()` merges back to `St?`, the later `prev and prev.sig` still
+        // narrows its right side, even when an unguarded read of `prev` memoized the merge
+        // first. Needs the std library and every check: with less, nothing reads `prev`
+        // before the guarded read, and the test passes without the fix.
+        assert_eq!(need_check_nil_after_merge("print(prev and prev.sig)"), 0);
+    }
+
+    #[test]
+    fn test_unguarded_read_after_merge_needs_check_nil() {
+        // Control for the test above: the same fixture does report `prev` when nothing guards it.
+        assert_eq!(need_check_nil_after_merge("print(prev.sig)"), 1);
+    }
 }
