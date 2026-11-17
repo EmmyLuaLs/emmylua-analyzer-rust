@@ -1019,7 +1019,7 @@ fn build_decl_hover(
             signature
         };
         let has_named_returns =
-            !call_fun.is_some() && signature_has_named_returns(model, Some(closure));
+            call_fun.is_none() && signature_has_named_returns(model, Some(closure));
         let (params, _) =
             render_function_params_and_ret_mode(model, &signature, false, false, false);
         let ret = if has_named_returns {

@@ -19,26 +19,59 @@ coroutine = {}
 ---
 --- Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns
 --- this new coroutine, an object with type `"thread"`.
---- @param f async fun(...): any...
+--- @param f async fun(...: any): any...
 --- @return thread
 --- @nodiscard
 function coroutine.create(f) end
 
+--- @version 5.3, JIT
 ---
 --- Returns true when the running coroutine can yield.
 ---
 --- A running coroutine is yieldable if it is not the main thread and it is not
 --- inside a non-yieldable C function.
+--- @return boolean
+--- @nodiscard
+function coroutine.isyieldable() end
+
+--- @version >5.4
+---
+--- Returns true when coroutine `co` can yield. The default for `co` is the
+--- running coroutine.
+---
+--- A coroutine is yieldable if it is not the main thread and it is not inside a
+--- non-yieldable C function.
 --- @param co? thread
 --- @return boolean
 --- @nodiscard
 function coroutine.isyieldable(co) end
 
---- @version >5.4
+--- @version 5.4
 ---
---- Closes coroutine `co` , closing all its pending to-be-closed variables and putting the coroutine in a dead state.
----
+--- Closes coroutine `co`, closing all its pending to-be-closed variables and
+--- putting the coroutine in a dead state. The given coroutine must be dead or
+--- suspended. In case of error (either the original error that stopped the
+--- coroutine or errors in closing methods), returns false plus the error
+--- object; otherwise returns true.
 --- @param co thread
+--- @return boolean noerror
+--- @return any errorobject
+function coroutine.close(co) end
+
+--- @version >5.5
+---
+--- Closes coroutine `co`, closing all its pending to-be-closed variables and
+--- putting the coroutine in a dead state. The default for `co` is the running
+--- coroutine.
+---
+--- The given coroutine must be dead, suspended, or be the running coroutine.
+--- For the running coroutine, this function does not return; instead, the
+--- `resume` that (re)started the coroutine returns.
+---
+--- For other coroutines, in case of error (either the original error that
+--- stopped the coroutine or errors in closing methods), returns false plus the
+--- error object; otherwise returns true.
+--- @param co? thread
 --- @return boolean noerror
 --- @return any errorobject
 function coroutine.close(co) end
@@ -57,8 +90,8 @@ function coroutine.close(co) end
 --- @param co    thread
 --- @param val1? any
 --- @param ...   any
---- @return boolean success
---- @return any ...
+--- @return_overload true, any...
+--- @return_overload false, any
 function coroutine.resume(co, val1, ...) end
 
 --- @version 5.1, JIT
@@ -96,10 +129,10 @@ function coroutine.status(co) end
 --- Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns
 --- a function that resumes the coroutine each time it is called. Any arguments
 --- passed to the function behave as the extra arguments to `resume`. Returns
---- the same values returned by `resume`, except the first
---- boolean. In case of error, propagates the error.
---- @param f async fun(...): any...
---- @return fun(...): any...
+--- the same values returned by `resume`, except the first boolean. In case of
+--- error, propagates the error (and closes the coroutine since Lua 5.4).
+--- @param f async fun(...: any): any...
+--- @return fun(...: any): any...
 --- @nodiscard
 function coroutine.wrap(f) end
 

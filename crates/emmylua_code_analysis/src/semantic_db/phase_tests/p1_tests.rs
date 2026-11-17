@@ -70,7 +70,7 @@ fn p1_member_contribution_carries_canonical_owner_and_flags() {
         "#,
     );
 
-    let exports = db.file_exports_of(fid);
+    let exports = db.file_exports_of(fid).expect("exports");
     let find = |name: &str| {
         exports
             .members
@@ -148,7 +148,7 @@ fn p1_member_contribution_preserves_overloads_and_export_key() {
         "#,
     );
 
-    let exports = db.file_exports_of(fid);
+    let exports = db.file_exports_of(fid).expect("exports");
     let overloads: Vec<_> = exports
         .members
         .iter()
@@ -183,11 +183,11 @@ fn p1_member_contribution_preserves_overloads_and_export_key() {
 fn p1_surface_eq_ignores_member_value_syntax_changes() {
     let mut db = setup();
     let fid = set_test_file(&mut db, 1, &test_file("surface.lua"), "M = {}\nM.x = 1\n");
-    let before = db.file_exports_of(fid).clone();
+    let before = db.file_exports_of(fid).expect("exports").clone();
 
     // Same member identity, different initializer text/range.
     set_test_file(&mut db, 1, &test_file("surface.lua"), "M = {}\nM.x = 100\n");
-    let after = db.file_exports_of(fid);
+    let after = db.file_exports_of(fid).expect("exports");
 
     assert!(
         before.surface_eq(after),

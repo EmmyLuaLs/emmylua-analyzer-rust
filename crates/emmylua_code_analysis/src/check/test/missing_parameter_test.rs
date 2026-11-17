@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, Emmyrc, EmmyrcLuaVersion, VirtualWorkspace};
 
     #[test]
     fn test_issue_276() {
@@ -365,5 +365,117 @@ mod test {
                 c(c)
         "#
         ));
+    }
+
+    #[test]
+    fn test_issue_1249_newproxy_optional_argument() {
+        for version in [EmmyrcLuaVersion::Lua51, EmmyrcLuaVersion::LuaJIT] {
+            let mut config = Emmyrc::default();
+            config.runtime.version = version;
+            let mut ws = VirtualWorkspace::new_with_config(config);
+
+            assert!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::MissingParameter,
+                    r#"
+                    local p = newproxy()
+                    print(p)
+                    "#
+                ),
+                "newproxy() must be accepted in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_issue_1250_table_literal_is_single_variadic_argument() {
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let mut config = Emmyrc::default();
+            config.runtime.version = version;
+            let mut ws = VirtualWorkspace::new_with_config(config);
+
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "pcall()"),
+                "pcall() must still report the required callback in {version:?}"
+            );
+
+            let chunk = r#"
+                local ok = pcall(function() end, { 1, 2, 3 })
+                print(ok)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "pcall must accept a table literal as one argument in {version:?}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+                "pcall table literal must not mismatch in {version:?}"
+            );
+
+            let chunk = r#"
+                local home = assert(os.getenv("HOME"), { 1, 2, 3 })
+                print(home)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "assert must accept a table literal as one argument in {version:?}"
+            );
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+                "assert table literal must not mismatch in {version:?}"
+            );
+
+            let chunk = r#"
+                local err = { 1, 2, 3 }
+                local home = assert(os.getenv("HOME"), err)
+                print(home)
+            "#;
+            assert!(
+                ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+                "assert must accept a table variable as one argument in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_issue_1248_version_gated_callee_params() {
+        let chunk = r#"
+            local ok, err = pcall(function() error("boom") end)
+            if not ok then
+                local x = err:unpack()
+                print(x)
+            end
+        "#;
+
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::LuaJIT;
+        let mut ws = VirtualWorkspace::new_with_config(config);
+        assert!(
+            ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+            "version-hidden string.unpack must not report missing parameters"
+        );
+        assert!(
+            ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, chunk),
+            "version-hidden string.unpack must not report parameter mismatches"
+        );
+
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::Lua54;
+        let mut ws = VirtualWorkspace::new_with_config(config);
+        assert!(
+            !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, chunk),
+            "string.unpack is available in Lua 5.4 and must still be checked"
+        );
+        assert!(
+            !ws.has_no_diagnostic(
+                DiagnosticCode::MissingParameter,
+                r#"
+                ---@type string
+                local s
+                s:sub()
+                "#
+            ),
+            "visible members must still report missing parameters"
+        );
     }
 }

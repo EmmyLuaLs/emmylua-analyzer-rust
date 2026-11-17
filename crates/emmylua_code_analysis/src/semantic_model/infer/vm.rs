@@ -1130,17 +1130,34 @@ impl<'a> InferVm<'a> {
             if type_has_member {
                 continue;
             }
-            // Cross-file member association.
+            // Cross-file member association. Several declarations may share one key
+            // (version-gated stdlib overloads); prefer the declaration visible in the
+            // configured runtime version.
+            //
+            // An unversioned declaration is always visible, so it never reaches the
+            // fallback. The fallback only runs when every candidate is version-gated
+            // and hidden in this runtime; then the choice follows member-index order
+            // (workspace/discovery order) and keeps a type so the call still reports
+            // Unknown instead of dropping the member entirely.
             let members = self.model.members_of_owner(&owner_id);
-            if let Some(member) = members.into_iter().find(|m| match key {
-                LuaMemberKey::Name(name) => &m.name == name,
-                LuaMemberKey::Integer(_) => self
-                    .model
-                    .file_facts_of(m.file_id)
-                    .and_then(|facts| facts.member_by_id(&m.id))
-                    .is_some_and(|member| &member.key == key),
-                _ => false,
-            }) {
+            let matching: Vec<_> = members
+                .into_iter()
+                .filter(|m| match key {
+                    LuaMemberKey::Name(name) => &m.name == name,
+                    LuaMemberKey::Integer(_) => self
+                        .model
+                        .file_facts_of(m.file_id)
+                        .and_then(|facts| facts.member_by_id(&m.id))
+                        .is_some_and(|member| &member.key == key),
+                    _ => false,
+                })
+                .collect();
+            let member = matching
+                .iter()
+                .find(|m| self.model.member_ref_versions_visible(m))
+                .cloned()
+                .or_else(|| matching.into_iter().next());
+            if let Some(member) = member {
                 if self.computing.contains(&member.id) {
                     return Value::plain(LuaType::Unknown);
                 }
@@ -1491,11 +1508,12 @@ impl<'a> InferVm<'a> {
                         return Value::plain(self.model.require_module_type(&module_name));
                     }
                 }
-                // assert(x, ...): returns x when truthy (removing nil) and passes through
+                // assert(x, ...): returns x when truthy (removing nil and false) and passes through
                 // any following multi-returns.
                 "assert" => {
                     if let Some(arg) = args.first() {
                         let ty = remove_nil_from_type(arg.ty.clone());
+                        let ty = remove_false_from_type(ty);
                         return Value::plain(ty);
                     }
                     return Value::plain(LuaType::Unknown);
@@ -2589,6 +2607,14 @@ impl<'a> InferVm<'a> {
         };
         let facts = self.model.file_facts_of(file_id)?;
         let signature = facts.signature_by_closure(value_syntax)?;
+        // `---@version`-hidden declarations must not contribute call candidates.
+        if signature
+            .docs
+            .as_ref()
+            .is_some_and(|docs| !self.model.versions_visible(&docs.versions))
+        {
+            return None;
+        }
         // Runtime member methods without doc annotations: use signature projection (param
         // names + inferred return + is_colon_define). Decls (plain functions) still prefer
         // the existing `callee.ty` DocFunction (generic docs etc.) to avoid a no-doc body
@@ -2660,8 +2686,8 @@ impl<'a> InferVm<'a> {
                     self.doc_type_lua_with_generics(file_id, *syntax, generic_params)
                 })
                 .unwrap_or(LuaType::Any);
-            if docs.nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if docs.nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }
@@ -2984,7 +3010,7 @@ impl<'a> InferVm<'a> {
             params.push((name, Some(ty)));
         }
 
-        let ret = match func.get_return_type_list() {
+        let mut ret = match func.get_return_type_list() {
             Some(list) => {
                 let mut types = Vec::new();
                 for ret in list.get_return_type_list() {
@@ -3007,6 +3033,15 @@ impl<'a> InferVm<'a> {
             None => LuaType::Unknown,
         };
 
+        // Overloads need the same nested generic bindings as the main signature.
+        let generic_tpls = self.generic_tpls_with_metadata(file_id, &generic_params);
+        for (_, ty) in &mut params {
+            if let Some(ty) = ty {
+                *ty = bind_signature_generics(ty, &generic_tpls);
+            }
+        }
+        ret = bind_signature_generics(&ret, &generic_tpls);
+
         let mut fun = LuaFunctionType::new(
             if func.is_async() {
                 AsyncState::Async
@@ -3017,7 +3052,7 @@ impl<'a> InferVm<'a> {
             is_variadic,
             params,
             ret,
-            Some(self.generic_tpls_with_metadata(file_id, &generic_params)),
+            Some(generic_tpls),
         );
         if has_own_generics {
             fun = reassign_function_generics_to_func_ids(fun);
@@ -3278,22 +3313,43 @@ fn constructor_candidate(
     let member = facts.member_by_id(&member_id)?;
     let value_syntax = member.value_syntax?;
     let method_fun = model.type_of_signature_in_file(member_file, value_syntax)?;
+    // `member.value_syntax` is the closure-syntax key used by `signature_by_closure`.
+    // `return_mode = "default"` prefers the constructor's documented return type and
+    // falls back to the class instance when the method has no explicit `@return`.
+    let has_documented_return = facts
+        .signature_by_closure(value_syntax)
+        .and_then(|signature| signature.docs.as_ref())
+        .is_some_and(|docs| !docs.returns.is_empty());
 
     let class_generics = model.generic_tpls_with_metadata(def.file_id, &def.generic_params);
 
     let mut params = Vec::new();
+    let mut has_self_param = false;
     for (name, ty) in method_fun.get_params() {
-        if name == "self" || matches!(&ty, Some(LuaType::SelfInfer)) {
+        let is_self = name == "self" || matches!(&ty, Some(LuaType::SelfInfer));
+        has_self_param |= is_self;
+        if attribute.strip_self && is_self {
             continue;
         }
         let ty = ty
             .as_ref()
-            .map(|ty| bind_signature_generics(ty, &class_generics));
+            .map(|ty| bind_signature_generics(ty, &class_generics))
+            // An implicit `self` parameter often has no declared type; give the
+            // retained receiver an explicit `self` type so arity/type checks see it.
+            .or_else(|| is_self.then_some(LuaType::SelfInfer));
         params.push((name.clone(), ty));
+    }
+    // Colon-defined methods (`function Class:init(...)`) do not list the implicit
+    // receiver in their signature; add it back when `self` is not stripped.
+    if !attribute.strip_self && member_info.is_method && !has_self_param {
+        params.insert(0, ("self".to_string(), Some(LuaType::SelfInfer)));
     }
 
     let ret = match attribute.return_mode {
         ConstructorReturnMode::Doc => {
+            bind_signature_generics(method_fun.get_ret(), &class_generics)
+        }
+        ConstructorReturnMode::Default if has_documented_return => {
             bind_signature_generics(method_fun.get_ret(), &class_generics)
         }
         ConstructorReturnMode::SelfType | ConstructorReturnMode::Default => {
@@ -3309,6 +3365,20 @@ fn constructor_candidate(
         ret,
         Some(class_generics),
     ))
+}
+
+/// Constructor call candidate for a class-table callee, using the `---@[constructor("name")]`
+/// attribute attached to the `meta`-style factory that created the class.
+pub(crate) fn constructor_call_candidate(
+    model: &SemanticModel<'_>,
+    class_ty: &LuaType,
+) -> Option<LuaFunctionType> {
+    let def = match class_ty {
+        LuaType::Ref(id) | LuaType::Def(id) => model.type_def_of(id)?,
+        _ => return None,
+    };
+    let attribute = model.constructor_attribute_of_type(&def.id)?;
+    constructor_candidate(model, class_ty, &attribute)
 }
 
 fn constructor_return_instance(class_ty: &LuaType, generics: &[GenericTpl]) -> LuaType {
@@ -3872,6 +3942,11 @@ pub(crate) fn unify_call_bindings(
             }
         }
         DocFunction(param_fun) => {
+            let expanded_arg = match arg {
+                Ref(_) | Def(_) | Generic(_) => expand_alias_head(model, arg),
+                _ => None,
+            };
+            let arg = expanded_arg.as_ref().unwrap_or(arg);
             if let DocFunction(arg_fun) = arg {
                 let param_params = param_fun.get_params();
                 let arg_params = arg_fun.get_params();
@@ -3918,17 +3993,33 @@ pub(crate) fn unify_call_bindings(
                                 .saturating_sub(arg_index)
                                 .saturating_sub(trailing)
                         };
-                        let consume = consume.min(arg_params.len().saturating_sub(arg_index));
-                        let remaining: Vec<LuaType> = arg_params[arg_index..arg_index + consume]
+                        // `arg_index` can be past the end: the ordinary params before this
+                        // slot advance it even when the callback declares fewer params.
+                        let start = arg_index.min(arg_params.len());
+                        let consume = consume.min(arg_params.len() - start);
+                        let remaining: Vec<LuaType> = arg_params[start..start + consume]
                             .iter()
-                            .filter_map(|p| p.1.clone())
+                            .enumerate()
+                            .map(|(offset, (_, ty))| {
+                                let ty = ty.clone().unwrap_or(Unknown);
+                                if arg_fun.is_variadic()
+                                    && start + offset + 1 == arg_params.len()
+                                    && !matches!(ty, Variadic(_))
+                                {
+                                    Variadic(Rc::new(VariadicType::Repeat(ty)))
+                                } else {
+                                    ty
+                                }
+                            })
                             .collect();
                         if let Variadic(variadic) = &param_ty
                             && let VariadicType::Base(base) = variadic.as_ref()
                             && let TplRef(tpl) = base
                             && !bindings.contains_key(&tpl.get_tpl_id())
                             && !remaining.is_empty()
-                            && remaining.iter().any(|t| !matches!(t, Unknown | Any))
+                            && arg_params[start..start + consume].iter().any(|(_, ty)| {
+                                ty.as_ref().is_some_and(|t| !matches!(t, Unknown | Any))
+                            })
                             && !remaining.iter().any(|t| {
                                 matches!(
                                     t,
@@ -3941,28 +4032,18 @@ pub(crate) fn unify_call_bindings(
                                 )
                             })
                         {
-                            if remaining.len() == 1 {
-                                if !unify_call_bindings(
-                                    model,
-                                    &TplRef(tpl.clone()),
-                                    &remaining[0],
-                                    bindings,
-                                ) {
-                                    return false;
-                                }
+                            // 固定参数保留参数包长度, 可变尾部保留重复或展开语义.
+                            let pack_ty = if remaining.iter().any(|ty| matches!(ty, Variadic(_))) {
+                                Variadic(Rc::new(VariadicType::Multi(remaining)))
                             } else {
-                                let tuple_ty = Tuple(Rc::new(LuaTupleType::new(
+                                Tuple(Rc::new(LuaTupleType::new(
                                     remaining,
                                     LuaTupleStatus::InferResolve,
-                                )));
-                                if !unify_call_bindings(
-                                    model,
-                                    &TplRef(tpl.clone()),
-                                    &tuple_ty,
-                                    bindings,
-                                ) {
-                                    return false;
-                                }
+                                )))
+                            };
+                            if !unify_call_bindings(model, &TplRef(tpl.clone()), &pack_ty, bindings)
+                            {
+                                return false;
                             }
                         }
                         // The variadic slot only consumes actual function params; the param index
@@ -4033,8 +4114,9 @@ pub(crate) fn unify_call_bindings(
             } else {
                 let pv = param_union.into_vec();
                 // A generic union like `` `T`|T `` allows T to be bound through any generic
-                // component; ordinary unions still require all non-nil components to be
-                // compatible (caller may pass any member).
+                // component. Plain unions (nothing to infer) accept the argument when it
+                // matches any member, mirroring `param_type_check` ("caller may pass any
+                // member").
                 if matches!(arg, Function | DocFunction(_) | Signature(_)) {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
@@ -4047,15 +4129,9 @@ pub(crate) fn unify_call_bindings(
                     } else {
                         true
                     }
-                } else if pv.iter().any(|p| matches!(p, TplRef(_))) {
+                } else {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
-                } else if pv.contains(&Nil) {
-                    pv.iter()
-                        .filter(|t| !matches!(t, Nil))
-                        .all(|p| unify_call_bindings(model, p, arg, bindings))
-                } else {
-                    false
                 }
             }
         }
@@ -4979,6 +5055,49 @@ fn remove_nil_from_type(ty: LuaType) -> LuaType {
             ))),
             VariadicType::Repeat(base) => LuaType::Variadic(Rc::new(VariadicType::Repeat(
                 remove_nil_from_type(base.clone()),
+            ))),
+        },
+        _ => ty,
+    }
+}
+
+/// Remove `false` from a type (for `assert`): a successful assert guarantees
+/// that the value is neither nil nor false.
+fn remove_false_from_type(ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::Boolean => LuaType::BooleanConst(true),
+        LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => LuaType::Never,
+        LuaType::Union(union) => {
+            let types = union
+                .into_vec()
+                .into_iter()
+                .filter_map(|ty| match ty {
+                    LuaType::Boolean => Some(LuaType::BooleanConst(true)),
+                    LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => None,
+                    other => Some(other),
+                })
+                .collect::<Vec<_>>();
+            match types.len() {
+                0 => LuaType::Never,
+                1 => types.into_iter().next().unwrap_or(LuaType::Never),
+                _ => LuaType::Union(Rc::new(LuaUnionType::from_vec(types))),
+            }
+        }
+        // Mirror `remove_nil_from_type`: for `assert(f())` the first value of a
+        // multi-return is the one whose falsy result aborts the call.
+        LuaType::Variadic(variadic) => match variadic.as_ref() {
+            VariadicType::Multi(types) => {
+                let mut new_types = types.clone();
+                if let Some(first) = new_types.first_mut() {
+                    *first = remove_false_from_type(first.clone());
+                }
+                LuaType::Variadic(Rc::new(VariadicType::Multi(new_types)))
+            }
+            VariadicType::Base(base) => LuaType::Variadic(Rc::new(VariadicType::Base(
+                remove_false_from_type(base.clone()),
+            ))),
+            VariadicType::Repeat(base) => LuaType::Variadic(Rc::new(VariadicType::Repeat(
+                remove_false_from_type(base.clone()),
             ))),
         },
         _ => ty,

@@ -23,10 +23,7 @@ use crate::semantic_db::def::SignatureReturnCast;
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
-// ──────────────────────────────────────────────
-// Type definitions (from def/, with global SemanticId identity)
-// ──────────────────────────────────────────────
-
+use super::def::operator::is_operator_name;
 use super::def::{
     ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam, LuaMemberKey,
     Member, ModuleExport, ModuleVisibility, NameUse, OperatorDef, Scope, ScopeChild, ScopeKind,
@@ -108,7 +105,7 @@ pub struct FileFacts {
     pub usings: Vec<SmolStr>,
     /// `---@diagnostic disable-next-line/disable-line/disable` annotations (range-matched).
     pub diagnostic_disables: Vec<DiagnosticDisable>,
-    /// File-level `---@diagnostic disable: code`.
+    /// File-level `---@diagnostic disable: code` (all codes when the code list is empty).
     pub file_diagnostic_disabled: HashSet<DiagnosticCode>,
     /// File-level `---@diagnostic enable: code` (force-enable, overriding global config disables).
     pub file_diagnostic_enabled: HashSet<DiagnosticCode>,
@@ -859,7 +856,7 @@ impl FactsBuilder {
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
 
-        // Post-processing 4: index `setmetatable(table, meta)` initializer calls once.
+        // Post-processing 4: index `setmetatable(table, meta)` calls once.
         self.collect_setmetatable_calls(chunk);
 
         let mut name_use_by_start = self
@@ -1109,9 +1106,19 @@ impl FactsBuilder {
         // 2) otherwise → mark the type (`@class`/`@alias`/`@enum`) + statement owner (decl/member/signature).
         // Consecutive doc lines in one comment block are merged into one LuaComment by the parser; tag order is line order.
         let mut field_deprecated: HashSet<usize> = HashSet::new();
+        // Set only for owner-level deprecation. A deprecated tag immediately
+        // followed by `@field` is recorded in `field_deprecated` instead and
+        // must not mark the type or signature below.
         let mut owner_type_deprecated = false;
         for (idx, tag) in tags.iter().enumerate() {
-            if matches!(tag, LuaDocTag::Deprecated(_)) {
+            let deprecated = match tag {
+                LuaDocTag::Deprecated(_) => true,
+                LuaDocTag::AttributeUse(attribute_use_tag) => {
+                    attribute_use_has_deprecated(attribute_use_tag)
+                }
+                _ => false,
+            };
+            if deprecated {
                 if matches!(tags.get(idx + 1), Some(LuaDocTag::Field(_))) {
                     field_deprecated.insert(idx + 1);
                 } else {
@@ -1183,11 +1190,22 @@ impl FactsBuilder {
                     self.collect_field_member(&field_tag, field_deprecated.contains(&idx));
                 }
                 LuaDocTag::Operator(operator_tag) => {
-                    if let (Some(owner), Some(name_token), Some(returns)) = (
-                        self.current_class.clone(),
-                        operator_tag.get_name_token(),
-                        operator_tag.get_return_type(),
-                    ) {
+                    let Some(name_token) = operator_tag.get_name_token() else {
+                        continue;
+                    };
+                    let name = SmolStr::new(name_token.get_name_text());
+                    if !is_operator_name(&name) {
+                        self.annotation_errors.push(AnnotationError {
+                            range: name_token.get_range(),
+                            message: SmolStr::new(format!("unknown operator `{name}`")),
+                        });
+                        // Do not register an invalid operator: downstream
+                        // consumers expect every `OperatorDef` name to be valid.
+                        continue;
+                    }
+                    if let (Some(owner), Some(returns)) =
+                        (self.current_class.clone(), operator_tag.get_return_type())
+                    {
                         let params = operator_tag
                             .get_param_list()
                             .map(|list| {
@@ -1198,7 +1216,7 @@ impl FactsBuilder {
                             .unwrap_or_default();
                         self.operators.push(OperatorDef {
                             owner,
-                            name: name_token.get_name_text().into(),
+                            name,
                             params,
                             returns: returns.get_syntax_id(),
                         });
@@ -1278,6 +1296,17 @@ impl FactsBuilder {
                         }
                         if is_lsp_delayed_definition(attribute_use_tag) {
                             self.delayed_definition_owners.insert(owner_syntax);
+                        }
+                        // `---@[deprecated]` / `---@[deprecated("message")]`: the attribute form
+                        // of `---@deprecated`. A following `@field` marks only that field (handled
+                        // above); otherwise it applies to the type/signature/declaration owner.
+                        if owner_type_deprecated && attribute_use_has_deprecated(attribute_use_tag)
+                        {
+                            self.signature_doc_map
+                                .entry(owner_syntax)
+                                .or_default()
+                                .deprecated = true;
+                            self.doc_deprecated_owners.insert(owner_syntax);
                         }
                     }
                 }
@@ -1451,9 +1480,12 @@ impl FactsBuilder {
                     .as_ref()
                     .is_some_and(|block| block.get_parent::<LuaChunk>().is_some());
                 if is_file_disable {
-                    for code in codes {
-                        self.file_diagnostic_disabled.insert(code);
-                    }
+                    let codes = if codes.is_empty() {
+                        DiagnosticCode::all()
+                    } else {
+                        codes
+                    };
+                    self.file_diagnostic_disabled.extend(codes);
                 } else if let Some(block) = owner_block {
                     push_diagnostic_disables(
                         &mut self.diagnostic_disables,
@@ -1481,8 +1513,13 @@ impl FactsBuilder {
                 push_diagnostic_disables(&mut self.diagnostic_disables, line_range, codes);
             }
             "enable" => {
-                for code in codes {
-                    self.file_diagnostic_enabled.insert(code);
+                if codes.is_empty() {
+                    self.file_diagnostic_disabled.clear();
+                } else {
+                    for code in codes {
+                        self.file_diagnostic_disabled.remove(&code);
+                        self.file_diagnostic_enabled.insert(code);
+                    }
                 }
             }
             _ => {}
@@ -1611,6 +1648,7 @@ impl FactsBuilder {
             }
             LuaAst::LuaForStat(stat) => {
                 self.push_scope(stat.get_range(), ScopeKind::ForStat);
+                self.current_owner_syntax = Some(stat.get_syntax_id());
                 if let Some(var) = stat.get_var_name() {
                     self.add_decl(
                         var.get_name_text().into(),
@@ -2130,6 +2168,15 @@ impl FactsBuilder {
         decl.scope_id = scope_id;
         decl.value_expr_syntax = value_expr_syntax;
         decl.owner_syntax = self.current_owner_syntax;
+        // `@version` docs are collected for every doc-comment owner (not only
+        // closures), so table globals such as `bit = {}` keep their version
+        // conditions too. Signature docs are consumed later for functions; copy
+        // the conditions now.
+        decl.version_conds = decl
+            .owner_syntax
+            .and_then(|owner| self.signature_doc_map.get(&owner))
+            .map(|docs| docs.versions.clone())
+            .unwrap_or_default();
         let decl_id = decl.id.clone();
         self.scopes[scope_id as usize]
             .children
@@ -2303,25 +2350,12 @@ impl FactsBuilder {
         // assigning by member id's key_range here is not feasible, so it is set at the collection point).
     }
 
-    /// Top-level `return X` → module export target (the last top-level return wins).
-    /// Indexes `setmetatable(table, meta)` calls that initialize a declaration or member.
+    /// Indexes `setmetatable(table, meta)` calls, including arguments and returns.
     ///
     /// Table member lookup otherwise has to scan every declaration to find the
     /// matching `setmetatable` call for a table literal.
     fn collect_setmetatable_calls(&mut self, chunk: &LuaChunk) {
-        let root = chunk.get_root();
-        let values = self
-            .decls
-            .iter()
-            .filter_map(|decl| decl.value_expr_syntax)
-            .chain(self.members.iter().filter_map(|member| member.value_syntax));
-        for value_syntax in values {
-            let Some(node) = value_syntax.to_node_from_root(&root) else {
-                continue;
-            };
-            let Some(call) = LuaCallExpr::cast(node) else {
-                continue;
-            };
+        for call in chunk.descendants::<LuaCallExpr>() {
             let is_setmetatable = match call.get_prefix_expr() {
                 Some(LuaExpr::NameExpr(name_expr)) => {
                     name_expr.get_name_text().as_deref() == Some("setmetatable")
@@ -2464,6 +2498,7 @@ fn member_key_from_index_key(key: LuaIndexKey) -> Option<LuaMemberKey> {
         }
         LuaIndexKey::Integer(num) => match num.get_number_value() {
             NumberResult::Int(i) => Some(LuaMemberKey::Integer(i)),
+            NumberResult::Float(i) => super::types::exact_integer(i).map(LuaMemberKey::Integer),
             _ => None,
         },
         LuaIndexKey::Idx(idx) => Some(LuaMemberKey::Integer(idx as i64)),
@@ -2528,9 +2563,6 @@ fn doc_type_name(doc_type: &LuaDocType) -> Option<SmolStr> {
     }
 }
 
-/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
-/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
-/// `---@operator call(name, root_class, strip_self, return_mode)`.
 /// Whether `---@[lsp_optimization("delayed_definition")]` is the delayed-definition attribute.
 fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     for attribute_use in tag.get_attribute_uses() {
@@ -2557,6 +2589,19 @@ fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     false
 }
 
+/// Whether the attribute-use tag contains `---@[deprecated]` or `---@[deprecated("message")]`.
+fn attribute_use_has_deprecated(tag: &LuaDocTagAttributeUse) -> bool {
+    tag.get_attribute_uses().any(|attribute_use| {
+        attribute_use
+            .get_type()
+            .and_then(|name_type| name_type.get_name_text())
+            .is_some_and(|name| name == "deprecated")
+    })
+}
+
+/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
+/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
+/// `---@operator call(name, root_class, strip_self, return_mode)`.
 fn collect_constructor_attribute(tag: &LuaDocTagAttributeUse) -> Option<ConstructorAttribute> {
     for attribute_use in tag.get_attribute_uses() {
         let name = attribute_use.get_type()?.get_name_text()?;

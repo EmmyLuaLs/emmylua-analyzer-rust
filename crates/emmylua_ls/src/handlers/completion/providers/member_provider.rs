@@ -2,7 +2,7 @@
 
 use emmylua_code_analysis::{
     DeclKind, FileId, LuaAliasCallKind, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
-    MemberInfo, SemanticId, SemanticModel, TypeDefKind,
+    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDefKind,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
@@ -119,6 +119,9 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     }
     if members.is_empty() {
         members = match &prefix_type {
+            LuaType::Ref(id) | LuaType::Def(id) => {
+                class_table_member_infos(&builder.semantic_model, id)
+            }
             LuaType::Generic(generic) => {
                 let from_type = generic_keyof_member_infos(&builder.semantic_model, generic);
                 if from_type.is_empty() {
@@ -334,8 +337,6 @@ fn associated_type_member_infos(
     else {
         return Vec::new();
     };
-    let mut out = Vec::new();
-    let mut seen_keys = Vec::new();
     let mut owners = vec![def.id.clone(), decl.clone()];
     owners.dedup();
     let mut super_stack = model.base_type_defs(&def.type_decl_id());
@@ -349,6 +350,39 @@ fn associated_type_member_infos(
         super_stack.extend(model.base_type_defs(&parent.type_decl_id()));
     }
     owners.dedup();
+    member_infos_of_owners(model, owners)
+}
+
+/// Members of the table a class annotates (`---@class iolib` above `io = {}`): they belong to
+/// that table rather than to the class, so `member_infos` of the class type does not list them.
+fn class_table_member_infos(model: &SemanticModel<'_>, type_id: &LuaTypeDeclId) -> Vec<MemberInfo> {
+    let Some(def) = model.type_def_of(type_id) else {
+        return Vec::new();
+    };
+    let Some(owner_syntax) = def.owner_syntax else {
+        return Vec::new();
+    };
+    let Some(facts) = model.file_facts_of(def.file_id) else {
+        return Vec::new();
+    };
+    let mut owners = Vec::new();
+    for decl in facts
+        .decls
+        .iter()
+        .filter(|decl| decl.owner_syntax == Some(owner_syntax))
+    {
+        owners.push(decl.id.clone());
+        // Runtime members of a global table are keyed by its name.
+        if decl.kind == DeclKind::Global {
+            owners.push(SemanticId::name(decl.name.clone()));
+        }
+    }
+    member_infos_of_owners(model, owners)
+}
+
+fn member_infos_of_owners(model: &SemanticModel<'_>, owners: Vec<SemanticId>) -> Vec<MemberInfo> {
+    let mut out = Vec::new();
+    let mut seen_keys = Vec::new();
     for owner in owners {
         for member_ref in model.members_of_owner(&owner).iter() {
             let Some(member_facts) = model.file_facts_of(member_ref.file_id) else {

@@ -1018,10 +1018,7 @@ fn constraint_compatible(
             .iter()
             .any(|component| constraint_compatible(semantic_model, actual, component));
     }
-    if is_compatible(semantic_model, actual, constraint) {
-        return true;
-    }
-    false
+    is_compatible(semantic_model, actual, constraint)
 }
 
 fn doc_syntax_range(

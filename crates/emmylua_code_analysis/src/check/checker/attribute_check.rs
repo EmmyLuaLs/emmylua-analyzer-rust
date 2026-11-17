@@ -14,7 +14,7 @@ use emmylua_parser::{
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_check;
-use crate::semantic_model::type_check::{TypeCheckFailReason, check_type_detail};
+use crate::semantic_model::type_check::check_type_detail;
 use crate::{LuaFunctionType, LuaType, LuaTypeDeclId, TypeDef};
 
 use super::{CheckContext, Checker};
@@ -108,9 +108,13 @@ fn select_attribute_overload(
     let overloads: Vec<LuaFunctionType> = def
         .call_overloads
         .iter()
-        .filter_map(|syntax| match semantic_model.doc_type_lua(*syntax) {
-            LuaType::DocFunction(func) => Some(func.as_ref().clone()),
-            _ => None,
+        .filter_map(|syntax| {
+            // Overloads live in the file that declares the attribute class (for built-in
+            // attributes this is the standard library), so project in `def.file_id`.
+            match semantic_model.doc_type_lua_in(def.file_id, *syntax, &def.generic_params) {
+                LuaType::DocFunction(func) => Some(func.as_ref().clone()),
+                _ => None,
+            }
         })
         .collect();
     if overloads.is_empty() {
@@ -275,8 +279,9 @@ fn add_type_check_diagnostic(
     param_type: &LuaType,
 ) {
     let reason = match check_type_detail(semantic_model, arg_type, param_type) {
-        Err(TypeCheckFailReason::TypeNotMatchWithReason(reason)) => format!(" {reason}"),
-        Err(TypeCheckFailReason::TypeNotMatch) => String::new(),
+        Err(err) if err.is_type_not_match() => err
+            .reason()
+            .map_or(String::new(), |reason| format!(" {reason}")),
         _ => return,
     };
     context.add_diagnostic(

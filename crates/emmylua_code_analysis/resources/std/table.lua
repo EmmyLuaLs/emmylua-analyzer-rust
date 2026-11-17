@@ -40,7 +40,7 @@ function table.concat(list, sep, i, j) end
 --- @param value any
 function table.insert(list, pos, value) end
 
---- @version >5.3
+--- @version >5.3, JIT
 ---
 --- Moves elements from table a1 to table `a2`, performing the equivalent to
 --- the following multiple assignment: `a2[t]`,`··· = a1[f]`,`···,a1[e]`. The
@@ -48,21 +48,20 @@ function table.insert(list, pos, value) end
 --- range. The number of elements to be moved must fit in a Lua integer.
 ---
 --- Returns the destination table `a2`.
---- @overload fun(a1: table, f: integer, e: integer, t: integer): table
 --- @param a1 table
 --- @param f  integer
 --- @param e  integer
 --- @param t  integer
---- @param a2 table
+--- @param a2? table
 --- @return table
 function table.move(a1, f, e, t, a2) end
 
---- @version 5.1, JIT
+--- @version 5.1, 5.2, JIT
 ---
 --- Returns the largest positive numerical index of the given table, or zero if the table has no positive numerical indices.
 ---
 --- @param table table
---- @return integer
+--- @return number
 --- @nodiscard
 function table.maxn(table) end
 
@@ -79,7 +78,7 @@ function table.maxn(table) end
 --- @generic V
 --- @param list table<integer, V> | V[]
 --- @param pos? integer
---- @return V
+--- @return V?
 function table.remove(list, pos) end
 
 ---
@@ -130,7 +129,7 @@ function table.pack(...) end
 ---
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T | nil
+--- @param callback fun(key: any, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreach(list, callback) end
@@ -141,7 +140,7 @@ function table.foreach(list, callback) end
 ---
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T | nil
+--- @param callback fun(key: integer, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreachi(list, callback) end

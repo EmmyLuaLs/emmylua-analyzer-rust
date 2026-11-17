@@ -246,7 +246,7 @@ fn build_description_annotator(
     description: LuaDocDescription,
 ) -> Option<()> {
     let text = document.get_text();
-    let items = parse_desc(WorkspaceId::MAIN, emmyrc, text, description, None);
+    let items = parse_desc(WorkspaceId::Main, emmyrc, text, description, None);
 
     let mut strong = EmmyAnnotator {
         typ: EmmyAnnotatorType::DocStrong,

@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
-    LuaTypeDeclId, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel, Signature,
-    TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    LuaTypeDeclId, LuaTypeIdentifier, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel,
+    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType, WorkspaceId,
 };
 use emmylua_parser::{
     LuaAstNode, LuaCommentOwner, LuaDocDescriptionOwner, LuaDocTagField, LuaDocTagParam,
@@ -48,15 +48,11 @@ pub enum DocTypeKey {
 impl DocTypeKey {
     pub fn from_lua_id(id: &LuaTypeDeclId) -> Self {
         match id.get_id() {
-            emmylua_code_analysis::LuaTypeIdentifier::Global(name) => {
-                DocTypeKey::Global(name.to_string())
+            LuaTypeIdentifier::Global(name) => DocTypeKey::Global(name.to_string()),
+            LuaTypeIdentifier::Internal(workspace, name) => {
+                DocTypeKey::Internal(workspace.unique_id(), name.to_string())
             }
-            emmylua_code_analysis::LuaTypeIdentifier::Internal(workspace, name) => {
-                DocTypeKey::Internal(workspace.id, name.to_string())
-            }
-            emmylua_code_analysis::LuaTypeIdentifier::File(file_id, name) => {
-                DocTypeKey::File(*file_id, name.to_string())
-            }
+            LuaTypeIdentifier::File(file_id, name) => DocTypeKey::File(*file_id, name.to_string()),
         }
     }
 
@@ -64,7 +60,7 @@ impl DocTypeKey {
         match self {
             DocTypeKey::Global(name) => LuaTypeDeclId::global(name),
             DocTypeKey::Internal(workspace, name) => {
-                LuaTypeDeclId::internal(emmylua_code_analysis::WorkspaceId { id: *workspace }, name)
+                LuaTypeDeclId::internal(WorkspaceId::from_unique_id(*workspace), name)
             }
             DocTypeKey::File(file_id, name) => LuaTypeDeclId::file(*file_id, name),
         }

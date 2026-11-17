@@ -84,7 +84,7 @@ fn add_detail_ranges(
 ) {
     let text = document.get_text();
 
-    let mut items = parse_desc(WorkspaceId::MAIN, emmyrc, text, description, None);
+    let mut items = parse_desc(WorkspaceId::Main, emmyrc, text, description, None);
 
     items.sort_by_key(|item| item.range.len());
 
