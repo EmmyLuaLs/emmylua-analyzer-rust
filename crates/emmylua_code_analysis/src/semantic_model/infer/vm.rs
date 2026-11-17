@@ -2999,7 +2999,7 @@ impl<'a> InferVm<'a> {
                         String::new()
                     }
                 });
-            let ty = match param.get_type() {
+            let mut ty = match param.get_type() {
                 Some(doc_ty) => self.doc_type_lua_with_generics(
                     file_id,
                     doc_ty.get_syntax_id(),
@@ -3007,6 +3007,9 @@ impl<'a> InferVm<'a> {
                 ),
                 None => LuaType::Unknown,
             };
+            if param.is_nullable() && !ty.is_nullable() {
+                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            }
             params.push((name, Some(ty)));
         }
 
