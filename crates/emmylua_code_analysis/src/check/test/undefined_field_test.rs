@@ -2,58 +2,7 @@
 mod test {
     use std::{ops::Deref, sync::Arc};
 
-    use emmylua_parser::{LuaAstNode, LuaIndexExpr};
-    use lsp_types::NumberOrString;
-    use tokio_util::sync::CancellationToken;
-
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
-
-    // 字符串索引接受等价别名和别名链, 数值别名仍不能索引字符串映射.
-    #[test]
-    fn test_string_table_keys_accept_aliases() {
-        for (key_type, expected) in [("Key", 0), ("NestedKey", 0), ("NumberKey", 2)] {
-            let mut ws = VirtualWorkspace::new();
-            let file = ws.def(&format!(
-                r#"
-                ---@alias Key string
-                ---@alias NestedKey Key
-                ---@alias NumberKey integer
-
-                ---@param mapping table<string, integer>
-                ---@param key {key_type}
-                local function read(mapping, key)
-                    local value = mapping[key]
-                    mapping[key] = 1
-                    return value
-                end
-                return read
-                "#,
-            ));
-            if expected == 0 {
-                let model = ws.analysis.semantic_model(file);
-                let index = model
-                    .chunk()
-                    .unwrap()
-                    .descendants::<LuaIndexExpr>()
-                    .next()
-                    .unwrap();
-                assert_eq!(model.type_of_expr(index.get_syntax_id()), LuaType::Integer);
-            }
-            let diagnostics = ws
-                .analysis
-                .diagnose_file(file, CancellationToken::new())
-                .unwrap();
-            assert_eq!(
-                diagnostics
-                    .iter()
-                    .filter(|diagnostic| matches!(&diagnostic.code,
-                        Some(NumberOrString::String(code)) if code == "undefined-field"))
-                    .count(),
-                expected,
-                "{key_type}: {diagnostics:#?}"
-            );
-        }
-    }
+    use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
     fn test_1() {

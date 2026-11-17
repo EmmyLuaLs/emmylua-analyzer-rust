@@ -6,6 +6,7 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
+use std::rc::Rc;
 
 use crate::handlers::hover::render::humanize;
 
@@ -14,7 +15,7 @@ use crate::handlers::completion::{
     completion_data::{CompletionData, CompletionDataType},
 };
 
-use super::{CompletionProvider, ProviderDecision};
+use super::{CompletionProvider, ProviderDecision, function_provider::resolve_function_type};
 
 pub struct MemberProvider;
 
@@ -155,7 +156,8 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 
     if completion_status == CompletionTriggerStatus::Colon {
         for member in members {
-            if member.typ.is_function() {
+            let non_nil_typ = remove_nil_from_callable_type(builder, &member.typ);
+            if non_nil_typ.as_ref().unwrap_or(&member.typ).is_function() {
                 add_member_completion(builder, member, completion_status)?;
             }
         }
@@ -444,6 +446,30 @@ fn index_alias_name(builder: &CompletionBuilder, member_file: Option<FileId>) ->
     Some(inner[..end].to_string())
 }
 
+fn remove_nil_from_callable_type(builder: &CompletionBuilder, typ: &LuaType) -> Option<LuaType> {
+    let LuaType::Union(union) = typ else {
+        return None;
+    };
+    let components = union.into_vec();
+    if !components.iter().any(|component| component.is_nil()) {
+        return None;
+    }
+    let mut callables = Vec::new();
+    for component in components.iter().filter(|component| !component.is_nil()) {
+        if component.is_function() {
+            callables.push(component.clone());
+            continue;
+        }
+        let mut visited = Vec::new();
+        let fun = resolve_function_type(builder, component, &mut visited)?;
+        callables.push(LuaType::DocFunction(Rc::new(fun)));
+    }
+    if callables.is_empty() {
+        return None;
+    }
+    Some(LuaType::from_vec(callables))
+}
+
 fn add_member_completion(
     builder: &mut CompletionBuilder,
     info: MemberInfo,
@@ -488,7 +514,9 @@ fn add_member_completion(
         return None;
     }
 
-    let typ = &info.typ;
+    let raw_typ = &info.typ;
+    let non_nil_typ = remove_nil_from_callable_type(builder, raw_typ);
+    let typ = non_nil_typ.as_ref().unwrap_or(raw_typ);
     let skip_self = info.is_method
         || matches!(typ, LuaType::DocFunction(func) if func.is_colon_define())
         || matches!(typ, LuaType::DocFunction(func)

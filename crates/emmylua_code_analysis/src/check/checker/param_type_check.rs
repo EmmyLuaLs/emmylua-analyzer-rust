@@ -20,8 +20,8 @@ use crate::semantic_model::table_constructor::table_expr;
 use crate::semantic_model::type_check::{check_type_at, is_compatible};
 use crate::semantic_model::{SemanticModel, type_eval};
 use crate::{
-    DiagnosticCode, LuaFunctionType, LuaMemberKey, LuaTupleStatus, LuaTupleType, LuaType,
-    LuaTypeNode, TypeDefKind, VariadicType,
+    DiagnosticCode, LuaFunctionType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode,
+    TypeDefKind, VariadicType,
 };
 
 use super::param_count::first_param_is_self;

@@ -11,7 +11,7 @@ use crate::semantic_model::SemanticModel;
 use crate::semantic_model::member::class_fields;
 use crate::semantic_model::table_constructor::table_expr;
 use crate::semantic_model::type_check::{TypeCheckFailReason, check_type_at, is_compatible};
-use crate::{LuaMemberKey, LuaObjectType, LuaType, LuaTypeNode, SemanticId, TypeDefKind};
+use crate::{LuaObjectType, LuaType, LuaTypeNode, SemanticId, TypeDefKind};
 
 use super::check_field::table_literal_mismatches;
 use super::{CheckContext, Checker};

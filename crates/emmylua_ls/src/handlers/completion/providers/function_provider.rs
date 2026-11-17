@@ -877,7 +877,7 @@ pub fn add_function_impl_completion(builder: &mut CompletionBuilder, ty: &LuaTyp
 }
 
 /// Expand `fun?` / alias `fun(...)` into a function type.
-fn resolve_function_type(
+pub(super) fn resolve_function_type(
     builder: &CompletionBuilder,
     ty: &LuaType,
     visited: &mut Vec<LuaTypeDeclId>,
