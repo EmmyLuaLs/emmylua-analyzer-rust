@@ -1403,6 +1403,47 @@ items.<??>
         Ok(())
     }
 
+    #[gtest]
+    fn test_callback_completion_after_whitespace() -> Result<()> {
+        for call in [
+            "first(<??>",
+            "first( <??>",
+            "second(1,<??>",
+            "second(1, <??>",
+            "second(1,\n    <??>",
+            "holder.callback = <??>",
+            "holder.callback =\n    <??>",
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            let source = format!(
+                r#"
+                ---@param callback fun(name: string, age: number): boolean
+                local function first(callback) end
+
+                ---@param n integer
+                ---@param callback fun(name: string, age: number): boolean
+                local function second(n, callback) end
+
+                ---@class Holder
+                ---@field callback fun(name: string, age: number): boolean
+
+                ---@type Holder
+                local holder
+
+                {call}
+                "#
+            );
+            let items = get_completion_items(&mut ws, &source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items
+                    .iter()
+                    .any(|item| item.label == "function(name, age) end"),
+                "{call:?}"
+            );
+        }
+        Ok(())
+    }
+
     // M3 batch 4 retirement: env/desc/auto_require/generic/overload/enum/keyof completions depend on the old DbIndex provider; see migration notes §M3.
     #[gtest]
     fn test_auto_require() -> Result<()> {
