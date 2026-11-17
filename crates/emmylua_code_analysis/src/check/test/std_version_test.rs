@@ -224,6 +224,96 @@ mod test {
     }
 
     #[test]
+    fn test_bit_variadic_functions_accept_one_argument() {
+        for source in [
+            "local _ = bit.band(1)",
+            "local _ = bit.bor(1)",
+            "local _ = bit.bxor(1)",
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "missing-parameter"),
+                "{source} must accept a single argument: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bit_variadic_functions_require_first_argument() {
+        for source in [
+            "local _ = bit.band()",
+            "local _ = bit.bor()",
+            "local _ = bit.bxor()",
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "missing-parameter"),
+                "{source} must require the first argument: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bit_accepts_number_operands() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local _ = bit.tobit(2^40 + 1234)
+            local _2 = bit.tohex(2^8)
+            local _3 = bit.band(2^8, 0xff)
+            "#,
+        );
+        assert!(
+            !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "number operands must be accepted: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_bit_return_types() {
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tobit(1)"),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tohex(1)"),
+            "string"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.tobit(2^40 + 1234)"),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::LuaJIT, "bit.band(1, 2)"),
+            "integer"
+        );
+    }
+
+    #[test]
+    fn test_bit_is_only_available_in_jit() {
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert!(
+                diagnostic_codes_for(version, "local _ = bit")
+                    .iter()
+                    .any(|code| code == "undefined-global"),
+                "bit must be undefined in {version:?}"
+            );
+        }
+        assert!(
+            !diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, "local _ = bit")
+                .iter()
+                .any(|code| code == "undefined-global"),
+            "bit must be defined in LuaJIT"
+        );
+    }
+
+    #[test]
     fn test_table_maxn_visibility_and_return_type_by_version() {
         // `table.maxn` exists in 5.1 and 5.2 (LUA_COMPAT_MAXN) and in LuaJIT,
         // and was removed in 5.3. It scans every numeric key, so a fractional
@@ -1131,5 +1221,687 @@ mod test {
                 "coroutine.resume's second result must be any in {version:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_io_type_accepts_any_value() {
+        // `io.type` only inspects the value at runtime (`luaL_checkany`); it
+        // must not require an actual file handle.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local _n = io.type(42)
+            local _s = io.type("file")
+            local _t = io.type({})
+            "#,
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "io.type must accept any value: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_seek_arguments_are_optional() {
+        // `whence` defaults to "cur" and `offset` to 0, so all three call
+        // shapes are valid; the previous `@overload fun()` is no longer
+        // needed once both parameters are optional.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local f = io.open("test.txt", "w") --[[@as file]]
+            f:seek()
+            f:seek("set")
+            f:seek("end", 0)
+            "#,
+        );
+
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|code| code == "missing-parameter" || code == "redundant-parameter"),
+            "file:seek arguments must be optional: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_union_parameters_keep_return_types() {
+        // `io.open` has an optional union-typed `mode`, and `file:seek` has an
+        // optional union-typed `whence`. Calls must still resolve to the main
+        // signature instead of falling back to `unknown`.
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua54, "io.open('test.txt', 'w')"),
+            "file?"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::Lua54,
+                "(assert(io.open('test.txt', 'w'))):seek()"
+            ),
+            "integer?"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::Lua54,
+                "(assert(io.open('test.txt', 'w'))):seek('set')"
+            ),
+            "integer?"
+        );
+    }
+
+    #[test]
+    fn test_io_literal_options_reject_unknown_values() {
+        // `luaL_checkoption` only accepts the documented literals; dropping the
+        // redundant `string |` lets the checker catch typos.
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::Lua54,
+            r#"
+            local f = io.open("test.txt", "w") --[[@as file]]
+            f:seek("seet")
+            f:setvbuf("bogus")
+            "#,
+        );
+
+        let mismatches = diagnostics
+            .iter()
+            .filter(|code| *code == "param-type-mismatch")
+            .count();
+        assert_eq!(
+            mismatches, 2,
+            "unknown seek/setvbuf options must be rejected: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_io_close_visible_in_every_version() {
+        // `io.close` is split into version-gated blocks; every supported
+        // runtime must still resolve it.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "io.close()");
+            assert!(
+                !diagnostics.iter().any(|code| code == "undefined-global"),
+                "io.close must be available in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_math_randomseed_seed_visibility_by_version() {
+        fn has_code(version: EmmyrcLuaVersion, source: &str, code: &str) -> bool {
+            diagnostic_codes_for(version, source)
+                .iter()
+                .any(|candidate| candidate.as_str() == code)
+        }
+
+        // LuaJIT's math.randomseed([x]) accepts an omitted seed and seeds from
+        // system entropy. It also takes a double, so a fractional seed is valid.
+        for source in [
+            "math.randomseed()",
+            "math.randomseed(1)",
+            "math.randomseed(1.5)",
+        ] {
+            assert!(
+                diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source).is_empty(),
+                "LuaJIT must accept {source:?}"
+            );
+        }
+        assert!(
+            has_code(
+                EmmyrcLuaVersion::LuaJIT,
+                "math.randomseed(\"x\")",
+                "param-type-mismatch"
+            ),
+            "LuaJIT must reject a non-number seed"
+        );
+        assert!(
+            has_code(
+                EmmyrcLuaVersion::LuaJIT,
+                "math.randomseed(1, 2)",
+                "redundant-parameter"
+            ),
+            "LuaJIT must reject a second seed"
+        );
+
+        // Lua 5.1-5.3 require exactly one seed argument.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+        ] {
+            assert!(
+                has_code(version, "math.randomseed()", "missing-parameter"),
+                "math.randomseed() must require a seed in {version:?}"
+            );
+            assert!(
+                diagnostic_codes_for(version, "math.randomseed(1)").is_empty(),
+                "math.randomseed(1) must be accepted in {version:?}"
+            );
+            assert!(
+                has_code(version, "math.randomseed(1, 2)", "redundant-parameter"),
+                "math.randomseed(1, 2) must be rejected in {version:?}"
+            );
+        }
+
+        // Lua 5.4+ accepts the no-argument form and the two-seed form, but its
+        // seeds are integers: luaL_checkinteger rejects a fractional seed.
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::Lua55] {
+            for source in [
+                "math.randomseed()",
+                "math.randomseed(1)",
+                "math.randomseed(1, 2)",
+            ] {
+                assert!(
+                    diagnostic_codes_for(version, source).is_empty(),
+                    "{source:?} must be accepted in {version:?}"
+                );
+            }
+            assert!(
+                has_code(version, "math.randomseed(1.5)", "param-type-mismatch"),
+                "math.randomseed(1.5) must be rejected in {version:?}"
+            );
+            assert!(
+                has_code(version, "math.randomseed(1, 2, 3)", "redundant-parameter"),
+                "math.randomseed(1, 2, 3) must be rejected in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bit32_replace_returns_integer() {
+        // `bit32.replace` was missing its `@return`; the result is always an
+        // unsigned 32-bit value, which the std library types as `integer`.
+        assert_eq!(
+            expr_type_for(EmmyrcLuaVersion::Lua52, "bit32.replace(0, 1, 0)"),
+            "integer"
+        );
+    }
+
+    #[test]
+    fn test_bit32_vararg_operands_are_numbers() {
+        // Lua 5.2 normalizes and truncates any numeric operand, so fractional
+        // numbers are valid too. The negative case proves that the annotation
+        // is actually applied to each variadic function.
+        for function in ["band", "bor", "bxor", "btest"] {
+            for args in ["1, 2, 3", "1.5, 2.5"] {
+                let source = format!("bit32.{function}({args})");
+                let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, &source);
+                assert!(
+                    !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                    "numeric operands must be accepted in {source}: {diagnostics:?}"
+                );
+            }
+
+            let source = format!("bit32.{function}(1, \"x\")");
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, &source);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "a string operand must be reported in {source}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_debug_sethook_hook_first() {
+        // `debug.sethook([thread,] hook, mask [, count])`: the common
+        // hook-first form must not be checked against the leading `thread`,
+        // and the turn-off forms must stay accepted.
+        let source = r#"
+            local function hook(event, line) end
+            local mask = "l"
+            debug.sethook()
+            debug.sethook(nil)
+            debug.sethook(hook, "l")
+            debug.sethook(hook, "l", 1)
+            debug.sethook(hook, "l", nil)
+            debug.sethook(hook, mask)
+            debug.sethook(hook, mask, 1)
+            local co = coroutine.create(function() end)
+            debug.sethook(co)
+            debug.sethook(co, nil)
+            debug.sethook(co, hook, "l")
+            debug.sethook(co, hook, "l", 1)
+        "#;
+
+        let versions = [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ];
+        for version in versions {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"
+                    || code == "redundant-parameter"
+                    || code == "missing-parameter"),
+                "valid debug.sethook calls must be accepted in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        // The mask is required whenever a hook is given, including the
+        // thread-first form that does not go through the hook-first overload.
+        let bad = [
+            (
+                "hook-only",
+                "local function hook(event, line) end\ndebug.sethook(hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first without mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook)",
+                &["param-type-mismatch", "missing-parameter"][..],
+            ),
+            (
+                "thread-first with nil mask",
+                "local function hook(event, line) end\n\
+                 local co = coroutine.create(function() end)\n\
+                 debug.sethook(co, hook, nil)",
+                &["param-type-mismatch"][..],
+            ),
+        ];
+        for version in versions {
+            for (case, source, expected) in bad {
+                let diagnostics = diagnostic_codes_for(version, source);
+                assert!(
+                    diagnostics
+                        .iter()
+                        .any(|code| expected.contains(&code.as_str())),
+                    "debug.sethook must reject {case} in {version:?}: {diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_debug_setuservalue_value_type_by_version() {
+        // Lua 5.2 and LuaJIT (LJ_52) only accept a table (5.2 also accepts
+        // nil); Lua 5.3+ accept any value.
+        let source = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, 1)
+            end
+        "#;
+
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "setuservalue must reject a non-table value in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua53, EmmyrcLuaVersion::Lua54] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+                "setuservalue must accept any value in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let nil_value = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, nil)
+            end
+        "#;
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua52, nil_value);
+        assert!(
+            !diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "Lua 5.2 setuservalue must accept nil: {diagnostics:?}"
+        );
+
+        // LuaJIT only accepts a table as the user value, so nil is invalid.
+        let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, nil_value);
+        assert!(
+            diagnostics.iter().any(|code| code == "param-type-mismatch"),
+            "LuaJIT setuservalue must reject nil: {diagnostics:?}"
+        );
+
+        // The index is absent in 5.2/5.3 and optional from 5.4 on; LuaJIT
+        // ignores it.
+        let with_index = r#"
+            ---@param u userdata
+            local function f(u)
+                debug.setuservalue(u, {}, 1)
+            end
+        "#;
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::Lua53] {
+            let diagnostics = diagnostic_codes_for(version, with_index);
+            assert!(
+                diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "setuservalue must not expose the index in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, with_index);
+            assert!(
+                !diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "setuservalue must accept the index in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_debug_getuservalue_index_by_version() {
+        // The index is absent in 5.2/5.3 and optional from 5.4 on. LuaJIT
+        // ignores it, so the annotation accepts an extra argument.
+        let source = r#"
+            ---@param u userdata
+            local function f(u)
+                return debug.getuservalue(u, 1)
+            end
+        "#;
+
+        for version in [EmmyrcLuaVersion::Lua52, EmmyrcLuaVersion::Lua53] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "getuservalue must not expose the index in {version:?}: {diagnostics:?}"
+            );
+        }
+        for version in [EmmyrcLuaVersion::Lua54, EmmyrcLuaVersion::LuaJIT] {
+            let diagnostics = diagnostic_codes_for(version, source);
+            assert!(
+                !diagnostics.iter().any(|code| code == "redundant-parameter"),
+                "getuservalue must accept the index in {version:?}: {diagnostics:?}"
+            );
+        }
+
+        let no_index = r#"
+            ---@param u userdata
+            local function f(u)
+                return debug.getuservalue(u)
+            end
+        "#;
+        for version in [
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, no_index);
+            assert!(
+                !diagnostics.iter().any(|code| code == "param-type-mismatch"
+                    || code == "redundant-parameter"
+                    || code == "missing-parameter"),
+                "getuservalue must be callable without an index in {version:?}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_debug_uservalue_hidden_in_lua51() {
+        for call in ["debug.getuservalue(u)", "debug.setuservalue(u, {})"] {
+            let source = format!("---@param u userdata\nlocal function f(u)\n    {call}\nend");
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::Lua51, &source);
+            assert!(
+                diagnostics.iter().any(|code| code == "undefined-field"),
+                "Lua 5.1 must not expose {call}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_package_loadlib_failure_location_type() {
+        // `package.loadlib` reports where a failure happened as its third
+        // result: "open" when the library cannot be loaded, "init" when the
+        // function cannot be found or initialized. The third result is absent
+        // on success, hence the nullable union.
+        //
+        // Lua 5.1's manual does not document the return list, but its
+        // implementation (loadlib.c) and LuaJIT's lib_package.c both return
+        // `nil, err, "open"|"init"` on failure, so every supported runtime is
+        // covered here.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "package.loadlib(\"/lib/libfoo.so\", \"foo\")"),
+                "(function)?",
+                "package.loadlib must return a function or nil in {version:?}"
+            );
+            assert_eq!(
+                expr_type_for(
+                    version,
+                    "select(3, package.loadlib(\"/lib/libfoo.so\", \"foo\"))"
+                ),
+                "(\"open\"|\"init\")?",
+                "package.loadlib must expose the failure location in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_new_accepts_options() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            buffer.new()
+            buffer.new(nil)
+            buffer.new(nil, {})
+            buffer.new(1024)
+            buffer.new({ dict = { "a", "b" } })
+            buffer.new({ dict = { "a", false }, metatable = { false } })
+            buffer.new(1024, {})
+            buffer.new(1024, { dict = { "a" } })
+            "#,
+        );
+        for code in ["param-type-mismatch", "missing-fields", "missing-parameter"] {
+            assert!(
+                !diagnostics.iter().any(|diagnostic| diagnostic == code),
+                "buffer.new must accept the documented arguments ({code}): {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_writers_accept_documented_arguments() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            local ffi = require("ffi")
+            local buf = buffer.new()
+            buf:put()
+            buf:put("x", 1, {})
+            buf:putf("%s", true)
+            buf:set("x")
+            buf:set(ffi.new("char[4]"), 4)
+            "#,
+        );
+        for code in [
+            "param-type-mismatch",
+            "missing-parameter",
+            "redundant-parameter",
+        ] {
+            assert!(
+                !diagnostics.iter().any(|diagnostic| diagnostic == code),
+                "buffer writers must accept the documented arguments ({code}): {diagnostics:?}"
+            );
+        }
+
+        for expression in [
+            "require('string.buffer').new():put()",
+            "require('string.buffer').new():put('x', 1)",
+            "require('string.buffer').new():putf('%s', true)",
+            "require('string.buffer').new():set('x')",
+            "require('string.buffer').new():set(require('ffi').new('char[4]'), 4)",
+        ] {
+            assert_eq!(
+                expr_type_for(EmmyrcLuaVersion::LuaJIT, expression),
+                "string.buffer",
+                "{expression} must return the buffer"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_put_rejects_invalid_arguments() {
+        for source in [
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put(true)
+            "#,
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put("x", true)
+            "#,
+            r#"
+            local buffer = require("string.buffer")
+            local buf = buffer.new()
+            buf:put(nil)
+            "#,
+        ] {
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source);
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic == "param-type-mismatch"),
+                "{source} must be rejected: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_set_rejects_non_string_arguments() {
+        for argument in ["1", "{}"] {
+            let source = format!(
+                r#"
+                local buffer = require("string.buffer")
+                local buf = buffer.new()
+                buf:set({argument})
+                "#
+            );
+            let diagnostics = diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, &source);
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic == "param-type-mismatch"),
+                "{source} must be rejected: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_buffer_serializer_accepts_supported_values() {
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            local ffi = require("ffi")
+            local buf = buffer.new()
+            buf:encode(nil)
+            buf:encode(false)
+            buf:encode(true)
+            buf:encode(1)
+            buf:encode("x")
+            buf:encode({})
+            buf:encode(ffi.new("int64_t", 1))
+            buf:decode()
+            buffer.encode(true)
+            buffer.decode("x")
+            "#,
+        );
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic == "param-type-mismatch"),
+            "the serializer must accept supported Lua types: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_free_returns_buffer() {
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "require('string.buffer').new():free()"
+            ),
+            "string.buffer"
+        );
+
+        let diagnostics = diagnostic_codes_for(
+            EmmyrcLuaVersion::LuaJIT,
+            r#"
+            local buffer = require("string.buffer")
+            buffer.new():free():reset():commit(0)
+            "#,
+        );
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic == "param-type-mismatch"
+                    || diagnostic == "missing-parameter"
+                    || diagnostic == "call-non-callable"),
+            "free() must return the buffer for chaining: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_operators() {
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "#(require('string.buffer').new())"
+            ),
+            "integer"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "require('string.buffer').new() .. 'x'"
+            ),
+            "string"
+        );
+        assert_eq!(
+            expr_type_for(
+                EmmyrcLuaVersion::LuaJIT,
+                "'x' .. require('string.buffer').new()"
+            ),
+            "string"
+        );
+    }
+
+    #[test]
+    fn test_string_buffer_is_only_available_in_jit() {
+        let source = r#"local _ = require("string.buffer")"#;
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert!(
+                diagnostic_codes_for(version, source)
+                    .iter()
+                    .any(|code| code == "unresolved-require"),
+                "string.buffer must be unavailable in {version:?}"
+            );
+        }
+        assert!(
+            !diagnostic_codes_for(EmmyrcLuaVersion::LuaJIT, source)
+                .iter()
+                .any(|code| code == "unresolved-require"),
+            "string.buffer must be available in LuaJIT"
+        );
     }
 }

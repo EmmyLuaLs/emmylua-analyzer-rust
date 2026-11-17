@@ -61,6 +61,7 @@ pub fn load_resource_std(
 
 fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
     const JIT_FILES_TO_REMOVE: &[&str] = &[
+        "bit.lua",
         "jit.lua",
         "jit/profile.lua",
         "jit/util.lua",

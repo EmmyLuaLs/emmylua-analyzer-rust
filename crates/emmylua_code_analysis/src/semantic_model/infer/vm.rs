@@ -2675,8 +2675,8 @@ impl<'a> InferVm<'a> {
                 .find(|(param_name, _)| param_name == name)
                 .map(|(_, syntax)| self.model.project_doc_type_in_scope(*syntax, scope))
                 .unwrap_or(LuaType::Any);
-            if docs.nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if docs.nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }
@@ -4008,7 +4008,6 @@ pub(crate) fn unify_call_bindings(
                 }
             } else {
                 let pv = param_union.into_vec();
-                // 泛型联合优先绑定模板分支, 普通联合按兼容的具体成员匹配.
                 if matches!(arg, Function | DocFunction(_) | Signature(_)) {
                     pv.iter()
                         .any(|p| unify_call_bindings(model, p, arg, bindings))
@@ -4021,9 +4020,6 @@ pub(crate) fn unify_call_bindings(
                     } else {
                         true
                     }
-                } else if pv.iter().any(|p| matches!(p, TplRef(_))) {
-                    pv.iter()
-                        .any(|p| unify_call_bindings(model, p, arg, bindings))
                 } else {
                     pv.iter().any(|p| {
                         let mut trial = bindings.clone();

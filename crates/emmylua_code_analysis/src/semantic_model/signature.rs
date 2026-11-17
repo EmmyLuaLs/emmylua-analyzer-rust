@@ -406,8 +406,8 @@ impl<'db> SemanticModel<'db> {
             ty = type_eval::expand_alias_generic(self, &ty);
             // Do not evaluate conditional types here: before function generics are substituted, `T extends ...` would incorrectly take the false branch.
             // Call sites/diagnostics should call `eval_conditionals` after bindings are substituted.
-            if nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }
@@ -710,6 +710,48 @@ impl<'db> SemanticModel<'db> {
             .into_iter()
             .next()
     }
+    /// Function signatures of a `---@type` doc type: a function type, an alias of one, or a union of them.
+    fn doc_function_signatures(
+        &self,
+        file_id: FileId,
+        doc_syntax: LuaSyntaxId,
+    ) -> Option<Vec<LuaFunctionType>> {
+        let mut doc_ty =
+            type_eval::expand_alias_generic(self, &self.project_doc_type(file_id, doc_syntax, &[]));
+        // When an inline field `---@type test` points to a plain alias, `expand_alias_generic` only expands
+        // the `Alias<...>` form; bare `Ref(test)` needs to continue along the alias chain to the function type.
+        let mut alias_visited = Vec::new();
+        while let LuaType::Ref(id) | LuaType::Def(id) = &doc_ty {
+            let alias_id = id.clone();
+            if alias_visited.contains(&alias_id) {
+                break;
+            }
+            let Some(def) = self.type_def_of(&alias_id) else {
+                break;
+            };
+            if def.kind != TypeDefKind::Alias {
+                break;
+            }
+            let Some(target) = self.alias_target(&def) else {
+                break;
+            };
+            alias_visited.push(alias_id);
+            doc_ty = type_eval::expand_alias_generic(self, &target);
+        }
+        let mut docs_out = Vec::new();
+        match &doc_ty {
+            LuaType::DocFunction(fun) => docs_out.push(fun.as_ref().clone()),
+            LuaType::Union(union) => {
+                for ty in union.into_vec() {
+                    if let LuaType::DocFunction(fun) = ty {
+                        docs_out.push(fun.as_ref().clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+        (!docs_out.is_empty()).then_some(docs_out)
+    }
     /// Returns all usable function signatures for this member implementation:
     /// - `---@overload` as the overload set;
     /// - repeated `---@field` (non-overload) follows old semantics where the last one overrides previous ones;
@@ -719,52 +761,24 @@ impl<'db> SemanticModel<'db> {
         closure_syntax: LuaSyntaxId,
     ) -> Option<Vec<LuaFunctionType>> {
         let facts = self.file_facts()?;
+        let member_file = self.view.file_id();
+        // `---@type fun(...)` on `local f = function(...)` gives the function type.
+        if let Some(doc_syntax) = facts
+            .decl_by_value_syntax(closure_syntax)
+            .and_then(|decl| decl.doc_type_syntax)
+            && let Some(docs_out) = self.doc_function_signatures(member_file, doc_syntax)
+        {
+            return Some(docs_out);
+        }
         let member = facts
             .members
             .iter()
             .find(|member| member.value_syntax == Some(closure_syntax))?;
-        let member_file = self.view.file_id();
         // 0. Inline `---@type` on a table field (`{ ---@type test A = function(a, b) ... }`) directly gives the function type.
-        if let Some(doc_syntax) = member.doc_type_syntax {
-            let mut doc_ty = type_eval::expand_alias_generic(
-                self,
-                &self.project_doc_type(member_file, doc_syntax, &[]),
-            );
-            // When an inline field `---@type test` points to a plain alias, `expand_alias_generic` only expands
-            // the `Alias<...>` form; bare `Ref(test)` needs to continue along the alias chain to the function type.
-            let mut alias_visited = Vec::new();
-            while let LuaType::Ref(id) | LuaType::Def(id) = &doc_ty {
-                let alias_id = id.clone();
-                if alias_visited.contains(&alias_id) {
-                    break;
-                }
-                let Some(def) = self.type_def_of(&alias_id) else {
-                    break;
-                };
-                if def.kind != TypeDefKind::Alias {
-                    break;
-                }
-                let Some(target) = self.alias_target(&def) else {
-                    break;
-                };
-                alias_visited.push(alias_id);
-                doc_ty = type_eval::expand_alias_generic(self, &target);
-            }
-            let mut docs_out = Vec::new();
-            match &doc_ty {
-                LuaType::DocFunction(fun) => docs_out.push(fun.as_ref().clone()),
-                LuaType::Union(union) => {
-                    for ty in union.into_vec() {
-                        if let LuaType::DocFunction(fun) = ty {
-                            docs_out.push(fun.as_ref().clone());
-                        }
-                    }
-                }
-                _ => {}
-            }
-            if !docs_out.is_empty() {
-                return Some(docs_out);
-            }
+        if let Some(doc_syntax) = member.doc_type_syntax
+            && let Some(docs_out) = self.doc_function_signatures(member_file, doc_syntax)
+        {
+            return Some(docs_out);
         }
         // 1. `---@overload` on the function's own doc: each overload is an independent candidate.
         if let Some(signature) = facts.signature_by_closure(closure_syntax)
@@ -977,8 +991,8 @@ impl<'db> SemanticModel<'db> {
             ty = infer::vm::bind_signature_generics(&ty, &generic_params);
             ty = type_eval::expand_alias_generic(self, &ty);
             // See `type_of_signature`: do not evaluate conditional types before function generics are substituted.
-            if nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-                ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+            if nullable_params.iter().any(|n| n == name) {
+                ty = LuaType::make_nullable(ty);
             }
             params.push((name.to_string(), Some(ty)));
         }

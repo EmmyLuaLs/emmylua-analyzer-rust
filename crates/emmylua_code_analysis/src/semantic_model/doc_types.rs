@@ -154,7 +154,7 @@ impl<'db> SemanticModel<'db> {
             .collect()
     }
 
-    /// 准备本次投影作用域共用的泛型元数据.
+    /// Prepares the generic metadata shared by this projection scope.
     pub(crate) fn doc_type_scope<'a>(
         &self,
         file_id: FileId,
@@ -166,7 +166,7 @@ impl<'db> SemanticModel<'db> {
             templates: self.generic_tpls_with_metadata(file_id, params),
         }
     }
-    /// 按指定文件和泛型作用域投影完整的注解类型.
+    /// Projects a complete doc type with the given file and generic scope.
     pub fn project_doc_type(
         &self,
         file_id: FileId,
@@ -177,7 +177,7 @@ impl<'db> SemanticModel<'db> {
         self.project_doc_type_in_scope(type_syntax, &scope)
     }
 
-    /// 在已准备的泛型作用域中投影注解类型.
+    /// Projects a doc type inside an already prepared generic scope.
     pub(crate) fn project_doc_type_in_scope(
         &self,
         type_syntax: LuaSyntaxId,
@@ -198,7 +198,7 @@ impl<'db> SemanticModel<'db> {
         self.project_doc_type_node(&doc_ty, scope)
     }
 
-    /// 按所属泛型作用域完整投影注解节点.
+    /// Fully projects a doc type node within its owning generic scope.
     pub(crate) fn project_doc_type_node(
         &self,
         doc_ty: &LuaDocType,
@@ -663,9 +663,8 @@ impl<'db> SemanticModel<'db> {
                         .get_type()
                         .map(|t| self.doc_type_lua_rich_scoped(&t, scope, state))
                         .unwrap_or(LuaType::Unknown);
-                    if param.is_nullable() && !ty.is_nullable() {
-                        ty =
-                            LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+                    if param.is_nullable() {
+                        ty = LuaType::make_nullable(ty);
                     }
                     params.push((name, Some(ty)));
                 }
