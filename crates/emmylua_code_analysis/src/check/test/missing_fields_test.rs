@@ -34,6 +34,10 @@ mod tests {
             ("integer|?", vec![]),
             ("integer?", vec![]),
             ("integer|nil", vec![]),
+            ("integer|?|nil", vec![]),
+            ("integer?|?", vec![]),
+            // A standalone `?` is not a type: the parser rejects it before any lowering.
+            ("?", vec![DiagnosticCode::DocSyntaxError]),
             ("integer", vec![DiagnosticCode::MissingFields]),
         ] {
             let diagnostics = check_source(&format!(
