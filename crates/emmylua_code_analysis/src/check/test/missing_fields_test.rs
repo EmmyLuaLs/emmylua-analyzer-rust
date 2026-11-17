@@ -26,6 +26,34 @@ mod tests {
         }
     }
 
+    /// LuaLS spells an optional field `T|?`; the bare `?` is `nil` (as in 0.25.1), so the field is
+    /// as optional as `T?` and `T|nil`. The shell lowering once read the `?` literal as `unknown`.
+    #[test]
+    fn test_union_with_bare_question_is_optional() {
+        for (ty, expected) in [
+            ("integer|?", vec![]),
+            ("integer?", vec![]),
+            ("integer|nil", vec![]),
+            ("integer", vec![DiagnosticCode::MissingFields]),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Record
+                ---@field x {ty}
+                ---@field y integer
+                ---@type Record
+                local value = {{ y = 1 }}
+                return value
+                "#,
+            ));
+            assert_eq!(
+                diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                expected,
+                "{ty}: {diagnostics:?}"
+            );
+        }
+    }
+
     #[test]
     fn test_missing_fields() {
         let mut ws = VirtualWorkspace::new();
