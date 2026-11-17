@@ -2,7 +2,7 @@
 
 use crate::DiagnosticCode;
 
-use super::{check_source, count_by_code};
+use super::{check_last_file, check_source, count_by_code};
 
 /// Argument type mismatch: f expects string, got 1.
 #[test]
@@ -209,4 +209,31 @@ fn test_alias_recursive_no_crash() {
     );
     // Recursive alias cannot be decided: just ensure no crash (diagnostic count is not important).
     let _ = diagnostics;
+}
+
+/// A `---@type` on a global member is the contract in every file: a write elsewhere is checked
+/// against it, it does not become a new declaration.
+#[test]
+fn test_write_to_global_member_declared_in_another_file() {
+    let declaring = "G = {}\nG.sub = {}\n\n---@type boolean\nG.flag = false\n\n\
+                     ---@type boolean\nG.sub.flag = false\n\nU = {}\nU.loose = 1\n";
+    for (write, expected) in [
+        ("G.flag = 'yes'", 1),
+        ("G.sub.flag = 'yes'", 1),
+        ("G.flag = 'yes'\nG.flag = true", 1),
+        ("G.flag = true", 0),
+        ("G.flag = true\nG.flag = false", 0),
+        ("G.sub.flag = true", 0),
+        // No `---@type` anywhere: nothing to hold the write to.
+        ("U.loose = 'a'", 0),
+        // A local of the same shape is not the global.
+        ("local G = {}\nG.flag = 'yes'", 0),
+    ] {
+        let diagnostics = check_last_file(&[declaring, write]);
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            expected,
+            "{write}"
+        );
+    }
 }
