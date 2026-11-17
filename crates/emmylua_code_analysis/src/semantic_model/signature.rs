@@ -616,7 +616,12 @@ impl<'db> SemanticModel<'db> {
         };
         let mut ty = self.type_of_decl(&self.resolve_name(root.get_position())?)?;
         for key in keys.into_iter().rev() {
-            let infos = member::member_infos_with_key_all(self, &ty, &LuaMemberKey::Name(key));
+            let infos = member::member_infos_with_key_mode(
+                self,
+                &ty,
+                &LuaMemberKey::Name(key),
+                member::MemberCollectMode::Effective,
+            );
             ty = LuaType::from_vec(infos.into_iter().map(|info| info.typ).collect());
             if ty.is_unknown() {
                 return None;
@@ -845,7 +850,12 @@ impl<'db> SemanticModel<'db> {
             .and_then(|prefix| self.declared_path_type(&prefix))
             .unwrap_or(owner_ty);
 
-        let infos = member::member_infos_with_key_all(self, &owner_ty, &key);
+        let infos = member::member_infos_with_key_mode(
+            self,
+            &owner_ty,
+            &key,
+            member::MemberCollectMode::Effective,
+        );
         let mut out = Vec::new();
         for info in &infos {
             out.extend(expand_callable_types_in_model(self, &info.typ));

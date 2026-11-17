@@ -1066,7 +1066,7 @@ impl<'db> SemanticModel<'db> {
         let call = LuaCallExpr::cast(node)?;
         let callee = call.get_prefix_expr()?;
 
-        // Member overloads: collect all `@field` candidates with `member_infos_with_key_all`, then select by arguments.
+        // Member overloads: collect the effective `@field` candidates, then select by arguments.
         if let LuaExpr::IndexExpr(index_expr) = &callee
             && let Some(prefix) = index_expr.get_prefix_expr()
             && let Some(resolved) = self.resolve_member(index_expr)
@@ -1188,7 +1188,7 @@ impl<'db> SemanticModel<'db> {
                 .collect(),
         )
     }
-    /// The specified-key members of a prefix type (all matches, overload scenarios).
+    /// The effective specified-key member of a prefix type (first declaration per key).
     pub fn member_infos_with_key(
         &self,
         prefix_type: &LuaType,
@@ -1196,13 +1196,14 @@ impl<'db> SemanticModel<'db> {
     ) -> Vec<member::MemberInfo> {
         member::member_infos_with_key(self, prefix_type, key)
     }
-    /// The specified-key members of a prefix type (all matches, no dedup; keeps repeated `@field` lines as overloads).
-    pub fn member_infos_with_key_all(
+    /// Members with the given key of a prefix type under the given collection mode.
+    pub fn member_infos_with_key_mode(
         &self,
         prefix_type: &LuaType,
         key: &LuaMemberKey,
+        mode: member::MemberCollectMode,
     ) -> Vec<member::MemberInfo> {
-        member::member_infos_with_key_all(self, prefix_type, key)
+        member::member_infos_with_key_mode(self, prefix_type, key, mode)
     }
     /// Member type for prefix type + key (old `infer_member_type`).
     pub fn member_type(&self, prefix_type: &LuaType, key: &LuaMemberKey) -> Option<LuaType> {

@@ -72,7 +72,16 @@ pub(crate) fn class_fields(model: &SemanticModel, target: &LuaType) -> LuaObject
 pub(super) fn member_infos_all(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
     let mut out = Vec::new();
     let mut visited = Vec::new();
-    collect_members(model, prefix_type, None, None, &mut visited, &mut out, None);
+    collect_members(
+        model,
+        prefix_type,
+        None,
+        None,
+        &mut visited,
+        &mut out,
+        None,
+        MemberCollectMode::Effective,
+    );
     out
 }
 
@@ -153,6 +162,7 @@ fn find_type_def_member(
             visited,
             &mut infos,
             Some(key),
+            MemberCollectMode::Effective,
         );
         if let Some(info) = infos.into_iter().next() {
             visited.pop();
@@ -391,7 +401,7 @@ pub(crate) fn member_info_impl(
     None
 }
 
-/// Members with the given key of a prefix type (all matches, overload scenario).
+/// The effective member of the key for a prefix type (first declaration per key).
 ///
 /// Keyed lookup must not enumerate every member of the owner: assignment-heavy files
 /// (`local M = {}; M.a = 1; M.b = 2; ...`) would otherwise become O(N^2).
@@ -400,25 +410,24 @@ pub fn member_infos_with_key(
     prefix_type: &LuaType,
     key: &LuaMemberKey,
 ) -> Vec<MemberInfo> {
-    let mut out = Vec::new();
-    let mut visited = Vec::new();
-    collect_members(
+    dedup_by_key(member_infos_with_key_mode(
         model,
         prefix_type,
-        None,
-        None,
-        &mut visited,
-        &mut out,
-        Some(key),
-    );
-    dedup_by_key(out)
+        key,
+        MemberCollectMode::Effective,
+    ))
 }
 
-/// Members with the given key of a prefix type (all matches, no dedup; duplicate `@field` lines are kept as overloads).
-pub(crate) fn member_infos_with_key_all(
+/// Members with the given key of a prefix type under the given collection mode.
+///
+/// - `Effective`:  keeps the highest-priority layer's declarations: same-key declarations in later layers
+///   are shadowed, while repeated `@field` lines inside the winning layer stay as overloads.
+/// - `AllDefinitions`: keeps every definition site, including declarations shadowed by a higher layer.
+pub fn member_infos_with_key_mode(
     model: &SemanticModel,
     prefix_type: &LuaType,
     key: &LuaMemberKey,
+    mode: MemberCollectMode,
 ) -> Vec<MemberInfo> {
     let mut out = Vec::new();
     let mut visited = Vec::new();
@@ -430,6 +439,7 @@ pub(crate) fn member_infos_with_key_all(
         &mut visited,
         &mut out,
         Some(key),
+        mode,
     );
     out
 }
@@ -582,6 +592,15 @@ fn push_member_info(out: &mut Vec<MemberInfo>, filter: Option<&LuaMemberKey>, in
     }
 }
 
+/// How member collection treats same-key declarations from different layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberCollectMode {
+    /// Effective members: a declaration in an earlier layer shadows the same key in later layers.
+    Effective,
+    /// All definitions: shadowed declarations are kept so every definition site stays reachable.
+    AllDefinitions,
+}
+
 fn collect_members(
     model: &SemanticModel,
     prefix_type: &LuaType,
@@ -590,6 +609,7 @@ fn collect_members(
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<MemberInfo>,
     filter: Option<&LuaMemberKey>,
+    mode: MemberCollectMode,
 ) {
     match prefix_type {
         // Named type: @field + inheritance + runtime value members.
@@ -606,6 +626,7 @@ fn collect_members(
                             visited,
                             out,
                             filter,
+                            mode,
                         );
                     });
                     return;
@@ -649,6 +670,7 @@ fn collect_members(
                             visited,
                             out,
                             filter,
+                            mode,
                         );
                         return;
                     }
@@ -661,6 +683,7 @@ fn collect_members(
                     visited,
                     out,
                     filter,
+                    mode,
                 );
             }
         }
@@ -670,7 +693,7 @@ fn collect_members(
                 && def.kind == TypeDefKind::Alias
             {
                 with_expanded_alias(model, prefix_type, |expanded| {
-                    collect_members(model, expanded, None, None, visited, out, filter);
+                    collect_members(model, expanded, None, None, visited, out, filter, mode);
                 });
                 return;
             }
@@ -703,6 +726,7 @@ fn collect_members(
                 visited,
                 out,
                 filter,
+                mode,
             );
         }
         // Anonymous table literal: field members of the synthesized owner (file, range).
@@ -779,6 +803,7 @@ fn collect_members(
                     visited,
                     out,
                     filter,
+                    mode,
                 );
             }
         }
@@ -795,8 +820,13 @@ fn collect_members(
                     &mut component_visited,
                     &mut component_members,
                     filter,
+                    mode,
                 );
                 for info in component_members {
+                    if mode == MemberCollectMode::AllDefinitions {
+                        push_declaration_info(out, filter, info);
+                        continue;
+                    }
                     if let Some(existing) = out.iter_mut().find(|existing| existing.key == info.key)
                     {
                         if existing.typ != info.typ {
@@ -897,6 +927,7 @@ fn collect_type_def_members(
     visited: &mut Vec<SemanticId>,
     out: &mut Vec<MemberInfo>,
     filter: Option<&LuaMemberKey>,
+    mode: MemberCollectMode,
 ) {
     if visited.contains(&def.id) || visited.len() >= MAX_MEMBER_INHERITANCE_DEPTH {
         return;
@@ -911,13 +942,22 @@ fn collect_type_def_members(
             push_member_info(&mut layer, filter, info);
         }
     }
-    push_member_layer(out, &mut shadowed, layer);
+    push_member_layer(out, &mut shadowed, layer, mode);
 
     // 2. Parent types
     for super_type in inherited_base_types(model, def, bindings, name_bindings) {
         let mut layer = Vec::new();
-        collect_members(model, &super_type, None, None, visited, &mut layer, filter);
-        push_member_layer(out, &mut shadowed, layer);
+        collect_members(
+            model,
+            &super_type,
+            None,
+            None,
+            visited,
+            &mut layer,
+            filter,
+            mode,
+        );
+        push_member_layer(out, &mut shadowed, layer, mode);
     }
 
     // 3. Runtime value members: members of the type's runtime value decl (same-file same-name `local M = {}`) (`M.x = 1`).
@@ -931,7 +971,7 @@ fn collect_type_def_members(
                 push_member_info(&mut layer, filter, info);
             }
         }
-        push_member_layer(out, &mut shadowed, layer);
+        push_member_layer(out, &mut shadowed, layer, mode);
     }
 }
 
@@ -939,13 +979,42 @@ fn push_member_layer(
     out: &mut Vec<MemberInfo>,
     shadowed: &mut HashSet<LuaMemberKey>,
     layer: Vec<MemberInfo>,
+    mode: MemberCollectMode,
 ) {
+    if mode == MemberCollectMode::AllDefinitions {
+        for info in layer {
+            push_declaration_info(out, None, info);
+        }
+        return;
+    }
     let visible: Vec<_> = layer
         .into_iter()
         .filter(|info| !shadowed.contains(&info.key))
         .collect();
     shadowed.extend(visible.iter().map(|info| info.key.clone()));
     out.extend(visible);
+}
+
+/// Appends a definition site, skipping declarations that are already collected.
+fn push_declaration_info(
+    out: &mut Vec<MemberInfo>,
+    filter: Option<&LuaMemberKey>,
+    info: MemberInfo,
+) {
+    if filter.is_some_and(|key| &info.key != key) {
+        return;
+    }
+    let duplicate = match (&info.id, info.file_id) {
+        (Some(id), Some(file_id)) => out
+            .iter()
+            .any(|existing| existing.file_id == Some(file_id) && existing.id.as_ref() == Some(id)),
+        _ => out.iter().any(|existing| {
+            existing.id.is_none() && existing.key == info.key && existing.typ == info.typ
+        }),
+    };
+    if !duplicate {
+        out.push(info);
+    }
 }
 
 /// `---@version` visibility: the member is visible if any version condition on its closure signature matches.

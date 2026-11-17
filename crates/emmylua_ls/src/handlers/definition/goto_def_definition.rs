@@ -6,7 +6,8 @@
 //! is retired; see `migration notes` §M3.
 
 use emmylua_code_analysis::{
-    Emmyrc, LuaMemberKey, MemberInfo, SemanticDatabase, SemanticId, SemanticModel, WorkspaceId,
+    Emmyrc, LuaMemberKey, MemberCollectMode, MemberInfo, SemanticDatabase, SemanticId,
+    SemanticModel, WorkspaceId,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocAttributeUse, LuaDocDescription, LuaDocFieldKey,
@@ -95,7 +96,8 @@ fn goto_member_definition(
     }
 
     for prefix_type in &prefix_types {
-        let infos = model.member_infos_with_key_all(&prefix_type, &key);
+        let infos =
+            model.member_infos_with_key_mode(&prefix_type, &key, MemberCollectMode::AllDefinitions);
         let infos = filter_overload_infos(model, token, &infos);
         for info in infos {
             if let Some(id) = info.id
@@ -220,7 +222,11 @@ fn add_field_accessor_locations(
         };
         for method_name in spec.accessor_names(field) {
             let method_key = LuaMemberKey::Name(method_name.into());
-            for info in model.member_infos_with_key_all(prefix_type, &method_key) {
+            for info in model.member_infos_with_key_mode(
+                prefix_type,
+                &method_key,
+                MemberCollectMode::AllDefinitions,
+            ) {
                 if let Some(id) = info.id
                     && let Some(range) = id.member_key_range()
                     && let Some(file_id) = info.file_id
@@ -549,9 +555,10 @@ fn resolve_doc_path(
         }
         if model.module_file_of(&prefix).is_some() {
             let module_ty = model.require_module_type(&prefix);
-            let infos = model.member_infos_with_key_all(
+            let infos = model.member_infos_with_key_mode(
                 &module_ty,
                 &LuaMemberKey::Name(names[cursor_index].clone().into()),
+                MemberCollectMode::AllDefinitions,
             );
             if let Some(response) = infos_to_locations(db, &infos) {
                 return Some(response);
@@ -596,7 +603,7 @@ fn member_definition_response(
     let mut infos = Vec::new();
     for (ty, name) in pairs {
         let key = LuaMemberKey::Name((*name).to_string().into());
-        for info in model.member_infos_with_key_all(ty, &key) {
+        for info in model.member_infos_with_key_mode(ty, &key, MemberCollectMode::AllDefinitions) {
             if !infos.iter().any(|existing: &MemberInfo| {
                 existing.id == info.id && existing.file_id == info.file_id
             }) {

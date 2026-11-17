@@ -7,7 +7,9 @@ use hashbrown::HashSet;
 use rowan::TextRange;
 
 use super::SemanticModel;
-use super::member::{member_infos_all, member_infos_with_key_all, table_metatable_index_info};
+use super::member::{
+    MemberCollectMode, member_infos_all, member_infos_with_key_mode, table_metatable_index_info,
+};
 use super::table_constructor::{ConstructorValue, TableConstructor, member_key};
 use super::type_check::TypeCheckFailReason;
 use super::type_eval::expand_alias_branches;
@@ -71,10 +73,11 @@ impl<'db> TableValue<'db> {
         // Otherwise, use the assignment that adds the field to this table.
         let member = self.model.require_complete(|| {
             let facts = self.model.file_facts();
-            member_infos_with_key_all(
+            member_infos_with_key_mode(
                 &self.model,
                 &LuaType::TableConst(self.identity.clone()),
                 key,
+                MemberCollectMode::AllDefinitions,
             )
             .into_iter()
             .find(|info| {
