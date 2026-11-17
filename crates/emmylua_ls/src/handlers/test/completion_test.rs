@@ -3081,6 +3081,28 @@ items.<??>
     }
 
     #[gtest]
+    fn test_member_completion_of_a_class_table_from_another_file() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        ws.def_file(
+            "lib.lua",
+            "---@class LibClass\nLib = {}\nfunction Lib.start() end\nLib.version = 1\n",
+        );
+        for (source, expected) in [
+            ("io.<??>", "open"),
+            ("string.<??>", "format"),
+            ("Lib.<??>", "start"),
+        ] {
+            let items = get_completion_items(&mut ws, source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items.iter().any(|item| item.label == expected),
+                "{source}: {:?}",
+                items.iter().map(|item| &item.label).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_doc_alias_type_completion() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file(
