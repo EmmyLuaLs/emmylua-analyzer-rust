@@ -292,4 +292,47 @@ mod test {
             "{diagnostics:?}"
         );
     }
+
+    #[test]
+    fn test_same_key_on_different_nested_tables_is_not_duplicate() {
+        for (source, count) in [
+            (
+                "local M = { A = {}, B = {} }\nfunction M.A:init() end\nfunction M.B:init() end\n",
+                0,
+            ),
+            (
+                "local M = { a = {}, b = {} }\nM.a.to = function() end\nM.b.to = function() end\n",
+                0,
+            ),
+            // The same nested table twice still is a duplicate.
+            (
+                "local M = { A = {} }\nfunction M.A:init() end\nfunction M.A:init() end\n",
+                2,
+            ),
+        ] {
+            let diagnostics = check_source(source);
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::DuplicateSetField),
+                count,
+                "{source}: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_setting_a_nil_field_of_a_required_module_is_not_duplicate() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "reg.lua",
+            "local M = { a = { to = nil }, b = { to = nil } }\nreturn M\n",
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::DuplicateSetField,
+            r#"
+            local reg = require("reg")
+            reg.a.to = function() end
+            reg.b.to = function() end
+        "#
+        ));
+    }
 }
