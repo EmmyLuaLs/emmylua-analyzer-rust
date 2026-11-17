@@ -1123,7 +1123,9 @@ impl<'db> SemanticModel<'db> {
                 }
                 // Alias types have no `@field` surface of their own. Resolve through the alias
                 // target so `---@type SomeAlias` values can still find class/table members.
+                // A union alias has no single member, like the union it names.
                 if def.kind == TypeDefKind::Alias
+                    && !matches!(self.alias_target(&def), Some(LuaType::Union(_)))
                     && let Some(info) =
                         self.member_info(prefix_ty, &LuaMemberKey::Name(name.clone()))
                     && let Some(member_id) = info.id
