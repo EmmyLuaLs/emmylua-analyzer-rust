@@ -20,8 +20,8 @@ bit32 = {}
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.arshift"])
 ---
---- @param x    integer
---- @param disp integer
+--- @param x    number
+--- @param disp number
 --- @return integer
 --- @nodiscard
 function bit32.arshift(x, disp) end
@@ -31,6 +31,7 @@ function bit32.arshift(x, disp) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.band"])
 ---
+--- @param ... number
 --- @return integer
 --- @nodiscard
 function bit32.band(...) end
@@ -46,7 +47,7 @@ function bit32.band(...) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bnot"])
 ---
---- @param x integer
+--- @param x number
 --- @return integer
 --- @nodiscard
 function bit32.bnot(x) end
@@ -56,6 +57,7 @@ function bit32.bnot(x) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bor"])
 ---
+--- @param ... number
 --- @return integer
 --- @nodiscard
 function bit32.bor(...) end
@@ -65,6 +67,7 @@ function bit32.bor(...) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.btest"])
 ---
+--- @param ... number
 --- @return boolean
 --- @nodiscard
 function bit32.btest(...) end
@@ -74,6 +77,7 @@ function bit32.btest(...) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bxor"])
 ---
+--- @param ... number
 --- @return integer
 --- @nodiscard
 function bit32.bxor(...) end
@@ -83,9 +87,9 @@ function bit32.bxor(...) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.extract"])
 ---
---- @param n      integer
---- @param field  integer
---- @param width? integer
+--- @param n      number
+--- @param field  number
+--- @param width? number
 --- @return integer
 --- @nodiscard
 function bit32.extract(n, field, width) end
@@ -95,10 +99,11 @@ function bit32.extract(n, field, width) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.replace"])
 ---
---- @param n      integer
---- @param v      integer
---- @param field  integer
---- @param width? integer
+--- @param n      number
+--- @param v      number
+--- @param field  number
+--- @param width? number
+--- @return integer
 --- @nodiscard
 function bit32.replace(n, v, field, width) end
 
@@ -107,11 +112,11 @@ function bit32.replace(n, v, field, width) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lrotate"])
 ---
---- @param x     integer
---- @param distp integer
+--- @param x    number
+--- @param disp number
 --- @return integer
 --- @nodiscard
-function bit32.lrotate(x, distp) end
+function bit32.lrotate(x, disp) end
 
 ---
 --- Returns the number `x` shifted `disp` bits to the left. Negative displacements shift to the right. In any direction, vacant bits are filled with zeros.
@@ -124,22 +129,22 @@ function bit32.lrotate(x, distp) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lshift"])
 ---
---- @param x     integer
---- @param distp integer
+--- @param x    number
+--- @param disp number
 --- @return integer
 --- @nodiscard
-function bit32.lshift(x, distp) end
+function bit32.lshift(x, disp) end
 
 ---
 --- Returns the number `x` rotated `disp` bits to the right. Negative displacements rotate to the left.
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rrotate"])
 ---
---- @param x     integer
---- @param distp integer
+--- @param x    number
+--- @param disp number
 --- @return integer
 --- @nodiscard
-function bit32.rrotate(x, distp) end
+function bit32.rrotate(x, disp) end
 
 ---
 --- Returns the number `x` shifted `disp` bits to the right. Negative displacements shift to the left. In any direction, vacant bits are filled with zeros.
@@ -152,10 +157,10 @@ function bit32.rrotate(x, distp) end
 ---
 --- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rshift"])
 ---
---- @param x     integer
---- @param distp integer
+--- @param x    number
+--- @param disp number
 --- @return integer
 --- @nodiscard
-function bit32.rshift(x, distp) end
+function bit32.rshift(x, disp) end
 
 return bit32
