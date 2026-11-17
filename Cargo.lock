@@ -290,6 +290,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,7 +539,7 @@ dependencies = [
  "fern",
  "googletest",
  "log",
- "mimalloc",
+ "mimalloc-safe",
  "rowan",
  "serde",
  "serde_json",
@@ -595,7 +604,7 @@ dependencies = [
  "fern",
  "include_dir",
  "log",
- "mimalloc",
+ "mimalloc-safe",
  "num-traits",
  "rowan",
  "serde",
@@ -612,7 +621,7 @@ dependencies = [
  "emmylua_parser",
  "glob",
  "hashbrown 0.17.1",
- "mimalloc",
+ "mimalloc-safe",
  "rowan",
  "serde",
  "serde_json",
@@ -643,7 +652,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "lsp-server",
- "mimalloc",
+ "mimalloc-safe",
  "notify",
  "rowan",
  "rust-i18n",
@@ -1250,12 +1259,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
-name = "libmimalloc-sys"
-version = "0.1.49"
+name = "libmimalloc-sys2"
+version = "0.1.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
+checksum = "7dba4922950d581f24b14e2331e64777f6800a6155877cb2e2b5b8ea7749b4b5"
 dependencies = [
  "cc",
+ "cmake",
+ "libc",
 ]
 
 [[package]]
@@ -1349,12 +1360,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "mimalloc"
-version = "0.1.52"
+name = "mimalloc-safe"
+version = "0.1.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+checksum = "deca8fbcd65d382e64050604b1e608e99d6c0bdcf3ff0d36c20ca852e847c458"
 dependencies = [
- "libmimalloc-sys",
+ "libmimalloc-sys2",
 ]
 
 [[package]]

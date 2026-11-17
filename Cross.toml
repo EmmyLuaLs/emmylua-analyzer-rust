@@ -1,0 +1,6 @@
+[target.riscv64gc-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install -y cmake build-essential",
+]
+
+image = "ghcr.io/cross-rs/riscv64gc-unknown-linux-gnu:main"
