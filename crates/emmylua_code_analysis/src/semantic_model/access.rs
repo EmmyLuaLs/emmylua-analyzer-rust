@@ -2,11 +2,166 @@ use super::prelude::*;
 use crate::check::checker::generic_constraint_mismatch::resolved_call_signatures;
 use crate::check::checker::param_count::callable_functions;
 use crate::check::checker::param_type_check::callable_candidates_uncached;
+use emmylua_parser::LuaIndexKey;
 
 impl<'db> SemanticModel<'db> {
     /// Currently configured runtime version (used for `---@version` visibility checks).
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.db().lua_version()
+    }
+    /// Whether any of the `---@version` conditions matches the configured runtime.
+    ///
+    /// An empty condition list means the declaration is visible in every version.
+    pub(crate) fn versions_visible(
+        &self,
+        versions: &[emmylua_parser::LuaVersionCondition],
+    ) -> bool {
+        let Some(version) = self.lua_version() else {
+            return true;
+        };
+        versions.is_empty() || versions.iter().any(|condition| condition.check(&version))
+    }
+    /// Whether a cross-file member reference is visible under the configured runtime version.
+    ///
+    /// Used where raw members are selected by key (e.g. stdlib global-table members): a
+    /// `---@version`-hidden declaration must not shadow a later visible one.
+    ///
+    /// Missing file facts / member data is treated as visible: that is the safe
+    /// default, so incomplete indexes do not hide declarations.
+    pub(crate) fn member_ref_versions_visible(&self, member_ref: &MemberRef) -> bool {
+        let Some(facts) = self.file_facts_of(member_ref.file_id) else {
+            return true;
+        };
+        let Some(member) = facts.member_by_id(&member_ref.id) else {
+            return true;
+        };
+        member::member_version_visible(self, facts, member)
+    }
+
+    /// Whether a declaration/member is visible under the configured Lua version.
+    pub(crate) fn semantic_id_version_visible(&self, id: &SemanticId) -> bool {
+        // Declarations store their `---@version` conditions directly, which
+        // covers non-function declarations (for example `bit = {}`).
+        if let SemanticId::Decl(key) = id
+            && let Some(facts) = self.file_facts_of(key.file_id)
+            && let Some(decl) = facts.decl_by_id(id)
+            && !decl.version_conds.is_empty()
+        {
+            return self.versions_visible(&decl.version_conds);
+        }
+        let Some((file_id, signature_syntax)) = self.versioned_signature_syntax(id) else {
+            return true;
+        };
+        let Some(facts) = self.file_facts_of(file_id) else {
+            return true;
+        };
+        let Some(signature) = facts.signature_by_closure(signature_syntax) else {
+            return true;
+        };
+        signature
+            .docs
+            .as_ref()
+            .is_none_or(|docs| self.versions_visible(&docs.versions))
+    }
+
+    /// Whether a callee expression refers to a declaration/member that is
+    /// visible under the configured Lua version. Used to avoid cascading
+    /// parameter diagnostics for version-gated callees.
+    pub(crate) fn is_callee_version_visible(&self, callee: &LuaExpr) -> bool {
+        match callee {
+            LuaExpr::NameExpr(name_expr) => {
+                let Some(name) = name_expr.get_name_text() else {
+                    return true;
+                };
+                if let Some(local) = self.resolve_local_name(name_expr.get_position()) {
+                    return self.semantic_id_version_visible(&local);
+                }
+                let decls = self.global_decls_named_for_file(self.file_id(), name.as_str());
+                decls.is_empty()
+                    || decls
+                        .iter()
+                        .any(|decl| self.semantic_id_version_visible(decl))
+            }
+            LuaExpr::IndexExpr(index_expr) => !self.is_version_hidden_member_access(index_expr),
+            _ => true,
+        }
+    }
+
+    /// Whether a static index access resolves to a member that exists only in
+    /// declarations hidden by `---@version` for the configured runtime.
+    ///
+    /// `member_infos_with_key` already filters version-hidden members, so an
+    /// empty result plus a hidden resolved member means there is no visible
+    /// candidate with this key. Owner types whose members `collect_members`
+    /// cannot enumerate keep the optimistic "visible" default.
+    pub(crate) fn is_version_hidden_member_access(&self, index_expr: &LuaIndexExpr) -> bool {
+        let Some(index_key) = index_expr.get_index_key() else {
+            return false;
+        };
+        let Some(key) = static_index_member_key(&index_key) else {
+            return false;
+        };
+        let Some(prefix) = index_expr.get_prefix_expr() else {
+            return false;
+        };
+        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
+        if !member_surface_is_enumerable(&prefix_ty) {
+            return false;
+        }
+        // `member_infos_with_key` covers `@field`, table literals, string
+        // methods and class methods; if it finds a visible member, the access
+        // is not hidden.
+        if !self.member_infos_with_key(&prefix_ty, &key).is_empty() {
+            return false;
+        }
+        let Some(resolved) = self.resolve_member(index_expr) else {
+            return false;
+        };
+        let Some(member_id) = resolved.member_id.as_ref() else {
+            return false;
+        };
+        if self.semantic_id_version_visible(member_id) {
+            return false;
+        }
+        // Global std tables keep their runtime members under `Name("os")`
+        // rather than the class `Ref`, so `member_infos_with_key` is empty for
+        // them. Check the resolved owner for a visible sibling declaration
+        // (e.g. `string.dump` exists in 5.1/5.2 and in 5.3+).
+        if let LuaMemberKey::Name(name) = &key
+            && self
+                .members_of_owner_named(&resolved.owner, name)
+                .iter()
+                .any(|member| self.member_ref_versions_visible(member))
+        {
+            return false;
+        }
+        true
+    }
+
+    /// Whether a global name exists only in declarations hidden by `---@version`.
+    pub(crate) fn is_version_hidden_global(&self, name: &str) -> bool {
+        let decls = self.global_decls_named_for_file(self.file_id(), name);
+        !decls.is_empty()
+            && decls
+                .iter()
+                .all(|decl| !self.semantic_id_version_visible(decl))
+    }
+
+    fn versioned_signature_syntax(&self, id: &SemanticId) -> Option<(FileId, LuaSyntaxId)> {
+        match id {
+            SemanticId::Decl(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let decl = facts.decl_by_id(id)?;
+                let syntax = decl.value_expr_syntax.or(decl.owner_syntax)?;
+                Some((key.file_id, syntax))
+            }
+            SemanticId::Member(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let member = facts.member_by_id(id)?;
+                Some((key.file_id, member.value_syntax?))
+            }
+            _ => None,
+        }
     }
     /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
@@ -551,62 +706,115 @@ impl<'db> SemanticModel<'db> {
     ///
     /// `f` may be declared in multiple files (global overloads); this entry goes
     /// through the same `signature_candidates` projection used by the VM, so
-    /// diagnostics/completion see the same set.
+    /// diagnostics/completion see the same set. `None` keeps single-declaration
+    /// inference; `Some` includes the current file's casts and guards.
     pub(crate) fn callable_candidates_for_name_expr(
         &self,
         callee: &LuaExpr,
-    ) -> Vec<LuaFunctionType> {
+    ) -> Option<Vec<LuaFunctionType>> {
         let LuaExpr::NameExpr(name_expr) = callee else {
-            return Vec::new();
+            return None;
         };
-        let Some(owner) = self.resolve_name(name_expr.get_position()) else {
-            return Vec::new();
-        };
+        let owner = self.resolve_name(name_expr.get_position())?;
         // Only intervene for actual same-workspace global overloads. A single
         // declaration keeps the legacy projection path, which preserves its
         // generic/closure details.
         let SemanticId::Decl(key) = &owner else {
-            return Vec::new();
+            return None;
         };
-        let Some(facts) = self.file_facts_of(key.file_id) else {
-            return Vec::new();
-        };
-        let Some(decl) = facts.decl_by_id(&owner) else {
-            return Vec::new();
-        };
+        let facts = self.file_facts_of(key.file_id)?;
+        let decl = facts.decl_by_id(&owner)?;
         if !matches!(decl.kind, DeclKind::Global) {
-            return Vec::new();
+            return None;
         }
         let decls = self.global_decls_named_for_file(key.file_id, decl.name.as_str());
         if decls.len() <= 1 {
-            return Vec::new();
+            return None;
         }
         let vm = infer::vm::InferVm::new(self, &[]);
         // Identical duplicate declarations (same file content loaded twice, common in
         // tests / project duplicates) must keep the legacy single-symbol path; only
         // genuinely different global declarations are overloads.
         let mut per_decl: Vec<Vec<LuaFunctionType>> = Vec::with_capacity(decls.len());
+        let mut contracts = Vec::with_capacity(decls.len());
         for decl in &decls {
-            let candidates = vm
-                .callable_candidates_for_owner_single(decl)
-                .unwrap_or_default();
+            let mut candidates = if let SemanticId::Decl(key) = decl
+                && self
+                    .file_facts_of(key.file_id)
+                    .and_then(|facts| facts.decl_by_id(decl))
+                    .is_some_and(|decl| decl.doc_type_syntax.is_some())
+                && let Some(declared) = self.type_of_decl(decl)
+            {
+                let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+                if !candidates.is_empty() {
+                    contracts.push(declared);
+                }
+                candidates
+            } else {
+                Vec::new()
+            };
+            if candidates.is_empty() {
+                candidates = vm
+                    .callable_candidates_for_owner_single(decl)
+                    .unwrap_or_default();
+                contracts.extend(
+                    candidates
+                        .iter()
+                        .cloned()
+                        .map(|fun| LuaType::DocFunction(Rc::new(fun))),
+                );
+            }
             per_decl.push(candidates);
         }
-        let Some(first) = per_decl.first() else {
-            return Vec::new();
-        };
+        let first = per_decl.first()?;
         if per_decl.iter().all(|candidates| candidates == first) {
-            return Vec::new();
+            return None;
         }
-        per_decl.into_iter().flatten().collect()
+        // Apply this file's casts and guards once to the combined contract.
+        // Keep callable class types intact until guards have narrowed them.
+        let contract = flow::type_of_decl_contract_at(
+            self,
+            &owner,
+            name_expr.get_position(),
+            LuaType::from_vec(contracts),
+        );
+        // Some(empty) is a complete result: a cast can remove every callable.
+        let mut candidates = Vec::new();
+        for candidate in infer::vm::expand_callable_types_in_model(self, &contract) {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        }
+        Some(candidates)
     }
 
-    /// Public unified candidates for call rendering (signature help / completion / hover).
+    /// All callable candidates for call checks and rendering, before argument matching.
     ///
     /// Combines the diagnostic candidate path (member `CallableCandidateSet`,
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
+        if let Some(globals) = self.callable_candidates_for_name_expr(callee) {
+            return globals;
+        }
+        // The declared contract, including named casts, takes priority over
+        // implementation docs and assignments.
+        if let LuaExpr::NameExpr(name_expr) = callee
+            && let Some(SemanticId::Decl(key)) = self.resolve_name(name_expr.get_position())
+            && self
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.decl_by_id(&SemanticId::Decl(key.clone())))
+                .is_some_and(|decl| decl.doc_type_syntax.is_some())
+        {
+            let owner = SemanticId::Decl(key);
+            let contract = self.type_of_decl(&owner).unwrap_or(LuaType::Unknown);
+            let declared =
+                flow::type_of_decl_contract_at(self, &owner, name_expr.get_position(), contract);
+            let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+            if !candidates.is_empty() {
+                return candidates;
+            }
+        }
         let mut out = self.callable_candidates_cached(callee);
         // The value type may omit `---@overload` signatures. Keep its richer
         // generic projection when there are no overloads to add.
@@ -692,7 +900,7 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
             };
         };
-        let candidates = self.callable_candidates_cached(&callee);
+        let candidates = self.callable_candidates_for_expr(&callee);
         if candidates.is_empty() {
             return CallSiteAnalysis {
                 candidates,
@@ -1244,4 +1452,35 @@ impl<'db> SemanticModel<'db> {
             _ => None,
         }
     }
+}
+
+/// Static member key of an index expression (`t.x`, `t["x"]`, `t[1]`).
+fn static_index_member_key(key: &LuaIndexKey) -> Option<LuaMemberKey> {
+    match key {
+        LuaIndexKey::Name(name) => Some(LuaMemberKey::Name(name.get_name_text().into())),
+        LuaIndexKey::String(string) => Some(LuaMemberKey::Name(string.get_value().into())),
+        LuaIndexKey::Integer(integer) => match integer.get_number_value() {
+            NumberResult::Int(value) => Some(LuaMemberKey::Integer(value)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Owner types handled by `member::collect_members`; only for these can
+/// `member_infos_with_key` authoritatively decide whether a visible member exists.
+fn member_surface_is_enumerable(ty: &LuaType) -> bool {
+    matches!(
+        ty,
+        LuaType::Ref(_)
+            | LuaType::Def(_)
+            | LuaType::TableConst(_)
+            | LuaType::Object(_)
+            | LuaType::Generic(_)
+            | LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::DocStringConst(_)
+            | LuaType::Intersection(_)
+            | LuaType::Union(_)
+    )
 }

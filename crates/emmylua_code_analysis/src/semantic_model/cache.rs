@@ -26,6 +26,29 @@ use crate::IndexInfo;
 pub(crate) enum BuiltinKey {
     Expression(LuaSyntaxId),
     Flow(SemanticId, FlowId),
+    /// All writes, seeded by the point value or the declaration initializer.
+    Declaration(SemanticId, Option<FlowId>),
+    /// Standard global value before any workspace writes.
+    InitialGlobal(SmolStr),
+}
+
+impl super::SemanticModel<'_> {
+    /// An unfinished semantic dependency cannot prove either outcome.
+    pub(crate) fn require_complete<T>(
+        &self,
+        query: impl FnOnce() -> T,
+    ) -> Result<T, super::type_check::TypeCheckFailReason> {
+        let revision = self.cache.borrow().revision();
+        let result = query();
+        let cache = self.cache.borrow();
+        if cache.evaluation_exhausted {
+            Err(super::type_check::TypeCheckFailReason::TooComplex)
+        } else if cache.is_complete(revision) {
+            Ok(result)
+        } else {
+            Err(super::type_check::TypeCheckFailReason::Unresolved)
+        }
+    }
 }
 
 /// Keep provisional memo entries while dependent queries still need them.
@@ -177,12 +200,15 @@ pub(crate) struct OriginalSignatures {
     pub(super) signatures: Rc<Vec<LuaFunctionType>>,
 }
 
-/// The three declaration queries supported by the shared flow walk.
+/// Declaration queries supported by the shared flow walk.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum DeclTracePurpose {
     ReadValue,
-    /// Use the declaration type and casts, without assignments or branch guards.
-    AssignTarget,
+    /// Use this contract with guards and casts, without assignment types.
+    /// The seed is part of the key because globals can combine several declarations.
+    ReadContract(LuaType),
+    /// Use the supplied contract (or declaration type) and casts, without assignments or guards.
+    AssignTarget(Option<LuaType>),
     OriginalSignatures(OriginalSignatures),
 }
 
@@ -205,15 +231,16 @@ pub(crate) enum TraceSubject {
     Member {
         member: SemanticId,
         access: Option<LuaSyntaxId>,
+        ignore_guards: bool,
     },
 }
 
-/// Memo key for one flow-trace state on a loop-free graph: `(file, subject, flow node)`.
+/// Memo key for one flow-trace state outside a cycle: `(file, subject, flow node)`.
 /// Original-signature traces keep incoming PathState empty and memoize each
 /// node's transfer during unwind, so a cached node never contains later casts.
 ///
 /// The incoming path is deliberately absent. It is safe to omit only for flow
-/// graphs without loops, where every route to a flow node crosses the same
+/// nodes outside a cycle, where every route to the node crosses the same
 /// guards, so the path is a function of the node. [`super::flow`] consults this
 /// memo only in that case and recomputes otherwise.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -261,7 +288,7 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
     /// Whole-function, syntax-only check for the local-table last-element proof.
     pub(crate) array_length_stable: HashMap<(FileId, SemanticId), bool>,
-    /// Memoized declaration/member-trace states for loop-free flow graphs. See
+    /// Memoized declaration/member-trace states for flow nodes outside a cycle. See
     /// [`TraceStateKey`] for why the path may be omitted from the key.
     pub(crate) trace_state: HashMap<TraceStateKey, CacheEntry<Option<LuaType>>>,
     /// Fast negative/positive cache for `---@return_cast` lookup by call syntax.

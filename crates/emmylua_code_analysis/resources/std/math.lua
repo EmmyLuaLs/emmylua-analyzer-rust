@@ -162,7 +162,14 @@ function math.random(m, n) end
 
 --- Sets `x` as the "seed" for the pseudo-random generator: equal seeds
 --- produce equal sequences of numbers.
+--- @version 5.1, 5.2, 5.3
 --- @param x integer
+function math.randomseed(x) end
+
+--- @version JIT
+--- Sets `x` as the "seed" for the pseudo-random generator. When called
+--- without arguments, LuaJIT generates a random seed.
+--- @param x? number
 function math.randomseed(x) end
 
 --- @version > 5.4

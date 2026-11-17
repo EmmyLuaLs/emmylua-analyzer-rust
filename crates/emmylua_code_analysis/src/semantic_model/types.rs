@@ -1264,6 +1264,14 @@ impl<'db> SemanticModel<'db> {
         });
         ty
     }
+    /// Assignment contract of a member: casts apply, conditional narrowing does not.
+    pub fn type_of_member_assign_target_at(
+        &self,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
+        flow::type_of_member_assign_target_at(self, member, offset)
+    }
     /// Decl type before the flow node at offset (for assignment checks: this assignment does not participate in the target type).
     pub fn type_of_decl_before_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
         self.type_of_decl_before_at_impl(decl, offset)
@@ -1298,14 +1306,19 @@ impl<'db> SemanticModel<'db> {
             target
         }
     }
-    /// Member assignment contract, keeping explicit field annotations exact.
-    pub(crate) fn member_assignment_type(&self, member: &SemanticId, target: LuaType) -> LuaType {
+    /// Stable field type for writes and whole-table checks. Inferred literals
+    /// widen; explicit field annotations keep their declared types.
+    pub(crate) fn member_contract_type(
+        &self,
+        member: Option<&SemanticId>,
+        target: LuaType,
+    ) -> LuaType {
         let inferred = match member {
-            SemanticId::Member(key) => self.file_facts_of(key.file_id),
+            Some(SemanticId::Member(key)) => self.file_facts_of(key.file_id),
             _ => None,
         }
-        .and_then(|facts| facts.member_by_id(member))
-        .is_some_and(|member| {
+        .and_then(|facts| facts.member_by_id(member?))
+        .is_none_or(|member| {
             member.doc_type_syntax.is_none() && !matches!(member.owner, SemanticId::TypeDef(_))
         });
         if inferred {

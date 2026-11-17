@@ -35,6 +35,7 @@ function assert(v, ...) end
 --- | "incremental"  # Change the collector mode to incremental. This option can be followed by three numbers: the garbage-collector pause, the step multiplier, and the step size.
 --- | "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
 --- | "isrunning"    # returns a boolean that tells whether the collector is running (i.e., not stopped).
+--- | "param"        # changes and/or retrieves a collector parameter (Lua 5.5).
 
 --- @alias std.collectgarbage.param
 --- | "minormul"   # minor multiplier
@@ -44,38 +45,80 @@ function assert(v, ...) end
 --- | "stepmul"    # step multiplier
 --- | "stepsize"   # step size
 
+--- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"
+--- @alias std.collectgarbage_opt_52 std.collectgarbage_opt_51 | "isrunning" | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_53 std.collectgarbage_opt_51 | "isrunning"
+--- @alias std.collectgarbage_opt_54 std.collectgarbage_opt_53 | "incremental" | "generational"
+--- @alias std.collectgarbage_opt_55 "collect" | "stop" | "restart" | "count" | "step" | "isrunning" | "incremental" | "generational" | "param"
+
+--- @version 5.1
 ---
 --- This function is a generic interface to the garbage collector. It performs
---- different functions according to its first argument, `opt`:
----
---- **"collect"**: performs a full garbage-collection cycle. This is the default
---- option.
---- **"stop"**: stops automatic execution of the garbage collector. The
---- collector will run only when explicitly invoked, until a call to restart it.
---- **"restart"**: restarts automatic execution of the garbage collector.
---- **"count"**: returns the total memory in use by Lua in Kbytes. The value has
---- a fractional part, so that it multiplied by 1024 gives the exact number of
---- bytes in use by Lua (except for overflows).
---- **"step"**: performs a garbage-collection step. The step "size" is
---- controlled by `arg`. With a zero value, the collector will perform one basic
---- (indivisible) step. For non-zero values, the collector will perform as if
---- that amount of memory (in KBytes) had been allocated by Lua. Returns
---- **true** if the step finished a collection cycle.
---- **"setpause"**: sets `arg` as the new value for the *pause* of the collector
---- (see §2.5). Returns the previous value for *pause`.
---- **"incremental"**: Change the collector mode to incremental. This option can
---- be followed by three numbers: the garbage-collector pause, the step
---- multiplier, and the step size.
---- **"generational"**: Change the collector mode to generational. This option
---- can be followed by two numbers: the garbage-collector minor multiplier and
---- the major multiplier.
---- **"isrunning"**: returns a boolean that tells whether the collector is
---- running (i.e., not stopped).
---- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
---- @param opt? std.collectgarbage_opt
+--- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @param opt? std.collectgarbage_opt_51
 --- @param ...  any
 --- @return any
 function collectgarbage(opt, ...) end
+
+--- @version 5.2
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_52
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.3, JIT
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_53
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.4
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @param opt? std.collectgarbage_opt_54
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.5
+---
+--- This function is a generic interface to the garbage collector. It performs
+--- different functions according to its first argument, `opt`.
+--- See `std.collectgarbage_opt` for the complete list of options.
+--- @overload fun(opt: "count"): number
+--- @overload fun(opt: "step", arg?: integer): boolean
+--- @overload fun(opt: "isrunning"): boolean
+--- @overload fun(opt: "param", param: string, value?: integer): integer
+--- @param opt? std.collectgarbage_opt_55
+--- @param ...  any
+--- @return any
+function collectgarbage(opt, ...) end
+
+--- @version 5.1, JIT
+---
+--- Returns the number of kilobytes of memory in use by Lua.
+--- Equivalent to `collectgarbage("count")`.
+--- @return integer
+--- @nodiscard
+function gcinfo() end
 
 ---
 --- Opens the named file and executes its contents as a Lua chunk. When called
@@ -115,6 +158,12 @@ _G = {}
 --- @return any
 function getmetatable(object) end
 
+--- @alias std.ipairs_iterator<V> fun(tbl: V[] | table<integer, V>, index?: integer): integer, V
+
+--- @alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V
+--- `index` is the previous key for the default `next` iterator; custom
+--- `__pairs` implementations may use an arbitrary state value.
+
 ---
 --- Returns three values (an iterator function, the table `t`, and 0) so that
 --- the construction
@@ -122,8 +171,8 @@ function getmetatable(object) end
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
 --- @generic V
---- @param t V[] | table<int, V> | { [int]: V }
---- @return fun(tbl: any): int, V
+--- @param t V[] | table<integer, V> | { [integer]: V }
+--- @return (fun(tbl: V[] | table<integer, V>, index?: integer): integer, V), V[] | table<integer, V>, integer
 function ipairs(t) end
 
 --- @alias std.loadmode
@@ -131,6 +180,22 @@ function ipairs(t) end
 --- | "t"  # only text chunks
 --- | "bt" # both binary and text
 
+--- @alias std.load_reader fun(): string?
+
+--- @version 5.1
+---
+--- Loads a chunk using function `chunk` to get its pieces. Each call to
+--- `chunk` must return a string that concatenates with previous results. A
+--- return of an empty string, **nil**, or no value signals the end of the
+--- chunk.
+--- @param chunk fun(): string?
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function load(chunk, chunkname) end
+
+--- @version >5.2, JIT
 ---
 --- Loads a chunk.
 --- If `chunk` is a string, the chunk is this string. If `chunk` is a function,
@@ -160,7 +225,7 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
---- @param chunk      (fun(...: any): string) | Language<"Lua">
+--- @param chunk      Language<"Lua"> | std.load_reader
 --- @param chunkname? string
 --- @param mode?      std.loadmode
 --- @param env?       table
@@ -169,10 +234,20 @@ function ipairs(t) end
 --- @nodiscard
 function load(chunk, chunkname, mode, env) end
 
+--- @version 5.1
 ---
 --- Loads a chunk from the given string.
+--- @param text       Language<"Lua">
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadstring(text, chunkname) end
+
+--- @version JIT
 ---
---- @version 5.1, JIT
+--- Loads a chunk from the given string. In LuaJIT `loadstring` is an alias
+--- for `load` and also accepts `mode` and `env`.
 --- @param text       Language<"Lua">
 --- @param chunkname? string
 --- @param mode?      std.loadmode
@@ -182,6 +257,17 @@ function load(chunk, chunkname, mode, env) end
 --- @nodiscard
 function loadstring(text, chunkname, mode, env) end
 
+--- @version 5.1
+---
+--- Similar to `load`, but gets the chunk from file `filename` or from the
+--- standard input, if no file name is given.
+--- @param filename? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
+function loadfile(filename) end
+
+--- @version >5.2, JIT
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
@@ -194,7 +280,7 @@ function loadstring(text, chunkname, mode, env) end
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT
---- @param proxy boolean | table | userdata
+--- @param proxy? boolean | userdata
 --- @return userdata
 function newproxy(proxy) end
 
@@ -242,9 +328,9 @@ function next(table, index) end
 ---
 --- See function `next` for the caveats of modifying the table during its
 --- traversal.
---- @generic K, V, I
+--- @generic K, V
 --- @param t table<K, V> | V[] | { [K]: V }
---- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
+--- @return (fun(tbl: table<K, V>, index?: K): K, V), table<K, V>, nil
 function pairs(t) end
 
 ---
@@ -298,10 +384,11 @@ function rawlen(v) end
 --- Sets the real value of `table[index]` to `value`, without invoking the
 --- `__newindex` metamethod. `table` must be a table, `index` any value
 --- different from **nil** and NaN, and `value` any Lua value.
---- @param table table
+--- @generic T: table
+--- @param table T
 --- @param index any
 --- @param value any
---- @return table
+--- @return T
 function rawset(table, index, value) end
 
 ---
@@ -349,9 +436,13 @@ function require(modname) end
 --- @return std.Select<T..., Num>
 function select(index, ...) end
 
+--- `__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3
+--- (LuaJIT only with 5.2 compatibility). `@field` declarations do not support
+--- per-field `@version` filtering, so these are documented here instead.
 --- @class std.metatable
 --- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
+--- @field __name?      string
 --- @field __tostring?  (fun(t): string)
 --- @field __gc?        fun(t)
 --- @field __add?       fun(t1, t2): any
@@ -376,7 +467,8 @@ function select(index, ...) end
 --- @field __index?     table | fun(t, k): any
 --- @field __newindex?  table | fun(t, k, v)
 --- @field __call?      fun(t, ...): any...
---- @field __pairs?     fun(t): ((fun(t, k, v): any, any), any, any)
+--- @field __pairs?     fun(t: any): std.pairs_iterator<any, any>, any, any
+--- @field __ipairs?    fun(t: any): std.ipairs_iterator<any>, any, any
 --- @field __close?     fun(t, errobj): any
 
 -- NOTE: The actual implementation of setmetatable is provided by the language server
@@ -436,12 +528,13 @@ function tostring(v) end
 --- | "function"
 --- | "thread"
 --- | "userdata"
+--- | "cdata" # LuaJIT only
 
 ---
 --- Returns the type of its only argument, coded as a string. The possible
 --- results of this function are "`nil`" (a string, not the value **nil**),
 --- "`number`", "`string`", "`boolean`", "`table`", "`function`", "`thread`",
---- and "`userdata`".
+--- and "`userdata`". LuaJIT also returns "`cdata`" for FFI cdata values.
 --- @param v any
 --- @return std.type type
 function type(v) end
@@ -449,8 +542,21 @@ function type(v) end
 ---
 --- A global variable (not a function) that holds a string containing the
 --- running Lua version. The current value of this variable is "`Lua 5.5`".
+--- @type string
 _VERSION = "Lua 5.5"
 
+--- @version 5.1
+---
+--- This function is similar to `pcall`, except that it sets a new message
+--- handler `msgh`.
+--- @generic R
+--- @param f    sync fun(): R...
+--- @param msgh fun(err: any): any
+--- @return_overload true, R...
+--- @return_overload false, any
+function xpcall(f, msgh) end
+
+--- @version >5.2, JIT
 ---
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
@@ -458,7 +564,8 @@ _VERSION = "Lua 5.5"
 --- @param f    sync fun(...: T...): R...
 --- @param msgh fun(err: any): any
 --- @param ...  T...
---- @return boolean, R...
+--- @return_overload true, R...
+--- @return_overload false, any
 function xpcall(f, msgh, ...) end
 
 --- @version 5.1, JIT
@@ -487,20 +594,24 @@ arg = {}
 
 --- This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.
 --- For now, let's treat it as a global variable.
---- @version >5.3
+--- @version >5.2
 --- @type global
 _ENV = {}
 
 --- @version 5.1, JIT
 ---
 --- Sets the environment for the specified function.
+--- When `f` is 0, `setfenv` changes the environment of the running thread and
+--- returns no values.
+--- @overload fun(f: 0, env: table)
 --- @param f   function | integer The function for which the environment is to be set.
 --- @param env table              The environment table to assign to the function.
+--- @return function
 function setfenv(f, env) end
 
 --- @version 5.1, JIT
 ---
 --- Retrieves the environment table of the specified function.
---- @param f function | integer The function whose environment is to be retrieved.
+--- @param f? function | integer The function whose environment is to be retrieved.
 --- @return table The environment table associated with the given function.
 function getfenv(f) end

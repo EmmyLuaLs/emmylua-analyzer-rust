@@ -176,7 +176,9 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
         LuaTokenKind::TkPlus | LuaTokenKind::TkMinus => {
-            if is_parent_syntax(token, LuaSyntaxKind::UnaryExpr) {
+            if is_parent_syntax(token, LuaSyntaxKind::UnaryExpr)
+                || is_parent_syntax(token, LuaSyntaxKind::DocOpType)
+            {
                 spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
                 if let Some(prev_token) = get_prev_sibling_token_without_space(token)
                     && prev_token.kind().to_token() == LuaTokenKind::TkMinus
@@ -279,6 +281,13 @@ fn apply_left_paren_spacing(
         })
     } else {
         match prev_token.kind().to_token() {
+            // `---@param name (fun(): T)[]`: the paren groups the type after the name.
+            LuaTokenKind::TkName
+                if is_parent_syntax(token, LuaSyntaxKind::DocTagParam)
+                    || is_parent_syntax(token, LuaSyntaxKind::DocTagField) =>
+            {
+                Some(1)
+            }
             LuaTokenKind::TkName | LuaTokenKind::TkRightParen | LuaTokenKind::TkRightBracket => {
                 Some(0)
             }
@@ -323,7 +332,9 @@ fn apply_left_bracket_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
-    let left_space = if let Some(prev_token) = get_prev_sibling_token_without_space(token) {
+    let left_space = if is_parent_syntax(token, LuaSyntaxKind::TypeArray) {
+        Some(0)
+    } else if let Some(prev_token) = get_prev_sibling_token_without_space(token) {
         match prev_token.kind().to_token() {
             LuaTokenKind::TkComma | LuaTokenKind::TkSemicolon => Some(1),
             LuaTokenKind::TkName => {
@@ -414,7 +425,7 @@ fn apply_comment_start_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
-    if comment_start_looks_like_long_comment_prefix(token) {
+    if comment_start_looks_like_long_comment_prefix(token) || is_doc_description_text(token) {
         return;
     }
 
@@ -438,6 +449,23 @@ fn comment_start_looks_like_long_comment_prefix(token: &LuaSyntaxToken) -> bool 
         }
     }
 
+    false
+}
+
+/// `--` after a doc tag on the same line (`---@type T -- note`) is description text, not a
+/// comment start.
+fn is_doc_description_text(token: &LuaSyntaxToken) -> bool {
+    if !is_parent_syntax(token, LuaSyntaxKind::DocDescription) {
+        return false;
+    }
+    let mut current = token.prev_token();
+    while let Some(prev) = current {
+        match prev.kind().to_token() {
+            LuaTokenKind::TkWhitespace => current = prev.prev_token(),
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => return true,
+        }
+    }
     false
 }
 

@@ -72,7 +72,7 @@ pub fn member_description(model: &SemanticModel<'_>, member: &SemanticId) -> Hov
         return HoverDescription::empty();
     };
 
-    // `@field` members: the tag's own description.
+    // `@field` members: the tag's description (lines above it and on its line).
     if matches!(member_info.owner, SemanticId::TypeDef(_)) {
         if let Some(desc) = field_tag_description(
             model,
@@ -416,12 +416,18 @@ fn field_tag_description(
                         .get_field_key_range()
                         .is_some_and(|field_range| field_range == range)
                 });
-                if matches_owner
-                    && matches_range
-                    && name == key_text
-                    && let Some(desc) = field.get_description()
-                {
-                    return Some(clean_field_description(&desc.get_description_text()));
+                if matches_owner && matches_range && name == key_text {
+                    // Lines written above the tag first, then its same-line description.
+                    let text = field
+                        .get_descriptions()
+                        .iter()
+                        .map(|desc| clean_field_description(&desc.get_description_text()))
+                        .filter(|text| !text.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    if !text.is_empty() {
+                        return Some(text);
+                    }
                 }
             }
         }

@@ -1957,6 +1957,75 @@ mod test {
         assert_eq!(ws.expr_ty("A"), ws.ty("string"));
     }
 
+    /// The std lib `std.NotNull`/`std.Nullable` aliases must use syntax the type
+    /// projector understands. They previously used LuaLS `T -?` / `T +?`, which the
+    /// current projector does not evaluate, so both aliases degraded to `unknown`.
+    #[test]
+    fn test_std_not_null_alias_removes_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param value T
+                ---@return std.NotNull<T>
+                function notNull(value) end
+
+                ---@type string|nil
+                local nullable_string
+                A = notNull(nullable_string)
+
+                ---@type string|number|nil
+                local nullable_union
+                B = notNull(nullable_union)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("string|number"));
+    }
+
+    #[test]
+    fn test_std_nullable_alias_adds_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param value T
+                ---@return std.Nullable<T>
+                function nullable(value) end
+
+                A = nullable("x")
+
+                ---@type string|nil
+                local nullable_string
+                B = nullable(nullable_string)
+
+                ---@type string|number|nil
+                local nullable_union
+                C = nullable(nullable_union)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("C"), ws.ty("string|number|nil"));
+    }
+
+    #[test]
+    fn test_std_not_null_alias_on_assert() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@type string|nil
+                local value
+
+                A = assert(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+    }
+
     #[test]
     fn test_distributed_never_remains_never() {
         let mut ws = VirtualWorkspace::new();

@@ -281,7 +281,7 @@ fn main() {
                 fs::read_to_string(path)
                     .map_err(emmylua_formatter::FormatterError::from)
                     .map(|source| {
-                        let level: emmylua_parser::LuaLanguageLevel = config.syntax.level.into();
+                        let level: LuaLanguageLevel = config.syntax.level.into();
                         let output = check_text(&source, level, &config);
                         (path.clone(), source, config, level, output)
                     })

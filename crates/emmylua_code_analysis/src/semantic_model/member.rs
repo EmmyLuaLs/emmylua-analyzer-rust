@@ -6,13 +6,13 @@ use hashbrown::HashMap;
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::semantic_model::type_eval::{map_type, substitute_named_refs, with_expanded_alias};
-use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaType};
+use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaObjectType, LuaType};
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
 use super::SemanticModel;
 use super::infer::vm::reassign_function_generics_to_func_ids;
-use crate::VariadicType;
+use super::table_constructor::expanded_results;
 
 /// Maximum inheritance/parent-type depth expanded during member lookup.
 ///
@@ -38,6 +38,35 @@ pub struct MemberInfo {
 /// All members of a prefix type (completion candidates; deduplicated by key, with this class's `@field` before parent/runtime values).
 pub fn member_infos(model: &SemanticModel, prefix_type: &LuaType) -> Vec<MemberInfo> {
     dedup_by_key(member_infos_all(model, prefix_type))
+}
+
+/// Declared class fields and index signatures, without initializer values.
+pub(crate) fn class_fields(model: &SemanticModel, target: &LuaType) -> LuaObjectType {
+    let fields = model
+        .member_infos(target)
+        .into_iter()
+        .filter_map(|mut info| {
+            if let Some(id) = info.id.as_ref() {
+                let member = info
+                    .file_id
+                    .and_then(|file| model.file_facts_of(file))?
+                    .member_by_id(id)?;
+                if !matches!(member.owner, SemanticId::TypeDef(_)) {
+                    return None;
+                }
+                if member.is_nullable && !info.typ.is_nullable() {
+                    info.typ = LuaType::from_vec(vec![info.typ, LuaType::Nil]);
+                }
+            }
+            Some((info.key, info.typ))
+        })
+        .collect();
+    let indexes = model
+        .index_infos(target)
+        .into_iter()
+        .map(|info| (info.key_type, info.value_type))
+        .collect();
+    LuaObjectType::new_with_fields(fields, indexes)
 }
 
 /// All inherited and substituted members, before choosing one declaration per key.
@@ -792,9 +821,9 @@ fn expand_table_multi_return_member(
     info: &MemberInfo,
     filter: Option<&LuaMemberKey>,
 ) -> Option<Vec<MemberInfo>> {
-    let LuaType::Variadic(variadic) = &info.typ else {
+    if !matches!(info.typ, LuaType::Variadic(_)) {
         return None;
-    };
+    }
     let LuaMemberKey::Integer(start) = info.key else {
         return None;
     };
@@ -826,21 +855,28 @@ fn expand_table_multi_return_member(
         return None;
     }
     // A repeated tail cannot be enumerated. Resolve the requested slot directly.
-    let (start, types) = if let Some(LuaMemberKey::Integer(index)) = filter {
+    let values = if let Some(LuaMemberKey::Integer(index)) = filter {
         let offset = usize::try_from(index.checked_sub(start)?).ok()?;
-        (*index, vec![info.typ.get_result_slot_type(offset)?])
+        vec![(*index, info.typ.get_result_slot_type(offset)?)]
     } else {
-        (start, flatten_table_multi_return(variadic))
+        let mut values: Vec<_> = expanded_results(&info.typ, true)
+            .filter_map(|(offset, _, _)| {
+                let typ = info.typ.get_result_slot_type(offset)?;
+                Some((start + offset as i64, typ))
+            })
+            .collect();
+        values.sort_by_key(|(index, _)| *index);
+        values.dedup_by_key(|(index, _)| *index);
+        values
     };
-    if types.is_empty() {
+    if values.is_empty() {
         return None;
     }
     Some(
-        types
+        values
             .into_iter()
-            .enumerate()
             .map(|(index, ty)| MemberInfo {
-                key: LuaMemberKey::Integer(start + index as i64),
+                key: LuaMemberKey::Integer(index),
                 typ: ty,
                 id: None,
                 file_id: None,
@@ -848,23 +884,6 @@ fn expand_table_multi_return_member(
             })
             .collect(),
     )
-}
-
-/// Flattens a multi-return type such as `(boolean, any...)` into a concrete slot list.
-fn flatten_table_multi_return(variadic: &VariadicType) -> Vec<LuaType> {
-    match variadic {
-        VariadicType::Multi(types) => types
-            .iter()
-            .flat_map(|ty| match ty {
-                LuaType::Variadic(inner) => match inner.as_ref() {
-                    VariadicType::Base(base) | VariadicType::Repeat(base) => vec![base.clone()],
-                    VariadicType::Multi(inner_types) => inner_types.clone(),
-                },
-                other => vec![other.clone()],
-            })
-            .collect(),
-        VariadicType::Base(base) | VariadicType::Repeat(base) => vec![base.clone()],
-    }
 }
 
 /// Named type members: this class's `@field` → parent type recursion → runtime value members.
@@ -908,10 +927,11 @@ fn collect_type_def_members(
 }
 
 /// `---@version` visibility: the member is visible if any version condition on its closure signature matches.
-fn member_version_visible(model: &SemanticModel, facts: &FileFacts, member: &Member) -> bool {
-    let Some(version) = model.lua_version() else {
-        return true;
-    };
+pub(super) fn member_version_visible(
+    model: &SemanticModel,
+    facts: &FileFacts,
+    member: &Member,
+) -> bool {
     let Some(value_syntax) = member.value_syntax else {
         return true;
     };
@@ -921,13 +941,7 @@ fn member_version_visible(model: &SemanticModel, facts: &FileFacts, member: &Mem
     signature
         .docs
         .as_ref()
-        .map(|docs| {
-            docs.versions.is_empty()
-                || docs
-                    .versions
-                    .iter()
-                    .any(|condition| condition.check(&version))
-        })
+        .map(|docs| model.versions_visible(&docs.versions))
         .unwrap_or(true)
 }
 
@@ -1097,7 +1111,10 @@ mod tests {
 
     use lsp_types::Uri;
 
-    use crate::{Emmyrc, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDatabase};
+    use crate::{
+        Emmyrc, EmmyrcLuaVersion, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType,
+        SemanticDatabase,
+    };
 
     use super::*;
     use crate::VirtualWorkspace;
@@ -1164,6 +1181,34 @@ mod tests {
         }
         assert!(found_randomseed, "未找到 math.randomseed");
         assert!(found_time, "未找到 os.time");
+    }
+
+    /// LuaJIT workspace: set the runtime version before `init_std_lib`, because
+    /// `new_with_init_std_lib` would load the default (non-JIT) std first.
+    /// `new()` does not load std, so ffi/jit are registered exactly once.
+    fn ffi_workspace() -> VirtualWorkspace {
+        let mut ws = VirtualWorkspace::new();
+        let mut config = Emmyrc::default();
+        config.runtime.version = EmmyrcLuaVersion::LuaJIT;
+        ws.update_emmyrc(config);
+        ws.analysis.init_std_lib(None);
+        ws
+    }
+
+    #[test]
+    fn test_std_ffi_load_returns_clib() {
+        let mut ws = ffi_workspace();
+
+        let ty = ws.expr_ty("require('ffi').load('c')");
+        assert_eq!(ws.humanize_type(ty), "ffi.clib*");
+    }
+
+    #[test]
+    fn test_std_ffi_c_returns_clib() {
+        let mut ws = ffi_workspace();
+
+        let ty = ws.expr_ty("require('ffi').C");
+        assert_eq!(ws.humanize_type(ty), "ffi.clib*");
     }
 
     /// String values can complete members through the string library (`s.sub` / `s:sub`).

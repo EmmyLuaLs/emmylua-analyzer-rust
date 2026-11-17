@@ -11,93 +11,168 @@ b:
   r: [24, 0, 27, 18]
   e:
   - ['boolean', 'd', doc, [24, 0, 27, 0], '144849d60ce2607e']
-- a: '--- @class integer'
+- a: '---'
   g: 'The type *number* uses two internal representations, or two subtypes, one'
   r: [29, 0, 41, 17]
   e:
   - ['number', 'd', doc, [29, 0, 41, 0], 'aad3738adb6260b3']
-- a: '--- @class lightuserdata'
-  g: 'The type *userdata* is provided to allow arbitrary C data to be stored in'
-  r: [45, 0, 55, 19]
+- a: '---'
+  g: 'The subtype of *number* used for integer values (Lua 5.3+). In annotations'
+  r: [43, 0, 47, 18]
   e:
-  - ['userdata', 'd', doc, [45, 0, 55, 0], 'a93f58434939110f']
+  - ['integer', 'd', doc, [43, 0, 47, 0], '2a70d054af1afc6d']
+- a: '---'
+  g: 'The type *userdata* is provided to allow arbitrary C data to be stored in'
+  r: [49, 0, 59, 19]
+  e:
+  - ['userdata', 'd', doc, [49, 0, 59, 0], 'a93f58434939110f']
+- a: '---'
+  g: 'The type *lightuserdata* stores a bare C pointer. In Lua it has the same'
+  r: [61, 0, 65, 24]
+  e:
+  - ['lightuserdata', 'd', doc, [61, 0, 65, 0], '6acf06cb9cd93760']
 - a: '---'
   g: 'The type *thread* represents independent threads of execution and it is'
-  r: [59, 0, 64, 17]
+  r: [67, 0, 72, 17]
   e:
-  - ['thread', 'd', doc, [59, 0, 64, 0], '08cc9acc4944f215']
-- a: '--- @class any'
+  - ['thread', 'd', doc, [67, 0, 72, 0], '08cc9acc4944f215']
+- a: '---'
   g: 'The type *table* implements associative arrays, that is, arrays that can'
-  r: [66, 0, 96, 16]
+  r: [74, 0, 104, 16]
   e:
-  - ['table', 'd', doc, [66, 0, 96, 0], '7ede236ff5256cf6']
+  - ['table', 'd', doc, [74, 0, 104, 0], 'b31db1af5c59299c']
 - a: '---'
-  g: 'built-in type for Select function'
-  r: [118, 0, 120, 44]
+  g: 'The *any* type disables type checking: any value is assignable to `any`,'
+  r: [106, 0, 109, 14]
   e:
-  - ['std.Select', 'd', doc, [118, 0, 120, 0], 'b5d3a1f179c479e4']
+  - ['any', 'd', doc, [106, 0, 109, 0], '50021e1a103dc97a']
 - a: '---'
-  g: 'built-in type for Unpack function'
-  r: [122, 0, 124, 44]
+  g: 'The *void* type represents the absence of a return value. The analyzer'
+  r: [111, 0, 114, 15]
   e:
-  - ['std.Unpack', 'd', doc, [122, 0, 124, 0], 'fccb309c29fafd8e']
-- a: '--- compact luals'
-  g: 'built-in type for Rawget'
-  r: [126, 0, 128, 35]
+  - ['void', 'd', doc, [111, 0, 114, 0], '4ecb143cadeb8b87']
+- a: '---'
+  g: 'The *unknown* type is used when a type cannot be inferred. Like `any`, it is'
+  r: [116, 0, 120, 18]
   e:
-  - ['std.RawGet', 'd', doc, [126, 0, 128, 0], 'fd0c173901a1540a']
+  - ['unknown', 'd', doc, [116, 0, 120, 0], '0994545f86646643']
+- a: '---'
+  g: 'The *never* type is the bottom type: it is assignable to every type, but no'
+  r: [122, 0, 127, 16]
+  e:
+  - ['never', 'd', doc, [122, 0, 127, 0], '16f827b4b3d16027']
+- a: '--- Alias for `integer`, kept for C-style annotations.'
+  g: 'The type of the implicit `self` parameter inside a method. It is replaced by'
+  r: [129, 0, 132, 15]
+  e:
+  - ['self', 'd', doc, [129, 0, 132, 0], 'c91ca5a29b3c71f3']
+- a: '---'
+  g: 'Alias for `integer`, kept for C-style annotations.'
+  r: [134, 0, 135, 22]
+  e:
+  - ['int', 'd', doc, [134, 0, 135, 0], 'b1124e63d5926597']
+- a: '---'
+  g: 'Reserved type name for namespace-qualified types. Namespaces are declared'
+  r: [137, 0, 141, 31]
+  e:
+  - ['namespace', 'd', doc, [137, 0, 141, 0], 'a77d183747f6ba9d']
+- a: '---'
+  g: 'Reserved name for the primitive *function* type. `@type function` resolves'
+  r: [143, 0, 146, 19]
+  e:
+  - ['function', 'd', doc, [143, 0, 146, 0], 'd95c810d10a4556f']
+- a: '---'
+  g: 'Removes `nil` from `T`; equivalent to `Exclude<T, nil>`.'
+  r: [148, 0, 150, 41]
+  e:
+  - ['std.NotNull', 'd', doc, [148, 0, 150, 0], '3e7819379ee53722']
+- a: '---'
+  g: 'Adds `nil` to `T`; equivalent to `T | nil`.'
+  r: [152, 0, 154, 34]
+  e:
+  - ['std.Nullable', 'd', doc, [152, 0, 154, 0], '1778739481a8cc08']
+- a: '---'
+  g: 'Marker type for the result tuple of `select`. The analyzer evaluates'
+  r: [156, 0, 159, 37]
+  e:
+  - ['std.Select', 'd', doc, [156, 0, 159, 0], 'b6c72352b899df2f']
+- a: '---'
+  g: 'Marker type for the multiple returns of `table.unpack`/`unpack`.'
+  r: [161, 0, 165, 44]
+  e:
+  - ['std.Unpack', 'd', doc, [161, 0, 165, 0], '5407268c133545b3']
+- a: '-- LuaLS compatibility aliases: allow annotations written for LuaLS to resolve'
+  g: 'Marker type for `rawget(T, K)`: the value type stored at key `K` in `T`.'
+  r: [167, 0, 169, 35]
+  e:
+  - ['std.RawGet', 'd', doc, [167, 0, 169, 0], '5e9e31867abea929']
+- a: '---'
+  g: 'A custom type guard. A function annotated with `---@return TypeGuard<T>`'
+  r: [180, 0, 183, 31]
+  e:
+  - ['TypeGuard', 'd', doc, [180, 0, 183, 0], 'c17ab3eba834154c']
+- a: '---'
+  g: 'Marks a string argument that contains source code in the language named by'
+  r: [185, 0, 190, 37]
+  e:
+  - ['Language', 'd', doc, [185, 0, 190, 0], '29416a0ad75d0ba9']
 - a: '---'
   g: 'Get the parameters of a function as a tuple'
-  r: [142, 0, 144, 91]
+  r: [192, 0, 194, 91]
   e:
-  - ['Parameters', 'd', doc, [142, 0, 144, 0], '35788287980afcd1']
+  - ['Parameters', 'd', doc, [192, 0, 194, 0], '35788287980afcd1']
 - a: '--- Get the return type of a function type'
   g: 'Get the parameters of a constructor as a tuple'
-  r: [146, 0, 148, 89]
+  r: [196, 0, 198, 89]
   e:
-  - ['ConstructorParameters', 'd', doc, [146, 0, 148, 0], 'f2bf4dae2eddb065']
+  - ['ConstructorParameters', 'd', doc, [196, 0, 198, 0], 'f2bf4dae2eddb065']
 - a: '---'
   g: 'Get the return type of a function type'
-  r: [150, 0, 151, 89]
+  r: [200, 0, 201, 89]
   e:
-  - ['ReturnType', 'd', doc, [150, 0, 151, 0], '7cf952a420e5fd93']
+  - ['ReturnType', 'd', doc, [200, 0, 201, 0], '7cf952a420e5fd93']
 - a: '---'
   g: 'Make all properties in T optional'
-  r: [153, 0, 155, 48]
+  r: [203, 0, 205, 48]
   e:
-  - ['Partial', 'd', doc, [153, 0, 155, 0], '73919250e74e93f0']
+  - ['Partial', 'd', doc, [203, 0, 205, 0], '73919250e74e93f0']
 - a: '---'
   g: 'Exclude from T those types that are assignable to U'
-  r: [157, 0, 159, 51]
+  r: [207, 0, 209, 51]
   e:
-  - ['Exclude', 'd', doc, [157, 0, 159, 0], 'c2be9cb3445d8d15']
-- a: '--- attribute'
+  - ['Exclude', 'd', doc, [207, 0, 209, 0], 'c2be9cb3445d8d15']
+- a: '-- attribute'
   g: 'Extract from T those types that are assignable to U'
-  r: [161, 0, 163, 51]
+  r: [211, 0, 213, 51]
   e:
-  - ['Extract', 'd', doc, [161, 0, 163, 0], '2f8fbc960e3f2128']
+  - ['Extract', 'd', doc, [211, 0, 213, 0], '2f8fbc960e3f2128']
 - a: '---'
-  g: 'Deprecated. Receives an optional message parameter.'
-  r: [169, 0, 172, 35]
+  g: 'Base class for built-in attributes applied with the `---@[...]` syntax.'
+  r: [217, 0, 219, 20]
   e:
-  - ['deprecated', 'd', doc, [169, 0, 171, 0], '4da00bd2a6b8c523']
+  - ['Attribute', 'd', doc, [217, 0, 219, 0], '447122ccca030132']
+- a: '---'
+  g: 'Marks the declaration as deprecated. Receives an optional message.'
+  r: [221, 0, 228, 35]
+  e:
+  - ['deprecated', 'd', doc, [221, 0, 227, 0], '789245ee8ad8cccf']
 - a: '---'
   g: 'Language Server Optimization Items.'
-  r: [174, 0, 181, 45]
+  r: [230, 0, 237, 45]
   e:
-  - ['lsp_optimization', 'd', doc, [174, 0, 180, 0], '8e73659bb68f6d93']
+  - ['lsp_optimization', 'd', doc, [230, 0, 236, 0], '8e73659bb68f6d93']
 - a: '---'
-  g: 'Index field alias, will be displayed in `hint` and `completion`.'
-  r: [183, 0, 188, 31]
+  g: 'Alias for an integer index field (for example, `---@field [1] string`).'
+  r: [239, 0, 245, 31]
   e:
-  - ['index_alias', 'd', doc, [183, 0, 187, 0], 'c584595d5bbff3f2']
+  - ['index_alias', 'd', doc, [239, 0, 244, 0], 'b8f902474bb5c6dc']
 - a: '---'
-  g: 'This attribute must be applied to function parameters, and the function parameter''s type must be a string template generic,'
-  r: [190, 0, 202, 116]
+  g: 'This attribute must be applied to function parameters, immediately before'
+  r: [247, 0, 264, 116]
   e:
-  - ['constructor', 'd', doc, [190, 0, 201, 0], 'b030cc80bc98b6b6']
+  - ['constructor', 'd', doc, [247, 0, 263, 0], '66e77d56a633d1bd']
 -
-  g: 'Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,'
-  r: [204, 0, 213, 107]
+  g: 'Associates `getter` and `setter` methods with a field. Currently only'
+  r: [266, 0, 285, 107]
   e:
-  - ['field_accessor', 'd', doc, [204, 0, 212, 0], 'b33112567ace0c1c']
+  - ['field_accessor', 'd', doc, [266, 0, 284, 0], '8efd33afe9060d8c']

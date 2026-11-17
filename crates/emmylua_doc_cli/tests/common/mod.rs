@@ -27,6 +27,15 @@ pub fn generate_type_markdown(fixture_name: &str, source: &str, type_name: &str)
 }
 
 pub fn generate_fixture(fixture_name: &str, source: &str) -> PathBuf {
+    generate_fixture_with_format(fixture_name, source, Format::Markdown)
+}
+
+/// Generates an HTML fixture and returns the output directory.
+pub fn generate_html_fixture(fixture_name: &str, source: &str) -> PathBuf {
+    generate_fixture_with_format(fixture_name, source, Format::Html)
+}
+
+fn generate_fixture_with_format(fixture_name: &str, source: &str, format: Format) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(fixture_name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create fixture dir");
@@ -38,7 +47,7 @@ pub fn generate_fixture(fixture_name: &str, source: &str) -> PathBuf {
         workspace: vec![dir.to_path_buf()],
         exclude_pattern: None,
         include_pattern: None,
-        output_format: Format::Markdown,
+        output_format: format,
         output: OutputDestination::File(out.clone()),
         override_template: None,
         site_name: None,

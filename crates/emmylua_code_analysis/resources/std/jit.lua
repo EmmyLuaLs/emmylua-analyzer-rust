@@ -7,7 +7,24 @@
 --- @field version     string
 --- @field version_num integer
 --- @field os          'Windows' | 'Linux' | 'OSX' | 'BSD' | 'POSIX' | 'Other'
---- @field arch        'x86' | 'x64' | 'arm' | 'arm64' | 'arm64be' | 'ppc' | 'ppc64' | 'ppc64le' | 'mips' | 'mipsel' | 'mips32r6' | 'mips32r6el' | 'mips64' | 'mips64el' | 'mips64r6' | 'mips64r6el' | string
+--- @field arch
+--- | 'x86'
+--- | 'x64'
+--- | 'arm'
+--- | 'arm64'
+--- | 'arm64be'
+--- | 'ppc'
+--- | 'ppc64'
+--- | 'ppc64le'
+--- | 'mips'
+--- | 'mipsel'
+--- | 'mips32r6'
+--- | 'mips32r6el'
+--- | 'mips64'
+--- | 'mips64el'
+--- | 'mips64r6'
+--- | 'mips64r6el'
+--- | string
 jit = {}
 
 --- @param func?      function | boolean
