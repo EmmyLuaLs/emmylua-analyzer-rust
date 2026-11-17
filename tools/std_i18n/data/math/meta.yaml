@@ -103,83 +103,88 @@ b:
   - ['mathlib.random', 'd', doc, [149, 0, 155, 0], 'b1cc3cd05011681a']
 - a: 'function math.randomseed(x) end'
   g: 'Sets `x` as the "seed" for the pseudo-random generator: equal seeds'
-  r: [162, 0, 164, 20]
+  r: [162, 0, 165, 20]
   e:
-  - ['mathlib.randomseed@@1', 'd', doc, [162, 0, 164, 0], '40ab75a8c75f43ca']
+  - ['mathlib.randomseed@5.1,5.2,5.3', 'd', doc, [162, 0, 164, 0], '40ab75a8c75f43ca']
+- a: 'function math.randomseed(x) end'
+  g: '@version JIT'
+  r: [168, 0, 171, 20]
+  e:
+  - ['mathlib.randomseed@JIT', 'd', doc, [169, 0, 171, 0], '7fb6af10da10b530']
 - a: 'function math.randomseed(x, y) end'
   g: '@version > 5.4'
-  r: [167, 0, 181, 28]
+  r: [174, 0, 188, 28]
   e:
-  - ['mathlib.randomseed@>5.4', 'd', doc, [168, 0, 179, 0], '27175c00274bc801']
+  - ['mathlib.randomseed@>5.4', 'd', doc, [175, 0, 186, 0], '27175c00274bc801']
 - a: 'function math.sin(x)'
   g: 'Returns the sine of `x` (assumed to be in radians).'
-  r: [184, 0, 187, 18]
+  r: [191, 0, 194, 18]
   e:
-  - ['mathlib.sin', 'd', doc, [184, 0, 186, 0], 'f3156b9eee524b75']
+  - ['mathlib.sin', 'd', doc, [191, 0, 193, 0], 'f3156b9eee524b75']
 - a: 'function math.sqrt(x)'
   g: 'Returns the square root of `x`. (You can also use the expression `x^0.5` to'
-  r: [192, 0, 196, 18]
+  r: [199, 0, 203, 18]
   e:
-  - ['mathlib.sqrt', 'd', doc, [192, 0, 195, 0], '9c47f0e74f561c41']
+  - ['mathlib.sqrt', 'd', doc, [199, 0, 202, 0], '9c47f0e74f561c41']
 - a: 'function math.tan(x)'
   g: 'Returns the tangent of `x` (assumed to be in radians).'
-  r: [201, 0, 204, 18]
+  r: [208, 0, 211, 18]
   e:
-  - ['mathlib.tan', 'd', doc, [201, 0, 203, 0], '4e92d05f5d7eea2f']
+  - ['mathlib.tan', 'd', doc, [208, 0, 210, 0], '4e92d05f5d7eea2f']
 - a: 'function math.tointeger(x) end'
   g: '@version >5.3'
-  r: [209, 0, 214, 20]
+  r: [216, 0, 221, 20]
   e:
-  - ['mathlib.tointeger', 'd', doc, [210, 0, 213, 0], 'e006425ac24cd772']
+  - ['mathlib.tointeger', 'd', doc, [217, 0, 220, 0], 'e006425ac24cd772']
 - a: 'function math.type(x) end'
   g: '@version >5.3'
-  r: [217, 0, 222, 33]
+  r: [224, 0, 229, 33]
   e:
-  - ['mathlib.type', 'd', doc, [218, 0, 221, 0], '963bb5a28f874620']
+  - ['mathlib.type', 'd', doc, [225, 0, 228, 0], '963bb5a28f874620']
 - a: 'function math.ult(m, n) end'
   g: '@version >5.3'
-  r: [225, 0, 231, 19]
+  r: [232, 0, 238, 19]
   e:
-  - ['mathlib.ult', 'd', doc, [226, 0, 229, 0], '2fa6304df1df9a20']
+  - ['mathlib.ult', 'd', doc, [233, 0, 236, 0], '2fa6304df1df9a20']
 - a: 'function math.pow(x, y) end'
   g: '@version 5.1, 5.2, JIT'
-  r: [234, 0, 239, 18]
+  r: [241, 0, 246, 18]
   e:
-  - ['mathlib.pow', 'd', doc, [235, 0, 237, 0], '42724ba1a56090e7']
-  - ['mathlib.pow.param.x', 'p:x', tail, [237, 20, 237, 28], 'fa1421b96f3eabc1']
-  - ['mathlib.pow.param.y', 'p:y', tail, [238, 20, 238, 32], '5e06156f6c04648b']
+  - ['mathlib.pow', 'd', doc, [242, 0, 244, 0], '42724ba1a56090e7']
+  - ['mathlib.pow.param.x', 'p:x', tail, [244, 20, 244, 28], 'fa1421b96f3eabc1']
+  - ['mathlib.pow.param.y', 'p:y', tail, [245, 20, 245, 32], '5e06156f6c04648b']
 - a: 'function math.atan2(y, x) end'
   g: '@version 5.1, 5.2, JIT'
-  r: [242, 0, 251, 18]
+  r: [249, 0, 258, 18]
   e:
-  - ['mathlib.atan2', 'd', doc, [243, 0, 249, 0], '97077dd764611e12']
+  - ['mathlib.atan2', 'd', doc, [250, 0, 256, 0], '97077dd764611e12']
 - a: 'function math.log10(x) end'
   g: '@version 5.1, JIT'
-  r: [254, 0, 258, 18]
-  e:
-  - ['mathlib.log10', 'd', doc, [255, 0, 257, 0], '7eeb848cac8c5c80']
-- a: 'function math.cosh(x) end'
-  g: '@version 5.1, 5.2, JIT'
   r: [261, 0, 265, 18]
   e:
-  - ['mathlib.cosh', 'd', doc, [262, 0, 264, 0], '3f0d7a29939c3308']
-- a: 'function math.sinh(x) end'
+  - ['mathlib.log10', 'd', doc, [262, 0, 264, 0], '7eeb848cac8c5c80']
+- a: 'function math.cosh(x) end'
   g: '@version 5.1, 5.2, JIT'
   r: [268, 0, 272, 18]
   e:
-  - ['mathlib.sinh', 'd', doc, [269, 0, 271, 0], '16630a06699d002a']
-- a: 'function math.tanh(x) end'
+  - ['mathlib.cosh', 'd', doc, [269, 0, 271, 0], '3f0d7a29939c3308']
+- a: 'function math.sinh(x) end'
   g: '@version 5.1, 5.2, JIT'
   r: [275, 0, 279, 18]
   e:
-  - ['mathlib.tanh', 'd', doc, [276, 0, 278, 0], '05129308e84b8d36']
+  - ['mathlib.sinh', 'd', doc, [276, 0, 278, 0], '16630a06699d002a']
+- a: 'function math.tanh(x) end'
+  g: '@version 5.1, 5.2, JIT'
+  r: [282, 0, 286, 18]
+  e:
+  - ['mathlib.tanh', 'd', doc, [283, 0, 285, 0], '05129308e84b8d36']
 - a: 'function math.frexp(x) end'
   g: '@version 5.1, 5.2, JIT'
-  r: [282, 0, 287, 27]
+  r: [289, 0, 294, 27]
   e:
-  - ['mathlib.frexp', 'd', doc, [283, 0, 286, 0], '03448afbb8de9e62']
+  - ['mathlib.frexp', 'd', doc, [290, 0, 293, 0], '03448afbb8de9e62']
 - a: 'function math.ldexp(m, e) end'
   g: '@version 5.1, 5.2, JIT'
-  r: [290, 0, 295, 18]
+  r: [297, 0, 302, 18]
   e:
-  - ['mathlib.ldexp', 'd', doc, [291, 0, 293, 0], 'fdabbcfb70f65661']
+  - ['mathlib.ldexp', 'd', doc, [298, 0, 300, 0], 'fdabbcfb70f65661']
