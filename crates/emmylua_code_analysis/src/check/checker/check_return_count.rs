@@ -11,9 +11,9 @@
 use std::rc::Rc;
 
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExprStat, LuaClosureExpr, LuaDoStat,
-    LuaExpr, LuaForRangeStat, LuaForStat, LuaIfClauseStat, LuaIfStat, LuaRepeatStat, LuaReturnStat,
-    LuaStat, LuaTokenKind, LuaWhileStat,
+    LuaAstNode, LuaAstToken, LuaBlock, LuaCallExprStat, LuaClosureExpr, LuaDoStat, LuaExpr,
+    LuaForRangeStat, LuaForStat, LuaIfClauseStat, LuaIfStat, LuaRepeatStat, LuaReturnStat, LuaStat,
+    LuaTokenKind, LuaWhileStat,
 };
 
 use crate::DiagnosticCode;
@@ -675,8 +675,12 @@ fn condition_state(condition: Option<&LuaExpr>, model: &SemanticModel<'_>) -> Co
     let Some(condition) = condition else {
         return ConditionState::Dynamic;
     };
-    if let Some(state) = static_condition_state(condition) {
-        return state;
+    if let Some(truthy) = crate::semantic_db::facts::static_truthiness(condition) {
+        return if truthy {
+            ConditionState::Truthy
+        } else {
+            ConditionState::Falsy
+        };
     }
     if !can_analyze_condition(condition) {
         return ConditionState::Dynamic;
@@ -692,113 +696,6 @@ fn condition_state(condition: Option<&LuaExpr>, model: &SemanticModel<'_>) -> Co
         return ConditionState::Falsy;
     }
     ConditionState::Dynamic
-}
-
-/// Syntax-level constant folding: `1 == 1` / `true` / `{}` / `function() end`.
-/// The VM only gives broad `Boolean` / `Number` types, so comparison results must be computed from literals.
-fn static_condition_state(expr: &LuaExpr) -> Option<ConditionState> {
-    match expr {
-        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
-            Some(emmylua_parser::LuaLiteralToken::Nil(_)) => Some(ConditionState::Falsy),
-            Some(emmylua_parser::LuaLiteralToken::Bool(token)) => Some(if token.is_true() {
-                ConditionState::Truthy
-            } else {
-                ConditionState::Falsy
-            }),
-            Some(emmylua_parser::LuaLiteralToken::String(_))
-            | Some(emmylua_parser::LuaLiteralToken::Number(_)) => Some(ConditionState::Truthy),
-            _ => None,
-        },
-        LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_) => Some(ConditionState::Truthy),
-        LuaExpr::ParenExpr(paren) => paren
-            .get_expr()
-            .and_then(|inner| static_condition_state(&inner)),
-        LuaExpr::UnaryExpr(unary) => {
-            if unary
-                .get_op_token()
-                .is_some_and(|op| op.get_op() == emmylua_parser::UnaryOperator::OpNot)
-            {
-                unary
-                    .get_expr()
-                    .and_then(|inner| static_condition_state(&inner).map(not_condition_state))
-            } else {
-                None
-            }
-        }
-        LuaExpr::BinaryExpr(binary) => {
-            let (left, right) = binary.get_exprs()?;
-            let op = binary.get_op_token()?.get_op();
-            match op {
-                BinaryOperator::OpAnd => match static_condition_state(&left) {
-                    Some(ConditionState::Falsy) => Some(ConditionState::Falsy),
-                    Some(ConditionState::Truthy) => static_condition_state(&right),
-                    _ => None,
-                },
-                BinaryOperator::OpOr => match static_condition_state(&left) {
-                    Some(ConditionState::Truthy) => Some(ConditionState::Truthy),
-                    Some(ConditionState::Falsy) => static_condition_state(&right),
-                    _ => None,
-                },
-                BinaryOperator::OpEq | BinaryOperator::OpNe => {
-                    let (left_value, right_value) = (static_value(&left)?, static_value(&right)?);
-                    let equal = left_value == right_value;
-                    let truthy = if op == BinaryOperator::OpEq {
-                        equal
-                    } else {
-                        !equal
-                    };
-                    Some(if truthy {
-                        ConditionState::Truthy
-                    } else {
-                        ConditionState::Falsy
-                    })
-                }
-                _ => None,
-            }
-        }
-        _ => None,
-    }
-}
-
-fn not_condition_state(state: ConditionState) -> ConditionState {
-    match state {
-        ConditionState::Truthy => ConditionState::Falsy,
-        ConditionState::Falsy => ConditionState::Truthy,
-        other => other,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum StaticValue {
-    Nil,
-    Bool(bool),
-    Number(f64),
-    String(String),
-}
-
-fn static_value(expr: &LuaExpr) -> Option<StaticValue> {
-    match expr {
-        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
-            Some(emmylua_parser::LuaLiteralToken::Nil(_)) => Some(StaticValue::Nil),
-            Some(emmylua_parser::LuaLiteralToken::Bool(token)) => {
-                Some(StaticValue::Bool(token.is_true()))
-            }
-            Some(emmylua_parser::LuaLiteralToken::String(token)) => {
-                Some(StaticValue::String(token.get_value()))
-            }
-            Some(emmylua_parser::LuaLiteralToken::Number(token)) => {
-                match token.get_number_value() {
-                    emmylua_parser::NumberResult::Int(i) => Some(StaticValue::Number(i as f64)),
-                    emmylua_parser::NumberResult::Uint(u) => Some(StaticValue::Number(u as f64)),
-                    emmylua_parser::NumberResult::Float(f) => Some(StaticValue::Number(f)),
-                    emmylua_parser::NumberResult::Number => None,
-                }
-            }
-            _ => None,
-        },
-        LuaExpr::ParenExpr(paren) => paren.get_expr().and_then(|inner| static_value(&inner)),
-        _ => None,
-    }
 }
 
 fn can_analyze_condition(expr: &LuaExpr) -> bool {

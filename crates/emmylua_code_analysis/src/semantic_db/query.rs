@@ -2829,7 +2829,34 @@ pub(crate) fn signature_returns(
             return expected;
         }
     }
+    // Reaching the end returns no values. Keep this row through forwarded calls;
+    // a single-value read then fills the missing result with nil.
+    if !facts.is_meta && closure_can_fall_through(db, file, &closure) {
+        rows.merge(&TypeShell {
+            candidates: vec![TypeCandidate::Multi(Vec::new())],
+        });
+    }
     vec![rows]
+}
+
+pub(crate) fn closure_can_fall_through(
+    db: &SemanticDatabase,
+    file: FileId,
+    closure: &LuaClosureExpr,
+) -> bool {
+    super::facts::closure_can_fall_through(closure, &|call| {
+        let Some(LuaExpr::NameExpr(name)) = call.get_prefix_expr() else {
+            return false;
+        };
+        let Some(SemanticId::Decl(key)) = resolve_name(db, file, name.get_position()) else {
+            return false;
+        };
+        db.is_std_file(key.file_id)
+            // A deferred call can observe a later global replacement.
+            && global_decls_named_for_file(db, file, "error").iter().all(|decl| {
+                matches!(decl, SemanticId::Decl(key) if db.workspace_id_of(key.file_id).is_none_or(|id| id.is_std()))
+            })
+    })
 }
 
 /// When a member implementation function (`function Test.e()`) has no `---@return`, use the return type
