@@ -3,8 +3,10 @@
 use super::vm::{InferVm, expand_callable_types_in_model};
 use crate::semantic_model::infer::overload;
 use crate::semantic_model::infer::unify::TplBindings;
+use crate::semantic_model::type_eval::{class_generic_map, substitute_named_refs};
 use crate::semantic_model::{SemanticModel, member};
 use crate::{DeclKind, FileId, LuaFunctionType, LuaMemberKey, LuaType, SemanticId};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CallableCandidateSet {
@@ -88,6 +90,25 @@ impl CallableCandidateSet {
                 continue;
             }
             Self::push_member_info(model, &info, &mut candidates);
+        }
+        // Identity-level signatures are declared against the class (`---@param v T`
+        // on `Box<T>`); bind the class generics from a generic receiver
+        // (`Box<integer>`) so parameters agree with the substituted returns.
+        if let Some(class_map) = class_generic_map(model, prefix_type)
+            && !class_map.is_empty()
+        {
+            candidates = candidates
+                .into_iter()
+                .map(|candidate| {
+                    match substitute_named_refs(
+                        &LuaType::DocFunction(Rc::new(candidate.clone())),
+                        &class_map,
+                    ) {
+                        LuaType::DocFunction(fun) => Rc::unwrap_or_clone(fun),
+                        _ => candidate,
+                    }
+                })
+                .collect();
         }
         Self::new(candidates)
     }
