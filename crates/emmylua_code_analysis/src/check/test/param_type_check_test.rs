@@ -4642,4 +4642,58 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_generic_class_method_param_substitutes_class_args() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Ch<T>
+                local Ch = {}
+
+                ---@param v T
+                function Ch:send(v) end
+
+                ---@class Ch2<T>
+                local Ch2 = {}
+
+                ---@param self Ch2<T>
+                ---@param v T
+                function Ch2.send(self, v) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch<integer>
+            local ch
+            ch:send(1)
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch<integer>
+            local ch
+            ch:send("x")
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch2<integer>
+            local ch2
+            ch2:send(1)
+            ch2.send(ch2, 1)
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch2<integer>
+            local ch2
+            ch2:send("x")
+            "#
+        ));
+    }
 }
