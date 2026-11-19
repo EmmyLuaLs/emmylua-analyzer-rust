@@ -31,21 +31,24 @@ mod tests {
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
-        check!(ws.check_signature_helper(
-            r#"
+        check!(
+            ws.check_signature_helper(
+                r#"
                 ---@param path string
                 local function readFile(path)
                 end
 
                 pcall(readFile, <??>)
             "#,
-            VirtualSignatureHelp {
-                target_label:
-                    "pcall(f: sync fun(path: string), path: string): (true|false)".to_string(),
-                active_signature: 0,
-                active_parameter: 1,
-            },
-        ));
+                VirtualSignatureHelp {
+                    target_label:
+                        "pcall(f: sync fun(path: string) -> (), path: string): (true|false)"
+                            .to_string(),
+                    active_signature: 0,
+                    active_parameter: 1,
+                },
+            )
+        );
         Ok(())
     }
 

@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExpr, LuaChunk,
-    LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
+    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExpr,
+    LuaChunk, LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
     LuaDocTagAttributeUse, LuaDocTagDiagnostic, LuaDocTagField, LuaDocType, LuaDocTypeFlag,
     LuaExpr, LuaFuncStat, LuaIfClauseStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr,
     LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaNameToken, LuaStat, LuaSyntaxId, LuaSyntaxKind,
@@ -714,43 +714,109 @@ enum ModuleConditionState {
 }
 
 fn module_condition_state(expr: &LuaExpr) -> ModuleConditionState {
-    match module_static_truthiness(expr) {
+    match static_truthiness(expr) {
         Some(true) => ModuleConditionState::Truthy,
         Some(false) => ModuleConditionState::Falsy,
         None => ModuleConditionState::Dynamic,
     }
 }
 
-fn module_static_truthiness(expr: &LuaExpr) -> Option<bool> {
+/// Syntax-level constant folding: `1 == 1` / `true` / `{}` / `function() end`.
+/// The VM only gives broad `Boolean` / `Number` types, so comparison results must be computed from literals.
+pub(crate) fn static_truthiness(expr: &LuaExpr) -> Option<bool> {
     match expr {
-        LuaExpr::LiteralExpr(literal_expr) => match literal_expr.get_literal()? {
-            LuaLiteralToken::Bool(bool_token) => Some(bool_token.is_true()),
-            LuaLiteralToken::Nil(_) => Some(false),
-            LuaLiteralToken::String(_) | LuaLiteralToken::Number(_) => Some(true),
-            LuaLiteralToken::Dots(_) | LuaLiteralToken::Question(_) => None,
+        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
+            Some(LuaLiteralToken::Nil(_)) => Some(false),
+            Some(LuaLiteralToken::Bool(token)) => Some(token.is_true()),
+            Some(LuaLiteralToken::String(_)) | Some(LuaLiteralToken::Number(_)) => Some(true),
+            _ => None,
         },
-        LuaExpr::ParenExpr(paren_expr) => module_static_truthiness(&paren_expr.get_expr()?),
-        LuaExpr::UnaryExpr(unary_expr)
-            if unary_expr
-                .get_op_token()
-                .is_some_and(|op| op.get_op() == UnaryOperator::OpNot) =>
-        {
-            module_static_truthiness(&unary_expr.get_expr()?).map(|truthy| !truthy)
-        }
-        // Table literals / closures are always truthy in Lua.
         LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_) => Some(true),
+        LuaExpr::ParenExpr(paren) => paren.get_expr().and_then(|inner| static_truthiness(&inner)),
+        LuaExpr::UnaryExpr(unary) => {
+            if unary
+                .get_op_token()
+                .is_some_and(|op| op.get_op() == UnaryOperator::OpNot)
+            {
+                unary
+                    .get_expr()
+                    .and_then(|inner| static_truthiness(&inner).map(|truthy| !truthy))
+            } else {
+                None
+            }
+        }
+        LuaExpr::BinaryExpr(binary) => {
+            let (left, right) = binary.get_exprs()?;
+            let op = binary.get_op_token()?.get_op();
+            match op {
+                BinaryOperator::OpAnd => match static_truthiness(&left) {
+                    Some(false) => Some(false),
+                    Some(true) => static_truthiness(&right),
+                    _ => None,
+                },
+                BinaryOperator::OpOr => match static_truthiness(&left) {
+                    Some(true) => Some(true),
+                    Some(false) => static_truthiness(&right),
+                    _ => None,
+                },
+                BinaryOperator::OpEq | BinaryOperator::OpNe => {
+                    let (left_value, right_value) = (static_value(&left)?, static_value(&right)?);
+                    let equal = left_value == right_value;
+                    let truthy = if op == BinaryOperator::OpEq {
+                        equal
+                    } else {
+                        !equal
+                    };
+                    Some(truthy)
+                }
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
 
-fn module_block_flow(block: LuaBlock) -> ModuleReturnFlow {
+#[derive(Debug, Clone, PartialEq)]
+enum StaticValue {
+    Nil,
+    Bool(bool),
+    Number(f64),
+    String(String),
+}
+
+fn static_value(expr: &LuaExpr) -> Option<StaticValue> {
+    match expr {
+        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
+            Some(LuaLiteralToken::Nil(_)) => Some(StaticValue::Nil),
+            Some(LuaLiteralToken::Bool(token)) => Some(StaticValue::Bool(token.is_true())),
+            Some(LuaLiteralToken::String(token)) => Some(StaticValue::String(token.get_value())),
+            Some(LuaLiteralToken::Number(token)) => match token.get_number_value() {
+                // A runtime can use integers or doubles. Fold only exact conversions.
+                NumberResult::Int(i) if i.unsigned_abs() <= 1 << 53 => {
+                    Some(StaticValue::Number(i as f64))
+                }
+                NumberResult::Uint(u) if u <= 1 << 53 => Some(StaticValue::Number(u as f64)),
+                NumberResult::Float(f) => Some(StaticValue::Number(f)),
+                _ => None,
+            },
+            _ => None,
+        },
+        LuaExpr::ParenExpr(paren) => paren.get_expr().and_then(|inner| static_value(&inner)),
+        _ => None,
+    }
+}
+
+fn module_block_flow(
+    block: LuaBlock,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     let mut flow = ModuleReturnFlow::default();
     let mut can_fall_through = true;
     for stat in block.get_stats() {
         if !can_fall_through {
             break;
         }
-        let stat_flow = module_stat_flow(stat);
+        let stat_flow = module_stat_flow(stat, is_never_call);
         flow.merge_choice(stat_flow.clone());
         can_fall_through = stat_flow.can_fall_through;
     }
@@ -758,16 +824,44 @@ fn module_block_flow(block: LuaBlock) -> ModuleReturnFlow {
     flow
 }
 
-fn module_optional_block_flow(block: Option<LuaBlock>) -> ModuleReturnFlow {
+pub(crate) fn closure_can_fall_through(
+    closure: &LuaClosureExpr,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> bool {
+    // A jump can skip a return; the structured block analysis does not follow it.
+    if closure
+        .descendants::<emmylua_parser::LuaGotoStat>()
+        .next()
+        .is_some()
+    {
+        return true;
+    }
+    let block = closure.get_block().or_else(|| {
+        closure
+            .syntax()
+            .parent()?
+            .children()
+            .find_map(LuaBlock::cast)
+    });
+    block.is_none_or(|block| module_block_flow(block, is_never_call).can_fall_through)
+}
+
+fn module_optional_block_flow(
+    block: Option<LuaBlock>,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     match block {
-        Some(block) => module_block_flow(block),
+        Some(block) => module_block_flow(block, is_never_call),
         None => ModuleReturnFlow::fallthrough(),
     }
 }
 
-fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
+fn module_stat_flow(
+    stat: LuaStat,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     match stat {
-        LuaStat::DoStat(do_stat) => module_optional_block_flow(do_stat.get_block()),
+        LuaStat::DoStat(do_stat) => module_optional_block_flow(do_stat.get_block(), is_never_call),
         LuaStat::WhileStat(while_stat) => {
             let Some(condition) = while_stat.get_condition_expr() else {
                 return ModuleReturnFlow::fallthrough();
@@ -775,7 +869,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             match module_condition_state(&condition) {
                 ModuleConditionState::Falsy => ModuleReturnFlow::fallthrough(),
                 ModuleConditionState::Truthy => {
-                    let body = module_optional_block_flow(while_stat.get_block());
+                    let body = module_optional_block_flow(while_stat.get_block(), is_never_call);
                     ModuleReturnFlow {
                         first_expr: body.first_expr,
                         can_fall_through: body.can_break,
@@ -783,7 +877,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                     }
                 }
                 ModuleConditionState::Dynamic => {
-                    let body = module_optional_block_flow(while_stat.get_block());
+                    let body = module_optional_block_flow(while_stat.get_block(), is_never_call);
                     ModuleReturnFlow {
                         first_expr: body.first_expr,
                         can_fall_through: true,
@@ -793,7 +887,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             }
         }
         LuaStat::RepeatStat(repeat_stat) => {
-            let body = module_optional_block_flow(repeat_stat.get_block());
+            let body = module_optional_block_flow(repeat_stat.get_block(), is_never_call);
             let mut flow = ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: body.can_break,
@@ -819,11 +913,14 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             if let Some(condition) = if_stat.get_condition_expr() {
                 match module_condition_state(&condition) {
                     ModuleConditionState::Truthy => {
-                        return module_optional_block_flow(if_stat.get_block());
+                        return module_optional_block_flow(if_stat.get_block(), is_never_call);
                     }
                     ModuleConditionState::Falsy => {}
                     ModuleConditionState::Dynamic => {
-                        flow.merge_choice(module_optional_block_flow(if_stat.get_block()));
+                        flow.merge_choice(module_optional_block_flow(
+                            if_stat.get_block(),
+                            is_never_call,
+                        ));
                     }
                 }
             } else {
@@ -840,6 +937,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                                 ModuleConditionState::Truthy => {
                                     flow.merge_choice(module_optional_block_flow(
                                         clause.get_block(),
+                                        is_never_call,
                                     ));
                                     can_reach_next_clause = false;
                                 }
@@ -847,6 +945,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                                 ModuleConditionState::Dynamic => {
                                     flow.merge_choice(module_optional_block_flow(
                                         clause.get_block(),
+                                        is_never_call,
                                     ));
                                 }
                             }
@@ -855,7 +954,10 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                         }
                     }
                     LuaIfClauseStat::Else(clause) => {
-                        flow.merge_choice(module_optional_block_flow(clause.get_block()));
+                        flow.merge_choice(module_optional_block_flow(
+                            clause.get_block(),
+                            is_never_call,
+                        ));
                         can_reach_next_clause = false;
                     }
                 }
@@ -866,7 +968,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             flow
         }
         LuaStat::ForStat(for_stat) => {
-            let body = module_optional_block_flow(for_stat.get_block());
+            let body = module_optional_block_flow(for_stat.get_block(), is_never_call);
             ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: true,
@@ -874,12 +976,19 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             }
         }
         LuaStat::ForRangeStat(for_range_stat) => {
-            let body = module_optional_block_flow(for_range_stat.get_block());
+            let body = module_optional_block_flow(for_range_stat.get_block(), is_never_call);
             ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: true,
                 can_break: false,
             }
+        }
+        LuaStat::CallExprStat(stat)
+            if stat
+                .get_call_expr()
+                .is_some_and(|call| call.is_error() && is_never_call(&call)) =>
+        {
+            ModuleReturnFlow::default()
         }
         LuaStat::BreakStat(_) => ModuleReturnFlow {
             can_break: true,
@@ -2571,7 +2680,7 @@ impl FactsBuilder {
         }
 
         // Module export takes the first "reachable" return expression (including truthy while/if control flow).
-        let flow = module_block_flow(block);
+        let flow = module_block_flow(block, &|_| false);
         let Some(expr) = flow.first_expr else {
             self.module_export = ModuleExport::None;
             return;
