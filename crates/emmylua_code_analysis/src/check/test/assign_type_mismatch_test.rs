@@ -3336,4 +3336,53 @@ return t
             }
         }
     }
+
+    // A literal with several mismatching entries is reported once, at the entry the record's
+    // fields put first. The fields were walked in hash order, which differs per map, so the
+    // reported line moved between runs of the same binary. Each `check_source` builds a fresh
+    // database, so 16 runs would almost surely see two of three lines if the order leaked.
+    #[test]
+    fn test_record_mismatch_reports_the_same_entry_every_run() {
+        for target in [
+            "---@type { [1]: integer, [2]: integer, [3]: integer }",
+            "---@type P",
+        ] {
+            let keys: [&str; 3] = if target.ends_with('P') {
+                ["x = ", "y = ", "z = "]
+            } else {
+                ["", "", ""]
+            };
+            let source = format!(
+                r#"
+                ---@class P
+                ---@field x integer
+                ---@field y integer
+                ---@field z integer
+
+                ---@param a number
+                local function f(a)
+                    {target}
+                    local t = {{
+                        {}a,
+                        {}a,
+                        {}a,
+                    }}
+                    return t
+                end
+                return f
+                "#,
+                keys[0], keys[1], keys[2]
+            );
+            let lines: std::collections::BTreeSet<usize> = (0..16)
+                .flat_map(|_| {
+                    check_source(&source)
+                        .into_iter()
+                        .filter(|d| d.code == DiagnosticCode::AssignTypeMismatch)
+                        .map(|d| source[..usize::from(d.range.start())].matches('\n').count())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            assert_eq!(lines, [10].into(), "{target}");
+        }
+    }
 }
