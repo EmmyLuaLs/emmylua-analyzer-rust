@@ -2197,4 +2197,51 @@ mod test {
             "InnerMe stays the class instance"
         );
     }
+
+    #[test]
+    fn test_variadic_class_generic_binds_result_slots() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class D<T...>
+            local D = {}
+            ---@return T...
+            function D:await() end
+            ---@type D<integer, string>
+            local d
+            X, Y = d:await()
+            ---@type D<integer>
+            local d1
+            X1 = d1:await()
+            ---@type D
+            local d0
+            X0 = d0:await()
+            ---@generic T...
+            ---@param body fun(): T...
+            ---@return D<T...>
+            function spawn(body) end
+            ---@generic T...
+            ---@param d D<T...>
+            ---@return T...
+            function await(d) end
+            local sd = spawn(function() return 1, "s" end)
+            S1, S2 = sd:await()
+            P1, P2 = await(sd)
+            "#,
+        );
+        let cases = [
+            ("X", "integer"),
+            ("Y", "string"),
+            ("X1", "integer"),
+            ("X0", "any"),
+            ("S1", "integer"),
+            ("S2", "string"),
+            ("P1", "integer"),
+            ("P2", "string"),
+        ];
+        for (name, expected) in cases {
+            let ty = ws.expr_ty(name);
+            assert_eq!(ws.humanize_type(ty), expected, "{name}");
+        }
+    }
 }

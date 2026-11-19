@@ -403,6 +403,17 @@ fn class_generic_args_with_defaults(
 ) -> Vec<LuaType> {
     let mut resolved: Vec<LuaType> = Vec::with_capacity(def.generic_params.len());
     for (index, param) in def.generic_params.iter().enumerate() {
+        // `---@class D<T...>`: the variadic parameter takes every remaining argument
+        // as separate result slots (`D<integer, string>` binds `T...` to `integer, string`).
+        if param.is_variadic && provided.len() > index {
+            let rest = &provided[index..];
+            resolved.push(match rest {
+                // Already result slots (`Deferred<T...>` instantiated from a function's `T...`).
+                [slots @ LuaType::Variadic(_)] => slots.clone(),
+                _ => LuaType::Variadic(Rc::new(VariadicType::Multi(rest.to_vec()))),
+            });
+            continue;
+        }
         if let Some(value) = provided.get(index) {
             resolved.push(value.clone());
             continue;
@@ -431,6 +442,15 @@ pub fn substitute_named_refs(ty: &LuaType, map: &HashMap<String, LuaType>) -> Lu
     }
     map_type(ty, &mut |ty| match ty {
         LuaType::Ref(id) | LuaType::Def(id) => map.get(id.get_name()).cloned(),
+        // `T...` bound to result slots replaces the whole variadic, as `unify::substitute` does.
+        LuaType::Variadic(variadic) => match variadic.as_ref() {
+            VariadicType::Base(LuaType::Ref(id) | LuaType::Def(id)) => match map.get(id.get_name())
+            {
+                Some(slots @ LuaType::Variadic(_)) => Some(slots.clone()),
+                _ => None,
+            },
+            _ => None,
+        },
         _ => None,
     })
 }
