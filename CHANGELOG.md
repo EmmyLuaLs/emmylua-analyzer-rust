@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Merge dotted and nested configuration settings consistently across project and editor layers, preserving exclusions from both.
 - **Flow analysis**: Handle array length guards that compare against smaller lengths.
 - **Member id description**: Fixed an issue with member id description rendering.
 - **emmylua_doc_cli**: Render Markdown tables in HTML documentation descriptions.
