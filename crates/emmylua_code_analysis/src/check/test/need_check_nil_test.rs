@@ -5,7 +5,7 @@ mod test {
     use tokio_util::sync::CancellationToken;
 
     use crate::check::test::{check_source, count_by_code};
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{DiagnosticCode, FileId, LuaType, VirtualWorkspace};
 
     // 判空后的命名 cast 可以重新加入 nil, 成员投影不得再次使用旧 guard 将其移除.
     #[test]
@@ -189,6 +189,448 @@ mod test {
                 ))),
             "{diagnostics:#?}"
         );
+    }
+
+    #[track_caller]
+    fn assert_nil_checks(ws: &VirtualWorkspace, file_id: FileId, expected: usize) {
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::NeedCheckNil.get_name().to_string(),
+        ));
+        let actual = diagnostics.iter().filter(|d| d.code == code).count();
+        assert_eq!(actual, expected, "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn test_dynamic_index_uses_metatable_value() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local options = setmetatable({}, {
+                __index = function() return { text = 'hello' } end,
+            })
+            local throwing = setmetatable({}, {
+                __index = function(_, key)
+                    if key == 1 then return { text = 'hello' } end
+                    error('missing key')
+                end,
+            })
+            ---@param index integer
+            ---@param key string
+            local function read(index, key)
+                print(throwing[index].text)
+                print(options[index].text)
+                print(options[key].text)
+                integer_value = options[index]
+                string_value = options[key]
+            end
+            "#,
+        ));
+        assert!(matches!(
+            ws.expr_ty("integer_value"),
+            LuaType::TableConst(_)
+        ));
+        assert!(matches!(ws.expr_ty("string_value"), LuaType::TableConst(_)));
+    }
+
+    #[test]
+    fn test_dynamic_index_on_recursive_option_accessor() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@param get fun(key: string): any
+            local function new_options(get)
+                return setmetatable({}, {
+                    __index = function(_, key)
+                        if type(key) == 'number' then return new_options(get) end
+                        return get(key)
+                    end,
+                })
+            end
+            ---@param get fun(key: string): any
+            ---@param index integer
+            local function read(get, index)
+                local options = new_options(get)
+                print(options[index].text)
+            end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_possible_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            local options = setmetatable({}, {
+                ---@return {text: string}?
+                __index = function() return nil end,
+            })
+            local plain = { text = { text = 'hello' } }
+            ---@param index integer
+            ---@param key string
+            local function read(index, key)
+                print(options[index].text)
+                print(options[key].text)
+                print(plain[index].text)
+                print(plain[key].text)
+            end
+            "#,
+        );
+        assert_nil_checks(&ws, file_id, 4);
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_inferred_missing_returns() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            local empty = setmetatable({}, { __index = function() end })
+            local conditional = setmetatable({}, {
+                __index = function(_, key)
+                    if key == 1 then return { text = 'hello' } end
+                end,
+            })
+            local bare = setmetatable({}, { __index = function() return end })
+            local partial = setmetatable({}, {
+                __index = function(_, key)
+                    if key == 1 then return end
+                    return { text = 'hello' }
+                end,
+            })
+            local raw = setmetatable({}, {
+                __index = function(self, key) return rawget(self, key) end,
+            })
+            ---@param index integer
+            ---@param key string
+            local function read(index, key)
+                print(empty[index].text)
+                print(empty[key].text)
+                print(conditional[index].text)
+                print(conditional[key].text)
+                print(bare[index].text)
+                print(bare[key].text)
+                print(partial[index].text)
+                print(partial[key].text)
+                print(raw[index].text)
+                print(raw[key].text)
+            end
+            "#,
+        );
+        assert_nil_checks(&ws, file_id, 10);
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_forwarded_missing_returns() {
+        for body in [
+            "",
+            "if flag then return { text = 'hello' } end",
+            "local function error() end; error()",
+            "error = function() end; error()",
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let source = format!(
+                r#"
+                ---@param flag boolean
+                local function maybe(flag) {body} end
+                local forward = maybe
+                local options = setmetatable({{}}, {{
+                    __index = function(_, key) return forward(key == 1) end,
+                }})
+                ---@param index integer
+                ---@param key string
+                local function read(index, key)
+                    print(options[index].text)
+                    print(options[key].text)
+                end
+                "#,
+            );
+            let file_id = ws.def(&source);
+            assert_nil_checks(&ws, file_id, 2);
+        }
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_generic_callback_nil() {
+        for (annotation, body, nil_checks) in [
+            ("", "if flag then return { text = 'hello' } end", 2),
+            (
+                "---@return {text: string}?",
+                "if flag then return { text = 'hello' } end",
+                2,
+            ),
+            ("", "return { text = 'hello' }", 0),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let source = format!(
+                r#"
+                ---@generic T
+                ---@param f fun(flag: boolean): T
+                ---@param flag boolean
+                ---@return T
+                local function call(f, flag) return f(flag) end
+                ---@param flag boolean
+                {annotation}
+                local function value(flag) {body} end
+                local options = setmetatable({{}}, {{
+                    __index = function(_, key) return call(value, key == 1) end,
+                }})
+                ---@param index integer
+                ---@param key string
+                local function read(index, key)
+                    print(options[index].text)
+                    print(options[key].text)
+                end
+                "#,
+            );
+            let file_id = ws.def(&source);
+            assert_nil_checks(&ws, file_id, nil_checks);
+        }
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_overloaded_generic_callback_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@generic T
+            ---@param f fun(flag: boolean): T
+            ---@param flag boolean
+            ---@return T
+            local function call(f, flag) return f(flag) end
+            ---@param flag boolean
+            local function maybe(flag)
+                if flag then return { text = 'hello' } end
+            end
+            ---@overload fun(self: table, key: string): nil
+            local function lookup(_, key) return call(maybe, key == 1) end
+            local options = setmetatable({}, { __index = lookup })
+            ---@param index integer
+            ---@param key string
+            local function read(index, key)
+                print(options[index].text)
+                print(options[key].text)
+            end
+            "#,
+        );
+        assert_nil_checks(&ws, file_id, 2);
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_nil_after_later_error_replacement() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local function maybe(flag)
+                if flag then return { text = 'hello' } end
+                error('missing')
+            end
+            error = function() end
+            local options = setmetatable({}, {
+                __index = function(_, key) return maybe(key == 1) end,
+            })
+            ---@param index integer
+            local function read(index) print(options[index].text) end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_dynamic_index_keeps_nil_after_large_integer_comparison() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local options = setmetatable({}, {
+                __index = function()
+                    if 9007199254740992 == 9007199254740993 then
+                        return { text = 'hello' }
+                    end
+                end,
+            })
+            ---@param index integer
+            local function read(index) print(options[index].text) end
+            "#,
+        ));
+    }
+
+    const CORRELATED_PICK: &str = r#"
+            ---@param left boolean
+            ---@param right boolean
+            ---@return boolean, boolean, string?
+            ---@return_overload true, true, string
+            ---@return_overload true, false, nil
+            ---@return_overload false, true, nil
+            local function pick(left, right)
+                if left and right then return true, true, 'hello' end
+                if left then return true, false, nil end
+                return false, true, nil
+            end
+    "#;
+
+    #[test]
+    fn test_correlated_guards_keep_nil_after_discriminant_write() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            &format!(
+                r#"
+            {CORRELATED_PICK}
+            ---@param left boolean
+            ---@param right boolean
+            ---@param replace boolean
+            local function read(left, right, replace)
+                local a, b, value = pick(left, right)
+                if replace then b = true end
+                if a then
+                    if b then print(value:upper()) end
+                end
+            end
+            "#,
+            ),
+        ));
+    }
+
+    #[test]
+    fn test_correlated_guards_keep_nil_after_captured_write() {
+        for (body, call, nil_checks) in [
+            ("b = true", "change()", 1),
+            ("value = nil", "change()", 1),
+            ("print(a)", "change()", 0),
+            ("b = b", "change()", 0),
+            ("b = true", "", 0),
+            ("value = nil", "", 0),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let file_id = ws.def(&format!(
+                r#"
+                {CORRELATED_PICK}
+                ---@param left boolean
+                ---@param right boolean
+                local function read(left, right)
+                    local a, b, value = pick(left, right)
+                    local function change() {body} end
+                    if a then
+                        {call}
+                        if b then print(value:upper()) end
+                    end
+                end
+                "#,
+            ));
+            assert_nil_checks(&ws, file_id, nil_checks);
+        }
+    }
+
+    #[test]
+    fn test_correlated_guards_use_the_same_return_row() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(&format!(
+            r#"
+            {CORRELATED_PICK}
+            ---@param left boolean
+            ---@param right boolean
+            local function read(left, right)
+                local a, b, value = pick(left, right)
+                if a then
+                    if b then successful = value end
+                    if not b then missing = value end
+                end
+            end
+        "#,
+        ));
+        assert_eq!(ws.expr_ty("successful"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("missing"), ws.ty("nil"));
+    }
+
+    #[test]
+    fn test_correlated_guards_keep_nil_after_write() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@param flag boolean
+            ---@return boolean, string?
+            ---@return_overload true, string
+            ---@return_overload false, nil
+            local function pick(flag)
+                if flag then return true, 'hello' end
+                return false, nil
+            end
+            ---@param flag boolean
+            ---@param replace boolean
+            local function read(flag, replace)
+                local ok, value = pick(flag)
+                if ok then
+                    success = value
+                    print(value:upper())
+                end
+                if not ok then
+                    failure = value
+                    print(value:upper())
+                end
+                if replace then value = nil end
+                if ok then
+                    after_write = value
+                    print(value:upper())
+                end
+            end
+            "#,
+        );
+        assert_eq!(ws.expr_ty("success"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("failure"), ws.ty("nil"));
+        assert_eq!(ws.expr_ty("after_write"), ws.ty("string?"));
+        assert_nil_checks(&ws, file_id, 2);
+    }
+
+    #[test]
+    fn test_guard_after_branch_assignment() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@param value string?
+            ---@param flag boolean
+            local function read(value, flag)
+                if flag then value = 'hello' end
+                print(value and value:upper())
+            end
+
+            ---@param hash (integer|fun(): integer)?
+            local function normalize(hash)
+                if type(hash) == 'number' then
+                    local number = hash
+                    hash = function() return number end
+                end
+                print(hash and hash())
+            end
+            "#,
+        );
+        assert_nil_checks(&ws, file_id, 0);
+    }
+
+    #[test]
+    fn test_guards_do_not_hide_nil_after_merge_or_write() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@param value string?
+            ---@param flag boolean
+            local function read(value, flag)
+                if flag then value = 'hello' end
+                print(value and value:upper())
+                print(value:upper())
+                if value then
+                    value = nil
+                    print(value:upper())
+                end
+            end
+            "#,
+        );
+        assert_nil_checks(&ws, file_id, 2);
     }
 
     fn check_class_array_guard(element_type: &str, body: &str, expected_codes: &[DiagnosticCode]) {

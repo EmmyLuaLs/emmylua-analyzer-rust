@@ -3,6 +3,52 @@ mod test {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
+    fn test_callback_overload_checks_missing_returns() {
+        for (returns, body, accepts_missing_return) in [
+            ("Handle?", "", true),
+            ("Handle", "", false),
+            (
+                "string?",
+                "if options.enabled then return 'hello' end",
+                true,
+            ),
+            (
+                "string",
+                "if options.enabled then return 'hello' end",
+                false,
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let source = format!(
+                r#"
+                ---@class Handle
+                ---@field close fun()
+                ---@alias Callback fun(...: any): {returns}
+                local M = {{}}
+                ---@generic R
+                ---@return R...
+                local function generic(...) end
+                ---@overload fun(argc: integer, callback: Callback, ...: any): any ...
+                function M.await(...) return generic(...) end
+                ---@param options table
+                ---@param callback fun(text?: string)
+                local function input(options, callback)
+                    callback('hello')
+                    {body}
+                end
+                local response ---@type string?
+                response = M.await(2, input, {{}})
+            "#
+            );
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepts_missing_return,
+                "{source}",
+            );
+        }
+    }
+
+    #[test]
     fn test_issue_586() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         ws.def(
@@ -59,12 +105,16 @@ mod test {
             --- @param c table
             local function foo(a, b, c) end
 
+            ---@param b string
+            ---@param c table
+            function expected(b, c) end
+
             bar = curry(foo, 'a')
             "#,
         );
 
         let bar_ty = ws.expr_ty("bar");
-        let expected = ws.ty("fun(b:string, c:table)");
+        let expected = ws.expr_ty("expected");
         assert_eq!(bar_ty, expected);
     }
 
