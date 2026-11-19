@@ -3343,15 +3343,13 @@ return t
     // database, so 16 runs would almost surely see two of three lines if the order leaked.
     #[test]
     fn test_record_mismatch_reports_the_same_entry_every_run() {
-        for target in [
-            "---@type { [1]: integer, [2]: integer, [3]: integer }",
-            "---@type P",
+        for (target, keys) in [
+            (
+                "---@type { [1]: integer, [2]: integer, [3]: integer }",
+                ["", "", ""],
+            ),
+            ("---@type P", ["x = ", "y = ", "z = "]),
         ] {
-            let keys: [&str; 3] = if target.ends_with('P') {
-                ["x = ", "y = ", "z = "]
-            } else {
-                ["", "", ""]
-            };
             let source = format!(
                 r#"
                 ---@class P
