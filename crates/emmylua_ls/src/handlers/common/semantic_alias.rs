@@ -60,7 +60,9 @@ pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Opt
                             _ => return None,
                         }
                     }
-                    _ => return None,
+                    // Any other value (a table constructor, a call, a literal, ...) is not an
+                    // alias: this declaration is the origin, e.g. a module's `local M = {}`.
+                    _ => return Some(current),
                 }
             }
             SemanticId::Member(key) => {
