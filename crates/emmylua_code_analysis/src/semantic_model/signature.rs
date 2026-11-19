@@ -1,5 +1,6 @@
 use crate::semantic_model::infer::vm::expand_callable_types_in_model;
 use crate::semantic_model::type_check::TypeCheckFailReason;
+use crate::types::TypeCandidate;
 use crate::{IndexInfo, LuaGenericType, OperatorDef};
 
 use super::prelude::*;
@@ -327,6 +328,23 @@ impl<'db> SemanticModel<'db> {
             let rich = self.project_doc_type(file_id, docs.returns[0], &[]);
             if !matches!(rich, LuaType::Unknown) {
                 ret = rich;
+            }
+        }
+        // Shell results can retain a forwarded call's generic without binding it.
+        // Complete that inferred return with the VM, while keeping declared contracts.
+        if signature.docs.as_ref().is_none_or(|docs| {
+            docs.returns.is_empty()
+                && docs.return_overloads.is_empty()
+                && docs.overloads.is_empty()
+                && docs.return_cast.is_none()
+        }) && return_shells
+            .iter()
+            .flat_map(|shell| shell.first_result().candidates)
+            .any(|candidate| matches!(candidate, TypeCandidate::Generic(_)))
+        {
+            let inferred = infer::closure_return_lua(&self.model_for(file_id), closure_syntax);
+            if !matches!(inferred, LuaType::Unknown | LuaType::Any) {
+                ret = inferred;
             }
         }
         // `self` in method annotations is the receiver instance; concretize the signature return type by the method owner.

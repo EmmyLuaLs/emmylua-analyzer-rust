@@ -219,3 +219,79 @@ fn flow_member_guard_chain_keeps_the_memo() {
         }
     }
 }
+
+#[test]
+fn flow_correlated_guard_keeps_earlier_guards_cached() {
+    for n in [4usize, 8, 16, 32, 64, 128] {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut source = String::from(
+            r#"
+            ---@param flag boolean
+            ---@return boolean, string?
+            ---@return_overload true, string
+            ---@return_overload false, nil
+            local function pick(flag)
+                if flag then return true, 'hello' end
+                return false, nil
+            end
+            ---@param flag boolean
+            local function read(flag)
+                local ok, value = pick(flag)
+            "#,
+        );
+        for _ in 0..n {
+            source.push_str("if type(value) == 'string' then print(value) end\n");
+        }
+        source.push_str("if ok then print(value:upper()) end\nend\n");
+        let file_id = ws.def_file("correlated.lua", &source);
+        flow_metrics::reset();
+        read_every_name(&ws, file_id);
+        let steps = flow_metrics::trace_steps();
+        let bound = 128 * (n as u64) * (n as u64) + 512;
+        assert!(
+            steps <= bound,
+            "correlated guard took {steps} trace steps for {n} preceding guards (bound {bound})"
+        );
+    }
+}
+
+#[test]
+fn flow_distinct_correlated_guards_keep_the_memo() {
+    for n in [4usize, 8, 16, 32, 64, 128, 256] {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut source = String::from("---@param n integer\n---@return integer, integer\n");
+        for i in 1..=n {
+            source.push_str(&format!("---@return_overload {i}, {i}\n"));
+        }
+        source.push_str("local function pick(n)\n");
+        for i in 1..n {
+            source.push_str(&format!("if n == {i} then return {i}, {i} end\n"));
+        }
+        source.push_str(&format!("return {n}, {n}\nend\n"));
+        source
+            .push_str("---@param n integer\nlocal function read(n)\nlocal tag, value = pick(n)\n");
+        for i in 1..=n {
+            source.push_str(&format!("if value == {i} then print(value) end\n"));
+        }
+        source.push_str("if tag == 1 then print(value) end\nend\n");
+        let file_id = ws.def_file("distinct.lua", &source);
+        flow_metrics::reset();
+        read_every_name(&ws, file_id);
+        let steps = flow_metrics::trace_steps();
+        let rows = flow_metrics::correlated_row_work();
+        let bound = 128 * (n as u64) * (n as u64) + 512;
+        assert!(
+            steps <= bound,
+            "{n} distinct guards took {steps} trace steps (bound {bound})"
+        );
+        assert!(
+            rows <= 16 * (n as u64) * (n as u64),
+            "{n} guards inspected {rows} return rows"
+        );
+        assert_eq!(
+            flow_metrics::return_rows_built(),
+            n as u64,
+            "{n} guards should build the call's return rows once"
+        );
+    }
+}
