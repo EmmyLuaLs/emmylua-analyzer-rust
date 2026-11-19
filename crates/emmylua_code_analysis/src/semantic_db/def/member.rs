@@ -57,6 +57,17 @@ pub struct Member {
 }
 
 impl Member {
+    /// Positional table field (`{ value }`): there is no key token, so the key range falls
+    /// back to the whole field and therefore contains the value expression. A real key
+    /// (`x = v`, `[k] = v`) never contains its value.
+    pub fn is_positional_table_field(&self) -> bool {
+        matches!(self.source, MemberSource::TableField { key_expr: None })
+            && match (self.id.member_key_range(), self.value_syntax) {
+                (Some(key_range), Some(value)) => key_range.contains_range(value.get_range()),
+                _ => false,
+            }
+    }
+
     pub fn new(
         file_id: FileId,
         key_range: TextRange,

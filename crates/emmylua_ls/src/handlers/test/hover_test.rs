@@ -24,6 +24,45 @@ mod tests {
         Ok(())
     }
 
+    #[gtest]
+    fn test_hover_inside_positional_table_field() -> Result<()> {
+        // A positional field has no key token; tokens inside its value must resolve to their
+        // own declarations, not to the field (`(field) [1]: { run: fun() }`).
+        let cases = [
+            "local t = { { run = function () string.fo<??>rmat('x') end } }",
+            "local t = { function () string.fo<??>rmat('x') end }",
+            "local t = { { function () string.fo<??>rmat('x') end } }",
+            "local t = { 1, string.fo<??>rmat }",
+        ];
+        for case in cases {
+            let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+            let (content, position) = ProviderVirtualWorkspace::handle_file_content(case)?;
+            let file_id = ws.def(&content);
+            let Some(result) = hover(&ws.analysis, file_id, position) else {
+                return fail!("no hover for {case}");
+            };
+            let HoverContents::Markup(markup) = result.contents else {
+                return fail!("expected markup for {case}");
+            };
+            verify_that!(
+                markup.value,
+                starts_with("```lua\nfunction string.format(fmt: string, ...: any) -> string")
+            )?;
+        }
+
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            local x = 1
+            local t = { { run = function () print(<??>x) end } }
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal x: integer\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
     fn dedent(input: &str) -> String {
         let lines: Vec<&str> = input.lines().collect();
         let mut min_indent = usize::MAX;
