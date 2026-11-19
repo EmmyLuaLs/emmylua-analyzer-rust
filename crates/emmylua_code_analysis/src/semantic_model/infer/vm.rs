@@ -1082,7 +1082,13 @@ impl<'a> InferVm<'a> {
     }
 
     fn index_member_impl(&mut self, mut owner: Value, key: &LuaMemberKey) -> Value {
-        let receiver_ty = Some(owner.ty.clone());
+        let receiver_ty = Some(
+            owner
+                .owner
+                .as_ref()
+                .and_then(|decl| self.model.own_class_self_receiver(decl, &owner.ty))
+                .unwrap_or_else(|| owner.ty.clone()),
+        );
         // On `any` (including alias cycles that converge to any), any field is still any.
         if owner.ty.is_any() {
             return Value::plain(LuaType::Any);
