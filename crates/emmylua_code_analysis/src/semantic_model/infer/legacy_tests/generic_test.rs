@@ -2136,4 +2136,65 @@ mod test {
             "ValueOf<{ value: \"one\" }> = \"one\""
         );
     }
+
+    #[test]
+    fn test_bare_generic_receiver_method_uses_defaults() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Box<T>
+            local Box = {}
+            ---@return T
+            function Box:get() end
+            ---@return self
+            function Box:me() end
+            ---@return Box
+            function make_box() end
+
+            ---@class SBox<T = string>
+            local SBox = {}
+            ---@return T
+            function SBox:get() end
+            ---@return SBox
+            function make_sbox() end
+
+            ---@class Pair<K, V = K[]>
+            local Pair = {}
+            ---@return V
+            function Pair:value() end
+
+            ---@return T
+            function Box:again()
+                InnerGet = self:get()
+                InnerMe = self:me()
+                return self:get()
+            end
+
+            BareGet = make_box():get()
+            DefaultGet = make_sbox():get()
+            ---@type Pair<integer>
+            local pair
+            TrailingDefault = pair:value()
+            ---@type Box<integer>
+            local int_box
+            Again = int_box:again()
+            "#,
+        );
+        let cases = [
+            ("BareGet", "any"),
+            ("DefaultGet", "string"),
+            ("TrailingDefault", "integer[]"),
+            ("InnerGet", "T"),
+            ("Again", "integer"),
+        ];
+        for (name, expected) in cases {
+            let ty = ws.expr_ty(name);
+            assert_eq!(ws.humanize_type(ty), expected, "{name}");
+        }
+        let inner_me = ws.expr_ty("InnerMe");
+        assert!(
+            ws.humanize_type(inner_me).starts_with("Box"),
+            "InnerMe stays the class instance"
+        );
+    }
 }

@@ -1,6 +1,6 @@
 use crate::semantic_model::infer::vm::expand_callable_types_in_model;
 use crate::semantic_model::type_check::TypeCheckFailReason;
-use crate::{IndexInfo, OperatorDef};
+use crate::{IndexInfo, LuaGenericType, OperatorDef};
 
 use super::prelude::*;
 
@@ -515,6 +515,44 @@ impl<'db> SemanticModel<'db> {
             ret,
             Some(generic_params),
         ))
+    }
+    /// Receiver type for member access on the implicit `self` of a method of a generic
+    /// class: the class instantiated with its own parameters (`Box<T>`), so class
+    /// generics stay `T` inside the class body instead of taking the defaults (`any`)
+    /// that a bare `Box` reference gets.
+    pub(crate) fn own_class_self_receiver(
+        &self,
+        decl: &SemanticId,
+        ty: &LuaType,
+    ) -> Option<LuaType> {
+        let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
+            return None;
+        };
+        let SemanticId::Decl(key) = decl else {
+            return None;
+        };
+        if key.file_id != self.file_id() {
+            return None;
+        }
+        let facts = self.file_facts()?;
+        let decl = facts.decl_by_id(decl)?;
+        if decl.name != "self" || !matches!(decl.kind, DeclKind::Param) {
+            return None;
+        }
+        self.method_closure_for_self_decl(decl)?;
+        let def = self.type_def_of(id)?;
+        if def.generic_params.is_empty() {
+            return None;
+        }
+        let params = def
+            .generic_params
+            .iter()
+            .map(|param| LuaType::Ref(LuaTypeDeclId::global(&param.name)))
+            .collect();
+        Some(LuaType::Generic(Rc::new(LuaGenericType::new(
+            id.clone(),
+            params,
+        ))))
     }
     /// Instance type of the owner that a method closure belongs to (the `self` type).
     /// Consistent with `method_self_return_shell`: if the method owner is a runtime declaration

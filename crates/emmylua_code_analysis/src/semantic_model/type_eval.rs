@@ -369,23 +369,56 @@ pub fn expand_mapped(model: &SemanticModel, mapped: &LuaMappedType) -> Option<Lu
 }
 
 /// Build a mapping from class generic names to arguments (`T -> string`) from a receiver generic instance (`Box<string>`).
+///
+/// A bare reference to a generic class (`Box`, typically from `---@return Box`) and an
+/// instance with missing trailing arguments use the declared defaults
+/// (`---@class Box<T = string>`); parameters without a default become `any`, the same
+/// semantics as a bare `---@type Box` declaration.
 pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<String, LuaType>> {
-    let LuaType::Generic(generic) = ty else {
-        return None;
+    let (base, provided): (_, &[LuaType]) = match ty {
+        LuaType::Generic(generic) => (generic.get_base_type_id(), generic.get_params()),
+        LuaType::Ref(id) | LuaType::Def(id) => (id.clone(), &[]),
+        _ => return None,
     };
-    let def = model.type_def_of(&generic.get_base_type_id())?;
-    let params = generic.get_params();
+    let def = model.type_def_of(&base)?;
+    if def.generic_params.is_empty() {
+        return matches!(ty, LuaType::Generic(_)).then(HashMap::new);
+    }
+    let args = class_generic_args_with_defaults(model, &def, provided);
     Some(
         def.generic_params
             .iter()
-            .enumerate()
-            .filter_map(|(index, param)| {
-                params
-                    .get(index)
-                    .map(|value| (param.name.to_string(), value.clone()))
-            })
+            .zip(args)
+            .map(|(param, value)| (param.name.to_string(), value))
             .collect(),
     )
+}
+
+/// Provided class generic arguments, followed by declared defaults (which may reference
+/// earlier parameters) and `any` for parameters without a default.
+fn class_generic_args_with_defaults(
+    model: &SemanticModel,
+    def: &TypeDef,
+    provided: &[LuaType],
+) -> Vec<LuaType> {
+    let mut resolved: Vec<LuaType> = Vec::with_capacity(def.generic_params.len());
+    for (index, param) in def.generic_params.iter().enumerate() {
+        if let Some(value) = provided.get(index) {
+            resolved.push(value.clone());
+            continue;
+        }
+        let Some(syntax) = param.default else {
+            resolved.push(LuaType::Any);
+            continue;
+        };
+        let default = model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+        let mut bindings = unify::TplBindings::new();
+        for (earlier, value) in resolved.iter().enumerate() {
+            bindings.insert(GenericTplId::Type(earlier as u32), value.clone());
+        }
+        resolved.push(unify::substitute(&default, &bindings));
+    }
+    resolved
 }
 
 /// Substitute class generics referenced by name without traversing replacements.

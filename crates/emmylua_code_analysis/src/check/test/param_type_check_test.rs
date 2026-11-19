@@ -4696,4 +4696,52 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_bare_generic_receiver_method_param_uses_defaults() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Ch<T>
+                local Ch = {}
+
+                ---@param v T
+                function Ch:send(v) end
+
+                ---@return Ch
+                function make_ch() end
+
+                ---@class SCh<T = string>
+                local SCh = {}
+
+                ---@param v T
+                function SCh:send(v) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            local ch = make_ch()
+            ch:send(1)
+            ch:send("x")
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type SCh
+            local sch
+            sch:send(1)
+            "#
+        ));
+        // Inside the class body `T` is still the class parameter.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            function Ch:send_one()
+                self:send(1)
+            end
+            "#
+        ));
+    }
 }
