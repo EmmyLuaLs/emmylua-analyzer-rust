@@ -7,7 +7,7 @@ use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefK
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::semantic_model::type_eval::{substitute_named_refs, with_expanded_alias};
 use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaObjectType, LuaType};
-use crate::{Member, semantic_db::facts::FileFacts};
+use crate::{Member, MemberAccess, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
 use super::SemanticModel;
@@ -81,6 +81,7 @@ pub(super) fn member_infos_all(model: &SemanticModel, prefix_type: &LuaType) -> 
         &mut out,
         None,
         MemberCollectMode::Effective,
+        None,
     );
     out
 }
@@ -163,6 +164,7 @@ fn find_type_def_member(
             &mut infos,
             Some(key),
             MemberCollectMode::Effective,
+            None,
         );
         if let Some(info) = infos.into_iter().next() {
             visited.pop();
@@ -440,8 +442,33 @@ pub fn member_infos_with_key_mode(
         &mut out,
         Some(key),
         mode,
+        None,
     );
     out
+}
+
+/// Project one declaration through the receiver's inherited generic bindings.
+/// Unlike a read query, this preserves a selected setter's own type and identity.
+pub(super) fn member_info_for_declaration(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key: &LuaMemberKey,
+    declaration: &SemanticId,
+) -> Option<MemberInfo> {
+    let mut out = Vec::new();
+    collect_members(
+        model,
+        prefix_type,
+        None,
+        None,
+        &mut Vec::new(),
+        &mut out,
+        Some(key),
+        MemberCollectMode::AllDefinitions,
+        Some(declaration),
+    );
+    out.into_iter()
+        .find(|info| info.id.as_ref() == Some(declaration))
 }
 
 /// Member type for a prefix type + key (old `infer_member_type`).
@@ -610,6 +637,7 @@ fn collect_members(
     out: &mut Vec<MemberInfo>,
     filter: Option<&LuaMemberKey>,
     mode: MemberCollectMode,
+    raw_member: Option<&SemanticId>,
 ) {
     match prefix_type {
         // Named type: @field + inheritance + runtime value members.
@@ -627,6 +655,7 @@ fn collect_members(
                             out,
                             filter,
                             mode,
+                            raw_member,
                         );
                     });
                     return;
@@ -671,6 +700,7 @@ fn collect_members(
                             out,
                             filter,
                             mode,
+                            raw_member,
                         );
                         return;
                     }
@@ -684,6 +714,7 @@ fn collect_members(
                     out,
                     filter,
                     mode,
+                    raw_member,
                 );
             }
         }
@@ -693,7 +724,9 @@ fn collect_members(
                 && def.kind == TypeDefKind::Alias
             {
                 with_expanded_alias(model, prefix_type, |expanded| {
-                    collect_members(model, expanded, None, None, visited, out, filter, mode);
+                    collect_members(
+                        model, expanded, None, None, visited, out, filter, mode, raw_member,
+                    );
                 });
                 return;
             }
@@ -727,13 +760,20 @@ fn collect_members(
                 out,
                 filter,
                 mode,
+                raw_member,
             );
         }
         // Anonymous table literal: field members of the synthesized owner (file, range).
         LuaType::TableConst(table) => {
             let owner = SemanticId::member(table.file_id, table.value);
             for member_ref in owner_member_refs(model, &owner, filter) {
-                if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+                if let Some(info) = member_info_for_collection(
+                    model,
+                    &member_ref,
+                    bindings,
+                    name_bindings,
+                    raw_member,
+                ) {
                     if let Some(expanded) =
                         expand_table_multi_return_member(model, table, &member_ref, &info, filter)
                     {
@@ -758,9 +798,13 @@ fn collect_members(
                 }
                 for decl_owner in owners {
                     for member_ref in owner_member_refs(model, &decl_owner, filter) {
-                        if let Some(info) =
-                            member_info_of(model, &member_ref, bindings, name_bindings)
-                        {
+                        if let Some(info) = member_info_for_collection(
+                            model,
+                            &member_ref,
+                            bindings,
+                            name_bindings,
+                            raw_member,
+                        ) {
                             push_member_info(out, filter, info);
                         }
                     }
@@ -787,7 +831,13 @@ fn collect_members(
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
             let string_owner = SemanticId::name(SmolStr::new("string"));
             for member_ref in owner_member_refs(model, &string_owner, filter) {
-                if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+                if let Some(info) = member_info_for_collection(
+                    model,
+                    &member_ref,
+                    bindings,
+                    name_bindings,
+                    raw_member,
+                ) {
                     push_member_info(out, filter, info);
                 }
             }
@@ -804,6 +854,7 @@ fn collect_members(
                     out,
                     filter,
                     mode,
+                    raw_member,
                 );
             }
         }
@@ -821,6 +872,7 @@ fn collect_members(
                     &mut component_members,
                     filter,
                     mode,
+                    raw_member,
                 );
                 for info in component_members {
                     if mode == MemberCollectMode::AllDefinitions {
@@ -928,6 +980,7 @@ fn collect_type_def_members(
     out: &mut Vec<MemberInfo>,
     filter: Option<&LuaMemberKey>,
     mode: MemberCollectMode,
+    raw_member: Option<&SemanticId>,
 ) {
     if visited.contains(&def.id) || visited.len() >= MAX_MEMBER_INHERITANCE_DEPTH {
         return;
@@ -938,7 +991,9 @@ fn collect_type_def_members(
 
     // 1. This class's `@field` (workspace member index, cross-file).
     for member_ref in owner_member_refs(model, &def.id, filter) {
-        if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+        if let Some(info) =
+            member_info_for_collection(model, &member_ref, bindings, name_bindings, raw_member)
+        {
             push_member_info(&mut layer, filter, info);
         }
     }
@@ -956,6 +1011,7 @@ fn collect_type_def_members(
             &mut layer,
             filter,
             mode,
+            raw_member,
         );
         push_member_layer(out, &mut shadowed, layer, mode);
     }
@@ -967,7 +1023,9 @@ fn collect_type_def_members(
         }
         let mut layer = Vec::new();
         for member_ref in owner_member_refs(model, &owner, filter) {
-            if let Some(info) = member_info_of(model, &member_ref, bindings, name_bindings) {
+            if let Some(info) =
+                member_info_for_collection(model, &member_ref, bindings, name_bindings, raw_member)
+            {
                 push_member_info(&mut layer, filter, info);
             }
         }
@@ -1078,6 +1136,19 @@ fn is_class_table_member(
     }
 }
 
+/// Collection visits the getter declaration itself; skip a setter remapped to it.
+/// Keep distinct declarations and generic projections, including real overloads.
+fn member_info_for_collection(
+    model: &SemanticModel,
+    member_ref: &MemberRef,
+    bindings: Option<&TplBindings>,
+    name_bindings: Option<&HashMap<String, LuaType>>,
+    raw_member: Option<&SemanticId>,
+) -> Option<MemberInfo> {
+    member_info_of_projection(model, member_ref, bindings, name_bindings, raw_member)
+        .filter(|info| info.id.as_ref() == Some(&member_ref.id))
+}
+
 /// Member ref → `MemberInfo` (type projection + generic substitution).
 ///
 /// index-signature members and version-hidden members are skipped.
@@ -1087,8 +1158,36 @@ fn member_info_of(
     bindings: Option<&TplBindings>,
     name_bindings: Option<&HashMap<String, LuaType>>,
 ) -> Option<MemberInfo> {
+    member_info_of_projection(model, member_ref, bindings, name_bindings, None)
+}
+
+fn member_info_of_projection(
+    model: &SemanticModel,
+    member_ref: &MemberRef,
+    bindings: Option<&TplBindings>,
+    name_bindings: Option<&HashMap<String, LuaType>>,
+    raw_member: Option<&SemanticId>,
+) -> Option<MemberInfo> {
+    if raw_member.is_some_and(|id| id != &member_ref.id) {
+        return None;
+    }
     let facts = model.file_facts_of(member_ref.file_id)?;
     let member = facts.member_by_id(&member_ref.id)?;
+    if raw_member.is_none()
+        && member.access == MemberAccess::Write
+        && let Some(read) = facts.members_with_access(member, MemberAccess::Read).next()
+    {
+        return member_info_of(
+            model,
+            &MemberRef {
+                file_id: member_ref.file_id,
+                id: read.id.clone(),
+                name: read.key.to_path().into(),
+            },
+            bindings,
+            name_bindings,
+        );
+    }
     if member.index_key_syntax.is_some() || !member_version_visible(model, facts, &member) {
         return None;
     }
@@ -1139,15 +1238,16 @@ pub(super) fn projected_member_type(
     // Generic aliases stay lazy and can resolve to primitives, so they retain nil.
     if member.is_nullable
         && !typ.is_nullable()
-        && !matches!(
-            typ,
-            LuaType::Function
-                | LuaType::DocFunction(_)
-                | LuaType::Ref(_)
-                | LuaType::Def(_)
-                | LuaType::Array(_)
-                | LuaType::Object(_)
-        )
+        && (member.access != MemberAccess::ReadWrite
+            || !matches!(
+                typ,
+                LuaType::Function
+                    | LuaType::DocFunction(_)
+                    | LuaType::Ref(_)
+                    | LuaType::Def(_)
+                    | LuaType::Array(_)
+                    | LuaType::Object(_)
+            ))
     {
         typ = LuaType::from_vec(vec![typ, LuaType::Nil]);
     }
