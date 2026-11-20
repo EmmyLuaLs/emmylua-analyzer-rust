@@ -5065,4 +5065,27 @@ _ = a[2]
             "#,
         ));
     }
+
+    #[test]
+    fn test_wrapping_an_optional_callback_reads_it_before_the_wrapper() {
+        // `self.args.on_exit = function() end` assigns a function: a state change like any other
+        // write, so the read before it is not that function (lualine `utils/job.lua`).
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UnnecessaryIf,
+            r#"
+            local Job = {
+                wrap_on_exit = function(self)
+                    local original_cb = self.args.on_exit
+                    if original_cb then
+                        self.args.on_exit = function()
+                            return original_cb()
+                        end
+                    end
+                end,
+            }
+            return Job
+            "#,
+        ));
+    }
 }

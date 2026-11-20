@@ -568,7 +568,7 @@ fn member_entry_type(
             .file_facts_of(member_file)
             .and_then(|facts| facts.member_by_id(member))
             .is_some_and(|def| matches!(def.owner, SemanticId::Decl(_)))
-        && write_site_in_closure_of(model, member, access)
+        && !defines_a_function(model, member)
     {
         // `type_of_expr` is memoized with an in-progress marker, so a query that re-enters this
         // read gets `Unknown` and keeps the old base. A bare `nil` is the VM's answer for a member
@@ -582,32 +582,32 @@ fn member_entry_type(
 }
 
 /// Whether the write site that is `member` (a runtime member's identity, see `member_entry_type`)
-/// sits in the closure that reads it through `access`. Only then does "no write precedes the read"
-/// mean the read runs before the write: a method body or a callback (a lambda is its own closure)
-/// may run after a chunk-level `function M:m()` or after a write in another function.
-fn write_site_in_closure_of(
-    model: &SemanticModel,
-    member: &SemanticId,
-    access: &LuaIndexExpr,
-) -> bool {
+/// is a function statement, `function M:m()` or `function M.f()`. That defines the member rather
+/// than changing its state, so a read that no definition precedes (another method's body, which
+/// runs after the module has loaded) holds the function, not an inherited `m?` field. An assignment
+/// (`t.cb = function() end`) is a state change like any other write.
+fn defines_a_function(model: &SemanticModel, member: &SemanticId) -> bool {
     let SemanticId::Member(key) = member else {
         return false;
     };
-    // `key_range` is a range in `key.file_id`. A local's members are written in the local's own
-    // file, so another file's member is never this function's write.
-    if key.file_id != model.file_id() {
-        return false;
-    }
-    let Some(tree) = model.syntax_tree() else {
+    let Some(def) = model
+        .file_facts_of(key.file_id)
+        .and_then(|facts| facts.member_by_id(member))
+    else {
         return false;
     };
-    let written = match tree.get_red_root().covering_element(key.key_range) {
-        rowan::NodeOrToken::Node(node) => Some(node),
-        rowan::NodeOrToken::Token(token) => token.parent(),
+    let Some(value_syntax) = def.value_syntax else {
+        return false;
     };
-    written.is_some_and(|node| {
-        LuaClosureId::from_node(&node) == LuaClosureId::from_node(access.syntax())
-    })
+    model
+        .syntax_tree_of(key.file_id)
+        .and_then(|tree| value_syntax.to_node_from_root(&tree.get_red_root()))
+        .is_some_and(|node| {
+            emmylua_parser::LuaClosureExpr::cast(node.clone()).is_some()
+                && node
+                    .parent()
+                    .is_some_and(|parent| emmylua_parser::LuaFuncStat::cast(parent).is_some())
+        })
 }
 
 /// Nullable members declared with `---@field x? T` should also carry nil in flow queries.
