@@ -1238,10 +1238,13 @@ fn collect_call_arg_entries(
         }
 
         if let Some(arg) = LuaExpr::cast(child) {
-            let trailing_comment = extract_trailing_comment(ctx, plan, arg.syntax());
-            if trailing_comment.is_some() {
+            let extracted = extract_trailing_comment(ctx, plan, arg.syntax());
+            if let Some(comment) = &extracted {
                 collected.has_comments = true;
+                collected.consumed_comment_ranges.push(comment.range);
             }
+            let mut doc = format_expr(ctx, plan, &arg);
+            let trailing_comment = attach_comment_before_separator(&mut doc, extracted);
             let trailing_align_hint = trailing_comment.as_ref().is_some_and(|(_, range)| {
                 trailing_gap_requests_alignment(
                     arg.syntax(),
@@ -1249,12 +1252,9 @@ fn collect_call_arg_entries(
                     ctx.config.comments.line_comment_min_spaces_before.max(1),
                 )
             });
-            if let Some((_, range)) = &trailing_comment {
-                collected.consumed_comment_ranges.push(*range);
-            }
             collected.entries.push(CallArgEntry {
                 leading_comments: std::mem::take(&mut pending_comments),
-                doc: format_expr(ctx, plan, &arg),
+                doc,
                 trailing_comment: trailing_comment.map(|(docs, _)| docs),
                 trailing_align_hint,
             });
@@ -1784,16 +1784,16 @@ fn collect_table_entries(
 
         if let Some(field) = LuaTableField::cast(child) {
             let blank_lines_before = count_blank_lines_before(field.syntax());
-            let trailing_comment = extract_trailing_comment(ctx, plan, field.syntax());
-            if trailing_comment.is_some() {
+            let extracted = extract_trailing_comment(ctx, plan, field.syntax());
+            if let Some(comment) = &extracted {
                 collected.has_comments = true;
+                collected.consumed_comment_ranges.push(comment.range);
             }
             if blank_lines_before > 0 {
                 collected.has_comments = true;
             }
-            if let Some((_, range)) = &trailing_comment {
-                collected.consumed_comment_ranges.push(*range);
-            }
+            let mut doc = format_table_field_ir(ctx, plan, &field);
+            let trailing_comment = attach_comment_before_separator(&mut doc, extracted);
             let comment_align_hint = trailing_comment.as_ref().is_some_and(|(_, range)| {
                 trailing_gap_requests_alignment(
                     field.syntax(),
@@ -1805,7 +1805,7 @@ fn collect_table_entries(
                 field: field.clone(),
                 leading_comments: std::mem::take(&mut pending_comments),
                 blank_lines_before,
-                doc: format_table_field_ir(ctx, plan, &field),
+                doc,
                 eq_split: None,
                 align_hint: field_requests_alignment(&field),
                 comment_align_hint,
@@ -3712,11 +3712,35 @@ where
         .collect()
 }
 
+/// A trailing comment found after a list item, and whether it sits before the
+/// item's separator (e.g. `a --[[@as T]],`). Such a comment must stay ahead of
+/// the separator, otherwise it would attach to the next item.
+struct ExtractedTrailingComment {
+    docs: Vec<DocIR>,
+    range: TextRange,
+    before_separator: bool,
+}
+
+/// Keeps a comment that precedes the separator inline in `doc`, and returns
+/// any other trailing comment for the caller to place after the separator.
+fn attach_comment_before_separator(
+    doc: &mut Vec<DocIR>,
+    comment: Option<ExtractedTrailingComment>,
+) -> Option<(Vec<DocIR>, TextRange)> {
+    let comment = comment?;
+    if comment.before_separator {
+        doc.push(ir::space());
+        doc.extend(comment.docs);
+        return None;
+    }
+    Some((comment.docs, comment.range))
+}
+
 fn extract_trailing_comment(
     ctx: &FormatContext,
     plan: &FormatPlan,
     node: &LuaSyntaxNode,
-) -> Option<(Vec<DocIR>, TextRange)> {
+) -> Option<ExtractedTrailingComment> {
     for child in node.children() {
         if child.kind() != LuaKind::Syntax(LuaSyntaxKind::Comment) {
             continue;
@@ -3732,29 +3756,35 @@ fn extract_trailing_comment(
             return None;
         }
 
-        return Some((
-            render::render_comment_with_spacing(ctx, &comment, plan),
-            child.text_range(),
-        ));
+        return Some(ExtractedTrailingComment {
+            docs: render::render_comment_with_spacing(ctx, &comment, plan),
+            range: child.text_range(),
+            before_separator: is_block_comment(&child) && separator_follows(node),
+        });
     }
 
+    let mut seen_separator = false;
     let mut next = node.next_sibling_or_token();
     for _ in 0..4 {
         let sibling = next.as_ref()?;
         match sibling.kind() {
-            LuaKind::Token(LuaTokenKind::TkWhitespace)
-            | LuaKind::Token(LuaTokenKind::TkSemicolon)
-            | LuaKind::Token(LuaTokenKind::TkComma) => {}
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {}
+            LuaKind::Token(LuaTokenKind::TkSemicolon) | LuaKind::Token(LuaTokenKind::TkComma) => {
+                seen_separator = true;
+            }
             LuaKind::Syntax(LuaSyntaxKind::Comment) => {
                 let comment_node = sibling.as_node()?;
                 if comment_node.text().contains_char('\n') {
                     return None;
                 }
                 let comment = LuaComment::cast(comment_node.clone())?;
-                return Some((
-                    render::render_comment_with_spacing(ctx, &comment, plan),
-                    comment_node.text_range(),
-                ));
+                return Some(ExtractedTrailingComment {
+                    docs: render::render_comment_with_spacing(ctx, &comment, plan),
+                    range: comment_node.text_range(),
+                    before_separator: !seen_separator
+                        && is_block_comment(comment_node)
+                        && separator_follows(comment_node),
+                });
             }
             _ => return None,
         }
@@ -3762,6 +3792,32 @@ fn extract_trailing_comment(
     }
 
     None
+}
+
+/// `--[[ ... ]]` / `--[==[ ... ]==]`, which can sit before a separator on the
+/// same line, unlike a `--` line comment.
+fn is_block_comment(node: &LuaSyntaxNode) -> bool {
+    let text = node.text().to_string();
+    let Some(rest) = text.strip_prefix("--[") else {
+        return false;
+    };
+    rest.trim_start_matches('=').starts_with('[')
+}
+
+/// Whether a `,` or `;` follows `node` on the same line before any other item.
+fn separator_follows(node: &LuaSyntaxNode) -> bool {
+    let mut next = node.next_sibling_or_token();
+    while let Some(sibling) = next {
+        match sibling.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {}
+            LuaKind::Token(LuaTokenKind::TkSemicolon) | LuaKind::Token(LuaTokenKind::TkComma) => {
+                return true;
+            }
+            _ => return false,
+        }
+        next = sibling.next_sibling_or_token();
+    }
+    false
 }
 
 fn extract_trailing_comment_text(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, TextRange)> {
