@@ -2302,7 +2302,10 @@ pub(crate) fn lower_doc_type_node(
             Some(LuaLiteralToken::Bool(bool_token)) => {
                 TypeShell::from_literal(LiteralShell::Boolean(bool_token.is_true()))
             }
-            Some(LuaLiteralToken::Nil(_)) => TypeShell::from_literal(LiteralShell::Nil),
+            // A bare `?` (LuaLS `T|?`) is `nil`, as in 0.25.1.
+            Some(LuaLiteralToken::Nil(_)) | Some(LuaLiteralToken::Question(_)) => {
+                TypeShell::from_literal(LiteralShell::Nil)
+            }
             _ => TypeShell::unknown(),
         },
         LuaDocType::Array(array) => array
