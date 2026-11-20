@@ -268,5 +268,8 @@ pub fn collect_members(
         }
     }
 
+    methods.sort_by(|a, b| a.short_name.cmp(&b.short_name));
+    fields.sort_by(|a, b| a.short_name.cmp(&b.short_name));
+
     (methods, fields)
 }
