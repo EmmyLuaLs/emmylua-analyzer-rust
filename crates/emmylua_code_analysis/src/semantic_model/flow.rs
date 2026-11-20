@@ -547,9 +547,13 @@ fn flow_member_value_type(model: &SemanticModel, member: &SemanticId) -> Option<
     }
 }
 
-/// The member's type where backtracking found none of its writes. A runtime member's own value
-/// is a write that has not happened yet: the read's flow-insensitive type (the declared field,
-/// or that same value for an undeclared table) is what the path holds there.
+/// The member's type where backtracking found none of its writes.
+///
+/// A member owned by a local or param (`s.desc = v`) is a runtime member: its identity is that one
+/// write site, and its own value is the write's value, which this path has not run. Declared
+/// `---@field`s are owned by their class and never take the first branch. For a runtime member,
+/// the read's flow-insensitive type (the declared field, or that same value for an undeclared
+/// table) is what the path holds before the write.
 fn member_entry_type(
     model: &SemanticModel,
     member: &SemanticId,
@@ -564,9 +568,11 @@ fn member_entry_type(
             .file_facts_of(member_file)
             .and_then(|facts| facts.member_by_id(member))
             .is_some_and(|def| matches!(def.owner, SemanticId::Decl(_)))
-        && written_in_closure_of(model, member, access)
+        && write_site_in_closure_of(model, member, access)
     {
-        // A bare `nil` is the VM's answer for a member the owner doesn't declare, not a field type.
+        // `type_of_expr` is memoized with an in-progress marker, so a query that re-enters this
+        // read gets `Unknown` and keeps the old base. A bare `nil` is the VM's answer for a member
+        // the owner doesn't declare, not a field type.
         let ty = model.type_of_expr(access.get_syntax_id());
         if !matches!(ty, LuaType::Unknown | LuaType::Nil) {
             return Some(ty);
@@ -575,10 +581,11 @@ fn member_entry_type(
     flow_member_value_type(model, member)
 }
 
-/// Whether `member` is written in the function that reads it through `access`. Only then does
-/// "none of its writes precede the read" mean the read runs before the write: a method body may
-/// run after a chunk-level `function M:m()` or a write in another method.
-fn written_in_closure_of(
+/// Whether the write site that is `member` (a runtime member's identity, see `member_entry_type`)
+/// sits in the closure that reads it through `access`. Only then does "no write precedes the read"
+/// mean the read runs before the write: a method body or a callback (a lambda is its own closure)
+/// may run after a chunk-level `function M:m()` or after a write in another function.
+fn write_site_in_closure_of(
     model: &SemanticModel,
     member: &SemanticId,
     access: &LuaIndexExpr,
@@ -586,6 +593,8 @@ fn written_in_closure_of(
     let SemanticId::Member(key) = member else {
         return false;
     };
+    // `key_range` is a range in `key.file_id`. A local's members are written in the local's own
+    // file, so another file's member is never this function's write.
     if key.file_id != model.file_id() {
         return false;
     }

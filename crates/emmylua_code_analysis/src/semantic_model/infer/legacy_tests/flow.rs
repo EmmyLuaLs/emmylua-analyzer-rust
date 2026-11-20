@@ -4956,21 +4956,28 @@ _ = a[2]
         ---@field items string[]
         "#,
         );
-        // `t.items[1] = nil` comes later: before it, the element is the declared `string?`.
-        for body in [
-            "---@type nil\nlocal _n = t.items[1]\nt.items[1] = nil",
-            "if _flag then return end\n---@type nil\nlocal _n = t.items[1]\nt.items[1] = nil",
-        ] {
-            assert!(
-                !ws.has_no_diagnostic(
-                    DiagnosticCode::AssignTypeMismatch,
-                    &format!(
-                        "---@param t EntryContainer\n---@param _flag boolean\nlocal function f(t, _flag)\n{body}\nend"
-                    ),
-                ),
-                "{body}"
-            );
-        }
+        // `t.items[1] = nil` comes later: before it, the element is the declared `string?`, not
+        // the later write's `nil`, with or without an earlier exit on the path.
+        let file = ws.def(
+            r#"
+        ---@param t EntryContainer
+        local function plain(t)
+            local before = t.items[1]
+            print(before)
+            t.items[1] = nil
+        end
+        ---@param t EntryContainer
+        ---@param flag boolean
+        local function after_exit(t, flag)
+            if flag then return end
+            local before_guarded = t.items[1]
+            print(before_guarded)
+            t.items[1] = nil
+        end
+        "#,
+        );
+        let ty = |name| ws.humanize_type(last_name_expr_type(&ws, file, name));
+        assert_eq!([ty("before"), ty("before_guarded")], ["string?", "string?"]);
     }
 
     #[test]
