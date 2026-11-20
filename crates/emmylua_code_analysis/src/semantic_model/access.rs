@@ -895,23 +895,18 @@ impl<'db> SemanticModel<'db> {
         // generic projection when there are no overloads to add.
         if let LuaExpr::NameExpr(name_expr) = callee
             && let Some(owner) = self.resolve_name(name_expr.get_position())
-            && let SemanticId::Decl(key) = &owner
-            && let Some(facts) = self.file_facts_of(key.file_id)
-            && let Some(decl) = facts.decl_by_id(&owner)
-            && let Some(original) = decl.value_expr_syntax
+            && matches!(owner, SemanticId::Decl(_))
+            && let Some((file_id, original)) = flow::resolve_callable_closure(self, owner.clone())
+            && let Some(facts) = self.file_facts_of(file_id)
             && let Some(signature) = facts.signature_by_closure(original)
-            && signature
-                .docs
-                .as_ref()
-                .is_some_and(|docs| !docs.overloads.is_empty())
         {
             let vm = infer::vm::InferVm::new(self, &[]);
-            if let Some(projection) = vm.signature_projection(key.file_id, signature) {
+            if let Some(projection) = vm.signature_projection(file_id, signature) {
                 let mut candidates = projection.overloads;
                 // Keep the value's richer projection if the original main is present.
                 // A replacement does not cover a main on another live path.
                 if !self
-                    .type_of_signature_in_file(key.file_id, original)
+                    .type_of_signature_in_file(file_id, original)
                     .is_some_and(|main| out.contains(&main))
                 {
                     candidates.extend(projection.main);
@@ -930,6 +925,11 @@ impl<'db> SemanticModel<'db> {
             }
         }
         out
+    }
+
+    /// Closure that holds `owner`'s signature docs, following plain local aliases.
+    pub fn resolve_callable_closure(&self, owner: &SemanticId) -> Option<(FileId, LuaSyntaxId)> {
+        flow::resolve_callable_closure(self, owner.clone())
     }
 
     pub(crate) fn callable_candidates_cached(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {

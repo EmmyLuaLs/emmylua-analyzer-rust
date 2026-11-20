@@ -226,3 +226,185 @@ fn test_deep_branch_casts_merge_surviving_overloads() {
         );
     }
 }
+
+fn helper_runtest_source(calls: &str) -> String {
+    format!(
+        r#"
+        ---@class OrderedExecution
+        ---@class Helper
+        Helper = {{}}
+
+        ---@overload fun(body: fun(t: OrderedExecution)): fun()
+        ---@param options {{ expected: integer }}
+        ---@param body fun(t: OrderedExecution)
+        ---@return fun()
+        function Helper.runtest(options, body)
+            return function() end
+        end
+
+        {calls}
+    "#
+    )
+}
+
+#[test]
+fn test_member_alias_keeps_overload_candidates() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        &helper_runtest_source(
+            r#"
+            local runtest = Helper.runtest
+            runtest(function(t) end)
+            runtest({ expected = 1 }, function(t) end)
+            "#,
+        ),
+        "runtest",
+    );
+    let expected = vec![
+        "fun(body: fun(t: OrderedExecution)) -> fun()",
+        "fun(options: { expected: integer }, body: fun(t: OrderedExecution)) -> fun()",
+    ];
+    assert_eq!(types, vec![expected.clone(), expected]);
+}
+
+#[test]
+fn test_local_function_alias_keeps_overload_candidates() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        r#"
+        ---@param value number
+        ---@return number
+        ---@overload fun(value: string): string
+        local function accept(value) return value end
+        local alias = accept
+        alias(42)
+        alias('text')
+    "#,
+        "alias",
+    );
+    let expected = vec![
+        "fun(value: number) -> number",
+        "fun(value: string) -> string",
+    ];
+    assert_eq!(types, vec![expected.clone(), expected]);
+}
+
+#[test]
+fn test_chained_alias_keeps_overload_candidates() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        &helper_runtest_source(
+            r#"
+            local a = Helper.runtest
+            local b = a
+            b(function(t) end)
+            "#,
+        ),
+        "b",
+    );
+    assert_eq!(
+        types,
+        vec![vec![
+            "fun(body: fun(t: OrderedExecution)) -> fun()",
+            "fun(options: { expected: integer }, body: fun(t: OrderedExecution)) -> fun()",
+        ]]
+    );
+}
+
+#[test]
+fn test_non_overloaded_member_alias_keeps_signature() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        r#"
+        ---@class Helper
+        Helper = {}
+
+        ---@param value number
+        ---@return number
+        function Helper.plain(value)
+            return value
+        end
+
+        local plain = Helper.plain
+        plain(42)
+    "#,
+        "plain",
+    );
+    assert_eq!(types, vec![vec!["fun(value: number) -> number"]]);
+}
+
+#[test]
+#[ntest::timeout(2000)]
+fn test_alias_cycle_does_not_hang() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        r#"
+        local a = b
+        local b = a
+        a(1)
+        b(1)
+
+        ---@param value number
+        ---@return number
+        ---@overload fun(value: string): string
+        local function accept(value) return value end
+        local alias = accept
+        alias(42)
+    "#,
+        "alias",
+    );
+    assert_eq!(
+        types,
+        vec![vec![
+            "fun(value: number) -> number",
+            "fun(value: string) -> string",
+        ]]
+    );
+}
+
+#[test]
+fn test_alias_reassignment_does_not_restore_original_overloads() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        r#"
+        ---@param value number
+        ---@return number
+        ---@overload fun(value: string): string
+        local function accept(value) return value end
+        ---@param value number
+        ---@return number
+        local function replacement(value) return value end
+        local alias = accept
+        alias(42)
+        alias = replacement
+        alias(42)
+    "#,
+        "alias",
+    );
+    assert_eq!(
+        types,
+        vec![
+            vec![
+                "fun(value: number) -> number",
+                "fun(value: string) -> string",
+            ],
+            vec!["fun(value: number) -> number"],
+        ]
+    );
+}
+
+#[test]
+fn test_typed_alias_does_not_follow_original_overloads() {
+    let mut ws = VirtualWorkspace::new();
+    let (types, _) = ws.callable_types_with_work(
+        &helper_runtest_source(
+            r#"
+            ---@type fun(value: number)
+            local typed = Helper.runtest
+            typed(42)
+            "#,
+        ),
+        "typed",
+    );
+    assert_eq!(types, vec![vec!["fun(value: number)"]]);
+}
