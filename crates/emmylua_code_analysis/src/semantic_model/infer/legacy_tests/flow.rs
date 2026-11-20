@@ -4943,4 +4943,119 @@ _ = a[2]
         let ty = ws.expr_ty("B");
         assert_eq!(ws.humanize_type(ty), "string");
     }
+
+    #[test]
+    fn test_runtime_member_read_before_its_write_keeps_declared_field() {
+        let mut ws = VirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.strict.array_index = true;
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+        ---@class EntryContainer
+        ---@field items string[]
+        "#,
+        );
+        // `t.items[1] = nil` comes later: before it, the element is the declared `string?`.
+        for body in [
+            "---@type nil\nlocal _n = t.items[1]\nt.items[1] = nil",
+            "if _flag then return end\n---@type nil\nlocal _n = t.items[1]\nt.items[1] = nil",
+        ] {
+            assert!(
+                !ws.has_no_diagnostic(
+                    DiagnosticCode::AssignTypeMismatch,
+                    &format!(
+                        "---@param t EntryContainer\n---@param _flag boolean\nlocal function f(t, _flag)\n{body}\nend"
+                    ),
+                ),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_conditional_member_write_keeps_the_path_that_skips_it() {
+        // `if c then s.desc = "x" end`: on the path where `c` is false no write ran, so the read
+        // holds the declared `string?`, not the write's value.
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file = ws.def(
+            r#"
+            ---@class CondS
+            ---@field desc? string
+
+            ---@param c boolean
+            ---@param s CondS
+            local function cond(c, s)
+                if c then s.desc = "x" end
+                local skipped = s.desc
+                print(skipped)
+            end
+            ---@param c boolean
+            ---@param s CondS
+            local function cond_nil(c, s)
+                if c then s.desc = nil end
+                local skipped_nil = s.desc
+                print(skipped_nil)
+            end
+            cond(true, {})
+            cond_nil(true, {})
+            "#,
+        );
+        let ty = |name| ws.humanize_type(last_name_expr_type(&ws, file, name));
+        assert_eq!([ty("skipped"), ty("skipped_nil")], ["string?", "string?"]);
+    }
+
+    #[test]
+    fn test_method_read_does_not_start_before_a_chunk_level_definition() {
+        // `function M:expand()` is defined at chunk level, after `children` in the file, but the
+        // body of `children` runs later: its read must not start from the inherited `expand?`.
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@class GBase
+            ---@field expand? fun(self: GBase): integer
+
+            ---@class GNode: GBase
+            local M = {}
+
+            function M:children()
+                return self:expand() + 1
+            end
+
+            function M:expand()
+                return 1
+            end
+            return M
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_read_before_a_write_to_an_undeclared_member_is_not_nil() {
+        // `args` is untyped, so the VM reads the undeclared `args[1]` as a bare `nil`: that is
+        // no field type to start from before the later `args[1] = missing`.
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            local function holes(args, arr)
+                local length = args[1]
+                if length == nil then
+                    length = 0
+                    for i in pairs(arr) do
+                        if type(i) == "number" then
+                            length = i
+                        end
+                    end
+                end
+                local missing
+                for i = 1, length do
+                end
+                args[1] = missing
+            end
+            return holes
+            "#,
+        ));
+    }
 }
