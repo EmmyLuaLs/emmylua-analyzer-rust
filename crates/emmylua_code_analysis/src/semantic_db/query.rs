@@ -2302,7 +2302,8 @@ pub(crate) fn lower_doc_type_node(
             Some(LuaLiteralToken::Bool(bool_token)) => {
                 TypeShell::from_literal(LiteralShell::Boolean(bool_token.is_true()))
             }
-            // A bare `?` (LuaLS `T|?`) is `nil`, as in 0.25.1.
+            // The parser emits a bare `?` literal only as the right operand of a binary type
+            // operator, i.e. LuaLS's optional spelling `T|?`, which means `T|nil`.
             Some(LuaLiteralToken::Nil(_)) | Some(LuaLiteralToken::Question(_)) => {
                 TypeShell::from_literal(LiteralShell::Nil)
             }
