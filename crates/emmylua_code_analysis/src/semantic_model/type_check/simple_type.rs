@@ -256,7 +256,11 @@ fn check_table_record(
         strict_literals: context.strict_literals || !table.is_constructor(),
         ..context.clone()
     };
-    let field_checks = check_all(fields.get_fields().iter().map(|(key, expected)| {
+    // Key order, not hash order: the first failing field is the one reported, and a hash map's
+    // order changes per map, so the reported line moved between runs.
+    let mut sorted: Vec<_> = fields.get_fields().iter().collect();
+    sorted.sort_unstable_by_key(|(key, _)| *key);
+    let field_checks = check_all(sorted.into_iter().map(|(key, expected)| {
         let actual = table.member_value(key)?;
         check_constructor_value(&mut context, table_file, actual, expected)
     }));
