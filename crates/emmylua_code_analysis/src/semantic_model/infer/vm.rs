@@ -24,7 +24,9 @@ use crate::semantic_db::def::{
 };
 use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::doc_types::DocTypeScope;
-use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
+use crate::semantic_model::flow::{
+    ExprCastMode, original_decl_signatures_at, resolve_callable_closure, type_of_expr_with_cast,
+};
 use crate::semantic_model::member::{
     MemberInfo, table_const_class_type, table_metatable_index_info, table_metatable_type,
 };
@@ -90,6 +92,7 @@ pub enum Instr {
         colon_call: bool,
         generic_type_syntaxes: Vec<LuaSyntaxId>,
         arg_syntaxes: Vec<LuaSyntaxId>,
+        call_syntax: Option<LuaSyntaxId>,
     },
     /// Unary operation (unm/len, including operator overload): pop operand -> result.
     UnaryOp {
@@ -140,6 +143,7 @@ enum CTask {
         colon_call: bool,
         generic_type_syntaxes: Vec<LuaSyntaxId>,
         arg_syntaxes: Vec<LuaSyntaxId>,
+        call_syntax: Option<LuaSyntaxId>,
     },
     /// Unary operation (unm/len): compile the operand first, then emit a UnaryOp instruction.
     UnaryOp {
@@ -171,11 +175,13 @@ pub fn compile(expr: LuaExpr, file_id: FileId, out: &mut Vec<Instr>) {
                 colon_call,
                 generic_type_syntaxes,
                 arg_syntaxes,
+                call_syntax,
             } => out.push(Instr::Call {
                 arg_count,
                 colon_call,
                 generic_type_syntaxes,
                 arg_syntaxes,
+                call_syntax,
             }),
             CTask::UnaryOp { op } => out.push(Instr::UnaryOp { op }),
             CTask::BinaryR {
@@ -321,6 +327,7 @@ fn compile_expr(expr: &LuaExpr, file_id: FileId, out: &mut Vec<Instr>, stack: &m
                     colon_call: call_expr.is_colon_call(),
                     generic_type_syntaxes,
                     arg_syntaxes,
+                    call_syntax: Some(call_expr.get_syntax_id()),
                 });
                 for arg in args.into_iter().rev() {
                     stack.push(CTask::Expr(arg));
@@ -533,6 +540,7 @@ impl<'a> InferVm<'a> {
                 colon_call,
                 generic_type_syntaxes,
                 arg_syntaxes,
+                call_syntax,
             } => {
                 // Pop args first (collect in reverse -> reverse), then pop callee (pushed first).
                 let mut args: Vec<Value> =
@@ -558,7 +566,13 @@ impl<'a> InferVm<'a> {
                     }
                 }
                 let callee = self.stack.pop().unwrap_or(Value::plain(LuaType::Unknown));
-                let value = self.call(callee, &args, colon_call, &generic_type_syntaxes);
+                let value = self.call(
+                    callee,
+                    &args,
+                    colon_call,
+                    &generic_type_syntaxes,
+                    call_syntax,
+                );
                 self.stack.push(value);
             }
             Instr::UnaryOp { op } => {
@@ -1489,6 +1503,7 @@ impl<'a> InferVm<'a> {
         args: &[Value],
         colon_call: bool,
         generic_type_syntaxes: &[LuaSyntaxId],
+        call_syntax: Option<LuaSyntaxId>,
     ) -> Value {
         // Calling an `any` callable still yields `any` (TS any propagation semantics).
         if callee.ty.is_any() {
@@ -1667,7 +1682,28 @@ impl<'a> InferVm<'a> {
         // Collect candidate signatures: declaration/member docs (including overloads) are
         // preferred, then the function value type; named aliases (`A = A | fun(): integer`)
         // are expanded to get inner function candidates.
-        let candidates = self.callable_candidates(&callee);
+        let mut candidates = self.callable_candidates(&callee);
+        // A local alias's owner is the alias decl; follow it to the original
+        // closure, then keep only signatures that still reach this call so a
+        // later assignment or `@cast` (#1356) is not overwritten.
+        if let Some(owner) = &callee.owner
+            && matches!(owner, SemanticId::Decl(_))
+            && let Some((_, original)) = resolve_callable_closure(self.model, owner.clone())
+            && let Some(call_syntax) = call_syntax
+        {
+            let filtered = original_decl_signatures_at(
+                self.model,
+                owner,
+                original,
+                call_syntax.get_range().start(),
+                candidates.clone(),
+            );
+            if !filtered.is_empty() {
+                candidates = filtered;
+            } else {
+                candidates = expand_callable_types_in_model(self.model, &callee.ty);
+            }
+        }
         // For class-table receivers (`local a = {}` + `---@class a`), pass the class
         // reference type to implicit self/constructor params instead of the bare TableConst,
         // otherwise `a:create()` binds T to table.
@@ -1906,13 +1942,13 @@ impl<'a> InferVm<'a> {
                     ret
                 } else {
                     self.callback_call_depth += 1;
-                    let ret = self.call(callback_value.clone(), callback_args, false, &[]);
+                    let ret = self.call(callback_value.clone(), callback_args, false, &[], None);
                     self.callback_call_depth -= 1;
                     ret.ty
                 }
             } else {
                 self.callback_call_depth += 1;
-                let ret = self.call(callback_value.clone(), callback_args, false, &[]);
+                let ret = self.call(callback_value.clone(), callback_args, false, &[], None);
                 self.callback_call_depth -= 1;
                 ret.ty
             };
@@ -2617,15 +2653,20 @@ impl<'a> InferVm<'a> {
     /// Single-identity signature projection: main signature + `---@overload`.
     fn signature_candidates_single(&self, owner: &SemanticId) -> Option<Vec<LuaFunctionType>> {
         let (file_id, value_syntax) = match owner {
-            SemanticId::Decl(key) => {
-                let facts = self.model.file_facts_of(key.file_id)?;
-                let decl = facts.decl_by_id(owner)?;
-                (key.file_id, decl.value_expr_syntax?)
-            }
-            SemanticId::Member(key) => {
-                let facts = self.model.file_facts_of(key.file_id)?;
-                let member = facts.member_by_id(owner)?;
-                (key.file_id, member.value_syntax?)
+            SemanticId::Decl(_) | SemanticId::Member(_) => {
+                resolve_callable_closure(self.model, owner.clone()).or_else(|| match owner {
+                    SemanticId::Decl(key) => {
+                        let facts = self.model.file_facts_of(key.file_id)?;
+                        let decl = facts.decl_by_id(owner)?;
+                        Some((key.file_id, decl.value_expr_syntax?))
+                    }
+                    SemanticId::Member(key) => {
+                        let facts = self.model.file_facts_of(key.file_id)?;
+                        let member = facts.member_by_id(owner)?;
+                        Some((key.file_id, member.value_syntax?))
+                    }
+                    _ => None,
+                })?
             }
             SemanticId::Name(name) => {
                 // Cross-file global overloads: a global call owns `Name("f")`, but

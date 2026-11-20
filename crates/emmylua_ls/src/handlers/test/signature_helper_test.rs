@@ -437,4 +437,80 @@ mod tests {
         );
         Ok(())
     }
+    #[gtest]
+    fn test_local_alias_keeps_overload_signatures() -> Result<()> {
+        let helper = r#"
+                ---@class OrderedExecution
+                ---@class Helper
+                Helper = {}
+
+                ---@overload fun(body: fun(t: OrderedExecution)): fun()
+                ---@param options { expected: integer }
+                ---@param body fun(t: OrderedExecution)
+                ---@return fun()
+                function Helper.runtest(options, body)
+                    return function() end
+                end
+        "#;
+        let expected = vec![
+            "runtest(body: fun(t: OrderedExecution)): fun()",
+            "runtest(options: { expected: integer }, body: fun(t: OrderedExecution)): fun()",
+        ];
+        assert_eq!(
+            signature_labels(&format!(
+                r#"
+                {helper}
+                local runtest = Helper.runtest
+                runtest(<??>)
+                "#
+            )),
+            expected
+        );
+        assert_eq!(
+            signature_labels(&format!(
+                r#"
+                {helper}
+                local a = Helper.runtest
+                local b = a
+                b(<??>)
+                "#
+            )),
+            vec![
+                "b(body: fun(t: OrderedExecution)): fun()",
+                "b(options: { expected: integer }, body: fun(t: OrderedExecution)): fun()",
+            ]
+        );
+        assert_eq!(
+            signature_labels(
+                r#"
+                ---@param value number
+                ---@return number
+                ---@overload fun(value: string): string
+                local function accept(value) return value end
+                local alias = accept
+                alias(<??>)
+                "#,
+            ),
+            vec![
+                "alias(value: number): number",
+                "alias(value: string): string",
+            ]
+        );
+        assert_eq!(
+            signature_labels(&format!(
+                r#"
+                {helper}
+                ---@param value number
+                ---@return number
+                function Helper.plain(value)
+                    return value
+                end
+                local plain = Helper.plain
+                plain(<??>)
+                "#
+            )),
+            vec!["plain(value: number): number"]
+        );
+        Ok(())
+    }
 }

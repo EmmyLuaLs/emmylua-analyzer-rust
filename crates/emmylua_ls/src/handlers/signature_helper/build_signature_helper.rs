@@ -4,7 +4,7 @@
 //! The old DbIndex version (`@overload` matching / operator calls / generic alias substitution / best parameter reordering)
 //! has been retired; see `migration notes` §M3.
 
-use emmylua_code_analysis::{LuaFunctionType, LuaType, SemanticModel};
+use emmylua_code_analysis::{FileId, LuaFunctionType, LuaType, SemanticModel};
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation};
 use rowan::NodeOrToken;
@@ -56,10 +56,15 @@ pub fn build_signature_helper(
         _ => match &prefix_expr {
             LuaExpr::NameExpr(name_expr) => {
                 let decl = model.resolve_name(name_expr.get_position())?;
-                let decls = model.decls()?;
-                let decl_info = decls.iter().find(|d| d.id == decl)?;
-                let closure = decl_info.value_expr_syntax?;
-                let candidates = signature_candidates(model, closure);
+                let (file_id, closure) =
+                    if let Some(resolved) = model.resolve_callable_closure(&decl) {
+                        resolved
+                    } else {
+                        let decls = model.decls()?;
+                        let decl_info = decls.iter().find(|d| d.id == decl)?;
+                        (model.file_id(), decl_info.value_expr_syntax?)
+                    };
+                let candidates = signature_candidates(model, file_id, closure);
                 build_signature_help_candidates(
                     model,
                     &candidates,
@@ -107,21 +112,20 @@ pub fn build_signature_helper(
 /// Collect a closure's main signature plus `---@overload fun(...)` candidates.
 fn signature_candidates(
     model: &SemanticModel<'_>,
+    file_id: FileId,
     closure_syntax: emmylua_parser::LuaSyntaxId,
 ) -> Vec<LuaFunctionType> {
     let mut out = Vec::new();
-    if let Some(main) = model.type_of_signature(closure_syntax) {
+    if let Some(main) = model.type_of_signature_in_file(file_id, closure_syntax) {
         out.push(main);
     }
-    if let Some(signatures) = model.signatures()
-        && let Some(sig) = signatures
-            .iter()
-            .find(|s| s.closure_syntax == closure_syntax)
+    if let Some(facts) = model.file_facts_of(file_id)
+        && let Some(sig) = facts.signature_by_closure(closure_syntax)
         && let Some(docs) = sig.docs.as_ref()
     {
         for syntax in &docs.overloads {
             if let LuaType::DocFunction(fun) =
-                model.doc_type_lua_in(model.file_id(), *syntax, &docs.generic_params)
+                model.doc_type_lua_in(file_id, *syntax, &docs.generic_params)
             {
                 out.push(fun.as_ref().clone());
             }

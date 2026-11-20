@@ -22,8 +22,8 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaComment, LuaExpr, LuaIndexExpr,
-    LuaLiteralToken, UnaryOperator,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaClosureExpr, LuaComment,
+    LuaExpr, LuaIndexExpr, LuaLiteralToken, UnaryOperator,
 };
 use rowan::TextSize;
 
@@ -287,6 +287,79 @@ pub(super) fn original_decl_signatures_at(
     }
 }
 
+/// True when an inline `---@as` / `--[[@as]]` replaces the assigned value's
+/// exposed type, so the original signatures must not be kept.
+fn value_has_replacing_as_cast(
+    model: &SemanticModel,
+    value_syntax: emmylua_parser::LuaSyntaxId,
+) -> bool {
+    let Some(tree) = model.flow_tree().filter(|tree| tree.has_tag_cast()) else {
+        return false;
+    };
+    let Some(chunk) = model.chunk() else {
+        return false;
+    };
+    let Some(value) = model
+        .syntax_tree()
+        .and_then(|tree| value_syntax.to_node_from_root(&tree.get_red_root()))
+        .and_then(LuaExpr::cast)
+    else {
+        return false;
+    };
+    expr_cast_flows(model, value.syntax(), &tree)
+        .iter()
+        .any(|flow| {
+            tree.get_flow_effects(*flow).iter().any(|effect| {
+                let FlowEffect::AsCast(ptr) = effect else {
+                    return false;
+                };
+                ptr.to_node(&chunk).is_some_and(|tag| {
+                    tag.get_type().is_some()
+                        && inline_cast_target(&tag).is_some_and(|target| {
+                            value.get_range().contains_range(target.get_range())
+                        })
+                })
+            })
+        })
+}
+
+/// True when `value` is the original closure, or a name/index alias that
+/// resolves to it (`local runtest = Helper.runtest`, `local alias = accept`).
+fn value_resolves_to_closure(
+    model: &SemanticModel,
+    value_syntax: emmylua_parser::LuaSyntaxId,
+    closure: emmylua_parser::LuaSyntaxId,
+) -> bool {
+    if value_syntax == closure {
+        return true;
+    }
+    let Some(tree) = model.syntax_tree() else {
+        return false;
+    };
+    let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root()) else {
+        return false;
+    };
+    if LuaClosureExpr::cast(node.clone()).is_some() {
+        return value_syntax == closure;
+    }
+    let Some(expr) = LuaExpr::cast(node).and_then(unparenthesized) else {
+        return false;
+    };
+    if matches!(expr, LuaExpr::ClosureExpr(_)) {
+        return expr.get_syntax_id() == closure;
+    }
+    let owner = match expr {
+        LuaExpr::NameExpr(name_expr) => model.resolve_name(name_expr.get_position()),
+        LuaExpr::IndexExpr(index_expr) => model
+            .resolve_member(&index_expr)
+            .and_then(|resolved| resolved.member_id),
+        _ => None,
+    };
+    owner
+        .and_then(|owner| resolve_callable_closure(model, owner))
+        .is_some_and(|(_, resolved)| resolved == closure)
+}
+
 fn is_decl_self_assignment(
     model: &SemanticModel,
     decl: &SemanticId,
@@ -524,7 +597,7 @@ fn flow_member_value_type(model: &SemanticModel, member: &SemanticId) -> Option<
             .type_of_member(member)
             .map(|ty| apply_field_nullable(model, member, ty));
     };
-    if emmylua_parser::LuaClosureExpr::cast(node.clone()).is_some() {
+    if LuaClosureExpr::cast(node.clone()).is_some() {
         return model
             .type_of_member(member)
             .map(|ty| apply_field_nullable(model, member, ty));
@@ -831,7 +904,7 @@ pub(crate) fn type_of_expr_at_node(
                     && let Some(value_syntax) = member_def.value_syntax
                     && let Some(tree) = model.syntax_tree_of(member_file)
                     && let Some(node) = value_syntax.to_node_from_root(&tree.get_red_root())
-                    && let Some(closure) = emmylua_parser::LuaClosureExpr::cast(node)
+                    && let Some(closure) = LuaClosureExpr::cast(node)
                 {
                     member_ty =
                         LuaType::Signature(LuaSignatureId::from_closure(member_file, &closure));
@@ -2396,10 +2469,13 @@ fn trace_decl_uncached(
                 } = effect
                     && assigned == decl
                 {
-                    if *value_syntax == seed.closure {
+                    if is_decl_self_assignment(model, decl, *value_syntax) {
+                        // Keep tracing: `x = x` still carries whatever reached this write.
+                    } else if !value_has_replacing_as_cast(model, *value_syntax)
+                        && value_resolves_to_closure(model, *value_syntax, seed.closure)
+                    {
                         break 'trace decl_trace_base(model, decl, purpose, path);
-                    }
-                    if !is_decl_self_assignment(model, decl, *value_syntax) {
+                    } else {
                         break 'trace Some(LuaType::Unknown);
                     }
                 }
@@ -3460,34 +3536,72 @@ fn coerce_table_assign_to_narrowed(
     narrowed_before.clone()
 }
 
-/// Resolve the closure signature of the callee in a call. Follows local function alias chains (`local pred = is_string`)
-/// until the actual closure definition, so type guards don't lose the signature on alias calls.
-fn resolve_callable_closure(
+/// Resolve the closure that holds a callable's signature docs.
+///
+/// Follows plain local alias chains (`local pred = is_string`,
+/// `local runtest = Helper.runtest`, `local b = a`) and parentheses until the
+/// defining closure. Stops on `---@type` aliases (the annotation is the
+/// contract), on cycles, and on any initializer that is not a name, index, or
+/// closure. Reassignments are not considered here; callers that have a use
+/// site should filter the result with [`original_decl_signatures_at`].
+pub(crate) fn resolve_callable_closure(
     model: &SemanticModel,
-    mut decl: SemanticId,
+    mut owner: SemanticId,
 ) -> Option<(FileId, emmylua_parser::LuaSyntaxId)> {
     let mut visited = HashSet::new();
+    if !visited.insert(owner.clone()) {
+        return None;
+    }
     loop {
-        let SemanticId::Decl(decl_key) = &decl else {
+        if visited.len() > 16 {
             return None;
+        }
+        let (file_id, value_syntax, has_explicit_type) = match &owner {
+            SemanticId::Decl(key) => {
+                let facts = model.file_facts_of(key.file_id)?;
+                let info = facts.decl_by_id(&owner)?;
+                (
+                    key.file_id,
+                    info.value_expr_syntax?,
+                    info.doc_type_syntax.is_some(),
+                )
+            }
+            SemanticId::Member(key) => {
+                let facts = model.file_facts_of(key.file_id)?;
+                let member = facts.member_by_id(&owner)?;
+                (key.file_id, member.value_syntax?, false)
+            }
+            _ => return None,
         };
-        let file_id = decl_key.file_id;
-        let facts = model.file_facts_of(file_id)?;
-        let decl_info = facts.decl_by_id(&decl)?;
-        let value_syntax = decl_info.value_expr_syntax?;
         let tree = model.syntax_tree_of(file_id)?;
         let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
-        if emmylua_parser::LuaClosureExpr::cast(node.clone()).is_some() {
-            return Some((file_id, value_syntax));
+        let expr = unparenthesized(LuaExpr::cast(node)?)?;
+        if matches!(expr, LuaExpr::ClosureExpr(_))
+            || LuaClosureExpr::cast(expr.syntax().clone()).is_some()
+        {
+            return Some((file_id, expr.get_syntax_id()));
         }
-        let LuaExpr::NameExpr(name_expr) = LuaExpr::cast(node)? else {
-            return None;
-        };
-        let next_decl = model.resolve_name(name_expr.get_position())?;
-        if !visited.insert(next_decl.clone()) {
+        // A typed alias (`---@type fun()`) uses the annotation as its contract.
+        if has_explicit_type {
             return None;
         }
-        decl = next_decl;
+        match expr {
+            LuaExpr::NameExpr(name_expr) => {
+                let next = model.resolve_name(name_expr.get_position())?;
+                if !visited.insert(next.clone()) {
+                    return None;
+                }
+                owner = next;
+            }
+            LuaExpr::IndexExpr(index_expr) => {
+                let next = model.resolve_member(&index_expr)?.member_id?;
+                if !visited.insert(next.clone()) {
+                    return None;
+                }
+                owner = next;
+            }
+            _ => return None,
+        }
     }
 }
 

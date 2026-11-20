@@ -1088,4 +1088,49 @@ mod tests {
         );
         Ok(())
     }
+    #[gtest]
+    fn test_member_alias_callback_param_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let helper = r#"
+                ---@class OrderedExecution
+                ---@class Helper
+                Helper = {}
+
+                ---@overload fun(body: fun(t: OrderedExecution)): fun()
+                ---@param options { expected: integer }
+                ---@param body fun(t: OrderedExecution)
+                ---@return fun()
+                function Helper.runtest(options, body)
+                    return function() end
+                end
+        "#;
+        check!(ws.check_hover(
+            &format!(
+                r#"
+                {helper}
+                local runtest = Helper.runtest
+                runtest(function(<??>t) end)
+                "#
+            ),
+            VirtualHoverResult {
+                value: "```lua\n(parameter) t: OrderedExecution\n```".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            &format!(
+                r#"
+                {helper}
+                ---@type {{ expected: integer }}
+                local opts = {{ expected = 1 }}
+                local a = Helper.runtest
+                local b = a
+                b(opts, function(<??>t) end)
+                "#
+            ),
+            VirtualHoverResult {
+                value: "```lua\n(parameter) t: OrderedExecution\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }

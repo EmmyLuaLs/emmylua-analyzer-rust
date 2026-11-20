@@ -4642,4 +4642,151 @@ mod test {
         "#
         ));
     }
+    #[test]
+    fn test_member_alias_keeps_overload_param_checks() {
+        let param_mismatches = |source: &str| {
+            check_source(source)
+                .into_iter()
+                .filter(|d| d.code == DiagnosticCode::ParamTypeMismatch)
+                .collect::<Vec<_>>()
+        };
+        let helper = r#"
+            ---@class OrderedExecution
+            ---@class Helper
+            Helper = {}
+
+            ---@overload fun(body: fun(t: OrderedExecution)): fun()
+            ---@param options { expected: integer }
+            ---@param body fun(t: OrderedExecution)
+            ---@return fun()
+            function Helper.runtest(options, body)
+                return function() end
+            end
+        "#;
+        let alias_ok = format!(
+            r#"
+            {helper}
+            local runtest = Helper.runtest
+            runtest(function(t) end)
+            runtest({{ expected = 1 }}, function(t) end)
+            "#
+        );
+        let alias_ok_diags = param_mismatches(&alias_ok);
+        assert!(alias_ok_diags.is_empty(), "{alias_ok}\n{alias_ok_diags:#?}");
+
+        let alias_bad = format!(
+            r#"
+            {helper}
+            local runtest = Helper.runtest
+            runtest(42)
+            runtest({{ expected = 1 }}, true)
+            "#
+        );
+        let diagnostics = param_mismatches(&alias_bad);
+        assert_eq!(diagnostics.len(), 2, "{alias_bad}\n{diagnostics:#?}");
+        for diagnostic in &diagnostics {
+            assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+        }
+        let ranges: Vec<_> = diagnostics.iter().map(|d| &alias_bad[d.range]).collect();
+        assert_eq!(ranges, ["42", "true"]);
+
+        let chained_bad = format!(
+            r#"
+            {helper}
+            local a = Helper.runtest
+            local b = a
+            b(42)
+            "#
+        );
+        let diagnostics = param_mismatches(&chained_bad);
+        assert_eq!(diagnostics.len(), 1, "{chained_bad}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&chained_bad[diagnostics[0].range], "42");
+
+        let local_fn_bad = r#"
+            ---@param value number
+            ---@return number
+            ---@overload fun(value: string): string
+            local function accept(value) return value end
+            local alias = accept
+            alias(true)
+        "#;
+        let diagnostics = param_mismatches(local_fn_bad);
+        assert_eq!(diagnostics.len(), 1, "{local_fn_bad}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&local_fn_bad[diagnostics[0].range], "true");
+
+        let plain = format!(
+            r#"
+            {helper}
+            ---@param value number
+            ---@return number
+            function Helper.plain(value)
+                return value
+            end
+            local plain = Helper.plain
+            plain(42)
+            plain('wrong')
+            "#
+        );
+        let diagnostics = param_mismatches(&plain);
+        assert_eq!(diagnostics.len(), 1, "{plain}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&plain[diagnostics[0].range], "'wrong'");
+    }
+
+    #[test]
+    fn test_member_alias_callback_param_is_ordered_execution() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class OrderedExecution
+            ---@class Helper
+            Helper = {}
+
+            ---@overload fun(body: fun(t: OrderedExecution)): fun()
+            ---@param options { expected: integer }
+            ---@param body fun(t: OrderedExecution)
+            ---@return fun()
+            function Helper.runtest(options, body)
+                return function() end
+            end
+
+            local runtest = Helper.runtest
+            runtest(function(t)
+                got_body = t
+            end)
+            ---@type { expected: integer }
+            local opts = { expected = 1 }
+            runtest(opts, function(t)
+                got_opts = t
+            end)
+            "#,
+        );
+        assert_eq!(ws.expr_ty("got_body"), ws.ty("OrderedExecution"));
+        assert_eq!(ws.expr_ty("got_opts"), ws.ty("OrderedExecution"));
+    }
+
+    #[test]
+    fn test_alias_reassignment_does_not_restore_original_overloads() {
+        let source = r#"
+            ---@param value number
+            ---@return number
+            ---@overload fun(value: string): string
+            local function accept(value) return value end
+            ---@param value number
+            ---@return number
+            local function replacement(value) return value end
+            local alias = accept
+            alias('ok')
+            alias = replacement
+            alias('wrong')
+        "#;
+        let diagnostics: Vec<_> = check_source(source)
+            .into_iter()
+            .filter(|d| d.code == DiagnosticCode::ParamTypeMismatch)
+            .collect();
+        assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+        assert_eq!(&source[diagnostics[0].range], "'wrong'");
+    }
 }
