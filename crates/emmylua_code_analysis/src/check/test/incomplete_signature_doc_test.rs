@@ -181,6 +181,52 @@ mod tests {
     }
 
     #[test]
+    fn test_function_type_annotation_completes_the_signature() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        for annotation in ["Identity", "fun(value: string): string"] {
+            assert!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::IncompleteSignatureDoc,
+                    &format!(
+                        r#"
+                        ---@alias Identity fun(value: string): string
+
+                        ---@type {annotation}
+                        local function identity(value)
+                            return value
+                        end
+
+                        ---@type {annotation}
+                        local assigned = function(value)
+                            return value
+                        end
+
+                        local M = {{}}
+                        ---@type {annotation}
+                        M.member = function(value)
+                            return value
+                        end
+                        "#
+                    )
+                ),
+                "{annotation}"
+            );
+        }
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@type function
+            local function identity(value)
+                return value
+            end
+            "#
+        ));
+    }
+
+    #[test]
     fn test_incomplete_signature_doc_no_param_no_return() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
