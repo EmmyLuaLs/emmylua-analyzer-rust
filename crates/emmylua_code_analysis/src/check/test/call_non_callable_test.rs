@@ -328,6 +328,66 @@ mod test {
     }
 
     #[test]
+    fn test_no_call_non_callable_on_class_overload() {
+        let mut ws = VirtualWorkspace::new();
+        // `---@overload` on a class makes both the class table and its instances callable.
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@class Point
+            ---@field x integer
+            ---@overload fun(x: integer): Point
+            local Point = {}
+            local p = Point(1)
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@class Logger
+            ---@overload fun(msg: string)
+            ---@type Logger
+            local log
+            log('hi')
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_no_call_non_callable_on_generic_class_instance() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@class Box<T>
+            ---@operator call(T): T
+            ---@type Box<integer>
+            local b
+            b(1)
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@class Set<T>
+            ---@overload fun(v: T): boolean
+            ---@type Set<string>
+            local s
+            s('a')
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@class Plain<T>
+            ---@type Plain<string>
+            local p
+            p('a')
+            "#
+        ));
+    }
+
+    #[test]
     fn test_no_call_non_callable_on_undefined_type() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

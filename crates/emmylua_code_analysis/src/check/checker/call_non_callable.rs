@@ -1,13 +1,14 @@
 //! # call_non_callable — calling a non-function type
 //!
 //! M0: callee type checked via `is_callable` (Function/DocFunction/Signature/Any/Unknown/
-//! Nil pass; named types with `---@operator call` pass; union passes only if all components are callable).
+//! Nil pass; named types with `---@overload` or `---@operator call` pass, generic instances by
+//! their base type; union passes only if all components are callable).
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaLocalStat};
 
 use crate::DiagnosticCode;
 use crate::LuaType;
-use crate::semantic_db::def::TypeDefKind;
+use crate::semantic_db::def::{TypeDef, TypeDefKind};
 use crate::semantic_model::SemanticModel;
 
 use super::{CheckContext, Checker};
@@ -92,7 +93,8 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             .get_types()
             .iter()
             .any(|t| is_callable(model, t)),
-        // Named types: check after alias expansion; otherwise callable if it has `---@operator call`.
+        // Named types: check after alias expansion; otherwise callable if it has `---@overload`
+        // or `---@operator call`.
         // Unresolved types are handled by analyze_error, so call-non-callable is not reported here.
         LuaType::Ref(id) | LuaType::Def(id) => {
             let Some(def) = model.type_def_of(id) else {
@@ -103,11 +105,26 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             {
                 return is_callable(model, &target);
             }
-            let Some(facts) = model.file_facts_of(def.file_id) else {
-                return false;
+            has_call_candidate(model, &def)
+        }
+        // Generic instances (`Box<integer>`): an alias is checked on its instantiation, a class
+        // by its base type's call candidates.
+        LuaType::Generic(generic) => {
+            let Some(def) = model.type_def_of(&generic.get_base_type_id()) else {
+                return true;
             };
-            facts.operator_of(&def.id, "call").is_some()
+            if def.kind == TypeDefKind::Alias {
+                return !model.callable_functions_cached(ty).is_empty();
+            }
+            has_call_candidate(model, &def)
         }
         _ => false,
     }
+}
+
+fn has_call_candidate(model: &SemanticModel, def: &TypeDef) -> bool {
+    !def.call_overloads.is_empty()
+        || model
+            .file_facts_of(def.file_id)
+            .is_some_and(|facts| facts.operator_of(&def.id, "call").is_some())
 }
