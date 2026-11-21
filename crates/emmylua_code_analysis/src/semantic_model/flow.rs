@@ -547,6 +547,69 @@ fn flow_member_value_type(model: &SemanticModel, member: &SemanticId) -> Option<
     }
 }
 
+/// The member's type where backtracking found none of its writes.
+///
+/// A member owned by a local or param (`s.desc = v`) is a runtime member: its identity is that one
+/// write site, and its own value is the write's value, which this path has not run. Declared
+/// `---@field`s are owned by their class and never take the first branch. For a runtime member,
+/// the read's flow-insensitive type (the declared field, or that same value for an undeclared
+/// table) is what the path holds before the write.
+fn member_entry_type(
+    model: &SemanticModel,
+    member: &SemanticId,
+    access: Option<&LuaIndexExpr>,
+) -> Option<LuaType> {
+    let member_file = match member {
+        SemanticId::Member(key) => key.file_id,
+        _ => model.file_id(),
+    };
+    if let Some(access) = access
+        && model
+            .file_facts_of(member_file)
+            .and_then(|facts| facts.member_by_id(member))
+            .is_some_and(|def| matches!(def.owner, SemanticId::Decl(_)))
+        && !defines_a_function(model, member)
+    {
+        // `type_of_expr` is memoized with an in-progress marker, so a query that re-enters this
+        // read gets `Unknown` and keeps the old base. A bare `nil` is the VM's answer for a member
+        // the owner doesn't declare, not a field type.
+        let ty = model.type_of_expr(access.get_syntax_id());
+        if !matches!(ty, LuaType::Unknown | LuaType::Nil) {
+            return Some(ty);
+        }
+    }
+    flow_member_value_type(model, member)
+}
+
+/// Whether the write site that is `member` (a runtime member's identity, see `member_entry_type`)
+/// is a function statement, `function M:m()` or `function M.f()`. That defines the member rather
+/// than changing its state, so a read that no definition precedes (another method's body, which
+/// runs after the module has loaded) holds the function, not an inherited `m?` field. An assignment
+/// (`t.cb = function() end`) is a state change like any other write.
+fn defines_a_function(model: &SemanticModel, member: &SemanticId) -> bool {
+    let SemanticId::Member(key) = member else {
+        return false;
+    };
+    let Some(def) = model
+        .file_facts_of(key.file_id)
+        .and_then(|facts| facts.member_by_id(member))
+    else {
+        return false;
+    };
+    let Some(value_syntax) = def.value_syntax else {
+        return false;
+    };
+    model
+        .syntax_tree_of(key.file_id)
+        .and_then(|tree| value_syntax.to_node_from_root(&tree.get_red_root()))
+        .is_some_and(|node| {
+            emmylua_parser::LuaClosureExpr::cast(node.clone()).is_some()
+                && node
+                    .parent()
+                    .is_some_and(|parent| emmylua_parser::LuaFuncStat::cast(parent).is_some())
+        })
+}
+
 /// Nullable members declared with `---@field x? T` should also carry nil in flow queries.
 fn apply_field_nullable(model: &SemanticModel, member: &SemanticId, ty: LuaType) -> LuaType {
     let member_file = match member {
@@ -586,7 +649,7 @@ fn member_type_at(
     ignore_guards: bool,
     access: Option<&LuaIndexExpr>,
 ) -> LuaType {
-    let fallback = || flow_member_value_type(model, member).unwrap_or(LuaType::Unknown);
+    let fallback = || member_entry_type(model, member, access).unwrap_or(LuaType::Unknown);
     let Some(tree) = model.flow_tree() else {
         return fallback();
     };
@@ -813,7 +876,9 @@ pub(crate) fn type_of_expr_at_node(
                         &mut HashSet::new(),
                         &mut PathState::default(),
                     )
-                    .unwrap_or_else(|| type_of_member_at(model, &member_id, offset))
+                    .unwrap_or_else(|| {
+                        member_type_at(model, &member_id, offset, false, Some(index_expr))
+                    })
                 } else {
                     member_type_at(model, &member_id, offset, false, Some(index_expr))
                 }
@@ -2810,14 +2875,16 @@ fn trace_member_uncached(
                 }
             }
             FlowNodeKind::Start | FlowNodeKind::Unreachable => {
-                return flow_member_value_type(model, member).map(|ty| finalize(model, ty, path));
+                return member_entry_type(model, member, access)
+                    .map(|ty| finalize(model, ty, path));
             }
             _ => {}
         }
 
         match &node.antecedent {
             None => {
-                return flow_member_value_type(model, member).map(|ty| finalize(model, ty, path));
+                return member_entry_type(model, member, access)
+                    .map(|ty| finalize(model, ty, path));
             }
             Some(FlowAntecedent::Single(next)) => {
                 current = *next;
@@ -6237,7 +6304,7 @@ fn walk_member(
 ) -> Option<LuaType> {
     match antecedent {
         // Backtracked to the start: use the member's declaration type as the base and apply cast widening collected on the path.
-        None => flow_member_value_type(model, member).map(|ty| finalize(model, ty, path)),
+        None => member_entry_type(model, member, access).map(|ty| finalize(model, ty, path)),
         Some(FlowAntecedent::Single(next)) => {
             trace_member(model, member, access, tree, *next, visited, path)
         }
