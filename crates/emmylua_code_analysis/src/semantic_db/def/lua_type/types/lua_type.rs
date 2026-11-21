@@ -12,6 +12,9 @@ use super::complex::{
 };
 use crate::semantic_db::def::lua_type::type_decl::LuaTypeDeclId;
 
+/// Semantic type structure used for equality, hashing and inference.
+/// Shared `Rc` payloads keep their semantic fields immutable; interior hash
+/// caches only memoize structural hashes and must not change equality or hash values.
 #[derive(Debug, Clone)]
 pub enum LuaType {
     Unknown,
