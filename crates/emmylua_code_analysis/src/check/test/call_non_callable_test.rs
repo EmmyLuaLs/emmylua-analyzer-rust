@@ -57,6 +57,35 @@ mod test {
     }
 
     #[test]
+    fn test_calling_a_call_uses_its_first_value() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@return function?, string?
+            local function open_chunk() return function() end end
+            ---@return integer, function
+            local function count() return 1, function() end end
+            open_chunk()()
+            assert(open_chunk())()
+            count()()
+            "#,
+        );
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::CallNonCallable.get_name().to_string(),
+        ));
+        let non_callable: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect();
+        assert_eq!(non_callable.len(), 1, "{diagnostics:#?}");
+        assert_eq!(non_callable[0].range.start.line, 7, "{diagnostics:#?}");
+    }
+
+    #[test]
     fn test_callable_table_accepts_valid_arguments() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(
