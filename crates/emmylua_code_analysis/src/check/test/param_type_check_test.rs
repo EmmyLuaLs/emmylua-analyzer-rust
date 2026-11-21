@@ -560,6 +560,31 @@ mod test {
     }
 
     #[test]
+    fn test_alias_members_with_descriptions_above_them() {
+        let source = r#"
+            ---@alias Key
+            ---
+            ---The A key
+            ---
+            ---| "a"
+            ---
+            ---The B key
+            ---
+            ---| "b"
+
+            ---@param key Key
+            local function press(key) return key end
+            press("a")
+            press("b")
+            press("w")
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&source[diagnostics[0].range], "\"w\"");
+    }
+
+    #[test]
     fn test_typed_globals_keep_contracts_from_each_file() {
         let mut ws = VirtualWorkspace::new();
         for (file, domain) in [("strings.lua", "string"), ("numbers.lua", "number")] {
