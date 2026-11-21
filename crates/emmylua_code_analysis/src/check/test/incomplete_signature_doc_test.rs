@@ -227,4 +227,105 @@ mod tests {
         let required = "local reg = require 'reg'\nreg.out.to = function(line) return line end\n";
         assert_eq!(param_type(&mut ws, "r.lua", required), "string");
     }
+
+    /// An undocumented function that forwards a call into a `require`d module returns what that
+    /// call returns, seen from any file: `delay` forwards `sleep`, which forwards `suspend`.
+    #[test]
+    fn test_cross_file_forwarded_variadic_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "susp.lua",
+            "local S = {}\n---@return integer ...\nfunction S.suspend() return 1 end\nreturn S\n",
+        );
+        ws.def_file(
+            "slp.lua",
+            "local susp = require 'susp'\nlocal V = {}\nfunction V.sleep() return susp.suspend() end\nreturn V\n",
+        );
+        ws.def_file(
+            "dly.lua",
+            "local slp = require 'slp'\nlocal D = {}\nfunction D.delay() return slp.sleep() end\nreturn D\n",
+        );
+        let ty = ws.expr_ty("require('dly').delay()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
+
+    /// The same forward, typed: a caller in a third file sees the forwarded `integer`.
+    #[test]
+    fn test_cross_file_forwarded_call_return_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "one.lua",
+            "local O = {}\n---@return integer\nfunction O.get() return 1 end\nreturn O\n",
+        );
+        ws.def_file(
+            "fwd.lua",
+            "local one = require 'one'\nlocal F = {}\nfunction F.get() return one.get() end\nreturn F\n",
+        );
+        let ty = ws.expr_ty("require('fwd').get()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
+
+    /// A forward through a value of a class from another file: `o:get()` is found on `A`, the
+    /// prefix's type, not on the local `o`.
+    #[test]
+    fn test_cross_file_forwarded_call_on_class_value() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            "---@class A\nlocal A = {}\n---@return A\nfunction A.new() return setmetatable({}, { __index = A }) end\n---@return integer\nfunction A:get() return 1 end\nreturn A\n",
+        );
+        ws.def_file(
+            "b.lua",
+            "local A = require 'a'\nlocal B = {}\nfunction B.get() local o = A.new() return o:get() end\nreturn B\n",
+        );
+        let ty = ws.expr_ty("require('b').get()");
+        assert_eq!(ws.humanize_type(ty), "integer");
+    }
+
+    /// A generic factory, in another file or the same one: the call's shell does not bind the
+    /// callee's `V`, so a local holding the result reads as `Box<unknown>`, not `Box<V>` with `V`
+    /// a stray name.
+    #[test]
+    fn test_generic_factory_does_not_leak_its_generic() {
+        use crate::semantic_db::types::TypeCandidate;
+        const BOX: &str = r#"
+            ---@class Box<T>
+            ---@field v T
+            local Box = {}
+            ---@generic V
+            ---@param v V
+            ---@return Box<V>
+            function Box.from(v) return setmetatable({ v = v }, { __index = Box }) end
+        "#;
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file("box.lua", &format!("{BOX}\nreturn Box\n"));
+        let cross_file = "local Box = require 'box'\nlocal b = Box.from(1)\n".to_string();
+        let same_file = format!("{BOX}\nlocal b = Box.from(1)\n");
+        for (file, source) in [("use.lua", cross_file), ("same.lua", same_file)] {
+            let file_id = ws.def_file(file, &source);
+            let model = ws.analysis.semantic_model(file_id);
+            let decl = model
+                .file_facts()
+                .expect("facts")
+                .decls
+                .iter()
+                .find(|d| d.name == "b")
+                .expect("decl b")
+                .id
+                .clone();
+            // The shell is what a caller falls back to when the VM cannot type the call (luagnd's
+            // `Seq.from`), so check the shell itself.
+            let shell = model.analysis().decl_type(file_id, decl).expect("shell");
+            assert!(
+                matches!(
+                    shell.candidates.as_slice(),
+                    [TypeCandidate::GenericInstance(instance)]
+                        if instance.name == "Box"
+                            && instance.args.len() == 1
+                            && instance.args[0].is_unknown()
+                ),
+                "{file}: expected Box<unknown>, got {shell:?}"
+            );
+        }
+    }
 }
