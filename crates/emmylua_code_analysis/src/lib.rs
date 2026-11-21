@@ -30,6 +30,7 @@ pub use crate::semantic_db::exports::{
     FileExportContribution, FileExports, GlobalExport, MemberExport,
 };
 pub use crate::semantic_db::facts::FileFacts;
+pub use check::checker::attribute_check::attribute_params_accept_arg_count;
 pub use check::{
     CheckConfig, CheckProfile, DiagnosticCode, get_default_severity, is_code_default_enable,
 };
