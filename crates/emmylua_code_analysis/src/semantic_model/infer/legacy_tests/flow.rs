@@ -5088,4 +5088,44 @@ _ = a[2]
             "#,
         ));
     }
+
+    #[test]
+    fn test_a_nested_function_reads_the_field_not_a_later_write_in_its_parent() {
+        // `f` and `s` can run before the conditional write, so they read the declared `name?`. Main
+        // took the write's value in both when the write carries `---@type` (a plain write reads the
+        // field);
+        // a rule that kept the write's value for reads in the writing function's closures did too
+        // (tuis `uis/*.lua`: `assert(ctx.state)` in `refresh`, a mount-only `ctx.state = …`).
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UnnecessaryAssert,
+            r#"
+            ---@class Ctx
+            ---@field name? string
+
+            ---@param ctx Ctx
+            ---@param c boolean
+            local function App(ctx, c)
+                local function f()
+                    return assert(ctx.name)
+                end
+                if c then
+                    ctx.name = "x" ---@type string
+                end
+                return f
+            end
+
+            ---@param ctx Ctx
+            ---@param c boolean
+            local function Straight(ctx, c)
+                local s = assert(ctx.name)
+                if c then
+                    ctx.name = "x" ---@type string
+                end
+                return s
+            end
+            return { App, Straight }
+            "#,
+        ));
+    }
 }
