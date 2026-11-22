@@ -1530,3 +1530,54 @@ fn named_key_of_another_base_type_is_still_an_undefined_key() {
         );
     }
 }
+
+/// Guard: the `is_compatible` fallback does not widen plain scalar keys. A key of the other
+/// scalar type is still reported, and literal or alias keys of the right type still pass.
+#[googletest::gtest]
+fn scalar_key_fit_is_unchanged_by_the_compatibility_fallback() {
+    use crate::{DiagnosticCode, VirtualWorkspace};
+    use googletest::prelude::*;
+    let mut ws = VirtualWorkspace::new();
+    let decls = r#"
+        ---@type table<integer, string>
+        local ints = {}
+        ---@type table<string, integer>
+        local strs = {}
+        ---@type string[]
+        local arr = {}
+        ---@type string
+        local s
+        ---@type integer
+        local i
+        ---@type number
+        local n
+        ---@alias sk.Lit "a"|"b"
+        ---@type sk.Lit
+        local lit
+        ---@alias sk.N 1|2
+        ---@type sk.N
+        local ln
+    "#;
+    let reported = [
+        r#"ints["1"]"#,
+        "ints[s]",
+        "strs[1]",
+        "strs[i]",
+        "strs[n]",
+        "arr[s]",
+        r#"arr["x"]"#,
+    ];
+    let accepted = ["strs[lit]", "ints[ln]", "arr[ln]", "arr[n]"];
+    for (reads, ok) in [(&reported[..], false), (&accepted[..], true)] {
+        for read in reads {
+            expect_that!(
+                ws.has_no_diagnostic(
+                    DiagnosticCode::UndefinedField,
+                    &format!("{decls}\nreturn {read}")
+                ),
+                eq(ok),
+                "{read}"
+            );
+        }
+    }
+}
