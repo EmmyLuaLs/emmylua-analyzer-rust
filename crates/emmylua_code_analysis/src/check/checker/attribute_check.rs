@@ -150,8 +150,9 @@ pub fn attribute_params_accept_arg_count(
         .iter()
         .take_while(|(name, typ)| name != "..." && !typ.as_ref().is_some_and(LuaType::is_variadic))
         .count();
-    let required_count = def_params[..fixed]
+    let required_count = def_params
         .iter()
+        .take(fixed)
         .rposition(|(_, typ)| !typ.as_ref().is_some_and(LuaType::is_optional))
         .map_or(0, |last| last + 1);
     let allows_more = def_params
