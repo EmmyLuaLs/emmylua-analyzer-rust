@@ -86,6 +86,19 @@ pub(crate) fn count_by_code(diagnostics: &[Diagnostic], code: DiagnosticCode) ->
     diagnostics.iter().filter(|d| d.code == code).count()
 }
 
+/// The source text each diagnostic of `code` covers, in report order.
+pub(crate) fn texts_by_code<'a>(
+    source: &'a str,
+    diagnostics: &[Diagnostic],
+    code: DiagnosticCode,
+) -> Vec<&'a str> {
+    diagnostics
+        .iter()
+        .filter(|d| d.code == code)
+        .map(|d| &source[d.range])
+        .collect()
+}
+
 /// End-to-end: EmmyLuaAnalysis::diagnose_file_with_config → lsp Diagnostic (range/code/severity).
 #[test]
 fn test_diagnose_semantic_end_to_end() {
