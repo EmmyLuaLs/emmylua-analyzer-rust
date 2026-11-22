@@ -465,23 +465,33 @@ fn test_constructor_checker_honors_strip_self() {
     assert!(ws.has_no_diagnostic(DiagnosticCode::MissingParameter, "ClassA({}, 1)"));
 }
 
-/// An optional param before a required one does not lower the minimum: the required `x` sits in
-/// slot 2, so a call filling only slot 1 misses it. The minimum is the last required
-/// param's position, not the number of required params. 0.25.1 reports each of these.
+/// A param that is not required (optional, `any`) before a required one does not lower the
+/// minimum: a call that fills only the slots before the last required param misses it. The
+/// minimum is the last required param's position, not the number of required params. 0.25.1
+/// reports each of these.
 #[test]
 fn test_optional_param_before_required_does_not_lower_the_minimum() {
-    let head = "local M = {}\n---@param a any?\n---@param x number\nfunction M.f(a, x) end\n---@param a number?\n---@param x number\nfunction M.h(a, x) end\n";
-    for call in ["M:f()", "M.f(1)", "M.h(1)", "M.f()"] {
+    let head = "local M = {}\n---@param a any?\n---@param x number\nfunction M.f(a, x) end\n---@param a number?\n---@param x number\nfunction M.h(a, x) end\n---@param x number\n---@param y any\n---@param z number\nfunction M.g(x, y, z) end\n";
+    // (call, expected minimum, arguments found)
+    let cases = [
+        ("M:f()", 2, 1),
+        ("M.f(1)", 2, 1),
+        ("M.h(1)", 2, 1),
+        ("M.f()", 2, 0),
+        ("M.g(1, 2)", 3, 2),
+    ];
+    for (call, min, found) in cases {
         let diagnostics = check_source(&format!("{head}{call}\n"));
         let missing: Vec<_> = diagnostics
             .iter()
             .filter(|d| d.code == DiagnosticCode::MissingParameter)
             .map(|d| d.message.clone())
             .collect();
-        let found = if call == "M.f()" { 0 } else { 1 };
         assert_eq!(
             missing,
-            vec![format!("expected at least 2 parameters but found {found}")],
+            vec![format!(
+                "expected at least {min} parameters but found {found}"
+            )],
             "{call}"
         );
     }
