@@ -232,7 +232,7 @@ fn is_valid_member(
         }
         LuaType::Array(_) => {
             let key_ty = key_type(semantic_model, index_key);
-            numeric_key_expanded(semantic_model, &key_ty)
+            key_matches(semantic_model, &key_ty, &LuaType::Integer)
                 || is_unknown_key(&key_ty)
                 || in_conditional_statement(index_expr)
         }
@@ -452,42 +452,6 @@ fn numeric_key(ty: &LuaType) -> bool {
     }
 }
 
-/// Numeric key after alias expansion (`IntegerPartIndex = 1|2`, `NewKey: integer`).
-fn numeric_key_expanded(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> bool {
-    numeric_key_expanded_inner(semantic_model, ty, &mut Vec::new())
-}
-
-fn numeric_key_expanded_inner(
-    semantic_model: &SemanticModel<'_>,
-    ty: &LuaType,
-    visited: &mut Vec<LuaTypeDeclId>,
-) -> bool {
-    if numeric_key(ty) {
-        return true;
-    }
-    let Some(def) = named_type_def(semantic_model, ty) else {
-        return false;
-    };
-    let id = match ty {
-        LuaType::Ref(id) | LuaType::Def(id) => id,
-        _ => return false,
-    };
-    if visited.contains(id) {
-        return false;
-    }
-    visited.push(id.clone());
-    match def.kind {
-        TypeDefKind::Alias => semantic_model
-            .alias_target(&def)
-            .is_some_and(|target| numeric_key_expanded_inner(semantic_model, &target, visited)),
-        TypeDefKind::Class => semantic_model
-            .base_types(&def.type_decl_id())
-            .iter()
-            .any(|ty| matches!(ty, LuaType::Integer | LuaType::Number)),
-        TypeDefKind::Enum => false,
-    }
-}
-
 /// Whether `key` can be a key of `table<K,V>` (M0: basic expansion of string/integer and unions/aliases).
 fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &LuaType) -> bool {
     if table_key.is_unknown() || table_key.is_any() {
@@ -498,12 +462,17 @@ fn key_matches(semantic_model: &SemanticModel<'_>, key: &LuaType, table_key: &Lu
     }
     match table_key {
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-            is_string_key(key)
+            // The shape checks miss a key the type check knows is a string: a `(key)` enum,
+            // a `---@class Name: string`, a union of string aliases.
+            is_string_key(key) || is_compatible(semantic_model, key, table_key)
         }
         LuaType::Integer
         | LuaType::Number
         | LuaType::IntegerConst(_)
-        | LuaType::DocIntegerConst(_) => numeric_key_expanded(semantic_model, key),
+        | LuaType::DocIntegerConst(_) => {
+            // Likewise an integer enum; a mixed enum stays rejected.
+            numeric_key(key) || is_compatible(semantic_model, key, table_key)
+        }
         LuaType::Union(union) => union
             .into_vec()
             .iter()
