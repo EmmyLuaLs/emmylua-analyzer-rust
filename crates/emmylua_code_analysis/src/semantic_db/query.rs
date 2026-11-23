@@ -2122,11 +2122,7 @@ pub(crate) fn decl_type(
     TypeShell::unknown()
 }
 
-/// Iterator slot types for `for k, v in pairs(x)`.
-///
-/// Only recognizes `pairs/ipairs/next(x)` where x is a named type / generic instance: reads the returned list from
-/// the `__pairs`/`__ipairs` function signature's `---@return fun(): K, V` and projects it by slot (preserving order,
-/// not lost through TypeShell's candidate set).
+/// Fall back to a declared iterator metamethod when typing a generic for loop.
 fn iter_slot_type(
     db: &SemanticDatabase,
     facts: &FileFacts,
@@ -2134,100 +2130,69 @@ fn iter_slot_type(
     config: &Emmyrc,
     decl: &Decl,
 ) -> Option<TypeShell> {
-    let key = (file_id, decl.id.clone());
-    // TODO remove future
-    if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
+    // Inferring the table argument can ask for this loop variable again.
+    let guard_key = (file_id, decl.id.clone());
+    if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&guard_key)) {
         return None;
     }
-    let _guard = IterSlotGuard::enter(key);
+    let _guard = IterSlotGuard::enter(guard_key);
+
     let owner = decl.owner_syntax?;
     let tree = db.syntax_tree_of(file_id)?;
     let node = owner.to_node_from_root(&tree.get_red_root())?;
-    let stat = emmylua_parser::LuaForRangeStat::cast(node)?;
-    let vars = stat.get_var_name_list().collect::<Vec<_>>();
-    let index = vars
-        .iter()
+    let loop_stat = emmylua_parser::LuaForRangeStat::cast(node)?;
+    let slot_index = loop_stat
+        .get_var_name_list()
         .position(|var| var.get_name_text() == decl.name.as_str())?;
-    let iter_expr = stat.get_expr_list().next()?;
-    let LuaExpr::CallExpr(call) = iter_expr else {
+
+    let LuaExpr::CallExpr(call) = loop_stat.get_expr_list().next()? else {
         return None;
     };
-    let member_name = match call.get_prefix_expr()? {
-        LuaExpr::NameExpr(name) => match name.get_name_text()?.as_str() {
-            "pairs" | "next" => "__pairs",
-            "ipairs" => "__ipairs",
-            _ => return None,
-        },
+    let LuaExpr::NameExpr(callee) = call.get_prefix_expr()? else {
+        return None;
+    };
+    let metamethod_name = match callee.get_name_text()?.as_str() {
+        "pairs" => "__pairs",
+        "ipairs" => "__ipairs",
         _ => return None,
     };
-    let arg = call.get_args_list()?.get_args().next()?;
-    let arg_shell = expr_type(db, facts, file_id, config, arg);
 
-    for candidate in &arg_shell.candidates {
-        let (def, generic_args) = match candidate {
-            TypeCandidate::Named(name) => {
-                let def = resolve_type_def(db, file_id, SmolStr::new(name.as_str()))?;
-                (def, Vec::new())
-            }
-            TypeCandidate::GenericInstance(ins) => {
-                let def = resolve_type_def(db, file_id, SmolStr::new(ins.name.as_str()))?;
-                (def, ins.args.clone())
-            }
+    // A local function can shadow `pairs` or `ipairs`. Leave its return type
+    // to normal call inference.
+    let SemanticId::Decl(callee_decl) = resolve_name(db, file_id, callee.get_position())? else {
+        return None;
+    };
+    if !db.is_std_file(callee_decl.file_id) {
+        return None;
+    }
+
+    let table_arg = call.get_args_list()?.get_args().next()?;
+    let table_type = expr_type(db, facts, file_id, config, table_arg);
+
+    // Use the declared type as a metatable hint for the class convention
+    // `setmetatable({}, Class)`. The actual metatable can be a different table.
+    for candidate in &table_type.candidates {
+        let (type_name, generic_args) = match candidate {
+            TypeCandidate::Named(name) => (name, &[][..]),
+            TypeCandidate::GenericInstance(instance) => (&instance.name, instance.args.as_slice()),
             _ => continue,
         };
-        let mut member_refs = members_of_owner(db, def.id.clone()).to_vec();
-        for resolved in resolve_owner_set(db, def.id.clone()) {
-            member_refs.extend(members_of_owner(db, resolved).iter().cloned());
-        }
-        for member_ref in member_refs
-            .iter()
-            .filter(|member| member.name == member_name)
-        {
-            let Some(member_facts) = db.file_facts_of(member_ref.file_id) else {
-                continue;
-            };
-            let Some(member) = member_facts.member_by_id(&member_ref.id) else {
-                continue;
-            };
-            let Some(closure_syntax) = member.value_syntax else {
-                continue;
-            };
-            let Some(signature) = member_facts.signature_by_closure(closure_syntax) else {
-                continue;
-            };
-            let Some(docs) = &signature.docs else {
-                continue;
-            };
-            // Generator signature: `---@return fun(): integer, T` (returns stores the fun type node).
-            let Some(return_syntax) = docs.returns.first() else {
-                continue;
-            };
-            let Some(member_tree) = db.syntax_tree_of(member_ref.file_id) else {
-                continue;
-            };
-            let Some(return_node) = return_syntax.to_node_from_root(&member_tree.get_red_root())
-            else {
-                continue;
-            };
-            let Some(LuaDocType::Func(func)) = LuaDocType::cast(return_node) else {
-                continue;
-            };
-            let Some(return_list) = func.get_return_type_list() else {
-                continue;
-            };
-            let mut slots: Vec<TypeShell> = Vec::new();
-            for ret in return_list.get_return_type_list() {
-                if let (_, Some(ret_type)) = ret.get_name_and_type() {
-                    slots.push(lower_doc_type_node(
-                        db,
-                        member_ref.file_id,
-                        &def.generic_params,
-                        &ret_type,
-                    ));
-                }
-            }
-            if let Some(slot) = slots.get(index) {
-                let substituted = substitute_generics(slot, &def.generic_params, &generic_args);
+        let def = resolve_type_def(db, file_id, type_name.clone())?;
+
+        // The metamethod may be declared on the type or its associated runtime value.
+        for owner in resolve_owner_set(db, def.id.clone()) {
+            let members = members_of_owner(db, owner);
+            for metamethod in members
+                .iter()
+                .filter(|member| member.name == metamethod_name)
+            {
+                let Some(slot) =
+                    lower_metamethod_iterator_slot(db, metamethod, &def.generic_params, slot_index)
+                else {
+                    continue;
+                };
+
+                let substituted = substitute_generics(&slot, &def.generic_params, generic_args);
                 if !substituted.is_unknown() {
                     return Some(substituted);
                 }
@@ -2235,6 +2200,34 @@ fn iter_slot_type(
         }
     }
     None
+}
+
+fn lower_metamethod_iterator_slot(
+    db: &SemanticDatabase,
+    metamethod: &MemberRef,
+    generics: &[DocGenericParam],
+    slot_index: usize,
+) -> Option<TypeShell> {
+    let file_id = metamethod.file_id;
+    let facts = db.file_facts_of(file_id)?;
+    let member = facts.member_by_id(&metamethod.id)?;
+    let signature = facts.signature_by_closure(member.value_syntax?)?;
+
+    // The metamethod's first result is the iterator function, for example
+    // `---@return fun(): integer, T`. The loop variable comes from that function's results.
+    let iterator_annotation = signature.docs.as_ref()?.returns.first()?;
+    let tree = db.syntax_tree_of(file_id)?;
+    let node = iterator_annotation.to_node_from_root(&tree.get_red_root())?;
+    let LuaDocType::Func(iterator) = LuaDocType::cast(node)? else {
+        return None;
+    };
+
+    let results = iterator.get_return_type_list()?;
+    let slot = results
+        .get_return_type_list()
+        .filter_map(|result| result.get_name_and_type().1)
+        .nth(slot_index)?;
+    Some(lower_doc_type_node(db, file_id, generics, &slot))
 }
 
 /// Lower a doc type node to `TypeShell`.

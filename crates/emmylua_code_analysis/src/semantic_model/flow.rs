@@ -16,6 +16,9 @@ mod array;
 #[cfg(test)]
 mod callable_tests;
 mod guards;
+mod metatable;
+
+pub(crate) use metatable::metatable_type_at;
 
 use std::collections::HashSet;
 use std::ops::ControlFlow;
