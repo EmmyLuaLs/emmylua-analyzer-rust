@@ -4651,6 +4651,7 @@ mod test {
             ("string|nil", "string?", vec![]),
             ("string|nil", "any", vec![]),
             ("string", "string?", vec![]),
+            ("string", "string|number|nil", vec![]),
             ("string", "string", vec![DiagnosticCode::ParamTypeMismatch]),
         ] {
             let diagnostics = check_source(&format!(
