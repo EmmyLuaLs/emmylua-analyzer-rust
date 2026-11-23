@@ -3,8 +3,10 @@
 --- @meta ffi
 --- @version JIT
 
---- @class ffi.namespace*: table
---- @field [string] function
+--- @class ffi.namespace*: userdata
+--- @field [string] ffi.cdata* | number | boolean
+
+--- @class ffi.clib*: ffi.namespace*
 
 --- @class ffi.ctype*: userdata
 --- @overload fun(init?: any, ...): ffi.cdata*
@@ -21,9 +23,26 @@ local cb
 
 --- @version JIT
 --- @class ffilib
---- @field C    ffi.namespace*
---- @field os   string
---- @field arch string
+--- @field C    ffi.clib*
+--- @field os   'Windows' | 'Linux' | 'OSX' | 'BSD' | 'POSIX' | 'Other'
+--- @field arch
+--- | 'x86'
+--- | 'x64'
+--- | 'arm'
+--- | 'arm64'
+--- | 'arm64be'
+--- | 'ppc'
+--- | 'ppc64'
+--- | 'ppc64le'
+--- | 'mips'
+--- | 'mipsel'
+--- | 'mips32r6'
+--- | 'mips32r6el'
+--- | 'mips64'
+--- | 'mips64el'
+--- | 'mips64r6'
+--- | 'mips64r6el'
+--- | string
 local ffi = {}
 
 --- @param def     string
@@ -32,7 +51,7 @@ function ffi.cdef(def, params, ...) end
 
 --- @param name    string
 --- @param global? boolean
---- @return ffi.namespace* clib
+--- @return ffi.clib* clib
 --- @nodiscard
 function ffi.load(name, global) end
 
@@ -61,8 +80,8 @@ function ffi.cast(ct, init) end
 --- @return ffi.ctype* ctype
 function ffi.metatype(ct, metatable) end
 
---- @param cdata      ffi.cdata*
---- @param finalizer? function
+--- @param cdata     ffi.cdata*
+--- @param finalizer function | ffi.cdata* | nil
 --- @return ffi.cdata* cdata
 function ffi.gc(cdata, finalizer) end
 
@@ -96,23 +115,37 @@ function ffi.istype(ct, obj) end
 --- @nodiscard
 function ffi.errno(newerr) end
 
---- @param ptr  any
+--- @param ptr  ffi.cdata* | string
 --- @param len? integer
 --- @return string str
 function ffi.string(ptr, len) end
 
---- @overload fun(dst: any, str: string)
---- @param dst any
---- @param src any
+--- @overload fun(dst: ffi.cdata*, str: string)
+--- @param dst ffi.cdata*
+--- @param src ffi.cdata* | string
 --- @param len integer
 function ffi.copy(dst, src, len) end
 
---- @param dst any
+--- @param dst ffi.cdata*
 --- @param len integer
---- @param c?  any
+--- @param c?  integer
 function ffi.fill(dst, len, c) end
 
---- @param param string
+--- @param param
+--- | '32bit'
+--- | '64bit'
+--- | 'le'
+--- | 'be'
+--- | 'fpu'
+--- | 'softfp'
+--- | 'hardfp'
+--- | 'eabi'
+--- | 'win'
+--- | 'pauth'
+--- | 'uwp'
+--- | 'gc64'
+--- | 'dualnum'
+--- | string
 --- @return boolean status
 function ffi.abi(param) end
 

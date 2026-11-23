@@ -19,7 +19,7 @@ use smol_str::SmolStr;
 
 use crate::FileId;
 
-use super::{LuaMemberKey, SemanticId, TypeScope};
+use super::{LuaMemberKey, MemberPathKey, SemanticId, TypeScope};
 
 /// Canonical owner of members / runtime values.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -47,6 +47,7 @@ pub enum ExportKey {
     Global(SmolStr),
     RuntimeValue(SmolStr, SemanticId),
     Member(OwnerId, LuaMemberKey),
+    RuntimeMember(MemberPathKey),
     Module(FileId),
 }
 /// Identity-level dependency key (P7).
@@ -61,6 +62,7 @@ pub enum DependencyKey {
     /// Runtime value implementing a named type (`local M = {}` for `@class M`).
     RuntimeValue(SmolStr),
     Member(OwnerId, LuaMemberKey),
+    RuntimeMember(MemberPathKey),
     Module(FileId),
     /// Module name referenced by a require literal.
     ///

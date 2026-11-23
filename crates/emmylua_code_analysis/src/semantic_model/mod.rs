@@ -4,6 +4,8 @@ pub mod index_signature;
 pub mod infer;
 pub mod member;
 pub mod render;
+pub(crate) mod table_constructor;
+pub(crate) mod table_value;
 pub mod type_check;
 pub mod type_eval;
 
@@ -23,7 +25,7 @@ use std::rc::Rc;
 use emmylua_parser::{LuaSyntaxId, VisibilityKind};
 use smol_str::SmolStr;
 
-use crate::semantic_db::def::SemanticId;
+use crate::semantic_db::def::{AccessPath, LuaMemberKey, SemanticId};
 use crate::semantic_db::{AnalysisView, FileView, SemanticDatabase};
 use crate::{FileId, LuaFunctionType, LuaType};
 
@@ -88,6 +90,8 @@ pub struct ResolvedMember {
     pub file_id: Option<FileId>,
     /// Owner before resolution (`SemanticId`).
     pub owner: SemanticId,
+    pub receiver: Option<AccessPath>,
+    pub key: LuaMemberKey,
     /// Member name.
     pub name: SmolStr,
     /// Member declaration type (`type_of_member` projection).

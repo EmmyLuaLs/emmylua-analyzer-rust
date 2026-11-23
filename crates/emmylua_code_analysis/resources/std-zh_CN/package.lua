@@ -58,7 +58,9 @@ package.loaded = {}
 --- 以及其他支持 `dlfcn` 标准的 Unix 系统）。
 --- @param libname  string
 --- @param funcname string
---- @return function?, string?
+--- @return function? func
+--- @return string? err
+--- @return ('open'|'init')? where
 function package.loadlib(libname, funcname) end
 
 --- `require` 用于搜索 Lua 加载器的路径。

@@ -69,7 +69,7 @@ fn detect_path(builder: &CompletionBuilder) -> Option<Vec<(LuaDescRefPathItem, T
     let workspace_id = builder
         .semantic_model
         .workspace_id_of(builder.semantic_model.file_id())
-        .unwrap_or(WorkspaceId::MAIN);
+        .unwrap_or(WorkspaceId::Main);
     let items = util::parse_desc(
         workspace_id,
         builder.get_emmyrc(),

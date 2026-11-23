@@ -5,15 +5,15 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaLiteralToken};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaLiteralToken};
 
 use crate::semantic_db::SemanticDatabase;
 use crate::semantic_db::def::{
     DeclKind, DependencyKey, FileDependencies, LuaMemberKey, OwnerId, SemanticId,
 };
 use crate::semantic_db::query::{
-    file_facts, file_matches_workspace_id, member_ref_from_index_expr, module_file_from,
-    resolve_member_id, resolve_name, resolve_owner_ids, resolve_type_def, syntax_tree,
+    file_matches_workspace_id, member_path_key, module_file_from, resolve_member_id, resolve_name,
+    resolve_owner_ids, resolve_type_def,
 };
 use crate::{FileId, WorkspaceId};
 
@@ -31,20 +31,20 @@ pub struct FileReferences {
 }
 
 /// Per-file reference index. Pure lookup in the write-time built cache.
-pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> FileReferences {
-    let facts = file_facts(db, file);
-    let tree = syntax_tree(db, file);
+pub(crate) fn build_file_references(db: &SemanticDatabase, file_id: FileId) -> FileReferences {
+    let facts = db.file_facts_of(file_id).expect("file facts expect");
+    let tree = db.syntax_tree_of(file_id).expect("syntax tree expect");
     let mut out = FileReferences::default();
 
     // Name use sites -> declarations (and identity-level dependencies).
     for name_use in &facts.name_uses {
-        if let Some(decl) = resolve_name(db, file, name_use.syntax.get_range().start()) {
+        if let Some(decl) = resolve_name(db, file_id, name_use.syntax.get_range().start()) {
             push_target_dependencies(db, &decl, &mut out.deps);
             out.decl_refs
                 .entry(decl)
                 .or_default()
                 .push(name_use.syntax.get_range());
-        } else if let Some(type_def) = resolve_type_def(db, file, name_use.name.clone()) {
+        } else if let Some(type_def) = resolve_type_def(db, file_id, name_use.name.clone()) {
             // A bare name may denote a named type without a runtime declaration.
             // Record the type identity so type-surface edits refresh this file.
             push_target_dependencies(db, &type_def.id, &mut out.deps);
@@ -70,36 +70,28 @@ pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> File
     }
 
     // Index expression use sites -> members.
-    for &syntax in &facts.member_uses {
-        let Some(node) = syntax.to_node_from_root(&tree.get_red_root()) else {
-            continue;
-        };
-        let Some(index_expr) = LuaIndexExpr::cast(node) else {
-            continue;
-        };
-        let owner_and_name = member_ref_from_index_expr(&facts, &index_expr);
-        if let Some((owner, name)) = &owner_and_name {
-            insert_member_owner_dependencies(
-                db,
-                owner,
-                &LuaMemberKey::Name(name.clone()),
-                &mut out.deps,
-            );
+    for member_use in &facts.member_uses {
+        if let Some(receiver) = &member_use.receiver
+            && let Some(key) = member_path_key(db, receiver, &member_use.key)
+        {
+            out.deps.insert(DependencyKey::RuntimeMember(key));
         }
-        if let Some(member_id) = resolve_member_id(db, &facts, &index_expr) {
+        if member_use.has_direct_owner()
+            && let Some(owner) = &member_use.owner
+        {
+            insert_member_owner_dependencies(db, owner, &member_use.key, &mut out.deps);
+        }
+        if let Some(member_id) = resolve_member_id(db, &facts, member_use) {
             push_target_dependencies(db, &member_id, &mut out.deps);
-            let Some(key) = index_expr.get_index_key() else {
-                continue;
-            };
-            let Some(range) = key.get_range() else {
-                continue;
-            };
-            out.member_refs.entry(member_id).or_default().push(range);
+            out.member_refs
+                .entry(member_id)
+                .or_default()
+                .push(member_use.key_range);
         }
     }
 
     // require("mod") -> module identity dependency.
-    if let Some(config) = db.config_input() {
+    if let Some(config) = db.config() {
         for call in tree
             .get_red_root()
             .descendants()
@@ -124,7 +116,7 @@ pub(crate) fn build_file_references(db: &SemanticDatabase, file: FileId) -> File
                 out.deps
                     .insert(DependencyKey::ModuleName(SmolStr::new(last_segment)));
             }
-            if let Some(module_file) = module_file_from(db, config, module_name, file) {
+            if let Some(module_file) = module_file_from(db, config, module_name, file_id) {
                 out.deps.insert(DependencyKey::Module(module_file));
             }
         }
@@ -169,7 +161,14 @@ fn push_target_dependencies(
             if let Some(facts) = db.file_facts_of(key.file_id)
                 && let Some(member) = facts.member_by_id(target)
             {
-                insert_member_owner_dependencies(db, &member.owner, &member.key, deps);
+                if let Some(receiver) = facts.member_receiver(member)
+                    && let Some(key) = member_path_key(db, receiver, &member.key)
+                {
+                    deps.insert(DependencyKey::RuntimeMember(key));
+                }
+                if facts.is_direct_member(member) {
+                    insert_member_owner_dependencies(db, &member.owner, &member.key, deps);
+                }
             }
         }
         SemanticId::Signature(_) => {}

@@ -3,7 +3,7 @@ mod tests {
     use crate::handlers::signature_helper::signature_help;
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualSignatureHelp, check};
     use googletest::prelude::*;
-    use lsp_types::{SignatureHelpContext, SignatureHelpTriggerKind};
+    use lsp_types::{Position, SignatureHelpContext, SignatureHelpTriggerKind};
 
     // M3 batch 3 retirement: overload matching / std pcall signature rendering depends on the old signature index and humanize; see migration notes §M3.
     #[gtest]
@@ -31,21 +31,24 @@ mod tests {
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
-        check!(ws.check_signature_helper(
-            r#"
+        check!(
+            ws.check_signature_helper(
+                r#"
                 ---@param path string
                 local function readFile(path)
                 end
 
                 pcall(readFile, <??>)
             "#,
-            VirtualSignatureHelp {
-                target_label:
-                    "pcall(f: sync fun(path: string), path: string): (true|false)".to_string(),
-                active_signature: 0,
-                active_parameter: 1,
-            },
-        ));
+                VirtualSignatureHelp {
+                    target_label:
+                        "pcall(f: sync fun(path: string) -> (), path: string): (true|false)"
+                            .to_string(),
+                    active_signature: 0,
+                    active_parameter: 1,
+                },
+            )
+        );
         Ok(())
     }
 
@@ -380,6 +383,35 @@ mod tests {
             "#
             );
             assert_eq!(signature_labels(&source), expected, "{source}");
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_retrigger_on_whitespace_follows_the_cursor() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let file = ws.def(
+            "---@param a integer\n---@param b integer\nlocal function foo(a, b) end\nfoo(1  ,   2)\n",
+        );
+        // Move left from `2` to `1`: crossing the `,` activates the first parameter.
+        let mut help = None;
+        for (character, expected) in [(11, 1), (10, 1), (8, 1), (7, 0), (6, 0), (5, 0)] {
+            help = signature_help(
+                &ws.analysis,
+                file,
+                Position::new(3, character),
+                SignatureHelpContext {
+                    trigger_kind: SignatureHelpTriggerKind::CONTENT_CHANGE,
+                    trigger_character: None,
+                    is_retrigger: help.is_some(),
+                    active_signature_help: help,
+                },
+            );
+            let active_parameter = help
+                .as_ref()
+                .and_then(|help| help.signatures.first())
+                .and_then(|signature| signature.active_parameter);
+            assert_eq!(active_parameter, Some(expected), "character {character}");
         }
         Ok(())
     }

@@ -35,7 +35,7 @@ impl Checker for InconsistentTypeAccessModifierChecker {
             let mut current_file_ranges = Vec::new();
             for scope in [
                 TypeScope::Global,
-                TypeScope::Internal(WorkspaceId::MAIN),
+                TypeScope::Internal(WorkspaceId::Main),
                 TypeScope::File(file_id),
             ] {
                 for visible in semantic_model

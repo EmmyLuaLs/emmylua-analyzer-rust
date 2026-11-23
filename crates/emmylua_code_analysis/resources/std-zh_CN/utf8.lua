@@ -98,9 +98,13 @@ function utf8.len(s, i, j, lax) end
 --- 特殊情况：当 `n` 为 0 时，函数返回包含 `s` 的第 `i` 个字节的那个字符的编码起始位置。
 ---
 --- 此函数假定 `s` 是合法的 UTF-8 字符串。
---- @overload fun(s: string): integer
+---
+--- 自 Lua 5.5 起，该函数还会返回字符的最终位置。
+--- 在 Lua 5.3 和 5.4 中只返回起始位置。
+--- @version >5.3
 --- @param s  string
 --- @param n  integer
 --- @param i? integer
---- @return integer
+--- @return integer? start
+--- @return integer? end
 function utf8.offset(s, n, i) end

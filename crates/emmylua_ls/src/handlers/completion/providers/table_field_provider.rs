@@ -358,7 +358,7 @@ fn expected_rich_param_type(
         .find(|(name, _)| name == param_name)?;
     let ty = builder
         .semantic_model
-        .doc_type_lua_rich_in(key.file_id, *syntax);
+        .project_doc_type(key.file_id, *syntax, &[]);
     (!matches!(ty, LuaType::Unknown)).then_some(ty)
 }
 

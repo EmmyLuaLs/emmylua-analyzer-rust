@@ -1,7 +1,118 @@
 #[cfg(test)]
 mod tests {
     use crate::check::test::check_source;
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use emmylua_parser::{LuaAstNode, LuaIndexExpr};
+
+    // 数组长度作为数值循环初值时, 循环变量应保持整数.
+    #[test]
+    fn test_numeric_for_array_length_bound() {
+        for value_type in ["function[]", "function[]?"] {
+            let mut ws = VirtualWorkspace::new();
+            let expected = ws.ty(value_type);
+            let file = ws.def(&format!(
+                r#"
+                ---@class EventBus
+                ---@field listeners table<string, {value_type}>
+                local M = {{}}
+                ---@param event string
+                function M:off(event)
+                    local list = self.listeners[event]
+                    if not list then return end
+                    for i = #list, 1, -1 do
+                        local value = i
+                    end
+                end
+                "#,
+            ));
+            let model = ws.analysis.semantic_model(file);
+            let index = model
+                .chunk()
+                .unwrap()
+                .descendants::<LuaIndexExpr>()
+                .find(|index| index.syntax().text() == "self.listeners[event]")
+                .unwrap();
+            assert_eq!(
+                model.type_of_expr_at(index.get_syntax_id(), index.get_position()),
+                expected,
+                "{value_type}"
+            );
+            let decl = model.file_facts().unwrap().decl_named("i").unwrap();
+            assert_eq!(model.type_of_decl(&decl.id), Some(LuaType::Integer));
+        }
+    }
+
+    // 数值 for 变量必须得到具体数值类型, 初值和步长决定是否为整数循环.
+    #[test]
+    fn test_numeric_for_variable_types() {
+        for (bounds, expected) in [
+            ("1, 10", LuaType::Integer),
+            ("1, 10, 2", LuaType::Integer),
+            ("1, 10.5", LuaType::Integer),
+            ("0.5, 10", LuaType::Number),
+            ("1, 10, 0.5", LuaType::Number),
+            ("start, 10, step", LuaType::Integer),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            let setup = if bounds.starts_with("start") {
+                r#"
+                ---@type integer
+                local start = 1
+                ---@type integer
+                local step = 2
+                "#
+            } else {
+                ""
+            };
+            let file = ws.def(&format!(
+                r#"
+                {setup}
+                for i = {bounds} do
+                    local value = i
+                end
+                "#,
+            ));
+            let model = ws.analysis.semantic_model(file);
+            let decl = model.file_facts().unwrap().decl_named("i").unwrap();
+            assert_eq!(model.type_of_decl(&decl.id), Some(expected), "{bounds}");
+        }
+    }
+
+    // 整数循环中的算术表达式应保持整数, 加入小数后仍需报告返回类型错误.
+    #[test]
+    fn test_numeric_for_arithmetic_return_type() {
+        for (body, expected) in [
+            ("return (i + 1)", 0),
+            (
+                r#"local next = (i + 1)
+                return next"#,
+                0,
+            ),
+            ("return ((i + 1) % 3)", 0),
+            ("return (i + 0.5)", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@return integer
+                local function next_id()
+                    for i = 1, 10 do
+                        {body}
+                    end
+                    return 0
+                end
+                return next_id
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch)
+                    .count(),
+                expected,
+                "{body}: {diagnostics:#?}"
+            );
+        }
+    }
 
     #[test]
     fn test_field_flow_does_not_change_the_returned_table_type() {

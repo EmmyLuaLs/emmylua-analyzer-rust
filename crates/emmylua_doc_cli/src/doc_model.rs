@@ -11,12 +11,12 @@ use std::path::{Path, PathBuf};
 use emmylua_code_analysis::{
     Decl, DeclKind, EmmyLuaAnalysis, FileId, LuaAliasCallKind, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaObjectType, LuaTupleType, LuaType,
-    LuaTypeDeclId, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel, Signature,
-    TypeDef, TypeDefKind, TypeVisibility, VariadicType,
+    LuaTypeDeclId, LuaTypeIdentifier, Member, ModuleExport, RenderLevel, SemanticId, SemanticModel,
+    Signature, TypeDef, TypeDefKind, TypeVisibility, VariadicType, WorkspaceId,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaCommentOwner, LuaDocDescriptionOwner, LuaDocTagField, LuaDocTagParam,
-    LuaDocTagReturn, LuaExpr, LuaStat, LuaSyntaxId, LuaTableField, VisibilityKind,
+    LuaAstNode, LuaCommentOwner, LuaDocDescription, LuaDocDescriptionOwner, LuaDocTagField,
+    LuaDocTagParam, LuaDocTagReturn, LuaExpr, LuaStat, LuaSyntaxId, LuaTableField, VisibilityKind,
 };
 use rowan::TextRange;
 
@@ -48,15 +48,11 @@ pub enum DocTypeKey {
 impl DocTypeKey {
     pub fn from_lua_id(id: &LuaTypeDeclId) -> Self {
         match id.get_id() {
-            emmylua_code_analysis::LuaTypeIdentifier::Global(name) => {
-                DocTypeKey::Global(name.to_string())
+            LuaTypeIdentifier::Global(name) => DocTypeKey::Global(name.to_string()),
+            LuaTypeIdentifier::Internal(workspace, name) => {
+                DocTypeKey::Internal(workspace.unique_id(), name.to_string())
             }
-            emmylua_code_analysis::LuaTypeIdentifier::Internal(workspace, name) => {
-                DocTypeKey::Internal(workspace.id, name.to_string())
-            }
-            emmylua_code_analysis::LuaTypeIdentifier::File(file_id, name) => {
-                DocTypeKey::File(*file_id, name.to_string())
-            }
+            LuaTypeIdentifier::File(file_id, name) => DocTypeKey::File(*file_id, name.to_string()),
         }
     }
 
@@ -64,7 +60,7 @@ impl DocTypeKey {
         match self {
             DocTypeKey::Global(name) => LuaTypeDeclId::global(name),
             DocTypeKey::Internal(workspace, name) => {
-                LuaTypeDeclId::internal(emmylua_code_analysis::WorkspaceId { id: *workspace }, name)
+                LuaTypeDeclId::internal(WorkspaceId::from_unique_id(*workspace), name)
             }
             DocTypeKey::File(file_id, name) => LuaTypeDeclId::file(*file_id, name),
         }
@@ -1059,26 +1055,33 @@ fn member_description(model: &SemanticModel<'_>, member: &Member) -> Option<Stri
 
     // `---@field gen fun.Generator @The underlying generator function`
     if let Some(field_tag) = node.ancestors().find_map(LuaDocTagField::cast) {
-        return field_tag
-            .get_description()
-            .map(|desc| preprocess_description(&desc.get_description_text()))
-            .filter(|text| !text.is_empty());
+        return doc_description(field_tag.get_description());
+    }
+
+    // `{ ---Return a value. foo = function() end }`: a table field owns its
+    // own doc comment. When it has none we deliberately stop here: falling
+    // back to the enclosing statement would attribute the module/global
+    // description to an unrelated field.
+    if let Some(field) = node.ancestors().find_map(LuaTableField::cast) {
+        return field
+            .get_left_comment()
+            .and_then(|comment| doc_description(comment.get_description()));
     }
 
     for ancestor in node.ancestors().skip(1) {
-        // A table-field key/value does not own a doc comment of its own.
-        if LuaTableField::cast(ancestor.clone()).is_some() {
-            return None;
-        }
         if let Some(stat) = LuaStat::cast(ancestor) {
             let comment = stat.get_left_comment()?;
-            return comment
-                .get_description()
-                .map(|desc| preprocess_description(&desc.get_description_text()))
-                .filter(|text| !text.is_empty());
+            return doc_description(comment.get_description());
         }
     }
     None
+}
+
+/// Extracts and normalizes the prose of a doc-comment description.
+fn doc_description(description: Option<LuaDocDescription>) -> Option<String> {
+    description
+        .map(|desc| preprocess_description(&desc.get_description_text()))
+        .filter(|text| !text.is_empty())
 }
 
 fn value_owner_description(
@@ -1094,10 +1097,7 @@ fn value_owner_description(
         }
         if let Some(stat) = LuaStat::cast(ancestor) {
             let comment = stat.get_left_comment()?;
-            return comment
-                .get_description()
-                .map(|desc| preprocess_description(&desc.get_description_text()))
-                .filter(|text| !text.is_empty());
+            return doc_description(comment.get_description());
         }
     }
     None
@@ -1113,10 +1113,7 @@ fn doc_comment_description(
     let node = owner_syntax.to_node_from_root(&tree.get_red_root())?;
     let stat = LuaStat::cast(node)?;
     let comment = stat.get_left_comment()?;
-    comment
-        .get_description()
-        .map(|desc| preprocess_description(&desc.get_description_text()))
-        .filter(|text| !text.is_empty())
+    doc_description(comment.get_description())
 }
 
 /// Mirrors the old analyzer `preprocess_description`: drops a leading `#`/`@`

@@ -30,7 +30,7 @@ pub enum TypeDefKind {
     Enum,
 }
 
-/// Type definition flags (mirroring old `LuaTypeFlag::{Partial, Constructor, Meta}`).
+/// Type definition flags
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct TypeDefFlags {
     /// `---@class Foo(partial)`.
@@ -39,6 +39,8 @@ pub struct TypeDefFlags {
     pub constructor: bool,
     /// File contains `---@meta`.
     pub meta: bool,
+    /// enum(key).
+    pub enum_key: bool,
 }
 
 /// Named type definition. Types **have scope**: identity = `(scope, full_name)`.
@@ -68,7 +70,7 @@ pub struct TypeDef {
     pub owner_syntax: Option<LuaSyntaxId>,
     /// `---@deprecated` (same comment block as `@class`/`@alias`/`@enum`).
     pub deprecated: bool,
-    /// Flags (partial / constructor / meta).
+    /// 类型定义的附加标记.
     pub flags: TypeDefFlags,
 }
 

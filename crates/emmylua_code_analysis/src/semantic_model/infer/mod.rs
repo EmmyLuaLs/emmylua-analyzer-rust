@@ -22,8 +22,6 @@ pub(crate) mod overload;
 pub(crate) mod unify;
 pub(crate) mod vm;
 
-pub use vm::infer_doc_func;
-
 use std::rc::Rc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxId};

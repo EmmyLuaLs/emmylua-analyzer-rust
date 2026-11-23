@@ -6,7 +6,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::semantic_db::SemanticDatabase;
-use crate::semantic_db::def::{MemberRef, OwnerId, SemanticId};
+use crate::semantic_db::def::{LuaMemberKey, MemberPathKey, MemberRef, OwnerId, SemanticId};
 use crate::semantic_db::exports::FileExports;
 use crate::semantic_db::query::file_matches_workspace_id;
 use crate::{FileId, WorkspaceId};
@@ -25,21 +25,21 @@ use crate::{FileId, WorkspaceId};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct OwnerMembers {
     by_id: HashMap<SemanticId, MemberRef>,
-    by_name_ids: HashMap<SmolStr, Vec<SemanticId>>,
+    by_key_ids: HashMap<LuaMemberKey, Vec<SemanticId>>,
     order: Vec<SemanticId>,
     all: Arc<[MemberRef]>,
-    by_name: HashMap<SmolStr, Arc<[MemberRef]>>,
+    by_key: HashMap<LuaMemberKey, Arc<[MemberRef]>>,
 }
 
 impl OwnerMembers {
-    fn insert(&mut self, member_id: SemanticId, member: MemberRef, name: Option<SmolStr>) -> bool {
+    fn insert(&mut self, member_id: SemanticId, member: MemberRef, key: LuaMemberKey) -> bool {
         if self.by_id.contains_key(&member_id) {
             return false;
         }
         self.by_id.insert(member_id.clone(), member);
         self.order.push(member_id.clone());
-        if let Some(name) = name {
-            self.by_name_ids.entry(name).or_default().push(member_id);
+        if !key.is_none() {
+            self.by_key_ids.entry(key).or_default().push(member_id);
         }
         true
     }
@@ -49,10 +49,10 @@ impl OwnerMembers {
             return false;
         }
         self.order.retain(|id| id != member_id);
-        for member_ids in self.by_name_ids.values_mut() {
+        for member_ids in self.by_key_ids.values_mut() {
             member_ids.retain(|id| id != member_id);
         }
-        self.by_name_ids
+        self.by_key_ids
             .retain(|_, member_ids| !member_ids.is_empty());
         true
     }
@@ -66,15 +66,15 @@ impl OwnerMembers {
             .collect();
         self.all = Arc::from(all);
 
-        let mut by_name = HashMap::with_capacity(self.by_name_ids.len());
-        for (name, member_ids) in &self.by_name_ids {
+        let mut by_key = HashMap::with_capacity(self.by_key_ids.len());
+        for (key, member_ids) in &self.by_key_ids {
             let members: Vec<MemberRef> = member_ids
                 .iter()
                 .filter_map(|member_id| self.by_id.get(member_id).cloned())
                 .collect();
-            by_name.insert(name.clone(), Arc::from(members));
+            by_key.insert(key.clone(), Arc::from(members));
         }
-        self.by_name = by_name;
+        self.by_key = by_key;
     }
 
     fn all(&self) -> Arc<[MemberRef]> {
@@ -82,7 +82,11 @@ impl OwnerMembers {
     }
 
     fn named(&self, name: &str) -> Option<Arc<[MemberRef]>> {
-        self.by_name.get(name).cloned()
+        self.keyed(&LuaMemberKey::Name(SmolStr::new(name)))
+    }
+
+    fn keyed(&self, key: &LuaMemberKey) -> Option<Arc<[MemberRef]>> {
+        self.by_key.get(key).cloned()
     }
 }
 
@@ -94,9 +98,39 @@ pub struct WorkspaceMemberIndex {
     owners_by_id: HashMap<OwnerId, OwnerMembers>,
     by_file: HashMap<FileId, Vec<(SemanticId, SemanticId)>>,
     by_file_owner_id: HashMap<FileId, Vec<(OwnerId, SemanticId)>>,
+    paths: HashMap<OwnerId, HashMap<Arc<[LuaMemberKey]>, OwnerMembers>>,
+    by_file_paths: HashMap<FileId, Vec<(MemberPathKey, SemanticId)>>,
 }
 
 impl WorkspaceMemberIndex {
+    pub(crate) fn members_of_receiver_key(
+        &self,
+        root: &OwnerId,
+        path: &[LuaMemberKey],
+        key: &LuaMemberKey,
+    ) -> Option<Arc<[MemberRef]>> {
+        let bucket = self.paths.get(root)?.get(path)?;
+        bucket.keyed(key)
+    }
+
+    fn rebuild_path_caches(&mut self, touched: HashSet<(OwnerId, Arc<[LuaMemberKey]>)>) {
+        for (root, path) in touched {
+            let Some(paths) = self.paths.get_mut(&root) else {
+                continue;
+            };
+            if let Some(bucket) = paths.get_mut(&path) {
+                if bucket.by_id.is_empty() {
+                    paths.remove(&path);
+                } else {
+                    bucket.rebuild_caches();
+                }
+            }
+            if paths.is_empty() {
+                self.paths.remove(&root);
+            }
+        }
+    }
+
     fn rebuild_owner_caches<T: Eq + std::hash::Hash>(
         owners: &mut HashMap<T, OwnerMembers>,
         touched: HashSet<T>,
@@ -140,6 +174,20 @@ impl WorkspaceMemberIndex {
     }
 
     pub(crate) fn remove_file(&mut self, file_id: FileId) {
+        let mut touched_paths = HashSet::new();
+        if let Some(entries) = self.by_file_paths.remove(&file_id) {
+            for (key, member_id) in entries {
+                if let Some(bucket) = self
+                    .paths
+                    .get_mut(&key.root)
+                    .and_then(|paths| paths.get_mut(&key.path))
+                    && bucket.remove(&member_id)
+                {
+                    touched_paths.insert((key.root, key.path));
+                }
+            }
+        }
+        self.rebuild_path_caches(touched_paths);
         let mut touched_raw: HashSet<SemanticId> = HashSet::new();
         if let Some(keys) = self.by_file.remove(&file_id) {
             for (owner, member_id) in keys {
@@ -174,25 +222,45 @@ impl WorkspaceMemberIndex {
         exports: &FileExports,
         touched_raw: &mut HashSet<SemanticId>,
         touched_canonical: &mut HashSet<OwnerId>,
-    ) -> (Vec<(SemanticId, SemanticId)>, Vec<(OwnerId, SemanticId)>) {
+        touched_paths: &mut HashSet<(OwnerId, Arc<[LuaMemberKey]>)>,
+    ) -> (
+        Vec<(SemanticId, SemanticId)>,
+        Vec<(OwnerId, SemanticId)>,
+        Vec<(MemberPathKey, SemanticId)>,
+    ) {
         let mut keys = Vec::new();
         let mut canonical_keys = Vec::new();
+        let mut path_keys = Vec::new();
         for member in &exports.members {
-            let owner = member.owner.clone();
             let member_id = member.member.clone();
-            let name: SmolStr = member.key.to_path().into();
             let member_ref = MemberRef {
                 file_id: member.file_id,
                 id: member_id.clone(),
-                name: name.clone(),
+                name: match &member.key {
+                    LuaMemberKey::Name(name) => name.clone(),
+                    key => key.to_path().into(),
+                },
             };
 
+            if let Some(key) = &member.path_key {
+                let bucket = self
+                    .paths
+                    .entry_ref(&key.root)
+                    .or_default()
+                    .entry_ref(&key.path)
+                    .or_default();
+                if bucket.insert(member_id.clone(), member_ref.clone(), key.key.clone()) {
+                    path_keys.push((key.clone(), member_id.clone()));
+                    touched_paths.insert((key.root.clone(), key.path.clone()));
+                }
+            }
+            if !member.is_direct {
+                continue;
+            }
+
+            let owner = member.owner.clone();
             let bucket = self.owners.entry(owner.clone()).or_default();
-            if bucket.insert(
-                member_id.clone(),
-                member_ref.clone(),
-                (!member.key.is_none()).then(|| name.clone()),
-            ) {
+            if bucket.insert(member_id.clone(), member_ref.clone(), member.key.clone()) {
                 keys.push((owner.clone(), member_id.clone()));
                 touched_raw.insert(owner);
             }
@@ -202,16 +270,12 @@ impl WorkspaceMemberIndex {
                 .owners_by_id
                 .entry(canonical_owner.clone())
                 .or_default();
-            if canonical_bucket.insert(
-                member_id.clone(),
-                member_ref,
-                (!member.key.is_none()).then_some(name),
-            ) {
+            if canonical_bucket.insert(member_id.clone(), member_ref, member.key.clone()) {
                 canonical_keys.push((canonical_owner.clone(), member_id));
                 touched_canonical.insert(canonical_owner);
             }
         }
-        (keys, canonical_keys)
+        (keys, canonical_keys, path_keys)
     }
 
     fn rebuild_touched_caches(
@@ -232,20 +296,27 @@ impl WorkspaceMemberIndex {
     fn owner_name_keys(&self) -> impl Iterator<Item = (SemanticId, SmolStr)> + '_ {
         self.owners.iter().flat_map(|(owner, bucket)| {
             bucket
-                .by_name_ids
+                .by_key_ids
                 .keys()
-                .map(move |name| (owner.clone(), name.clone()))
+                .filter_map(move |key| key.name().map(|name| (owner.clone(), SmolStr::new(name))))
         })
     }
 
     pub(crate) fn add_file(&mut self, file_id: FileId, exports: &FileExports) {
         let mut touched_raw: HashSet<SemanticId> = HashSet::new();
         let mut touched_canonical: HashSet<OwnerId> = HashSet::new();
-        let (keys, canonical_keys) =
-            self.add_file_inner(exports, &mut touched_raw, &mut touched_canonical);
+        let mut touched_paths = HashSet::new();
+        let (keys, canonical_keys, path_keys) = self.add_file_inner(
+            exports,
+            &mut touched_raw,
+            &mut touched_canonical,
+            &mut touched_paths,
+        );
         self.rebuild_touched_caches(touched_raw, touched_canonical);
+        self.rebuild_path_caches(touched_paths);
         self.by_file.insert(file_id, keys);
         self.by_file_owner_id.insert(file_id, canonical_keys);
+        self.by_file_paths.insert(file_id, path_keys);
     }
 }
 
@@ -262,6 +333,7 @@ pub(crate) fn build_workspace_member_index(
     let mut index = WorkspaceMemberIndex::default();
     let mut touched_raw: HashSet<SemanticId> = HashSet::new();
     let mut touched_canonical: HashSet<OwnerId> = HashSet::new();
+    let mut touched_paths = HashSet::new();
     for file_id in db.vfs().file_ids() {
         let Some(cache) = db.file_cache(file_id) else {
             continue;
@@ -270,12 +342,18 @@ pub(crate) fn build_workspace_member_index(
         if !file_matches_workspace_id(db, file_id, ws_id) {
             continue;
         }
-        let (keys, canonical_keys) =
-            index.add_file_inner(exports, &mut touched_raw, &mut touched_canonical);
+        let (keys, canonical_keys, path_keys) = index.add_file_inner(
+            exports,
+            &mut touched_raw,
+            &mut touched_canonical,
+            &mut touched_paths,
+        );
         index.by_file.insert(file_id, keys);
         index.by_file_owner_id.insert(file_id, canonical_keys);
+        index.by_file_paths.insert(file_id, path_keys);
     }
     index.rebuild_touched_caches(touched_raw, touched_canonical);
+    index.rebuild_path_caches(touched_paths);
     index
 }
 

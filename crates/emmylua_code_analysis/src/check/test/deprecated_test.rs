@@ -66,4 +66,54 @@ mod tests {
         let diags = check_source("---@class Old ---@deprecated\n\n---@type Old\nlocal u");
         assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
     }
+
+    /// `---@[deprecated]` is the attribute form of `---@deprecated`.
+    #[test]
+    fn test_deprecated_attribute_local_use() {
+        let diags =
+            check_source("---@[deprecated]\nlocal old_fn = function() end\nlocal a = old_fn");
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
+    /// The optional message is accepted and does not change the reported reference.
+    #[test]
+    fn test_deprecated_attribute_with_message() {
+        let diags = check_source(
+            "---@[deprecated(\"use new_fn instead\")]\nlocal old_fn = function() end\nlocal a = old_fn",
+        );
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
+    /// Attribute before `@field`: only that field is marked, like the tag form.
+    #[test]
+    fn test_deprecated_attribute_field_use() {
+        let diags = check_source(
+            "---@class C\n---@[deprecated]\n---@field old number\nlocal C = {}\nlocal x = C.old",
+        );
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
+    /// The field-scoped attribute does not leak to the next `@field`.
+    #[test]
+    fn test_deprecated_attribute_field_scope_is_adjacent() {
+        let diags = check_source(
+            "---@class C\n---@[deprecated]\n---@field old number\n---@field fresh number\nlocal C = {}\nlocal old_value = C.old\nlocal fresh_value = C.fresh",
+        );
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
+    /// Attribute before `@class`: the type itself is marked.
+    #[test]
+    fn test_deprecated_attribute_class_reference() {
+        let diags =
+            check_source("---@[deprecated]\n---@class Old\nlocal Old = {}\n---@type Old\nlocal u");
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 1);
+    }
+
+    /// The definition site itself is not counted as a reference.
+    #[test]
+    fn test_deprecated_attribute_definition_site_not_reported() {
+        let diags = check_source("---@[deprecated]\nlocal old_fn = function() end");
+        assert_eq!(count_by_code(&diags, DiagnosticCode::Deprecated), 0);
+    }
 }
