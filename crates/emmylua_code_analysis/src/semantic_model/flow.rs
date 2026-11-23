@@ -22,14 +22,14 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaComment, LuaExpr,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaComment, LuaExpr, LuaIndexExpr,
     LuaLiteralToken, UnaryOperator,
 };
 use rowan::TextSize;
 
 use ExprCastMode::{All, AsOnly};
 
-use crate::semantic_db::def::{SemanticId, Signature};
+use crate::semantic_db::def::{MemberSource, SemanticId, Signature};
 use crate::semantic_db::flow::{
     FlowAntecedent, FlowEffect, FlowId, FlowNodeKind, FlowTree, LuaClosureId,
 };
@@ -570,13 +570,13 @@ pub fn type_of_member_assign_target_at(
     member: &SemanticId,
     offset: TextSize,
 ) -> LuaType {
-    member_type_at(model, member, offset, true)
+    member_type_at(model, member, offset, true, None)
 }
 
 /// Flow-sensitive type of the member at `offset` (member assignment flow + `---@cast t.x +T` widening).
 /// Same as `type_of_decl_at`: exclude this assignment when `offset` lies on `t.x = value`.
 pub fn type_of_member_at(model: &SemanticModel, member: &SemanticId, offset: TextSize) -> LuaType {
-    member_type_at(model, member, offset, false)
+    member_type_at(model, member, offset, false, None)
 }
 
 fn member_type_at(
@@ -584,6 +584,7 @@ fn member_type_at(
     member: &SemanticId,
     offset: TextSize,
     ignore_guards: bool,
+    access: Option<&LuaIndexExpr>,
 ) -> LuaType {
     let fallback = || flow_member_value_type(model, member).unwrap_or(LuaType::Unknown);
     let Some(tree) = model.flow_tree() else {
@@ -597,9 +598,46 @@ fn member_type_at(
     // (condition/cast/merge) sits between it and the query. This turns repeated
     // `M.x` reads in long straight-line files from O(offset) into O(1).
     if start == flow_id && !tree.has_complex_control() {
-        let latest = tree.latest_member_assignment(member, offset);
+        let latest = access
+            .and_then(|index| model.member_use(index.get_syntax_id()))
+            .and_then(|usage| {
+                let receiver = usage.receiver.as_ref()?;
+                let facts = model.file_facts()?;
+                facts
+                    .members_of_receiver_key(receiver, &usage.key)
+                    .filter(|candidate| {
+                        let MemberSource::Runtime { access } = candidate.source else {
+                            return false;
+                        };
+                        facts
+                            .member_use(access)
+                            .is_some_and(|written| written.access_path == usage.access_path)
+                    })
+                    .filter_map(|candidate| tree.latest_member_assignment(&candidate.id, offset))
+                    .filter(|(_, flow)| {
+                        tree.get_flow_node(*flow)
+                            .is_some_and(|node| match &node.kind {
+                                FlowNodeKind::Assignment(ptr) => {
+                                    !ptr.get_syntax_id().get_range().contains(offset)
+                                }
+                                _ => true,
+                            })
+                    })
+                    .max_by_key(|(position, _)| *position)
+            })
+            .or_else(|| tree.latest_member_assignment(member, offset));
         if let Some((assign_pos, assign_flow)) = latest
             && !tree.has_flow_event_between(assign_pos, offset, false)
+            && access.is_none_or(|access| {
+                tree.get_flow_node(assign_flow)
+                    .and_then(|node| node.kind.assignment_syntax())
+                    .and_then(|syntax| {
+                        syntax.to_node_from_root(&model.syntax_tree()?.get_red_root())
+                    })
+                    .is_some_and(|node| {
+                        LuaClosureId::from_node(&node) == LuaClosureId::from_node(access.syntax())
+                    })
+            })
         {
             let mut visited = HashSet::new();
             let mut path = PathState {
@@ -609,7 +647,7 @@ fn member_type_at(
             if let Some(ty) = trace_member(
                 model,
                 member,
-                None,
+                access,
                 &tree,
                 assign_flow,
                 &mut visited,
@@ -628,7 +666,7 @@ fn member_type_at(
         ignore_guards,
         ..PathState::default()
     };
-    trace_member(model, member, None, &tree, start, &mut visited, &mut path)
+    trace_member(model, member, access, &tree, start, &mut visited, &mut path)
         .unwrap_or_else(fallback)
 }
 
@@ -736,17 +774,17 @@ pub(crate) fn type_of_expr_at_node(
     expr: LuaExpr,
     offset: TextSize,
 ) -> LuaType {
-    let apply_casts = |base, mode| apply_expr_casts_to_node(model, expr.syntax(), base, mode);
+    let apply_casts = |base| apply_expr_casts_to_node(model, expr.syntax(), base, All);
     match &expr {
         LuaExpr::NameExpr(name_expr) => {
             if let Some(decl) = model.resolve_name(name_expr.get_position()) {
-                return apply_casts(model.type_of_decl_at(&decl, offset), AsOnly);
+                return apply_casts(model.type_of_decl_at(&decl, offset));
             }
-            apply_casts(model.type_of_expr_node(&expr), AsOnly)
+            apply_casts(model.type_of_expr_node(&expr))
         }
         LuaExpr::IndexExpr(index_expr) => {
             if let Some(ty) = array::last_element_type(model, index_expr, offset) {
-                return apply_casts(ty, All);
+                return apply_casts(ty);
             }
             if let Some(resolved) = model.resolve_member(index_expr)
                 && let Some(member_id) = resolved.member_id.clone().or_else(|| {
@@ -777,7 +815,7 @@ pub(crate) fn type_of_expr_at_node(
                     )
                     .unwrap_or_else(|| type_of_member_at(model, &member_id, offset))
                 } else {
-                    type_of_member_at(model, &member_id, offset)
+                    member_type_at(model, &member_id, offset, false, Some(index_expr))
                 }
                 .get_result_slot_type(0)
                 .unwrap_or(LuaType::Nil);
@@ -805,8 +843,8 @@ pub(crate) fn type_of_expr_at_node(
                     })
                     .is_some_and(|facts| {
                         facts
-                            .members_of_owner(&resolved.owner)
-                            .any(|m| m.id == member_id)
+                            .member_by_id(&member_id)
+                            .is_some_and(|member| !matches!(member.source, MemberSource::DocField))
                     });
                 // Runtime member assignment flow on local variables (including method `self`) takes precedence over class declaration fields;
                 // if `resolve_member` already selected a specific runtime member (chosen by annotation/position among same-name assignments),
@@ -833,7 +871,7 @@ pub(crate) fn type_of_expr_at_node(
                         } else {
                             prefix_member_ty
                         };
-                        return apply_casts(ty, All);
+                        return apply_casts(ty);
                     }
                 }
                 // Computed-key fields in table literals (`[key] = 1`) keep literal values in type queries:
@@ -847,7 +885,7 @@ pub(crate) fn type_of_expr_at_node(
                     }
                     && let Some(member_facts) = model.file_facts_of(member_file)
                     && let Some(member_def) = member_facts.member_by_id(&member_id)
-                    && model.is_initializer_table_field(&member_id, member_def)
+                    && model.is_initializer_table_field(member_def)
                 {
                     let prefix_ty = model.type_of_expr_at(prefix.get_syntax_id(), offset);
                     if let Some(value_syntax) = member_def.value_syntax {
@@ -856,39 +894,48 @@ pub(crate) fn type_of_expr_at_node(
                             // Dynamic access to a computed key `[key] = 1` can return `integer`;
                             // named fields still keep `number` through the existing projection.
                             LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-                                return apply_casts(LuaType::Integer, All);
+                                return apply_casts(LuaType::Integer);
                             }
                             LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-                                return apply_casts(expr_ty, All);
+                                return apply_casts(expr_ty);
                             }
                             _ => {}
                         }
                     }
                     if let Some(ty) = model.member_type(&prefix_ty, &member_def.key) {
-                        return apply_casts(ty, All);
+                        return apply_casts(ty);
                     }
                 }
-                if !resolved_is_runtime {
-                    let runtime_owner_facts = match &resolved.owner {
-                        SemanticId::Decl(owner_decl) => model.file_facts_of(owner_decl.file_id),
-                        _ => model.file_facts(),
-                    };
-                    if let Some(facts) = runtime_owner_facts
-                        && let Some(runtime_member) = facts
-                            .members_of_owner(&resolved.owner)
-                            .find(|m| m.key.name() == Some(resolved.name.as_str()))
-                        && runtime_member
-                                .id
-                                .member_key_range()
-                                .is_none_or(|range| range.start() <= offset)
-                        // Table fields from a declared initializer are not "runtime overrides": `local b: B = { field = 1 }`
-                        // field access is still governed by the class `@field` type, avoiding widening `integer` to `number`.
-                        && !model.is_initializer_table_field(&runtime_member.id, runtime_member)
-                    {
-                        let runtime_ty = type_of_member_at(model, &runtime_member.id, offset);
-                        if !matches!(runtime_ty, LuaType::Unknown) {
-                            return apply_casts(runtime_ty, All);
-                        }
+                if !resolved_is_runtime
+                    && let Some(receiver) = &resolved.receiver
+                    && let Some(access_path) = model
+                        .member_use(index_expr.get_syntax_id())
+                        .and_then(|usage| usage.access_path.as_ref())
+                    && let Some(facts) = model.file_facts()
+                    && let Some(runtime_member) = model
+                        .members_of_receiver_key(receiver, &resolved.key)
+                        .iter()
+                        .find(|candidate| {
+                            let Some(member) = facts.member_by_id(&candidate.id) else {
+                                return false;
+                            };
+                            let MemberSource::Runtime { access } = member.source else {
+                                return false;
+                            };
+                            facts.member_use(access).is_some_and(|usage| {
+                                usage.access_path.as_ref() == Some(access_path)
+                            })
+                        })
+                    && runtime_member
+                        .id
+                        .member_key_range()
+                        .is_none_or(|range| range.start() <= offset)
+                {
+                    // The runtime member shares this access path, so guards on the path must narrow it too.
+                    let runtime_ty =
+                        member_type_at(model, &runtime_member.id, offset, false, Some(index_expr));
+                    if !matches!(runtime_ty, LuaType::Unknown) {
+                        return apply_casts(runtime_ty);
                     }
                 }
                 // If the prefix was narrowed to a more specific instance/object type on the same flow path,
@@ -902,23 +949,23 @@ pub(crate) fn type_of_expr_at_node(
                         && (member_type_more_specific(model, &prefix_member_ty, &member_ty)
                             || matches!(&prefix_ty, LuaType::Generic(_)))
                     {
-                        return apply_casts(prefix_member_ty, All);
+                        return apply_casts(prefix_member_ty);
                     }
                 }
                 let member_ty =
                     guarded_index_type(model, index_expr, offset, &member_ty).unwrap_or(member_ty);
-                return apply_casts(member_ty, AsOnly);
+                return apply_casts(member_ty);
             }
             // Inside a `#d == n` branch, `d[1]` no longer carries nil when the array length is known.
             if let Some(known_ty) = array_index_with_known_len(model, &index_expr, offset) {
-                return apply_casts(known_ty, All);
+                return apply_casts(known_ty);
             }
             let ty = model.type_of_expr_node(&expr);
             let ty = guarded_index_type(model, index_expr, offset, &ty).unwrap_or(ty);
-            apply_casts(ty, All)
+            apply_casts(ty)
         }
         LuaExpr::CallExpr(_) | LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) => {
-            apply_casts(model.type_of_expr_node(&expr), All)
+            apply_casts(model.type_of_expr_node(&expr))
         }
         LuaExpr::ClosureExpr(closure_expr) => {
             // Anonymous closure keeps its actual signature on the flow path, avoiding the assigned function value degrading to bare `Function`.
@@ -926,14 +973,14 @@ pub(crate) fn type_of_expr_at_node(
                 .type_of_signature(closure_expr.get_syntax_id())
                 .map(|fun| LuaType::DocFunction(Rc::new(fun)))
                 .unwrap_or_else(|| model.type_of_expr_node(&expr));
-            apply_casts(base, All)
+            apply_casts(base)
         }
         LuaExpr::BinaryExpr(binary_expr) => {
             let Some(op_token) = binary_expr.get_op_token() else {
-                return apply_casts(model.type_of_expr_node(&expr), All);
+                return apply_casts(model.type_of_expr_node(&expr));
             };
             let Some((left_expr, right_expr)) = binary_expr.get_exprs() else {
-                return apply_casts(model.type_of_expr_node(&expr), All);
+                return apply_casts(model.type_of_expr_node(&expr));
             };
             // Preserve the legacy semantics that "array table literals in short-circuit expressions are tuple":
             // only when the right side is a sequential array table and the left side is a logical short-circuit, replace the right table type with tuple.
@@ -945,7 +992,7 @@ pub(crate) fn type_of_expr_at_node(
                 let left_ty =
                     model.type_of_expr_at(left_expr.get_syntax_id(), left_expr.get_position());
                 let result = logical_binary_type(model, op_token.get_op(), left_ty, tuple_ty);
-                return apply_casts(result, All);
+                return apply_casts(result);
             }
             // General binary expressions: subexpressions first use flow-sensitive types (member/variable branch narrowing),
             // then merge with the same VM operator rules, ensuring `right.value + 1` uses the narrow type of `right.value` in the branch.
@@ -967,12 +1014,12 @@ pub(crate) fn type_of_expr_at_node(
             ) && (matches!(&left_ty, LuaType::Unknown | LuaType::Any)
                 || matches!(&right_ty, LuaType::Unknown | LuaType::Any))
             {
-                return apply_casts(LuaType::Unknown, All);
+                return apply_casts(LuaType::Unknown);
             }
             let result = binary_type(model, op_token.get_op(), &left_ty, &right_ty);
-            apply_casts(result, All)
+            apply_casts(result)
         }
-        _ => apply_casts(model.type_of_expr_node(&expr), AsOnly),
+        _ => apply_casts(model.type_of_expr_node(&expr)),
     }
 }
 
@@ -983,31 +1030,22 @@ fn index_access_path(
     expr: &LuaExpr,
 ) -> Option<(SemanticId, Vec<LuaMemberKey>)> {
     let mut expr = expr.clone();
-    let mut keys = Vec::new();
     loop {
         match expr {
             LuaExpr::NameExpr(name) => {
-                keys.reverse();
-                return Some((model.resolve_name(name.get_position())?, keys));
+                return Some((model.resolve_name(name.get_position())?, Vec::new()));
             }
             LuaExpr::ParenExpr(paren) => expr = paren.get_expr()?,
             LuaExpr::IndexExpr(index) => {
-                keys.push(match index.get_index_key()? {
-                    emmylua_parser::LuaIndexKey::Integer(num) => match num.get_number_value() {
-                        emmylua_parser::NumberResult::Int(i) => LuaMemberKey::Integer(i),
-                        emmylua_parser::NumberResult::Uint(i) => LuaMemberKey::Integer(i as i64),
-                        emmylua_parser::NumberResult::Float(f) => {
-                            crate::semantic_db::types::exact_integer(f)
-                                .map(LuaMemberKey::Integer)
-                                .unwrap_or(LuaMemberKey::None)
-                        }
-                        _ => LuaMemberKey::None,
-                    },
-                    emmylua_parser::LuaIndexKey::Idx(i) => LuaMemberKey::Integer(i as i64),
-                    emmylua_parser::LuaIndexKey::Expr(_) => LuaMemberKey::None,
-                    _ => member_key_from_index_expr(model, &index)?,
-                });
-                expr = index.get_prefix_expr()?;
+                let member_use = model.member_use(index.get_syntax_id())?;
+                let path = member_use.access_path.as_ref()?;
+                let root = match &path.root {
+                    SemanticId::Name(_) => {
+                        model.resolve_name(member_use.root_syntax?.get_range().start())?
+                    }
+                    root => root.clone(),
+                };
+                return Some((root, path.keys.clone()));
             }
             _ => return None,
         }
@@ -1017,7 +1055,7 @@ fn index_access_path(
 /// Require a non-nil guard on every incoming path, with no intervening direct write.
 fn guarded_index_type(
     model: &SemanticModel,
-    index: &emmylua_parser::LuaIndexExpr,
+    index: &LuaIndexExpr,
     offset: TextSize,
     ty: &LuaType,
 ) -> Option<LuaType> {
@@ -1261,7 +1299,7 @@ fn array_index_in_known_range(index: i64, len: &LuaArrayLen) -> bool {
 /// Also recognizes loop variable indexes like `for i = 1, #arr do arr[i]`.
 fn array_index_with_known_len(
     model: &SemanticModel,
-    index_expr: &emmylua_parser::LuaIndexExpr,
+    index_expr: &LuaIndexExpr,
     offset: TextSize,
 ) -> Option<LuaType> {
     let prefix = index_expr.get_prefix_expr()?;
@@ -1542,7 +1580,7 @@ pub(super) fn apply_expr_casts(
     apply_expr_casts_to_node(model, &node, base, mode)
 }
 
-fn inline_cast_target(tag: &emmylua_parser::LuaDocTagAs) -> Option<LuaExpr> {
+fn inline_cast_target(tag: &impl LuaAstNode) -> Option<LuaExpr> {
     let owner = tag.get_parent::<LuaComment>()?.get_owner()?;
     // Statement comments cast the last value, never its operands or later reads.
     LuaExpr::cast(owner.syntax().clone()).or_else(|| owner.children::<LuaExpr>().last())
@@ -1615,9 +1653,12 @@ fn apply_expr_casts_to_node(
                     // Declaration/member tracing handles named casts with a unique target.
                     // Ambiguous union members have no member ID; retain their immediate
                     // cast only for the exact owner/path, never an enclosing expression.
-                    if let Some(target) = cast.get_key_expr()
-                        && !ambiguous_cast_target_matches(model, &target, expr_syntax)
-                    {
+                    let matches_target = match cast.get_key_expr() {
+                        Some(target) => ambiguous_cast_target_matches(model, &target, expr_syntax),
+                        None => inline_cast_target(&cast)
+                            .is_some_and(|target| target.get_syntax_id() == expr_syntax),
+                    };
+                    if !matches_target {
                         continue;
                     }
                     for op_type in cast.get_op_types() {
@@ -1690,8 +1731,8 @@ fn ambiguous_cast_target_matches(
 fn member_access_matches(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
-    index: &emmylua_parser::LuaIndexExpr,
+    access: Option<&LuaIndexExpr>,
+    index: &LuaIndexExpr,
 ) -> bool {
     if let Some(access) = access {
         same_member_access(
@@ -1740,7 +1781,7 @@ fn member_write_match(
     tree: &FlowTree,
     flow_id: FlowId,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     assigned: Option<&SemanticId>,
 ) -> MemberWrite {
     if assigned == Some(member) {
@@ -1974,7 +2015,7 @@ enum CastOp {
 }
 
 /// Guards and cast operations collected along the backtracking path.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct PathState {
     /// Most recent guard first.
     narrowings: Vec<Narrowing>,
@@ -2167,13 +2208,26 @@ fn decl_trace_key(
     flow: FlowId,
     purpose: &DeclTracePurpose,
     mode: TraceMode,
+    path: &PathState,
 ) -> cache::TraceStateKey {
+    let correlations = path
+        .narrowings
+        .iter()
+        .find_map(|narrowing| {
+            if let Narrowing::Correlated(constraints) = narrowing {
+                Some(constraints.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
     cache::TraceStateKey {
         file_id: model.file_id(),
         subject: cache::TraceSubject::Decl {
             decl: decl.clone(),
             purpose: purpose.clone(),
             merge_branch: mode == TraceMode::MergeBranch,
+            correlations,
         },
         flow_id: flow.0,
     }
@@ -2214,17 +2268,37 @@ fn trace_decl(
     visited: &mut HashSet<FlowId>,
     path: &mut PathState,
 ) -> Option<LuaType> {
-    // Outside a cycle every route to a flow node crosses the same guards, so a
-    // state's value depends on the node and the purpose alone — never on the
-    // route. That makes the state cacheable, which matters because a nested
-    // conditional chain otherwise re-derives the same states along exponentially
-    // many routes. Only nodes on a cycle keep the uncached path (see the type note
-    // on `cache::TraceStateKey`), so a loop does not disable memoization for the
-    // code after it.
+    // Only nodes on a cycle depend on the visited path. Cache the other states
+    // so repeated branches do not walk the same history exponentially often.
     if tree.is_in_cycle(flow_id) {
         return trace_decl_uncached(model, decl, tree, flow_id, purpose, mode, visited, path);
     }
-    let key = decl_trace_key(model, decl, flow_id, purpose, mode);
+    // Ordinary guards apply to the cached value. Correlations must pass through
+    // assignments, which can invalidate them, so retain them in the cache key.
+    if path
+        .narrowings
+        .iter()
+        .any(|narrowing| !matches!(narrowing, Narrowing::Correlated(_)))
+        || !path.casts.is_empty()
+    {
+        let mut correlated_path = path.clone();
+        correlated_path
+            .narrowings
+            .retain(|narrowing| matches!(narrowing, Narrowing::Correlated(_)));
+        correlated_path.casts.clear();
+        let state = trace_decl(
+            model,
+            decl,
+            tree,
+            flow_id,
+            purpose,
+            mode,
+            visited,
+            &mut correlated_path,
+        )?;
+        return Some(finalize(model, state, &path.for_origin(None)));
+    }
+    let key = decl_trace_key(model, decl, flow_id, purpose, mode, path);
     {
         let cache = model.cache.borrow();
         if let Some(entry) = cache.trace_state.get(&key) {
@@ -2267,7 +2341,7 @@ fn trace_decl_uncached(
             && current != flow_id
             && !tree.is_in_cycle(current)
         {
-            let key = decl_trace_key(model, decl, current, purpose, mode);
+            let key = decl_trace_key(model, decl, current, purpose, mode, path);
             {
                 let cache = model.cache.borrow();
                 if let Some(entry) = cache.trace_state.get(&key) {
@@ -2309,7 +2383,10 @@ fn trace_decl_uncached(
                 assignment.get_range().start(),
                 Some(contract.clone()),
             );
-            break 'trace Some(finalize(model, base, path));
+            let reference = tree
+                .get_decl_multi_return_ref_on_flow(decl, assignment.get_range().start(), current)
+                .and_then(|at| at.reference.as_ref());
+            break 'trace Some(finalize(model, base, &path.for_origin(reference)));
         }
         if let DeclTracePurpose::OriginalSignatures(seed) = purpose {
             for effect in tree.get_flow_effects(current) {
@@ -2341,25 +2418,11 @@ fn trace_decl_uncached(
                             && assigned_decl == decl
                         {
                             // Assignment hit: the assignment becomes the new base value, but guards after it (closer to the query on the backtrack path) are kept.
-                            // If this assignment is not from a multi-return call source, earlier return_overload correlated narrowing no longer applies.
-                            let is_multi_return = tree
+                            // A return-row guard applies only to the call that produced this value.
+                            let reference = tree
                                 .get_decl_multi_return_ref_on_flow(decl, assign_pos, current)
-                                .and_then(|at| at.reference.as_ref())
-                                .is_some();
-                            let narrowings = if is_multi_return {
-                                path.narrowings.iter().map(|n| n.clone_ref()).collect()
-                            } else {
-                                path.narrowings
-                                    .iter()
-                                    .filter(|n| !matches!(n, Narrowing::Correlated { .. }))
-                                    .map(|n| n.clone_ref())
-                                    .collect()
-                            };
-                            let assign_path = PathState {
-                                narrowings,
-                                casts: path.casts.clone(),
-                                ignore_guards: path.ignore_guards,
-                            };
+                                .and_then(|at| at.reference.as_ref());
+                            let assign_path = path.for_origin(reference);
                             let base_before = model.type_of_decl(decl).unwrap_or(LuaType::Unknown);
                             let frame = DeclAssignmentFrame {
                                 antecedent: node.antecedent.clone(),
@@ -2433,8 +2496,13 @@ fn trace_decl_uncached(
                     && let Some(d) = facts.decl_by_id(decl)
                     && d.owner_syntax.map(|s| s.get_range().start()) == Some(*pos)
                 {
+                    let reference = tree
+                        .get_decl_multi_return_ref_on_flow(decl, *pos, current)
+                        .and_then(|at| at.reference.as_ref());
+                    let initial_path = path.for_origin(reference);
                     break 'trace Some(
-                        decl_trace_base(model, decl, purpose, path).unwrap_or(LuaType::Unknown),
+                        decl_trace_base(model, decl, purpose, &initial_path)
+                            .unwrap_or(LuaType::Unknown),
                     );
                 }
             }
@@ -2474,7 +2542,7 @@ fn trace_decl_uncached(
                     current,
                     antecedent_has_narrowing(tree, node.antecedent.clone()),
                 ) {
-                    path.narrowings.push(narrowing);
+                    path.push_narrowing(narrowing);
                 }
             }
             FlowNodeKind::TagCast(cast_ptr) => match purpose {
@@ -2596,7 +2664,7 @@ fn member_annotation_type(model: &SemanticModel, member: &SemanticId) -> Option<
 fn trace_member(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     tree: &FlowTree,
     flow_id: FlowId,
     visited: &mut HashSet<FlowId>,
@@ -2606,7 +2674,7 @@ fn trace_member(
         || path
             .narrowings
             .iter()
-            .any(|narrowing| matches!(narrowing, Narrowing::Correlated { .. }))
+            .any(|narrowing| matches!(narrowing, Narrowing::Correlated(_)))
     {
         return trace_member_uncached(model, member, access, tree, flow_id, visited, path);
     }
@@ -2660,7 +2728,7 @@ fn trace_member(
 fn trace_member_uncached(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     tree: &FlowTree,
     flow_id: FlowId,
     visited: &mut HashSet<FlowId>,
@@ -2700,12 +2768,8 @@ fn trace_member_uncached(
                             }
                             MemberWrite::Exact => {}
                         }
-                        // Member assignment overrides earlier guard narrowing; cast widening is retained.
-                        let assign_path = PathState {
-                            narrowings: Vec::new(),
-                            casts: path.casts.clone(),
-                            ignore_guards: path.ignore_guards,
-                        };
+                        // The write replaces earlier guards, but guards collected between the query
+                        // and this assignment are later than the write and still narrow its value.
                         let mut value_ty = type_of_expr_with_cast(model, *value_syntax, AsOnly);
                         if let Some(annotation) = member_annotation_type(model, member) {
                             if model.type_check(&value_ty, &annotation) {
@@ -2714,7 +2778,7 @@ fn trace_member_uncached(
                                 value_ty = annotation;
                             }
                         }
-                        return Some(finalize(model, value_ty, &assign_path));
+                        return Some(finalize(model, value_ty, path));
                     }
                 }
                 // A dynamic-key write can lack a member ID and still replace
@@ -2727,14 +2791,14 @@ fn trace_member_uncached(
                 }
             }
             FlowNodeKind::TagCast(cast_ptr) => {
-                collect_member_cast(model, member, cast_ptr, path);
+                collect_member_cast(model, member, access, cast_ptr, path);
             }
             FlowNodeKind::TrueCondition(cond_ptr) => {
                 if !path.ignore_guards
                     && let Some(narrowing) =
                         narrow_member_condition(model, member, access, cond_ptr, true)
                 {
-                    path.narrowings.push(narrowing);
+                    path.push_narrowing(narrowing);
                 }
             }
             FlowNodeKind::FalseCondition(cond_ptr) => {
@@ -2742,7 +2806,7 @@ fn trace_member_uncached(
                     && let Some(narrowing) =
                         narrow_member_condition(model, member, access, cond_ptr, false)
                 {
-                    path.narrowings.push(narrowing);
+                    path.push_narrowing(narrowing);
                 }
             }
             FlowNodeKind::Start | FlowNodeKind::Unreachable => {
@@ -2786,7 +2850,7 @@ fn trace_member_uncached(
 }
 
 /// Narrowing kinds.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Narrowing {
     /// Replacement: the value is exactly `ty` on this path (type guard / `== literal`).
     Replace(LuaType),
@@ -2799,10 +2863,7 @@ enum Narrowing {
     /// Not nil: remove nil.
     NotNil,
     /// return_overload correlated narrowing: the `ok` branch narrows `result` from the same call source to the matching row.
-    Correlated {
-        matching_target_types: Vec<LuaType>,
-        correlated_candidate_types: Vec<LuaType>,
-    },
+    Correlated(Vec<cache::TraceCorrelation>),
     /// Base-type guards like `type(x) == 'table'`: filter union components by the actual primitive type.
     FilterPrimitive {
         primitive: LuaType,
@@ -2829,6 +2890,9 @@ enum Narrowing {
 /// then apply `---@cast +T` widening last — casts are cumulative widening on the declaration and narrowing cannot erase them.
 fn finalize(model: &SemanticModel, mut base: LuaType, path: &PathState) -> LuaType {
     for narrowing in path.narrowings.iter().rev() {
+        if base.is_never() {
+            return base;
+        }
         base = apply_narrowing(model, base, narrowing);
     }
     for cast in path.casts.iter().rev() {
@@ -2885,17 +2949,28 @@ fn apply_narrowing(model: &SemanticModel, mut ty: LuaType, narrowing: &Narrowing
         Narrowing::Truthy => remove_falsy(ty),
         Narrowing::Falsy => remove_truthy(ty),
         Narrowing::NotNil => remove_type(ty, &LuaType::Nil),
-        Narrowing::Correlated {
-            matching_target_types,
-            correlated_candidate_types,
-        } => {
-            let matching = LuaType::from_vec(matching_target_types.clone());
-            let narrowed = narrow_intersect_types(ty.clone(), matching);
-            if narrowed.is_never() {
-                return ty;
+        Narrowing::Correlated(constraints) => {
+            let rows: Vec<_> = constraints
+                .iter()
+                .flat_map(|constraint| constraint.rows.iter().map(|(_, ty)| ty.clone()))
+                .collect();
+            if rows.is_empty() {
+                LuaType::Never
+            } else {
+                let matching = LuaType::from_vec(rows);
+                let narrowed = narrow_intersect_types(ty.clone(), matching);
+                let candidates = if constraints.len() == 1 {
+                    constraints[0].candidates.clone()
+                } else {
+                    LuaType::from_vec(
+                        constraints
+                            .iter()
+                            .map(|constraint| constraint.candidates.clone())
+                            .collect(),
+                    )
+                };
+                merge_types(narrowed, remove_type(ty, &candidates))
             }
-            let remaining = remove_type(ty, &LuaType::from_vec(correlated_candidate_types.clone()));
-            merge_types(narrowed, remaining)
         }
     }
 }
@@ -2907,6 +2982,39 @@ fn cast_targets_decl(
 ) -> bool {
     matches!(cast.get_key_expr(), Some(LuaExpr::NameExpr(name))
         if model.resolve_name(name.get_position()).as_ref() == Some(decl))
+}
+
+/// Path operation of one `---@cast` operand: `T` replaces, `+T` widens, `-T` narrows,
+/// and the bare `?` operand adds (`+?`) or removes (`-?`) nil.
+fn cast_op_from_op_type(
+    model: &SemanticModel,
+    op_type: &emmylua_parser::LuaDocOpType,
+) -> Option<CastOp> {
+    let op = op_type.get_op().map(|op| op.get_op());
+    let Some(doc_type) = op_type.get_type() else {
+        if !op_type.is_nullable() {
+            return None;
+        }
+        return match op {
+            Some(BinaryOperator::OpAdd) => Some(CastOp::Add(LuaType::Nil)),
+            Some(BinaryOperator::OpSub) => Some(CastOp::Remove(LuaType::Nil)),
+            _ => None,
+        };
+    };
+    let ty = if doc_type.get_text().trim() == "?" {
+        LuaType::Nil
+    } else {
+        model.doc_type_lua(doc_type.get_syntax_id())
+    };
+    if matches!(ty, LuaType::Unknown) {
+        return None;
+    }
+    match op {
+        None => Some(CastOp::Replace(ty)),
+        Some(BinaryOperator::OpAdd) => Some(CastOp::Add(ty)),
+        Some(BinaryOperator::OpSub) => Some(CastOp::Remove(ty)),
+        _ => None,
+    }
 }
 
 /// Collect named casts that target this declaration.
@@ -2925,38 +3033,17 @@ fn collect_decl_cast(
     if !cast_targets_decl(model, decl, &cast) {
         return;
     }
-    for op_type in cast.get_op_types() {
-        let Some(doc_type) = op_type.get_type() else {
-            // `-?`: subtraction with no DocType → remove nil.
-            if op_type
-                .get_op()
-                .is_some_and(|op| op.get_op() == BinaryOperator::OpSub)
-            {
-                path.casts.push(CastOp::Remove(LuaType::Nil));
-            }
-            continue;
-        };
-        let ty = if doc_type.get_text().trim() == "?" {
-            LuaType::Nil
-        } else {
-            model.doc_type_lua(doc_type.get_syntax_id())
-        };
-        if matches!(ty, LuaType::Unknown) {
-            continue;
-        }
-        match op_type.get_op().map(|op| op.get_op()) {
-            None => path.casts.push(CastOp::Replace(ty)),
-            Some(BinaryOperator::OpAdd) => path.casts.push(CastOp::Add(ty)),
-            Some(BinaryOperator::OpSub) => path.casts.push(CastOp::Remove(ty)),
-            _ => {}
-        }
-    }
+    path.casts.extend(
+        cast.get_op_types()
+            .filter_map(|op_type| cast_op_from_op_type(model, &op_type)),
+    );
 }
 
-/// `---@cast t.x +T`: after matching a member, add T to the path type.
+/// `---@cast t.x +T`: after matching the accessed member, add T to the path type.
 fn collect_member_cast(
     model: &SemanticModel,
     member: &SemanticId,
+    access: Option<&LuaIndexExpr>,
     cast_ptr: &emmylua_parser::LuaAstPtr<emmylua_parser::LuaDocTagCast>,
     path: &mut PathState,
 ) {
@@ -2966,48 +3053,16 @@ fn collect_member_cast(
     let Some(cast) = cast_ptr.to_node(&chunk) else {
         return;
     };
-    let Some(key_expr) = cast.get_key_expr() else {
+    let Some(LuaExpr::IndexExpr(index_expr)) = cast.get_key_expr() else {
         return;
     };
-    let matches = match &key_expr {
-        LuaExpr::IndexExpr(index_expr) => {
-            model
-                .resolve_member(index_expr)
-                .and_then(|resolved| resolved.member_id)
-                .as_ref()
-                == Some(member)
-        }
-        _ => false,
-    };
-    if !matches {
+    if !member_access_matches(model, member, access, &index_expr) {
         return;
     }
-    for op_type in cast.get_op_types() {
-        let Some(doc_type) = op_type.get_type() else {
-            // `-?`: subtraction with no DocType → remove nil.
-            if op_type
-                .get_op()
-                .is_some_and(|op| op.get_op() == BinaryOperator::OpSub)
-            {
-                path.casts.push(CastOp::Remove(LuaType::Nil));
-            }
-            continue;
-        };
-        let ty = if doc_type.get_text().trim() == "?" {
-            LuaType::Nil
-        } else {
-            model.doc_type_lua(doc_type.get_syntax_id())
-        };
-        if matches!(ty, LuaType::Unknown) {
-            continue;
-        }
-        match op_type.get_op().map(|op| op.get_op()) {
-            None => path.casts.push(CastOp::Replace(ty)),
-            Some(BinaryOperator::OpAdd) => path.casts.push(CastOp::Add(ty)),
-            Some(BinaryOperator::OpSub) => path.casts.push(CastOp::Remove(ty)),
-            _ => {}
-        }
-    }
+    path.casts.extend(
+        cast.get_op_types()
+            .filter_map(|op_type| cast_op_from_op_type(model, &op_type)),
+    );
 }
 
 /// RHS type of an assignment: if decl is a multi-return slot on this assignment, take the matching return type by `return_index`;
@@ -3498,11 +3553,77 @@ fn correlated_narrowing_for_condition(
     is_true_branch: bool,
     flow_id: FlowId,
 ) -> Option<Narrowing> {
+    let revision = model.cache.borrow().revision();
     let (disc_decl, disc_narrowing) =
         discriminant_from_condition(model, tree, target_decl, cond, is_true_branch)?;
     let condition_position = cond.get_position();
-    let (disc_refs, _) =
+    let key = (
+        model.file_id(),
+        target_decl.clone(),
+        cond.get_syntax_id(),
+        is_true_branch,
+        flow_id,
+    );
+    if let Some(constraints) = model.cache.borrow().correlated_narrowing.get(&key) {
+        return Some(Narrowing::Correlated(constraints.clone()));
+    }
+    // Calls do not carry captured-variable writes in this flow tree. Such a
+    // write can break the connection between a returned flag and its result.
+    let closure = LuaClosureId::from_node(cond.syntax());
+    if [&disc_decl, target_decl].into_iter().any(|decl| {
+        tree.decl_assignment_flows(decl).any(|flow| {
+            let Some(node) = tree
+                .get_flow_node(flow)
+                .and_then(|node| node.kind.assignment_syntax())
+                .and_then(|syntax| syntax.to_node_from_root(&model.syntax_tree()?.get_red_root()))
+            else {
+                return true;
+            };
+            let writer = LuaClosureId::from_node(&node);
+            if writer == closure {
+                return false;
+            }
+            // An unreferenced local function cannot perform its captured writes.
+            if model
+                .file_facts()
+                .and_then(|facts| facts.decl_by_value_range(writer.get_range()))
+                .is_some_and(|writer| {
+                    matches!(writer.kind, crate::DeclKind::Local { .. })
+                        && model.decl_references(&writer.id).is_empty()
+                })
+            {
+                return false;
+            }
+            tree.get_flow_effects(flow).iter().any(|effect| {
+                matches!(effect, FlowEffect::AssignDecl { decl: assigned, value_syntax }
+                    if assigned == decl && !is_decl_self_assignment(model, decl, *value_syntax))
+            })
+        })
+    }) {
+        return None;
+    }
+    let (disc_refs, other_origins) =
         tree.get_decl_multi_return_ref_summary_at(&disc_decl, condition_position, flow_id);
+    // A replaced guard cannot describe an unchanged result. A joint write is
+    // safe only when for_origin also removes the guard from that result.
+    if other_origins.iter().any(|origin| {
+        if !tree.get_flow_effects(*origin).iter().any(|effect| {
+            matches!(effect, FlowEffect::AssignDecl { decl, value_syntax }
+                if decl == target_decl && !is_decl_self_assignment(model, decl, *value_syntax))
+        }) {
+            return true;
+        }
+        tree.get_decl_multi_return_ref_on_flow(target_decl, condition_position, *origin)
+            .is_none_or(|at| {
+                at.reference.as_ref().is_some_and(|target| {
+                    disc_refs.iter().any(|disc| {
+                        disc.call_expr.get_syntax_id() == target.call_expr.get_syntax_id()
+                    })
+                })
+            })
+    }) {
+        return None;
+    }
     let (target_refs, _) =
         tree.get_decl_multi_return_ref_summary_at(target_decl, condition_position, flow_id);
     // Only do correlated narrowing when both sides' multi-return call sources match exactly; if either side mixes in other call sources, give up.
@@ -3524,30 +3645,28 @@ fn correlated_narrowing_for_condition(
         return None;
     }
 
-    let mut matching_target_types = Vec::new();
-    let mut correlated_candidate_types = Vec::new();
+    let mut constraints = Vec::new();
 
     for disc_ref in &disc_refs {
         let Some(rows) = return_overload_rows_for_call(model, &disc_ref.call_expr) else {
             continue;
         };
+        #[cfg(test)]
+        flow_metrics::record_correlated_row_work(rows.rows.len() as u64);
         let disc_call_id = disc_ref.call_expr.get_syntax_id();
         // The discriminant variable's base type is the union of discriminant slots across all return_overload rows of that call.
-        let disc_base = LuaType::from_vec(
-            rows.iter()
-                .map(|row| {
-                    row.get(disc_ref.return_index)
-                        .cloned()
-                        .unwrap_or(LuaType::Nil)
-                })
-                .collect(),
-        );
-        let disc_narrowed = apply_narrowing(model, disc_base.clone(), &disc_narrowing);
+        let disc_base = rows
+            .raw_slot_unions
+            .get(disc_ref.return_index)
+            .cloned()
+            .unwrap_or(LuaType::Nil);
+        let disc_narrowed = apply_narrowing(model, disc_base, &disc_narrowing);
         for target_ref in &target_refs {
             if target_ref.call_expr.get_syntax_id() != disc_call_id {
                 continue;
             }
-            for row in &rows {
+            let mut matching_rows = Vec::new();
+            for (row_index, row) in rows.rows.iter().enumerate() {
                 let disc_slot = row
                     .get(disc_ref.return_index)
                     .cloned()
@@ -3557,26 +3676,37 @@ fn correlated_narrowing_for_condition(
                     .cloned()
                     .unwrap_or(LuaType::Nil);
                 // For a variable return slot like `R...` assigned to a single variable, use the base slot type.
-                let target_slot = target_slot.get_result_slot_type(0).unwrap_or(target_slot);
-                if !correlated_candidate_types.contains(&target_slot) {
-                    correlated_candidate_types.push(target_slot.clone());
+                let target_slot = target_slot.get_result_slot_type(0).unwrap_or(LuaType::Nil);
+                if types_may_overlap(disc_slot.clone(), disc_narrowed.clone()) {
+                    matching_rows.push((row_index, target_slot));
                 }
-                if types_may_overlap(disc_slot.clone(), disc_narrowed.clone())
-                    && !matching_target_types.contains(&target_slot)
-                {
-                    matching_target_types.push(target_slot);
-                }
+            }
+            let constraint = cache::TraceCorrelation {
+                call: disc_call_id,
+                return_index: target_ref.return_index,
+                rows: matching_rows,
+                candidates: rows
+                    .value_slot_unions
+                    .get(target_ref.return_index)
+                    .cloned()
+                    .unwrap_or(LuaType::Nil),
+            };
+            if !constraints.contains(&constraint) {
+                constraints.push(constraint);
             }
         }
     }
 
-    if matching_target_types.is_empty() {
+    if constraints
+        .iter()
+        .all(|constraint| constraint.rows.is_empty())
+    {
         None
     } else {
-        Some(Narrowing::Correlated {
-            matching_target_types,
-            correlated_candidate_types,
-        })
+        model.cache.publish_if_complete(revision, |cache| {
+            cache.correlated_narrowing.insert(key, constraints.clone());
+        });
+        Some(Narrowing::Correlated(constraints))
     }
 }
 
@@ -3929,8 +4059,71 @@ fn widen_const_type(ty: LuaType) -> LuaType {
     }
 }
 
-/// Get the raw `---@return_overload` rows from the call signature (before generic call instantiation).
+/// Instantiated rows and their column unions, shared by all guards for a call.
+pub(super) struct ReturnOverloadRows {
+    rows: Vec<Vec<LuaType>>,
+    raw_slot_unions: Vec<LuaType>,
+    /// A variadic return assigned to one variable contributes its first value.
+    value_slot_unions: Vec<LuaType>,
+}
+
 fn return_overload_rows_for_call(
+    model: &SemanticModel,
+    call_ptr: &emmylua_parser::LuaAstPtr<emmylua_parser::LuaCallExpr>,
+) -> Option<Rc<ReturnOverloadRows>> {
+    let key = (model.file_id(), call_ptr.get_syntax_id());
+    {
+        let cache = model.cache.borrow();
+        if let Some(entry) = cache.return_overload_rows.get(&key) {
+            return entry.get(&cache).cloned().flatten();
+        }
+    }
+    let _query = cache::QueryCacheScope::new(&model.cache);
+    let revision = model.cache.borrow().revision();
+    model
+        .cache
+        .borrow_mut()
+        .return_overload_rows
+        .insert(key, cache::CacheEntry::InProgress);
+    let result = return_overload_rows_for_call_uncached(model, call_ptr).map(|rows| {
+        let mut columns: Vec<Vec<LuaType>> = Vec::new();
+        for (row_index, row) in rows.iter().enumerate() {
+            columns.resize_with(columns.len().max(row.len()), Vec::new);
+            for (column, slot) in columns.iter_mut().zip(row) {
+                // Fill a gap before the next value to preserve union member order.
+                if column.len() < row_index {
+                    column.push(LuaType::Nil);
+                }
+                column.push(slot.clone());
+            }
+        }
+        let mut raw_slot_unions = Vec::with_capacity(columns.len());
+        let mut value_slot_unions = Vec::with_capacity(columns.len());
+        for mut slots in columns {
+            if slots.len() < rows.len() {
+                slots.push(LuaType::Nil);
+            }
+            value_slot_unions.push(LuaType::from_vec(
+                slots
+                    .iter()
+                    .map(|slot| slot.get_result_slot_type(0).unwrap_or(LuaType::Nil))
+                    .collect(),
+            ));
+            raw_slot_unions.push(LuaType::from_vec(slots));
+        }
+        Rc::new(ReturnOverloadRows {
+            rows,
+            raw_slot_unions,
+            value_slot_unions,
+        })
+    });
+    let mut cache = model.cache.borrow_mut();
+    let entry = cache::CacheEntry::finish(result.clone(), cache.is_complete(revision));
+    cache.return_overload_rows.insert(key, entry);
+    result
+}
+
+fn return_overload_rows_for_call_uncached(
     model: &SemanticModel,
     call_ptr: &emmylua_parser::LuaAstPtr<emmylua_parser::LuaCallExpr>,
 ) -> Option<Vec<Vec<LuaType>>> {
@@ -3962,6 +4155,8 @@ fn return_overload_rows_for_call(
     }
 
     // Generic rows: infer bindings from call-site arguments and substitute them to get instantiated return_overload rows.
+    #[cfg(test)]
+    flow_metrics::record_return_rows_built(rows.len() as u64);
     if rows.iter().any(|row| row.iter().any(|ty| ty.contain_tpl()))
         && let Some((_, bindings)) = infer_call_with_bindings(model, call.get_syntax_id())
     {
@@ -4024,7 +4219,7 @@ fn member_discriminant_from_binary(
 /// Resolve a member key from an index expression; dynamic keys allow a key expression narrowed to a single string constant on the flow path.
 fn member_key_from_index_expr(
     model: &SemanticModel,
-    index_expr: &emmylua_parser::LuaIndexExpr,
+    index_expr: &LuaIndexExpr,
 ) -> Option<LuaMemberKey> {
     match index_expr.get_index_key()? {
         emmylua_parser::LuaIndexKey::Name(name) => {
@@ -4063,7 +4258,7 @@ fn dynamic_key_string_literal(
 /// `keys[slot]`: when keys is a table literal and slot is narrowed to an integer constant, take that field's string literal directly.
 fn table_literal_index_string(
     model: &SemanticModel,
-    index_expr: &emmylua_parser::LuaIndexExpr,
+    index_expr: &LuaIndexExpr,
     offset: TextSize,
 ) -> Option<smol_str::SmolStr> {
     let inner_key = match index_expr.get_index_key()? {
@@ -4273,15 +4468,17 @@ fn narrow_condition(
 }
 
 /// Condition narrowing of a member expression itself: the true/false branches of `t.x == "foo"` narrow `t.x`.
+/// Negations and parentheses are transparent to the guard they contain.
 fn narrow_member_condition(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     cond_ptr: &emmylua_parser::LuaAstPtr<LuaExpr>,
     branch_is_true: bool,
 ) -> Option<Narrowing> {
     let chunk = model.chunk()?;
     let cond = LuaExpr::cast(cond_ptr.to_node(&chunk)?.syntax().clone())?;
+    let (cond, branch_is_true) = normalize_condition(cond, branch_is_true)?;
     if let LuaExpr::CallExpr(call) = &cond {
         if let Some((arg, guard_ty)) = type_guard_call_target(model, call)
             && let LuaExpr::IndexExpr(index_expr) = &arg
@@ -4304,6 +4501,11 @@ fn narrow_member_condition(
         if let Some(narrowing) = alias_member_condition_narrowing(model, member, access, &cond) {
             return Some(narrowing);
         }
+    } else if let LuaExpr::IndexExpr(index_expr) = &cond
+        && member_access_matches(model, member, access, index_expr)
+    {
+        // A falsy member keeps only the falsy components on this path, so `if not t.x then` holds nil.
+        return Some(Narrowing::Falsy);
     }
     direct_narrow_member_condition(model, member, access, &cond, branch_is_true)
 }
@@ -4313,7 +4515,7 @@ fn narrow_member_condition(
 fn alias_member_condition_narrowing(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     cond: &LuaExpr,
 ) -> Option<Narrowing> {
     let LuaExpr::NameExpr(name_expr) = cond else {
@@ -4375,7 +4577,7 @@ fn rawget_member_narrowing(
 fn direct_narrow_member_condition(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     cond: &LuaExpr,
     branch_is_true: bool,
 ) -> Option<Narrowing> {
@@ -5922,7 +6124,7 @@ fn walk_decl(
             let branch_mode = TraceMode::MergeBranch;
             for branch in branches {
                 let mut branch_visited = visited.clone();
-                let mut branch_path = path.clone_path();
+                let mut branch_path = path.clone();
                 if let Some(branch_ty) = trace_decl(
                     model,
                     decl,
@@ -5962,7 +6164,7 @@ fn member_branch_is_pure(
     model: &SemanticModel,
     tree: &FlowTree,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     start: FlowId,
     stop: FlowId,
 ) -> bool {
@@ -6002,7 +6204,7 @@ fn member_branch_is_pure(
                     && cond
                         .syntax()
                         .descendants()
-                        .filter_map(emmylua_parser::LuaIndexExpr::cast)
+                        .filter_map(LuaIndexExpr::cast)
                         .any(|index| {
                             same_member_access(
                                 model,
@@ -6027,7 +6229,7 @@ fn member_branch_is_pure(
 fn walk_member(
     model: &SemanticModel,
     member: &SemanticId,
-    access: Option<&emmylua_parser::LuaIndexExpr>,
+    access: Option<&LuaIndexExpr>,
     tree: &FlowTree,
     antecedent: Option<&FlowAntecedent>,
     visited: &mut HashSet<FlowId>,
@@ -6051,7 +6253,7 @@ fn walk_member(
             let mut merged = LuaType::Unknown;
             for branch in branches {
                 let mut branch_visited = visited.clone();
-                let mut branch_path = path.clone_path();
+                let mut branch_path = path.clone();
                 if let Some(branch_ty) = trace_member(
                     model,
                     member,
@@ -6070,53 +6272,58 @@ fn walk_member(
 }
 
 impl PathState {
-    fn clone_path(&self) -> Self {
-        Self {
-            narrowings: self.narrowings.iter().map(|n| n.clone_ref()).collect(),
-            casts: self.casts.clone(),
-            ignore_guards: self.ignore_guards,
+    fn push_narrowing(&mut self, mut narrowing: Narrowing) {
+        if let Narrowing::Correlated(incoming) = &mut narrowing {
+            incoming.sort_by_key(|constraint| {
+                (constraint.call.get_range().start(), constraint.return_index)
+            });
+            if let Some(Narrowing::Correlated(existing)) = self
+                .narrowings
+                .iter_mut()
+                .find(|n| matches!(n, Narrowing::Correlated(_)))
+            {
+                // Keep possible rows, not guard history. Conflicting guards share
+                // one empty row set instead of creating a new cache key per route.
+                for constraint in incoming {
+                    if let Some(prior) = existing.iter_mut().find(|prior| {
+                        prior.call == constraint.call
+                            && prior.return_index == constraint.return_index
+                    }) {
+                        prior.rows.retain(|(index, _)| {
+                            constraint
+                                .rows
+                                .binary_search_by_key(index, |(other, _)| *other)
+                                .is_ok()
+                        });
+                    } else {
+                        existing.push(constraint.clone());
+                    }
+                }
+                existing.sort_by_key(|constraint| {
+                    (constraint.call.get_range().start(), constraint.return_index)
+                });
+                return;
+            }
         }
+        self.narrowings.push(narrowing);
     }
-}
 
-impl Narrowing {
-    fn clone_ref(&self) -> Self {
-        match self {
-            Narrowing::Replace(ty) => Narrowing::Replace(ty.clone()),
-            Narrowing::Remove(ty) => Narrowing::Remove(ty.clone()),
-            Narrowing::Truthy => Narrowing::Truthy,
-            Narrowing::Falsy => Narrowing::Falsy,
-            Narrowing::NotNil => Narrowing::NotNil,
-            Narrowing::Correlated {
-                matching_target_types,
-                correlated_candidate_types,
-            } => Narrowing::Correlated {
-                matching_target_types: matching_target_types.clone(),
-                correlated_candidate_types: correlated_candidate_types.clone(),
-            },
-            Narrowing::FilterPrimitive {
-                primitive,
-                keep_matching,
-            } => Narrowing::FilterPrimitive {
-                primitive: primitive.clone(),
-                keep_matching: *keep_matching,
-            },
-            Narrowing::MemberDiscriminant {
-                key,
-                literal,
-                keep_matching,
-            } => Narrowing::MemberDiscriminant {
-                key: key.clone(),
-                literal: literal.clone(),
-                keep_matching: *keep_matching,
-            },
-            Narrowing::MemberTruthy { key, keep_matching } => Narrowing::MemberTruthy {
-                key: key.clone(),
-                keep_matching: *keep_matching,
-            },
-            Narrowing::ArrayLen(max) => Narrowing::ArrayLen(*max),
-            Narrowing::ArrayMinLen(min) => Narrowing::ArrayMinLen(*min),
-        }
+    fn for_origin(&self, reference: Option<&crate::semantic_db::flow::DeclMultiReturnRef>) -> Self {
+        let mut path = self.clone();
+        path.narrowings.retain_mut(|narrowing| {
+            if let Narrowing::Correlated(constraints) = narrowing {
+                constraints.retain(|constraint| {
+                    reference.is_some_and(|reference| {
+                        constraint.call == reference.call_expr.get_syntax_id()
+                            && constraint.return_index == reference.return_index
+                    })
+                });
+                !constraints.is_empty()
+            } else {
+                true
+            }
+        });
+        path
     }
 }
 
@@ -6271,6 +6478,8 @@ pub(crate) mod flow_metrics {
         fast_member_hits: u64,
         fast_target_hits: u64,
         trace_decl_entries: u64,
+        correlated_row_work: u64,
+        return_rows_built: u64,
     }
 
     impl FlowCounters {
@@ -6283,6 +6492,8 @@ pub(crate) mod flow_metrics {
             fast_member_hits: 0,
             fast_target_hits: 0,
             trace_decl_entries: 0,
+            correlated_row_work: 0,
+            return_rows_built: 0,
         };
     }
 
@@ -6311,6 +6522,22 @@ pub(crate) mod flow_metrics {
 
     pub(crate) fn record_trace_step() {
         bump(|c| c.trace_steps += 1);
+    }
+
+    pub(crate) fn record_correlated_row_work(work: u64) {
+        bump(|c| c.correlated_row_work += work);
+    }
+
+    pub(crate) fn correlated_row_work() -> u64 {
+        COUNTERS.with(|c| c.get().correlated_row_work)
+    }
+
+    pub(crate) fn record_return_rows_built(rows: u64) {
+        bump(|c| c.return_rows_built += rows);
+    }
+
+    pub(crate) fn return_rows_built() -> u64 {
+        COUNTERS.with(|c| c.get().return_rows_built)
     }
 
     pub(crate) fn record_branch_scan_step() {

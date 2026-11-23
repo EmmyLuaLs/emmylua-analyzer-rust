@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rowan::TextSize;
+use emmylua_parser::{LuaAstNode, LuaIndexExpr};
+use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorReturnMode, DeclKind, ModuleExport, SemanticId, TypeDefKind, TypeVisibility,
+    ConstructorReturnMode, DeclKind, LuaMemberKey, MemberSource, MemberUse, ModuleExport,
+    SemanticId, TypeDefKind, TypeVisibility,
 };
 use super::facts::FileFacts;
 use super::flow::{FlowId, FlowNodeKind};
@@ -14,7 +16,7 @@ use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::check::{CheckConfig, check_file};
 use crate::{
     DiagnosticCode, Emmyrc, EmmyrcWorkspaceModuleMap, FileId, LuaType, LuaTypeDeclId,
-    SemanticModel, WorkspaceFolder, WorkspaceId, file_path_to_uri,
+    SemanticModel, VirtualWorkspace, WorkspaceFolder, WorkspaceId, file_path_to_uri,
 };
 
 fn setup() -> SemanticDatabase {
@@ -563,6 +565,184 @@ fn test_member_type_via_name_reference() {
         &db.analysis().member_type(fid, a_local).expect("a type"),
         PrimitiveType::Integer,
     );
+}
+
+// 两种可选字段写法在直接查询声明类型时均应保留 nil, 包括未实例化的泛型.
+#[test]
+fn test_optional_field_member_type_includes_nil() {
+    let nil = TypeShell::from_primitive(PrimitiveType::Nil);
+
+    // value? string → string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional
+---@field value? string
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value? string");
+
+    // value string? → string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional
+---@field value string?
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value string?");
+
+    // value? T → T | nil, 泛型未实例化时同样保留 nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional<T>
+---@field value? T
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_generic("T");
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value? T");
+
+    // value T? → T | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+---@class Optional<T>
+---@field value T?
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| member.key.name() == Some("value"))
+        .expect("field");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_generic("T");
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "value T?");
+}
+
+// 从可选字段推导成员类型时应保留 nil, 包括泛型字段的实例化.
+#[test]
+fn test_optional_field_assignment_retains_nil_in_member_type() {
+    let nil = TypeShell::from_primitive(PrimitiveType::Nil);
+
+    // 非泛型: 形参类型就是字段所属类型, 赋值后成员类型应为 string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+local M = {}
+---@class Optional
+---@field value? string
+---@param optional Optional
+local function init(optional)
+    M.value = optional.value
+end
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| {
+            member.key.name() == Some("value")
+                && matches!(member.source, MemberSource::Runtime { .. })
+        })
+        .expect("inferred member");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "Optional");
+
+    // 泛型实例化: T 绑定为 string, 成员类型仍应为 string | nil.
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        "optional.lua",
+        r#"
+local M = {}
+---@class Optional<T>
+---@field value? T
+---@param optional Optional<string>
+local function init(optional)
+    M.value = optional.value
+end
+"#,
+    );
+    let facts = db.analysis().file_facts(fid).expect("facts");
+    let member = facts
+        .members
+        .iter()
+        .find(|member| {
+            member.key.name() == Some("value")
+                && matches!(member.source, MemberSource::Runtime { .. })
+        })
+        .expect("inferred member");
+    let actual = db
+        .analysis()
+        .member_type(fid, member.id.clone())
+        .expect("member type");
+    let mut expected = TypeShell::from_primitive(PrimitiveType::String);
+    expected.merge(&nil);
+    assert_eq!(actual, expected, "Optional<string>");
 }
 
 #[test]
@@ -2329,4 +2509,343 @@ fn test_parallel_for_each_file_runs_on_shared_snapshots() {
     });
 
     assert_eq!(visited.load(std::sync::atomic::Ordering::Relaxed), 2);
+}
+
+fn access<'a>(facts: &'a FileFacts, source: &str, expression: &str) -> &'a MemberUse {
+    let start = source.rfind(expression).unwrap();
+    let range = TextRange::new(
+        TextSize::from(start as u32),
+        TextSize::from((start + expression.len()) as u32),
+    );
+    facts
+        .member_uses
+        .iter()
+        .find(|usage| usage.syntax.get_range() == range)
+        .unwrap()
+}
+
+fn resolved_id(model: &SemanticModel<'_>, usage: &MemberUse) -> Option<SemanticId> {
+    let root = model.syntax_tree().unwrap().get_red_root();
+    let index = LuaIndexExpr::cast(usage.syntax.to_node_from_root(&root).unwrap()).unwrap();
+    model
+        .resolve_member(&index)
+        .and_then(|member| member.member_id)
+}
+
+// 相同末级字段按完整路径和词法声明分别建立身份, 根表不枚举嵌套字段.
+#[test]
+fn member_paths_separate_receivers_and_local_scopes() {
+    let source = r#"
+local t = { a = {}, b = {} }
+t.a.x = 1
+t.b.x = "outer"
+A = t.a.x
+B = t.b.x
+do
+    local t = { a = {} }
+    t.a.x = true
+    C = t.a.x
+end
+local u = { a = {} }
+u.a.x = 2
+D = u.a.x
+"#;
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def_file("paths.lua", source);
+    assert_eq!(ws.expr_ty("A"), LuaType::IntegerConst(1));
+    assert_eq!(
+        ws.expr_ty("B"),
+        LuaType::StringConst(SmolStr::new("outer").into())
+    );
+    assert_eq!(ws.expr_ty("C"), LuaType::BooleanConst(true));
+    assert_eq!(ws.expr_ty("D"), LuaType::IntegerConst(2));
+
+    let model = ws.analysis.semantic_model(file);
+    let facts = model.file_facts().unwrap();
+    let usages: Vec<_> = facts
+        .member_uses
+        .iter()
+        .filter(|usage| usage.key == LuaMemberKey::from("x") && usage.receiver.is_some())
+        .collect();
+    let roots: std::collections::HashSet<_> = usages
+        .iter()
+        .map(|usage| usage.receiver.as_ref().unwrap().root.clone())
+        .collect();
+    assert_eq!(roots.len(), 3);
+    for root in roots {
+        assert!(
+            facts
+                .members_of_owner(&root)
+                .all(|member| member.key != LuaMemberKey::from("x"))
+        );
+    }
+    let left = access(facts, source, "t.b.x");
+    let right = access(facts, source, "u.a.x");
+    assert_ne!(resolved_id(&model, left), resolved_id(&model, right));
+}
+
+// 静态键使用 Lua 语义, 点访问与字符串索引等价, 数字键不与字符串键合并.
+#[test]
+fn member_paths_normalize_syntax_without_stringifying_keys() {
+    let source = r#"
+local t = { a = {}, [1] = {}, ["1"] = {} }
+t.a.x = 1
+t[1].x = 2
+t["1"].x = "string"
+A = (t)["a"].x
+B = t[1].x
+C = t["1"].x
+t[2] = 3
+t["[2]"] = "brackets"
+D = t[2]
+E = t["[2]"]
+"#;
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def_file("keys.lua", source);
+    assert_eq!(ws.expr_ty("A"), LuaType::IntegerConst(1));
+    assert_eq!(ws.expr_ty("B"), LuaType::IntegerConst(2));
+    assert_eq!(
+        ws.expr_ty("C"),
+        LuaType::StringConst(SmolStr::new("string").into())
+    );
+    assert_eq!(ws.expr_ty("D"), LuaType::IntegerConst(3));
+    assert_eq!(
+        ws.expr_ty("E"),
+        LuaType::StringConst(SmolStr::new("brackets").into())
+    );
+    let model = ws.analysis.semantic_model(file);
+    let facts = model.file_facts().unwrap();
+    assert_eq!(
+        access(facts, source, "t.a.x").receiver,
+        access(facts, source, "(t)[\"a\"].x").receiver
+    );
+    assert_ne!(
+        access(facts, source, "t[1].x").receiver,
+        access(facts, source, "t[\"1\"].x").receiver
+    );
+}
+
+// self 的静态归属展开到方法接收者, 原始流路径仍绑定方法自己的参数.
+#[test]
+fn member_paths_keep_self_flow_identity_and_definition_sources() {
+    let source = r#"
+---@class T
+---@field documented number
+local T = { child = {} }
+function T:init()
+    self.child.x = 1
+    local value = self.child.x
+    local key
+    self[key].x = 2
+end
+"#;
+    let mut ws = VirtualWorkspace::new();
+    let file = ws.def_file("self.lua", source);
+    let model = ws.analysis.semantic_model(file);
+    let facts = model.file_facts().unwrap();
+    let usage = access(facts, source, "self.child.x");
+    let raw = usage.access_path.as_ref().unwrap();
+    let receiver = usage.receiver.as_ref().unwrap();
+    assert!(facts.decl_by_id(&raw.root).unwrap().is_implicit_self);
+    assert_eq!(receiver.root, facts.decl_named("T").unwrap().id);
+    assert_eq!(receiver.keys, vec![LuaMemberKey::from("child")]);
+    assert_ne!(raw.root, receiver.root);
+    assert!(
+        facts
+            .members
+            .iter()
+            .any(|member| matches!(member.source, MemberSource::DocField))
+    );
+    assert!(
+        facts
+            .members
+            .iter()
+            .any(|member| matches!(member.source, MemberSource::TableField { .. }))
+    );
+    assert!(
+        facts
+            .members
+            .iter()
+            .any(|member| matches!(member.source, MemberSource::Runtime { .. }))
+    );
+    let dynamic = access(facts, source, "self[key].x");
+    assert!(!dynamic.receiver.as_ref().unwrap().is_exact());
+    assert_eq!(
+        facts
+            .members_of_receiver_key(dynamic.receiver.as_ref().unwrap(), &dynamic.key)
+            .count(),
+        0
+    );
+}
+
+// 全局路径跨文件查找时保留语义键, 含点字符串也不会变成多段路径.
+#[test]
+fn member_paths_resolve_global_writes_across_files() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file(
+        "globals.lua",
+        r#"
+G = { a = { b = {} }, ["a.b"] = {} }
+G.a.b.x = 1
+G["a.b"].x = "literal"
+"#,
+    );
+    ws.def_file(
+        "read.lua",
+        r#"
+A = G.a.b.x
+B = G["a.b"].x
+"#,
+    );
+    assert_eq!(ws.expr_ty("A"), LuaType::Integer);
+    assert_eq!(ws.expr_ty("B"), LuaType::String);
+}
+
+// 调用推断和重复定义诊断也按接收者路径选择函数, 不串用兄弟路径的签名.
+#[test]
+fn member_paths_select_nested_callable_targets() {
+    let source = r#"
+local t = { a = {}, b = {} }
+---@return number
+function t.a.get() return 1 end
+---@return string
+function t.b.get() return "text" end
+A = t.a.get()
+B = t.b.get()
+"#;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("calls.lua", source);
+    assert_eq!(ws.expr_ty("A"), LuaType::Number);
+    assert_eq!(ws.expr_ty("B"), LuaType::String);
+    assert!(ws.has_no_diagnostic_in_namespace(DiagnosticCode::DuplicateSetField, source));
+}
+
+// 同一路径上的后续赋值由原有 flow 选择, 兄弟路径的赋值不覆盖它.
+#[test]
+fn member_paths_keep_reassignment_flow_on_the_same_path() {
+    let mut ws = VirtualWorkspace::new();
+    ws.def(
+        r#"
+local t = { a = {}, b = {} }
+t.a.x = 1
+t.b.x = false
+t.a.x = "latest"
+A = t.a.x
+B = t.b.x
+"#,
+    );
+    assert_eq!(
+        ws.expr_ty("A"),
+        LuaType::StringConst(SmolStr::new("latest").into())
+    );
+    assert_eq!(ws.expr_ty("B"), LuaType::BooleanConst(false));
+}
+
+// 未调用的嵌套闭包不能覆盖当前闭包中已赋值的成员.
+#[test]
+fn member_paths_ignore_uncalled_closure_writes() {
+    for source in [
+        r#"
+local t = {}
+t.value = 1
+local function update()
+    t.value = "uncalled"
+end
+Result = t.value
+"#,
+        r#"
+local t = { value = 1 }
+local function update()
+    t.value = "uncalled"
+end
+Result = t.value
+"#,
+        r#"
+local t = {}
+local function read()
+    t.value = 1
+    local function update()
+        t.value = "uncalled"
+    end
+    Result = t.value
+end
+"#,
+    ] {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(source);
+        assert_eq!(ws.expr_ty("Result"), LuaType::IntegerConst(1), "{source}");
+    }
+}
+
+// 初始化字段与后续赋值共用引用身份, 显式类型注解仍按成员解析的优先级选择.
+#[test]
+fn member_paths_keep_initializer_reference_identity() {
+    for source in [
+        r#"
+local t = { value = 1 }
+t.value = 2
+local result = t.value
+"#,
+        r#"
+local t = { value = 1 }
+---@type number
+t.value = 2
+local result = t.value
+"#,
+    ] {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def_file("references.lua", source);
+        let model = ws.analysis.semantic_model(file);
+        let facts = model.file_facts().unwrap();
+        let member = resolved_id(&model, access(facts, source, "t.value")).unwrap();
+        let expected: Vec<_> = facts
+            .member_uses
+            .iter()
+            .filter(|usage| usage.key == LuaMemberKey::from("value"))
+            .map(|usage| (file, usage.key_range))
+            .collect();
+        assert_eq!(expected.len(), 2);
+        assert_eq!(
+            ws.analysis.db.member_reference_ranges(&member),
+            expected,
+            "{source}"
+        );
+    }
+}
+
+// 模块导出字段的初始化身份同时关联模块内赋值和跨文件读取.
+#[test]
+fn member_paths_keep_module_initializer_reference_identity() {
+    let mut ws = VirtualWorkspace::new();
+    let module = ws.def_file(
+        "member_module.lua",
+        r#"
+local M = { value = 1 }
+M.value = 2
+return M
+"#,
+    );
+    let source = r#"
+local M = require("member_module")
+local result = M.value
+"#;
+    let file = ws.def_file("read_member.lua", source);
+    let model = ws.analysis.semantic_model(file);
+    let facts = model.file_facts().unwrap();
+    let usage = access(facts, source, "M.value");
+    let member = resolved_id(&model, usage).unwrap();
+    let module_facts = model.file_facts_of(module).unwrap();
+    assert!(matches!(
+        module_facts.member_by_id(&member).unwrap().source,
+        MemberSource::TableField { .. }
+    ));
+    let mut expected: Vec<_> = module_facts
+        .member_uses
+        .iter()
+        .filter(|usage| usage.key == LuaMemberKey::from("value"))
+        .map(|usage| (module, usage.key_range))
+        .collect();
+    expected.push((file, usage.key_range));
+    assert_eq!(expected.len(), 2);
+    assert_eq!(ws.analysis.db.member_reference_ranges(&member), expected);
 }

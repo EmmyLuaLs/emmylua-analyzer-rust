@@ -711,18 +711,18 @@ fn project_doc_type_with(
     substitutions: &HashMap<String, LuaType>,
 ) -> LuaType {
     let Some(tree) = semantic_model.syntax_tree_of(file_id) else {
-        return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+        return semantic_model.project_doc_type(file_id, syntax, &[]);
     };
     let Some(node) = syntax.to_node_from_root(&tree.get_red_root()) else {
-        return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+        return semantic_model.project_doc_type(file_id, syntax, &[]);
     };
     let Some(doc_ty) = LuaDocType::cast(node) else {
-        return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+        return semantic_model.project_doc_type(file_id, syntax, &[]);
     };
     match &doc_ty {
         LuaDocType::Name(name_ty) => {
             let Some(name) = name_ty.get_name_text() else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             if let Some(bound) = substitutions.get(&name) {
                 return bound.clone();
@@ -741,23 +741,23 @@ fn project_doc_type_with(
                     None,
                 )));
             }
-            semantic_model.doc_type_lua_rich_in(file_id, syntax)
+            semantic_model.project_doc_type(file_id, syntax, &[])
         }
         LuaDocType::Unary(unary) => {
             if !unary
                 .get_op_token()
                 .is_some_and(|op| op.get_op() == emmylua_parser::LuaTypeUnaryOperator::Keyof)
             {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             }
             let Some(target) = unary.get_type() else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             let LuaDocType::Name(name_ty) = &target else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             let Some(name) = name_ty.get_name_text() else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             if let Some(bound) = substitutions.get(&name) {
                 return keyof_type(semantic_model, bound);
@@ -778,11 +778,11 @@ fn project_doc_type_with(
                 )));
             }
             keyof_name(semantic_model, file_id, &name)
-                .unwrap_or_else(|| semantic_model.doc_type_lua_rich_in(file_id, syntax))
+                .unwrap_or_else(|| semantic_model.project_doc_type(file_id, syntax, &[]))
         }
         LuaDocType::Binary(binary) => {
             let Some((left, right)) = binary.get_types() else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             let left_ty = project_doc_type_with(
                 semantic_model,
@@ -814,12 +814,12 @@ fn project_doc_type_with(
                     }
                     LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
                 }
-                _ => semantic_model.doc_type_lua_rich_in(file_id, syntax),
+                _ => semantic_model.project_doc_type(file_id, syntax, &[]),
             }
         }
         LuaDocType::Conditional(conditional) => {
             let Some((condition, true_ty, false_ty)) = conditional.get_types() else {
-                return semantic_model.doc_type_lua_rich_in(file_id, syntax);
+                return semantic_model.project_doc_type(file_id, syntax, &[]);
             };
             let take_true = if let LuaDocType::Binary(condition_binary) = &condition {
                 condition_binary.get_types().is_some_and(|(left, right)| {
@@ -855,7 +855,7 @@ fn project_doc_type_with(
                 substitutions,
             )
         }
-        _ => semantic_model.doc_type_lua_rich_in(file_id, syntax),
+        _ => semantic_model.project_doc_type(file_id, syntax, &[]),
     }
 }
 

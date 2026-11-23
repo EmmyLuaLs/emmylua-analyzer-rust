@@ -117,7 +117,7 @@ fn doc_signature_for_decl(
             .param_types
             .iter()
             .find(|(param_name, _)| param_name == name)
-            .map(|(_, syntax)| semantic_model.doc_type_lua_rich_in(decl_key.file_id, *syntax))
+            .map(|(_, syntax)| semantic_model.project_doc_type(decl_key.file_id, *syntax, &[]))
             .unwrap_or(LuaType::Any);
         if docs.nullable_params.iter().any(|n| n == name) {
             ty = LuaType::make_nullable(ty);

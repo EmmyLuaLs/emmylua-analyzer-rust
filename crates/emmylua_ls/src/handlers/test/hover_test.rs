@@ -993,4 +993,81 @@ mod tests {
         );
         Ok(())
     }
+
+    /// A workspace global class must extend the matching stdlib module instead
+    /// of replacing it, including modules whose stdlib class is named
+    /// differently (`os`/`oslib`, `table`/`tablelib`, ...).
+    #[gtest]
+    fn test_hover_merges_stdlib_with_workspace_class() -> Result<()> {
+        let modules = [
+            ("os", "date"),
+            ("table", "insert"),
+            ("math", "abs"),
+            ("io", "open"),
+            ("package", "searchpath"),
+            ("coroutine", "create"),
+            ("debug", "traceback"),
+            ("utf8", "len"),
+            ("string", "format"),
+        ];
+        for with_assignment in [false, true] {
+            let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+            let mut sources = Vec::new();
+            for (module, _) in modules {
+                let mut source =
+                    format!("---@meta\n---@class {module}\n---@field custom_extra fun(): string\n");
+                if with_assignment {
+                    source.push_str(&format!("\n---@type {module}\n{module} = {{}}\n"));
+                }
+                ws.def_file(&format!("{module}.lua"), &source);
+                sources.push((module, source));
+            }
+
+            for ((module, std_member), _) in modules.into_iter().zip(sources) {
+                for expected in [std_member, "custom_extra"] {
+                    let block = format!("local x = {module}.<??>{expected}");
+                    let (content, position) =
+                        ProviderVirtualWorkspace::handle_file_content(&block).unwrap();
+                    let file_id = ws.def(&content);
+                    let result = hover(&ws.analysis, file_id, position).unwrap_or_else(|| {
+                        panic!(
+                            "expected hover for {module}.{expected} \
+                             (assignment: {with_assignment})"
+                        )
+                    });
+                    let HoverContents::Markup(content) = result.contents else {
+                        panic!("expected markup hover for {module}.{expected}");
+                    };
+                    assert!(
+                        content.value.contains(expected),
+                        "hover for {module}.{expected} lost the member\n\
+                         (assignment: {with_assignment}):\n{}",
+                        content.value
+                    );
+                    if expected == "custom_extra" {
+                        assert!(
+                            content.value.contains("-> string"),
+                            "hover for {module}.{expected} lost its return type\n\
+                             (assignment: {with_assignment}):\n{}",
+                            content.value
+                        );
+                    } else {
+                        assert!(
+                            content.value.contains("function") || content.value.contains("fun("),
+                            "hover for {module}.{expected} is not a function signature\n\
+                             (assignment: {with_assignment}):\n{}",
+                            content.value
+                        );
+                    }
+                    assert!(
+                        !content.value.contains("unknown"),
+                        "hover for {module}.{expected} became unknown\n\
+                         (assignment: {with_assignment}):\n{}",
+                        content.value
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }

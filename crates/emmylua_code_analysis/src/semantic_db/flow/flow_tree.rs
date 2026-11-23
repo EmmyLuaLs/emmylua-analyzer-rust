@@ -554,9 +554,9 @@ impl FlowTree {
         decl_id: &SemanticId,
         position: TextSize,
         flow_id: FlowId,
-    ) -> (Vec<DeclMultiReturnRef>, bool) {
+    ) -> (Vec<DeclMultiReturnRef>, Vec<FlowId>) {
         let mut refs = Vec::new();
-        let mut has_non_reference_origin = false;
+        let mut non_reference_origins = Vec::new();
         let mut visited = HashSet::new();
         self.collect_decl_multi_return_refs_at(
             decl_id,
@@ -564,9 +564,9 @@ impl FlowTree {
             flow_id,
             &mut visited,
             &mut refs,
-            &mut has_non_reference_origin,
+            &mut non_reference_origins,
         );
-        (refs, has_non_reference_origin)
+        (refs, non_reference_origins)
     }
 
     fn collect_decl_multi_return_refs_at(
@@ -576,7 +576,7 @@ impl FlowTree {
         flow_id: FlowId,
         visited: &mut HashSet<FlowId>,
         refs: &mut Vec<DeclMultiReturnRef>,
-        has_non_reference_origin: &mut bool,
+        non_reference_origins: &mut Vec<FlowId>,
     ) {
         if !visited.insert(flow_id) {
             return;
@@ -586,17 +586,17 @@ impl FlowTree {
             if let Some(reference) = &at.reference {
                 refs.push(reference.clone());
             } else {
-                *has_non_reference_origin = true;
+                non_reference_origins.push(flow_id);
             }
             return;
         }
 
         let Some(flow_node) = self.get_flow_node(flow_id) else {
-            *has_non_reference_origin = true;
+            non_reference_origins.push(flow_id);
             return;
         };
         let Some(antecedent) = flow_node.antecedent.as_ref() else {
-            *has_non_reference_origin = true;
+            non_reference_origins.push(flow_id);
             return;
         };
         match antecedent {
@@ -607,7 +607,7 @@ impl FlowTree {
                     *next_flow_id,
                     visited,
                     refs,
-                    has_non_reference_origin,
+                    non_reference_origins,
                 );
             }
             FlowAntecedent::Multiple(multi_id) => {
@@ -619,11 +619,11 @@ impl FlowTree {
                             next_flow_id,
                             visited,
                             refs,
-                            has_non_reference_origin,
+                            non_reference_origins,
                         );
                     }
                 } else {
-                    *has_non_reference_origin = true;
+                    non_reference_origins.push(flow_id);
                 }
             }
         }

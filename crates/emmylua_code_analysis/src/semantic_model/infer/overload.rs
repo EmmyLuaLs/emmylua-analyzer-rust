@@ -169,8 +169,7 @@ fn expand_union_alias_members(model: &SemanticModel, ty: &mut LuaType) {
 
 /// Resolve the `self` type of a callable type.
 ///
-/// Mirrors the old `call_operator_self_type`: only `---@overload` /
-/// `---@operator call` on a `---@class` provides `self`; plain function types do not.
+/// Only `---@overload` / `---@operator call` on a `---@class` provides `self`; plain function types do not.
 /// A union keeps only callable members, aliases pass through to the real callable type,
 /// and if an intersection is callable as a whole, `self` is the whole intersection.
 pub(crate) fn call_operator_self_type(model: &SemanticModel, ty: &LuaType) -> Option<LuaType> {
@@ -728,13 +727,16 @@ pub fn pcall_return_type(callback_ret: LuaType, include_error_string: bool) -> L
     }
 
     // Only Multi lists separate result slots. Keep a repeated tail as a sequence.
-    let callback_slots = if let LuaType::Variadic(variadic) = &callback_ret
+    let mut callback_slots = if let LuaType::Variadic(variadic) = &callback_ret
         && let VariadicType::Multi(types) = variadic.as_ref()
     {
         types.clone()
     } else {
         vec![callback_ret]
     };
+    if callback_slots.is_empty() && include_error_string {
+        callback_slots.push(LuaType::Nil);
+    }
     let mut slots = vec![LuaType::Boolean];
     for (index, ty) in callback_slots.into_iter().enumerate() {
         let slot = if index == 0 && include_error_string {

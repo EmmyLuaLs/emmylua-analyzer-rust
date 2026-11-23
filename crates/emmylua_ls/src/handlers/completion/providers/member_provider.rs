@@ -2,10 +2,12 @@
 
 use emmylua_code_analysis::{
     DeclKind, FileId, LuaAliasCallKind, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
-    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDefKind,
+    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDef, TypeDefKind,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
+use std::collections::HashSet;
+use std::rc::Rc;
 
 use crate::handlers::hover::render::humanize;
 
@@ -14,7 +16,7 @@ use crate::handlers::completion::{
     completion_data::{CompletionData, CompletionDataType},
 };
 
-use super::{CompletionProvider, ProviderDecision};
+use super::{CompletionProvider, ProviderDecision, function_provider::resolve_function_type};
 
 pub struct MemberProvider;
 
@@ -158,7 +160,8 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 
     if completion_status == CompletionTriggerStatus::Colon {
         for member in members {
-            if member.typ.is_function() {
+            let non_nil_typ = remove_nil_from_callable_type(builder, &member.typ);
+            if non_nil_typ.as_ref().unwrap_or(&member.typ).is_function() {
                 add_member_completion(builder, member, completion_status)?;
             }
         }
@@ -318,27 +321,55 @@ fn associated_type_member_infos(
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
         return Vec::new();
     };
-    let Some(decl) = model.resolve_name(name_expr.get_position()) else {
-        return Vec::new();
-    };
-    let SemanticId::Decl(key) = &decl else {
-        return Vec::new();
-    };
-    let Some(facts) = model.file_facts_of(key.file_id) else {
-        return Vec::new();
-    };
-    let Some(decl_info) = facts.decl_by_id(&decl) else {
-        return Vec::new();
-    };
-    let Some(def) = facts
-        .type_defs
-        .iter()
-        .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl_info.owner_syntax)
-    else {
-        return Vec::new();
-    };
-    let mut owners = vec![def.id.clone(), decl.clone()];
-    owners.dedup();
+    let mut owners = Vec::new();
+    let mut is_global_runtime = false;
+    let resolved_decl = model.resolve_name(name_expr.get_position());
+
+    // The runtime value declaration and the class declared above it.
+    if let Some(decl) = &resolved_decl
+        && let SemanticId::Decl(key) = decl
+        && let Some(facts) = model.file_facts_of(key.file_id)
+        && let Some(decl_info) = facts.decl_by_id(decl)
+    {
+        is_global_runtime = matches!(decl_info.kind, DeclKind::Global);
+        if let Some(def) = facts
+            .type_defs
+            .iter()
+            .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl_info.owner_syntax)
+        {
+            push_type_and_bases(model, def, &mut owners);
+            owners.push(decl.clone());
+        }
+    }
+
+    // Standard library modules often name their type differently from the global
+    // table (`---@class oslib` + `os = {}`). A workspace `---@class os` extends
+    // that module, so complete its members alongside the stdlib ones.
+    //
+    // Only global prefixes inherit these members: a local `local os = {}` shadows
+    // the global `os` and must not expose unrelated stdlib members. A missing
+    // runtime declaration is still a global name (workspace `---@class os` only).
+    if let Some(name) = name_expr.get_name_text()
+        && (resolved_decl.is_none() || is_global_runtime)
+    {
+        // Runtime members of the global table (`function os.date`).
+        owners.push(SemanticId::name(name.as_str().into()));
+        if let Some(def) = model.resolve_type_def(&name) {
+            push_type_and_bases(model, &def, &mut owners);
+        }
+    }
+
+    // `TypeDef`s are pushed from several independent sources (owner-syntax class,
+    // same-named global class, their base types), so duplicate identities may be
+    // non-adjacent; `Vec::dedup` would miss them.
+    let mut seen = HashSet::new();
+    owners.retain(|owner| seen.insert(owner.clone()));
+    member_infos_of_owners(model, owners)
+}
+
+/// Add a type definition and its parents to a member-owner list.
+fn push_type_and_bases(model: &SemanticModel<'_>, def: &TypeDef, owners: &mut Vec<SemanticId>) {
+    owners.push(def.id.clone());
     let mut super_stack = model.base_type_defs(&def.type_decl_id());
     let mut visited_supers = Vec::new();
     while let Some(parent) = super_stack.pop() {
@@ -349,8 +380,6 @@ fn associated_type_member_infos(
         owners.push(parent.id.clone());
         super_stack.extend(model.base_type_defs(&parent.type_decl_id()));
     }
-    owners.dedup();
-    member_infos_of_owners(model, owners)
 }
 
 /// Members of the table a class annotates (`---@class iolib` above `io = {}`): they belong to
@@ -478,6 +507,30 @@ fn index_alias_name(builder: &CompletionBuilder, member_file: Option<FileId>) ->
     Some(inner[..end].to_string())
 }
 
+fn remove_nil_from_callable_type(builder: &CompletionBuilder, typ: &LuaType) -> Option<LuaType> {
+    let LuaType::Union(union) = typ else {
+        return None;
+    };
+    let components = union.into_vec();
+    if !components.iter().any(|component| component.is_nil()) {
+        return None;
+    }
+    let mut callables = Vec::new();
+    for component in components.iter().filter(|component| !component.is_nil()) {
+        if component.is_function() {
+            callables.push(component.clone());
+            continue;
+        }
+        let mut visited = Vec::new();
+        let fun = resolve_function_type(builder, component, &mut visited)?;
+        callables.push(LuaType::DocFunction(Rc::new(fun)));
+    }
+    if callables.is_empty() {
+        return None;
+    }
+    Some(LuaType::from_vec(callables))
+}
+
 fn add_member_completion(
     builder: &mut CompletionBuilder,
     info: MemberInfo,
@@ -522,7 +575,9 @@ fn add_member_completion(
         return None;
     }
 
-    let typ = &info.typ;
+    let raw_typ = &info.typ;
+    let non_nil_typ = remove_nil_from_callable_type(builder, raw_typ);
+    let typ = non_nil_typ.as_ref().unwrap_or(raw_typ);
     let skip_self = info.is_method
         || matches!(typ, LuaType::DocFunction(func) if func.is_colon_define())
         || matches!(typ, LuaType::DocFunction(func)

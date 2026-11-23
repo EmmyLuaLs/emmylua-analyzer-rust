@@ -551,7 +551,7 @@ fn doc_func_from_syntax(
                 String::new(),
                 param
                     .get_type()
-                    .map(|ty| semantic_model.doc_type_lua_rich_in(file_id, ty.get_syntax_id())),
+                    .map(|ty| semantic_model.project_doc_type(file_id, ty.get_syntax_id(), &[])),
             )
         })
         .collect();

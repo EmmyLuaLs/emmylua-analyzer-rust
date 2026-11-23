@@ -1680,7 +1680,7 @@ mod test {
                     version,
                     "select(3, package.loadlib(\"/lib/libfoo.so\", \"foo\"))"
                 ),
-                "(\"init\"|\"open\")?",
+                "(\"open\"|\"init\")?",
                 "package.loadlib must expose the failure location in {version:?}"
             );
         }
@@ -1903,5 +1903,83 @@ mod test {
                 .any(|code| code == "unresolved-require"),
             "string.buffer must be available in LuaJIT"
         );
+    }
+
+    #[test]
+    fn test_utf8_offset_requires_n() {
+        // `n` is mandatory in every Lua that ships the utf8 library: lutf8lib.c
+        // reads it with luaL_checkinteger(L, 2). The old one-argument
+        // `@overload fun(s: string): integer` was invalid.
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            let diagnostics = diagnostic_codes_for(version, "utf8.offset('abc')");
+            assert!(
+                diagnostics.iter().any(|code| code == "missing-parameter"),
+                "utf8.offset(s) must be rejected in {version:?}: {diagnostics:?}"
+            );
+            assert!(
+                diagnostic_codes_for(version, "utf8.offset('abc', 1)").is_empty(),
+                "utf8.offset(s, n) must be accepted in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_utf8_offset_returns_start_and_final_position() {
+        // The start position can be nil when the character is not found
+        // (luaL_pushfail), in every version that ships the library.
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert_eq!(
+                local_type_for(version, "local start = utf8.offset('abc', 1)", "start"),
+                "integer?",
+                "the start position may be nil in {version:?}"
+            );
+        }
+
+        // The final position only exists in Lua 5.5. Version-scoped
+        // signatures for std global-table members are not available in this
+        // tree (`fix(semantic): prefer version-visible members on std global
+        // tables` is a separate change), so the annotation deliberately models
+        // the second result as optional for Lua 5.3/5.4 as well. It is nil
+        // there at runtime.
+        for version in [
+            EmmyrcLuaVersion::Lua53,
+            EmmyrcLuaVersion::Lua54,
+            EmmyrcLuaVersion::Lua55,
+        ] {
+            assert_eq!(
+                local_type_for(
+                    version,
+                    "local start, finish = utf8.offset('abc', 1)",
+                    "finish"
+                ),
+                "integer?",
+                "the final position is optional in {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_utf8_offset_is_hidden_before_5_3() {
+        // The utf8 library (and utf8.offset in particular) is not part of
+        // PUC Lua 5.1/5.2 or LuaJIT.
+        for version in [
+            EmmyrcLuaVersion::Lua51,
+            EmmyrcLuaVersion::Lua52,
+            EmmyrcLuaVersion::LuaJIT,
+        ] {
+            assert_eq!(
+                expr_type_for(version, "utf8.offset('abc', 1)"),
+                "unknown",
+                "utf8.offset must be hidden in {version:?}"
+            );
+        }
     }
 }
