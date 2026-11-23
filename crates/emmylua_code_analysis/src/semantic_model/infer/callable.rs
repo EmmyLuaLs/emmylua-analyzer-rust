@@ -74,7 +74,12 @@ impl CallableCandidateSet {
                 candidates.extend(resolved_candidates);
             }
         }
-        let infos = member::member_infos_with_key_all(model, prefix_type, key);
+        let infos = member::member_infos_with_key_mode(
+            model,
+            prefix_type,
+            key,
+            member::MemberCollectMode::Effective,
+        );
         for info in infos {
             if !allow_cross_file
                 && let (Some(info_file), Some(member_file)) = (info.file_id, member_file)

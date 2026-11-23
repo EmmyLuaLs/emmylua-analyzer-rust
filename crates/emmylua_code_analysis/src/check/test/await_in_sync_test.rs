@@ -3,6 +3,35 @@ mod test {
     use crate::DiagnosticCode;
     use crate::VirtualWorkspace;
 
+    // 函数字段及其别名都必须拒绝把异步函数传给同步回调参数.
+    #[test]
+    fn test_doc_projection_sync_callback_field() {
+        for field_type in ["fun(callback: sync fun())", "Run"] {
+            for (annotation, accepted) in [("---@async", false), ("", true)] {
+                let mut ws = VirtualWorkspace::new();
+                assert_eq!(
+                    ws.has_no_diagnostic(
+                        DiagnosticCode::AwaitInSync,
+                        &format!(
+                            r#"
+                            ---@alias Run fun(callback: sync fun())
+                            ---@class Runner
+                            ---@field run {field_type}
+                            ---@type Runner
+                            local runner
+                            {annotation}
+                            local function callback() end
+                            runner.run(callback)
+                            "#,
+                        ),
+                    ),
+                    accepted,
+                    "{field_type}, {annotation}",
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_await_in_sync() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();

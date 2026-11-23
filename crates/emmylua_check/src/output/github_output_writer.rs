@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use emmylua_code_analysis::{FileId, SemanticDatabase};
 use lsp_types::{Diagnostic, DiagnosticSeverity};
@@ -67,8 +67,8 @@ fn escape_message(text: &str) -> String {
 
 /// Strips the Windows `\\?\` extended-length prefix produced by
 /// `Path::canonicalize`, so it can be used with `strip_prefix`.
-fn strip_extended_prefix(path: &std::path::Path) -> std::path::PathBuf {
+fn strip_extended_prefix(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
     let stripped = s.strip_prefix(r"\\?\").unwrap_or(&s);
-    std::path::PathBuf::from(stripped.to_string())
+    PathBuf::from(stripped.to_string())
 }

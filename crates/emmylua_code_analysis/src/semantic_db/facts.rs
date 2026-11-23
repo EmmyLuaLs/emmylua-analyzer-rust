@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExpr, LuaChunk,
-    LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
+    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExpr,
+    LuaChunk, LuaClosureExpr, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
     LuaDocTagAttributeUse, LuaDocTagDiagnostic, LuaDocTagField, LuaDocType, LuaDocTypeFlag,
     LuaExpr, LuaFuncStat, LuaIfClauseStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr,
     LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaNameToken, LuaStat, LuaSyntaxId, LuaSyntaxKind,
@@ -20,14 +20,16 @@ use smol_str::SmolStr;
 use crate::DiagnosticCode;
 use crate::FileId;
 use crate::semantic_db::def::SignatureReturnCast;
+use crate::semantic_db::types::exact_integer;
 
 use super::index::{Bucket, build_buckets, find_bucket};
 
+use super::def::operator::is_operator_name;
 use super::def::{
-    ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam, LuaMemberKey,
-    Member, ModuleExport, ModuleVisibility, NameUse, OperatorDef, Scope, ScopeChild, ScopeKind,
-    SemanticId, Signature, SignatureDoc, TypeDef, TypeDefFlags, TypeDefKind, TypeScope,
-    TypeVisibility,
+    AccessPath, ConstructorAttribute, ConstructorReturnMode, Decl, DeclKind, DocGenericParam,
+    LuaMemberKey, Member, MemberSource, MemberUse, ModuleExport, ModuleVisibility, NameUse,
+    OperatorDef, Scope, ScopeChild, ScopeKind, SemanticId, Signature, SignatureDoc, TypeDef,
+    TypeDefFlags, TypeDefKind, TypeScope, TypeVisibility,
 };
 use crate::WorkspaceId;
 use emmylua_parser::VisibilityKind;
@@ -87,7 +89,7 @@ pub struct FileFacts {
     pub name_uses: Vec<NameUse>,
     /// All index-expression use sites in the file (`a.b` / `arr[1]` / `t[k]`).
     /// For on-demand cross-file reference index resolution, avoiding cross-file resolve during FileFacts.
-    pub member_uses: Vec<LuaSyntaxId>,
+    pub member_uses: Vec<MemberUse>,
     pub signatures: Vec<Signature>,
     pub module_export: ModuleExport,
     /// Module export visibility (`---@meta no-require` → Hide; export target `---@internal/@public` tags).
@@ -104,7 +106,7 @@ pub struct FileFacts {
     pub usings: Vec<SmolStr>,
     /// `---@diagnostic disable-next-line/disable-line/disable` annotations (range-matched).
     pub diagnostic_disables: Vec<DiagnosticDisable>,
-    /// File-level `---@diagnostic disable: code`.
+    /// File-level `---@diagnostic disable: code` (all codes when the code list is empty).
     pub file_diagnostic_disabled: HashSet<DiagnosticCode>,
     /// File-level `---@diagnostic enable: code` (force-enable, overriding global config disables).
     pub file_diagnostic_enabled: HashSet<DiagnosticCode>,
@@ -124,6 +126,8 @@ pub struct FileFacts {
     decl_by_name: Vec<Bucket<SmolStr>>,
     decl_by_id: HashMap<SemanticId, usize>,
     member_by_id: HashMap<SemanticId, usize>,
+    member_use_by_syntax: HashMap<LuaSyntaxId, usize>,
+    members_by_receiver: HashMap<AccessPath, HashMap<LuaMemberKey, Vec<usize>>>,
     member_by_value_syntax: HashMap<LuaSyntaxId, usize>,
     type_def_by_id: HashMap<SemanticId, usize>,
     members_by_owner: HashMap<SemanticId, Vec<usize>>,
@@ -217,6 +221,115 @@ impl FileFacts {
     pub fn member_by_id(&self, id: &SemanticId) -> Option<&Member> {
         let index = self.member_by_id.get(id)?;
         self.members.get(*index)
+    }
+
+    pub fn member_use(&self, syntax: LuaSyntaxId) -> Option<&MemberUse> {
+        self.member_uses
+            .get(*self.member_use_by_syntax.get(&syntax)?)
+    }
+
+    fn name_reference(&self, syntax: LuaSyntaxId) -> Option<SemanticId> {
+        let usage = self.name_use_at_offset(syntax.get_range().start())?;
+        if usage.syntax != syntax {
+            return None;
+        }
+        Some(
+            self.find_visible_decl_before_offset(&usage.name, syntax.get_range().start())
+                .filter(|decl| !matches!(decl.kind, DeclKind::Global))
+                .map(|decl| decl.id.clone())
+                .unwrap_or_else(|| SemanticId::name(usage.name.clone())),
+        )
+    }
+
+    /// `owner[key_expr]` 的候选成员: 按键表达式的词法引用关联同一变量声明的字段.
+    /// 变量取值无法静态确定, 结果可能为空或存在多个.
+    pub fn members_of_owner_computed_key(
+        &self,
+        owner: &SemanticId,
+        key_expr: LuaSyntaxId,
+    ) -> impl Iterator<Item = &Member> {
+        let reference = self.name_reference(key_expr);
+        self.members_of_owner(owner).filter(move |member| {
+            let MemberSource::TableField {
+                key_expr: Some(key),
+            } = member.source
+            else {
+                return false;
+            };
+            reference.is_some() && self.name_reference(key) == reference
+        })
+    }
+
+    pub fn member_receiver(&self, member: &Member) -> Option<&AccessPath> {
+        let MemberSource::Runtime { access } = member.source else {
+            return None;
+        };
+        self.member_use(access)?.receiver.as_ref()
+    }
+
+    pub fn members_of_receiver_key(
+        &self,
+        receiver: &AccessPath,
+        key: &LuaMemberKey,
+    ) -> impl Iterator<Item = &Member> {
+        self.members_by_receiver
+            .get(receiver)
+            .and_then(|members| members.get(key))
+            .into_iter()
+            .flatten()
+            .map(|&index| &self.members[index])
+    }
+
+    /// 在本文件内为一次索引访问选定成员; 候选不唯一时以显式注解优先, 其次取源码靠前的声明.
+    pub(crate) fn member_for_use(&self, usage: &MemberUse) -> Option<&Member> {
+        let priority = |member: &&Member| {
+            (
+                member.doc_type_syntax.is_none(),
+                member.id.member_key_range().map(|range| range.start()),
+            )
+        };
+        let runtime = usage.receiver.as_ref().and_then(|receiver| {
+            self.members_of_receiver_key(receiver, &usage.key)
+                .min_by_key(priority)
+        });
+        let Some(owner) = usage.owner.as_ref().filter(|_| usage.has_direct_owner()) else {
+            return runtime;
+        };
+        let is_non_runtime =
+            |member: &&Member| !matches!(member.source, MemberSource::Runtime { .. });
+        let declared = match (&usage.key, usage.key_expr) {
+            (LuaMemberKey::Name(name), _) => self
+                .members_of_owner_named(owner, name)
+                .filter(is_non_runtime)
+                .min_by_key(priority),
+            (LuaMemberKey::None, Some(key_expr)) => self
+                .members_of_owner_computed_key(owner, key_expr)
+                .filter(is_non_runtime)
+                .min_by_key(priority),
+            _ => self
+                .members_of_owner(owner)
+                .filter(is_non_runtime)
+                .filter(|member| member.key == usage.key)
+                .min_by_key(priority),
+        };
+        runtime.into_iter().chain(declared).min_by_key(priority)
+    }
+
+    /// 成员的规范定义; 运行时写入的成员解析到该写入所指向的成员, 其余成员即为自身.
+    pub(crate) fn member_definition(&self, id: &SemanticId) -> Option<&Member> {
+        let member = self.member_by_id(id)?;
+        match member.source {
+            MemberSource::Runtime { access } => self.member_for_use(self.member_use(access)?),
+            _ => Some(member),
+        }
+    }
+
+    /// 成员是否直接属于根容器; 局部变量的嵌套写入 (`local t; t.a.b = 1`) 只算接收者上的成员.
+    pub fn is_direct_member(&self, member: &Member) -> bool {
+        match self.member_receiver(member) {
+            Some(receiver) => receiver.is_exact() && receiver.has_direct_owner(),
+            None => !matches!(member.source, MemberSource::Runtime { .. }),
+        }
     }
 
     pub fn member_by_value_syntax(&self, syntax: LuaSyntaxId) -> Option<&Member> {
@@ -518,7 +631,8 @@ pub struct FactsBuilder {
     type_defs: Vec<TypeDef>,
     members: Vec<Member>,
     name_uses: Vec<NameUse>,
-    member_uses: Vec<LuaSyntaxId>,
+    member_uses: Vec<MemberUse>,
+    member_use_by_syntax: HashMap<LuaSyntaxId, usize>,
     signatures: Vec<Signature>,
     module_export: ModuleExport,
     operators: Vec<OperatorDef>,
@@ -600,43 +714,109 @@ enum ModuleConditionState {
 }
 
 fn module_condition_state(expr: &LuaExpr) -> ModuleConditionState {
-    match module_static_truthiness(expr) {
+    match static_truthiness(expr) {
         Some(true) => ModuleConditionState::Truthy,
         Some(false) => ModuleConditionState::Falsy,
         None => ModuleConditionState::Dynamic,
     }
 }
 
-fn module_static_truthiness(expr: &LuaExpr) -> Option<bool> {
+/// Syntax-level constant folding: `1 == 1` / `true` / `{}` / `function() end`.
+/// The VM only gives broad `Boolean` / `Number` types, so comparison results must be computed from literals.
+pub(crate) fn static_truthiness(expr: &LuaExpr) -> Option<bool> {
     match expr {
-        LuaExpr::LiteralExpr(literal_expr) => match literal_expr.get_literal()? {
-            LuaLiteralToken::Bool(bool_token) => Some(bool_token.is_true()),
-            LuaLiteralToken::Nil(_) => Some(false),
-            LuaLiteralToken::String(_) | LuaLiteralToken::Number(_) => Some(true),
-            LuaLiteralToken::Dots(_) | LuaLiteralToken::Question(_) => None,
+        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
+            Some(LuaLiteralToken::Nil(_)) => Some(false),
+            Some(LuaLiteralToken::Bool(token)) => Some(token.is_true()),
+            Some(LuaLiteralToken::String(_)) | Some(LuaLiteralToken::Number(_)) => Some(true),
+            _ => None,
         },
-        LuaExpr::ParenExpr(paren_expr) => module_static_truthiness(&paren_expr.get_expr()?),
-        LuaExpr::UnaryExpr(unary_expr)
-            if unary_expr
-                .get_op_token()
-                .is_some_and(|op| op.get_op() == UnaryOperator::OpNot) =>
-        {
-            module_static_truthiness(&unary_expr.get_expr()?).map(|truthy| !truthy)
-        }
-        // Table literals / closures are always truthy in Lua.
         LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_) => Some(true),
+        LuaExpr::ParenExpr(paren) => paren.get_expr().and_then(|inner| static_truthiness(&inner)),
+        LuaExpr::UnaryExpr(unary) => {
+            if unary
+                .get_op_token()
+                .is_some_and(|op| op.get_op() == UnaryOperator::OpNot)
+            {
+                unary
+                    .get_expr()
+                    .and_then(|inner| static_truthiness(&inner).map(|truthy| !truthy))
+            } else {
+                None
+            }
+        }
+        LuaExpr::BinaryExpr(binary) => {
+            let (left, right) = binary.get_exprs()?;
+            let op = binary.get_op_token()?.get_op();
+            match op {
+                BinaryOperator::OpAnd => match static_truthiness(&left) {
+                    Some(false) => Some(false),
+                    Some(true) => static_truthiness(&right),
+                    _ => None,
+                },
+                BinaryOperator::OpOr => match static_truthiness(&left) {
+                    Some(true) => Some(true),
+                    Some(false) => static_truthiness(&right),
+                    _ => None,
+                },
+                BinaryOperator::OpEq | BinaryOperator::OpNe => {
+                    let (left_value, right_value) = (static_value(&left)?, static_value(&right)?);
+                    let equal = left_value == right_value;
+                    let truthy = if op == BinaryOperator::OpEq {
+                        equal
+                    } else {
+                        !equal
+                    };
+                    Some(truthy)
+                }
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
 
-fn module_block_flow(block: LuaBlock) -> ModuleReturnFlow {
+#[derive(Debug, Clone, PartialEq)]
+enum StaticValue {
+    Nil,
+    Bool(bool),
+    Number(f64),
+    String(String),
+}
+
+fn static_value(expr: &LuaExpr) -> Option<StaticValue> {
+    match expr {
+        LuaExpr::LiteralExpr(literal) => match literal.get_literal() {
+            Some(LuaLiteralToken::Nil(_)) => Some(StaticValue::Nil),
+            Some(LuaLiteralToken::Bool(token)) => Some(StaticValue::Bool(token.is_true())),
+            Some(LuaLiteralToken::String(token)) => Some(StaticValue::String(token.get_value())),
+            Some(LuaLiteralToken::Number(token)) => match token.get_number_value() {
+                // A runtime can use integers or doubles. Fold only exact conversions.
+                NumberResult::Int(i) if i.unsigned_abs() <= 1 << 53 => {
+                    Some(StaticValue::Number(i as f64))
+                }
+                NumberResult::Uint(u) if u <= 1 << 53 => Some(StaticValue::Number(u as f64)),
+                NumberResult::Float(f) => Some(StaticValue::Number(f)),
+                _ => None,
+            },
+            _ => None,
+        },
+        LuaExpr::ParenExpr(paren) => paren.get_expr().and_then(|inner| static_value(&inner)),
+        _ => None,
+    }
+}
+
+fn module_block_flow(
+    block: LuaBlock,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     let mut flow = ModuleReturnFlow::default();
     let mut can_fall_through = true;
     for stat in block.get_stats() {
         if !can_fall_through {
             break;
         }
-        let stat_flow = module_stat_flow(stat);
+        let stat_flow = module_stat_flow(stat, is_never_call);
         flow.merge_choice(stat_flow.clone());
         can_fall_through = stat_flow.can_fall_through;
     }
@@ -644,16 +824,44 @@ fn module_block_flow(block: LuaBlock) -> ModuleReturnFlow {
     flow
 }
 
-fn module_optional_block_flow(block: Option<LuaBlock>) -> ModuleReturnFlow {
+pub(crate) fn closure_can_fall_through(
+    closure: &LuaClosureExpr,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> bool {
+    // A jump can skip a return; the structured block analysis does not follow it.
+    if closure
+        .descendants::<emmylua_parser::LuaGotoStat>()
+        .next()
+        .is_some()
+    {
+        return true;
+    }
+    let block = closure.get_block().or_else(|| {
+        closure
+            .syntax()
+            .parent()?
+            .children()
+            .find_map(LuaBlock::cast)
+    });
+    block.is_none_or(|block| module_block_flow(block, is_never_call).can_fall_through)
+}
+
+fn module_optional_block_flow(
+    block: Option<LuaBlock>,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     match block {
-        Some(block) => module_block_flow(block),
+        Some(block) => module_block_flow(block, is_never_call),
         None => ModuleReturnFlow::fallthrough(),
     }
 }
 
-fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
+fn module_stat_flow(
+    stat: LuaStat,
+    is_never_call: &impl Fn(&LuaCallExpr) -> bool,
+) -> ModuleReturnFlow {
     match stat {
-        LuaStat::DoStat(do_stat) => module_optional_block_flow(do_stat.get_block()),
+        LuaStat::DoStat(do_stat) => module_optional_block_flow(do_stat.get_block(), is_never_call),
         LuaStat::WhileStat(while_stat) => {
             let Some(condition) = while_stat.get_condition_expr() else {
                 return ModuleReturnFlow::fallthrough();
@@ -661,7 +869,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             match module_condition_state(&condition) {
                 ModuleConditionState::Falsy => ModuleReturnFlow::fallthrough(),
                 ModuleConditionState::Truthy => {
-                    let body = module_optional_block_flow(while_stat.get_block());
+                    let body = module_optional_block_flow(while_stat.get_block(), is_never_call);
                     ModuleReturnFlow {
                         first_expr: body.first_expr,
                         can_fall_through: body.can_break,
@@ -669,7 +877,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                     }
                 }
                 ModuleConditionState::Dynamic => {
-                    let body = module_optional_block_flow(while_stat.get_block());
+                    let body = module_optional_block_flow(while_stat.get_block(), is_never_call);
                     ModuleReturnFlow {
                         first_expr: body.first_expr,
                         can_fall_through: true,
@@ -679,7 +887,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             }
         }
         LuaStat::RepeatStat(repeat_stat) => {
-            let body = module_optional_block_flow(repeat_stat.get_block());
+            let body = module_optional_block_flow(repeat_stat.get_block(), is_never_call);
             let mut flow = ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: body.can_break,
@@ -705,11 +913,14 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             if let Some(condition) = if_stat.get_condition_expr() {
                 match module_condition_state(&condition) {
                     ModuleConditionState::Truthy => {
-                        return module_optional_block_flow(if_stat.get_block());
+                        return module_optional_block_flow(if_stat.get_block(), is_never_call);
                     }
                     ModuleConditionState::Falsy => {}
                     ModuleConditionState::Dynamic => {
-                        flow.merge_choice(module_optional_block_flow(if_stat.get_block()));
+                        flow.merge_choice(module_optional_block_flow(
+                            if_stat.get_block(),
+                            is_never_call,
+                        ));
                     }
                 }
             } else {
@@ -726,6 +937,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                                 ModuleConditionState::Truthy => {
                                     flow.merge_choice(module_optional_block_flow(
                                         clause.get_block(),
+                                        is_never_call,
                                     ));
                                     can_reach_next_clause = false;
                                 }
@@ -733,6 +945,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                                 ModuleConditionState::Dynamic => {
                                     flow.merge_choice(module_optional_block_flow(
                                         clause.get_block(),
+                                        is_never_call,
                                     ));
                                 }
                             }
@@ -741,7 +954,10 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
                         }
                     }
                     LuaIfClauseStat::Else(clause) => {
-                        flow.merge_choice(module_optional_block_flow(clause.get_block()));
+                        flow.merge_choice(module_optional_block_flow(
+                            clause.get_block(),
+                            is_never_call,
+                        ));
                         can_reach_next_clause = false;
                     }
                 }
@@ -752,7 +968,7 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             flow
         }
         LuaStat::ForStat(for_stat) => {
-            let body = module_optional_block_flow(for_stat.get_block());
+            let body = module_optional_block_flow(for_stat.get_block(), is_never_call);
             ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: true,
@@ -760,12 +976,19 @@ fn module_stat_flow(stat: LuaStat) -> ModuleReturnFlow {
             }
         }
         LuaStat::ForRangeStat(for_range_stat) => {
-            let body = module_optional_block_flow(for_range_stat.get_block());
+            let body = module_optional_block_flow(for_range_stat.get_block(), is_never_call);
             ModuleReturnFlow {
                 first_expr: body.first_expr,
                 can_fall_through: true,
                 can_break: false,
             }
+        }
+        LuaStat::CallExprStat(stat)
+            if stat
+                .get_call_expr()
+                .is_some_and(|call| call.is_error() && is_never_call(&call)) =>
+        {
+            ModuleReturnFlow::default()
         }
         LuaStat::BreakStat(_) => ModuleReturnFlow {
             can_break: true,
@@ -794,6 +1017,7 @@ impl FactsBuilder {
             members: Vec::new(),
             name_uses: Vec::new(),
             member_uses: Vec::new(),
+            member_use_by_syntax: HashMap::new(),
             signatures: Vec::new(),
             module_export: ModuleExport::None,
             operators: Vec::new(),
@@ -855,7 +1079,7 @@ impl FactsBuilder {
         // Post-processing 3: module export from top-level return (needs decls fully collected).
         self.collect_module_export(chunk);
 
-        // Post-processing 4: index `setmetatable(table, meta)` initializer calls once.
+        // Post-processing 4: index `setmetatable(table, meta)` calls once.
         self.collect_setmetatable_calls(chunk);
 
         let mut name_use_by_start = self
@@ -931,31 +1155,6 @@ impl FactsBuilder {
             .enumerate()
             .map(|(i, def)| (def.id.clone(), i))
             .collect();
-
-        let mut members_by_owner: HashMap<SemanticId, Vec<usize>> = HashMap::new();
-        let mut members_by_name: HashMap<SmolStr, Vec<usize>> = HashMap::new();
-        let mut field_member_by_type_name: HashMap<(SemanticId, SmolStr), usize> = HashMap::new();
-        let mut members_by_owner_name: HashMap<(SemanticId, SmolStr), Vec<usize>> = HashMap::new();
-        for (index, member) in self.members.iter().enumerate() {
-            members_by_owner
-                .entry(member.owner.clone())
-                .or_default()
-                .push(index);
-            if let Some(name) = member.key.name() {
-                let name_smol = SmolStr::new(name);
-                members_by_name
-                    .entry(name_smol.clone())
-                    .or_default()
-                    .push(index);
-                members_by_owner_name
-                    .entry((member.owner.clone(), name_smol.clone()))
-                    .or_default()
-                    .push(index);
-                field_member_by_type_name
-                    .entry((member.owner.clone(), name_smol))
-                    .or_insert(index);
-            }
-        }
 
         let type_def_by_full_name = self
             .type_defs
@@ -1044,7 +1243,7 @@ impl FactsBuilder {
             .map(|(i, op)| ((op.owner.clone(), op.name.clone()), i))
             .collect::<HashMap<_, _>>();
 
-        FileFacts {
+        let mut facts = FileFacts {
             file_id: self.file_id,
             decls: self.decls,
             scopes: self.scopes,
@@ -1074,11 +1273,13 @@ impl FactsBuilder {
             decl_by_name,
             decl_by_id,
             member_by_id,
+            member_use_by_syntax: self.member_use_by_syntax,
+            members_by_receiver: HashMap::new(),
             member_by_value_syntax,
             type_def_by_id,
-            members_by_owner,
-            members_by_owner_name,
-            members_by_name,
+            members_by_owner: HashMap::new(),
+            members_by_owner_name: HashMap::new(),
+            members_by_name: HashMap::new(),
             type_def_by_full_name,
             type_def_by_name,
             type_defs_by_name_end,
@@ -1089,8 +1290,52 @@ impl FactsBuilder {
             signature_by_closure,
             signature_by_position,
             operator_by_owner_name,
-            field_member_by_type_name,
+            field_member_by_type_name: HashMap::new(),
+        };
+
+        for (index, member) in facts.members.iter().enumerate() {
+            if let Some(receiver) = facts.member_receiver(member)
+                && receiver.is_exact()
+                && !member.key.is_none()
+            {
+                let receiver = receiver.clone();
+                facts
+                    .members_by_receiver
+                    .entry(receiver)
+                    .or_default()
+                    .entry(member.key.clone())
+                    .or_default()
+                    .push(index);
+            }
+            if let Some(name) = member.key.name() {
+                facts
+                    .members_by_name
+                    .entry(SmolStr::new(name))
+                    .or_default()
+                    .push(index);
+            }
+            if !facts.is_direct_member(member) {
+                continue;
+            }
+            facts
+                .members_by_owner
+                .entry(member.owner.clone())
+                .or_default()
+                .push(index);
+            if let Some(name) = member.key.name() {
+                let name_smol = SmolStr::new(name);
+                facts
+                    .members_by_owner_name
+                    .entry((member.owner.clone(), name_smol.clone()))
+                    .or_default()
+                    .push(index);
+                facts
+                    .field_member_by_type_name
+                    .entry((member.owner.clone(), name_smol))
+                    .or_insert(index);
+            }
         }
+        facts
     }
 
     fn collect_doc_comment(&mut self, comment: &LuaComment, text: &str) {
@@ -1105,9 +1350,19 @@ impl FactsBuilder {
         // 2) otherwise → mark the type (`@class`/`@alias`/`@enum`) + statement owner (decl/member/signature).
         // Consecutive doc lines in one comment block are merged into one LuaComment by the parser; tag order is line order.
         let mut field_deprecated: HashSet<usize> = HashSet::new();
+        // Set only for owner-level deprecation. A deprecated tag immediately
+        // followed by `@field` is recorded in `field_deprecated` instead and
+        // must not mark the type or signature below.
         let mut owner_type_deprecated = false;
         for (idx, tag) in tags.iter().enumerate() {
-            if matches!(tag, LuaDocTag::Deprecated(_)) {
+            let deprecated = match tag {
+                LuaDocTag::Deprecated(_) => true,
+                LuaDocTag::AttributeUse(attribute_use_tag) => {
+                    attribute_use_has_deprecated(attribute_use_tag)
+                }
+                _ => false,
+            };
+            if deprecated {
                 if matches!(tags.get(idx + 1), Some(LuaDocTag::Field(_))) {
                     field_deprecated.insert(idx + 1);
                 } else {
@@ -1179,11 +1434,22 @@ impl FactsBuilder {
                     self.collect_field_member(&field_tag, field_deprecated.contains(&idx));
                 }
                 LuaDocTag::Operator(operator_tag) => {
-                    if let (Some(owner), Some(name_token), Some(returns)) = (
-                        self.current_class.clone(),
-                        operator_tag.get_name_token(),
-                        operator_tag.get_return_type(),
-                    ) {
+                    let Some(name_token) = operator_tag.get_name_token() else {
+                        continue;
+                    };
+                    let name = SmolStr::new(name_token.get_name_text());
+                    if !is_operator_name(&name) {
+                        self.annotation_errors.push(AnnotationError {
+                            range: name_token.get_range(),
+                            message: SmolStr::new(format!("unknown operator `{name}`")),
+                        });
+                        // Do not register an invalid operator: downstream
+                        // consumers expect every `OperatorDef` name to be valid.
+                        continue;
+                    }
+                    if let (Some(owner), Some(returns)) =
+                        (self.current_class.clone(), operator_tag.get_return_type())
+                    {
                         let params = operator_tag
                             .get_param_list()
                             .map(|list| {
@@ -1194,7 +1460,7 @@ impl FactsBuilder {
                             .unwrap_or_default();
                         self.operators.push(OperatorDef {
                             owner,
-                            name: name_token.get_name_text().into(),
+                            name,
                             params,
                             returns: returns.get_syntax_id(),
                         });
@@ -1274,6 +1540,17 @@ impl FactsBuilder {
                         }
                         if is_lsp_delayed_definition(attribute_use_tag) {
                             self.delayed_definition_owners.insert(owner_syntax);
+                        }
+                        // `---@[deprecated]` / `---@[deprecated("message")]`: the attribute form
+                        // of `---@deprecated`. A following `@field` marks only that field (handled
+                        // above); otherwise it applies to the type/signature/declaration owner.
+                        if owner_type_deprecated && attribute_use_has_deprecated(attribute_use_tag)
+                        {
+                            self.signature_doc_map
+                                .entry(owner_syntax)
+                                .or_default()
+                                .deprecated = true;
+                            self.doc_deprecated_owners.insert(owner_syntax);
                         }
                     }
                 }
@@ -1447,9 +1724,12 @@ impl FactsBuilder {
                     .as_ref()
                     .is_some_and(|block| block.get_parent::<LuaChunk>().is_some());
                 if is_file_disable {
-                    for code in codes {
-                        self.file_diagnostic_disabled.insert(code);
-                    }
+                    let codes = if codes.is_empty() {
+                        DiagnosticCode::all()
+                    } else {
+                        codes
+                    };
+                    self.file_diagnostic_disabled.extend(codes);
                 } else if let Some(block) = owner_block {
                     push_diagnostic_disables(
                         &mut self.diagnostic_disables,
@@ -1477,8 +1757,13 @@ impl FactsBuilder {
                 push_diagnostic_disables(&mut self.diagnostic_disables, line_range, codes);
             }
             "enable" => {
-                for code in codes {
-                    self.file_diagnostic_enabled.insert(code);
+                if codes.is_empty() {
+                    self.file_diagnostic_disabled.clear();
+                } else {
+                    for code in codes {
+                        self.file_diagnostic_disabled.remove(&code);
+                        self.file_diagnostic_enabled.insert(code);
+                    }
                 }
             }
             _ => {}
@@ -1549,6 +1834,7 @@ impl FactsBuilder {
                 .unwrap_or_else(|| field_tag.get_range()),
             member_key,
             type_def_id,
+            MemberSource::DocField,
         );
         member.index_key_syntax = match &key {
             LuaDocFieldKey::Type(ty) => Some(ty.get_syntax_id()),
@@ -1607,6 +1893,7 @@ impl FactsBuilder {
             }
             LuaAst::LuaForStat(stat) => {
                 self.push_scope(stat.get_range(), ScopeKind::ForStat);
+                self.current_owner_syntax = Some(stat.get_syntax_id());
                 if let Some(var) = stat.get_var_name() {
                     self.add_decl(
                         var.get_name_text().into(),
@@ -1702,7 +1989,7 @@ impl FactsBuilder {
                 }
             }
             LuaAst::LuaIndexExpr(index_expr) => {
-                self.member_uses.push(index_expr.get_syntax_id());
+                self.collect_member_use(index_expr);
             }
             LuaAst::LuaTableExpr(table) => {
                 // Anonymous table literal: fields are collected into a synthetic owner (`return { x = 1 }` etc.).
@@ -1862,20 +2149,22 @@ impl FactsBuilder {
         value_syntax: Option<LuaSyntaxId>,
         is_method: bool,
     ) {
-        let Some(member_key) = index_expr
-            .get_index_key()
-            .and_then(member_key_from_index_key)
-        else {
+        let use_index = self.collect_member_use(index_expr);
+        let member_use = &self.member_uses[use_index];
+        if member_use.key.is_none() {
+            return;
+        }
+        let member_key = member_use.key.clone();
+        let Some(owner) = member_use.owner.clone() else {
             return;
         };
-        let Some(prefix) = index_expr.get_prefix_expr() else {
-            return;
-        };
-        let mut segments = Vec::new();
-        let Some((owner, implicit_self)) = self.resolve_member_owner_id(prefix, &mut segments)
-        else {
-            return;
-        };
+        let key_range = member_use.key_range;
+        let implicit_self = member_use
+            .access_path
+            .as_ref()
+            .and_then(|path| self.decls.iter().find(|decl| decl.id == path.root))
+            .filter(|decl| decl.is_implicit_self)
+            .and_then(|decl| decl.owner_syntax);
         // `_G.name = value` / `_ENV.name = value` also defines a real global declaration.
         if let Some(LuaExpr::NameExpr(prefix_name)) = index_expr.get_prefix_expr()
             && matches!(prefix_name.get_name_text().as_deref(), Some("_G" | "_ENV"))
@@ -1889,9 +2178,12 @@ impl FactsBuilder {
         }
         let mut member = Member::new(
             self.file_id,
-            member_key_range(index_expr),
+            key_range,
             member_key,
             owner,
+            MemberSource::Runtime {
+                access: index_expr.get_syntax_id(),
+            },
         );
         member.value_syntax = value_syntax;
         member.is_method = is_method;
@@ -1908,88 +2200,118 @@ impl FactsBuilder {
         self.members.push(member);
     }
 
-    /// Resolves a member owner's prefix into `(owner, implicit_self)`.
-    /// Local root → `Decl(local)`; global root → `Name(root)` with `segments` collected,
-    /// qualified exactly once by [`Self::resolve_member_owner_id`].
-    ///
-    /// `implicit_self` is the syntax id of the enclosing method closure when the chain is rooted at an
-    /// implicit `self`, so callers can keep per-method grouping (e.g. duplicate-field checks).
-    fn resolve_member_owner(
-        &self,
-        expr: LuaExpr,
-        segments: &mut Vec<SmolStr>,
-    ) -> Option<(SemanticId, Option<LuaSyntaxId>)> {
-        match expr {
-            // `(t).x = v` is equivalent to `t.x = v`; the member belongs to the same underlying declaration.
-            LuaExpr::ParenExpr(paren) => self.resolve_member_owner(paren.get_expr()?, segments),
-            LuaExpr::IndexExpr(parent) => {
-                let segment = parent
-                    .get_index_key()
-                    .map(|k| k.get_path_part())
-                    .and_then(|p| (!p.is_empty()).then(|| SmolStr::new(p)))?;
-                let (owner, implicit_self) =
-                    self.resolve_member_owner(parent.get_prefix_expr()?, segments)?;
-                segments.push(segment);
-                Some((owner, implicit_self))
-            }
-            LuaExpr::NameExpr(name_expr) => {
-                let name = name_expr.get_name_text()?;
-                if name == "_ENV" || name == "_G" {
-                    return Some((SemanticId::name(SmolStr::new(&name)), None));
-                }
-                let offset = name_expr.get_position();
-                if let Some(decl) = self.find_visible_decl_before_offset(&name, offset)
-                    && !matches!(decl.kind, DeclKind::Global)
-                {
-                    if decl.is_implicit_self {
-                        let closure = decl.owner_syntax;
-                        let resolved = implicit_self_receiver_prefix(decl, &name_expr)
-                            .and_then(|receiver| self.resolve_member_owner(receiver, segments));
-                        return match resolved {
-                            Some((owner, _)) => Some((owner, closure)),
-                            None => Some((decl.id.clone(), closure)),
-                        };
-                    }
-                    return Some((decl.id.clone(), None));
-                }
-                Some((SemanticId::name(SmolStr::new(name)), None))
-            }
-            _ => None,
+    fn collect_member_use(&mut self, index: &LuaIndexExpr) -> usize {
+        let syntax = index.get_syntax_id();
+        if let Some(&index) = self.member_use_by_syntax.get(&syntax) {
+            return index;
         }
+        let index_key = index.get_index_key();
+        let key_expr = match &index_key {
+            Some(LuaIndexKey::Expr(expr)) => Some(expr.get_syntax_id()),
+            _ => None,
+        };
+        let key = index_key
+            .as_ref()
+            .and_then(member_key_from_index_key)
+            .unwrap_or(LuaMemberKey::None);
+        let raw = self.access_path(LuaExpr::IndexExpr(index.clone()), false);
+        let receiver = index
+            .get_prefix_expr()
+            .and_then(|expr| self.access_path(expr, true))
+            .map(|(path, _)| path);
+        let owner = receiver.as_ref().map(|receiver| {
+            let SemanticId::Name(root) = &receiver.root else {
+                return receiver.root.clone();
+            };
+            if receiver.keys.is_empty() {
+                return receiver.root.clone();
+            }
+            // 限定名称仅用于既有静态关联, 运行时索引始终保留各段语义键.
+            let mut name = root.as_str().to_owned();
+            for key in &receiver.keys {
+                name.push('.');
+                match key {
+                    LuaMemberKey::Name(part) => name.push_str(part),
+                    key => name.push_str(&key.to_path()),
+                }
+            }
+            SemanticId::name(SmolStr::new(name))
+        });
+        let use_index = self.member_uses.len();
+        self.member_uses.push(MemberUse {
+            syntax,
+            key,
+            key_range: member_key_range(index),
+            key_expr,
+            root_syntax: raw.as_ref().map(|(_, syntax)| *syntax),
+            access_path: raw.map(|(path, _)| path),
+            receiver,
+            owner,
+        });
+        self.member_use_by_syntax.insert(syntax, use_index);
+        use_index
     }
 
-    ///  `M` + `["N", "O"]` → `Name("M.N.O")`
-    fn resolve_member_owner_id(
+    /// 将表达式解析为「根 + 成员键路径」; 根按词法可见声明确定, 不做类型推断或别名展开.
+    /// `resolve_self` 为 true 时, `self` 会解析为所在方法的隐含接收者.
+    fn access_path(
         &self,
-        expr: LuaExpr,
-        segments: &mut Vec<SmolStr>,
-    ) -> Option<(SemanticId, Option<LuaSyntaxId>)> {
-        let (owner, implicit_self) = self.resolve_member_owner(expr, segments)?;
-        let owner = match &owner {
-            SemanticId::Name(root) => {
-                let mut path = root.as_str().to_string();
-                for segment in segments.iter() {
-                    path.push('.');
-                    path.push_str(segment);
+        mut expr: LuaExpr,
+        resolve_self: bool,
+    ) -> Option<(AccessPath, LuaSyntaxId)> {
+        let mut keys = Vec::new();
+        loop {
+            match expr {
+                LuaExpr::ParenExpr(paren) => expr = paren.get_expr()?,
+                LuaExpr::IndexExpr(index) => {
+                    keys.push(
+                        index
+                            .get_index_key()
+                            .as_ref()
+                            .and_then(member_key_from_index_key)
+                            .unwrap_or(LuaMemberKey::None),
+                    );
+                    expr = index.get_prefix_expr()?;
                 }
-                SemanticId::name(SmolStr::new(path))
+                LuaExpr::NameExpr(name_expr) => {
+                    let name = name_expr.get_name_text()?;
+                    keys.reverse();
+                    let decl = self
+                        .find_visible_decl_before_offset(&name, name_expr.get_position())
+                        .filter(|decl| !matches!(decl.kind, DeclKind::Global));
+                    if resolve_self
+                        && let Some(decl) = decl.filter(|decl| decl.is_implicit_self)
+                        && let Some(receiver) = implicit_self_receiver_prefix(decl, &name_expr)
+                        && let Some((mut path, root_syntax)) = self.access_path(receiver, true)
+                    {
+                        path.keys.extend(keys);
+                        return Some((path, root_syntax));
+                    }
+                    let root = decl
+                        .map(|decl| decl.id.clone())
+                        .unwrap_or_else(|| SemanticId::name(SmolStr::new(name)));
+                    return Some((AccessPath { root, keys }, name_expr.get_syntax_id()));
+                }
+                _ => return None,
             }
-            _ => owner,
-        };
-        Some((owner, implicit_self))
+        }
     }
 
     /// Direct fields of `{ foo = 1, ... }` → owner = the local declaring the table (`Decl`).
     fn collect_table_fields(&mut self, table: &LuaTableExpr, owner: SemanticId) {
         for (field, key) in table.get_fields_with_keys() {
-            let path_part = SmolStr::new(key.get_path_part());
-            let member_key =
-                member_key_from_index_key(key).unwrap_or(LuaMemberKey::Name(path_part));
+            let key_expr = match &key {
+                LuaIndexKey::Expr(expr) => Some(expr.get_syntax_id()),
+                _ => None,
+            };
+            let member_key = member_key_from_index_key(&key)
+                .unwrap_or_else(|| LuaMemberKey::Name(SmolStr::new(key.get_path_part())));
             let mut member = Member::new(
                 self.file_id,
                 field_key_range(&field),
                 member_key,
                 owner.clone(),
+                MemberSource::TableField { key_expr },
             );
             member.value_syntax = field.get_value_expr().map(|expr| expr.get_syntax_id());
             self.mark_member(&mut member);
@@ -2126,6 +2448,15 @@ impl FactsBuilder {
         decl.scope_id = scope_id;
         decl.value_expr_syntax = value_expr_syntax;
         decl.owner_syntax = self.current_owner_syntax;
+        // `@version` docs are collected for every doc-comment owner (not only
+        // closures), so table globals such as `bit = {}` keep their version
+        // conditions too. Signature docs are consumed later for functions; copy
+        // the conditions now.
+        decl.version_conds = decl
+            .owner_syntax
+            .and_then(|owner| self.signature_doc_map.get(&owner))
+            .map(|docs| docs.versions.clone())
+            .unwrap_or_default();
         let decl_id = decl.id.clone();
         self.scopes[scope_id as usize]
             .children
@@ -2299,25 +2630,12 @@ impl FactsBuilder {
         // assigning by member id's key_range here is not feasible, so it is set at the collection point).
     }
 
-    /// Top-level `return X` → module export target (the last top-level return wins).
-    /// Indexes `setmetatable(table, meta)` calls that initialize a declaration or member.
+    /// Indexes `setmetatable(table, meta)` calls, including arguments and returns.
     ///
     /// Table member lookup otherwise has to scan every declaration to find the
     /// matching `setmetatable` call for a table literal.
     fn collect_setmetatable_calls(&mut self, chunk: &LuaChunk) {
-        let root = chunk.get_root();
-        let values = self
-            .decls
-            .iter()
-            .filter_map(|decl| decl.value_expr_syntax)
-            .chain(self.members.iter().filter_map(|member| member.value_syntax));
-        for value_syntax in values {
-            let Some(node) = value_syntax.to_node_from_root(&root) else {
-                continue;
-            };
-            let Some(call) = LuaCallExpr::cast(node) else {
-                continue;
-            };
+        for call in chunk.descendants::<LuaCallExpr>() {
             let is_setmetatable = match call.get_prefix_expr() {
                 Some(LuaExpr::NameExpr(name_expr)) => {
                     name_expr.get_name_text().as_deref() == Some("setmetatable")
@@ -2362,7 +2680,7 @@ impl FactsBuilder {
         }
 
         // Module export takes the first "reachable" return expression (including truthy while/if control flow).
-        let flow = module_block_flow(block);
+        let flow = module_block_flow(block, &|_| false);
         let Some(expr) = flow.first_expr else {
             self.module_export = ModuleExport::None;
             return;
@@ -2453,16 +2771,18 @@ fn is_scope_owner(node: &LuaAst) -> bool {
 }
 
 /// `LuaIndexKey` → file-independent member key.
-fn member_key_from_index_key(key: LuaIndexKey) -> Option<LuaMemberKey> {
+fn member_key_from_index_key(key: &LuaIndexKey) -> Option<LuaMemberKey> {
     match key {
         LuaIndexKey::Name(_) | LuaIndexKey::String(_) => {
             Some(LuaMemberKey::Name(SmolStr::new(key.get_path_part())))
         }
         LuaIndexKey::Integer(num) => match num.get_number_value() {
             NumberResult::Int(i) => Some(LuaMemberKey::Integer(i)),
+            NumberResult::Uint(i) => Some(LuaMemberKey::Integer(i as i64)),
+            NumberResult::Float(value) => exact_integer(value).map(LuaMemberKey::Integer),
             _ => None,
         },
-        LuaIndexKey::Idx(idx) => Some(LuaMemberKey::Integer(idx as i64)),
+        LuaIndexKey::Idx(idx) => Some(LuaMemberKey::Integer(*idx as i64)),
         LuaIndexKey::Expr(_) => None,
     }
 }
@@ -2524,9 +2844,6 @@ fn doc_type_name(doc_type: &LuaDocType) -> Option<SmolStr> {
     }
 }
 
-/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
-/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
-/// `---@operator call(name, root_class, strip_self, return_mode)`.
 /// Whether `---@[lsp_optimization("delayed_definition")]` is the delayed-definition attribute.
 fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     for attribute_use in tag.get_attribute_uses() {
@@ -2553,6 +2870,19 @@ fn is_lsp_delayed_definition(tag: &LuaDocTagAttributeUse) -> bool {
     false
 }
 
+/// Whether the attribute-use tag contains `---@[deprecated]` or `---@[deprecated("message")]`.
+fn attribute_use_has_deprecated(tag: &LuaDocTagAttributeUse) -> bool {
+    tag.get_attribute_uses().any(|attribute_use| {
+        attribute_use
+            .get_type()
+            .and_then(|name_type| name_type.get_name_text())
+            .is_some_and(|name| name == "deprecated")
+    })
+}
+
+/// `---@[constructor("init", "Base", false, "doc")]` → constructor attributes.
+/// Only the built-in `constructor` is recognized; positional args match std lib `Attribute.constructor`'s
+/// `---@operator call(name, root_class, strip_self, return_mode)`.
 fn collect_constructor_attribute(tag: &LuaDocTagAttributeUse) -> Option<ConstructorAttribute> {
     for attribute_use in tag.get_attribute_uses() {
         let name = attribute_use.get_type()?.get_name_text()?;
@@ -2610,7 +2940,7 @@ fn type_visibility(flag: Option<LuaDocTypeFlag>) -> TypeVisibility {
     visibility
 }
 
-/// Type definition flags (mirrors old `get_type_flag_value`: partial / constructor + file-level meta).
+/// Type definition flags
 fn type_def_flags(flag: Option<LuaDocTypeFlag>, is_meta: bool) -> TypeDefFlags {
     let mut flags = TypeDefFlags {
         meta: is_meta,
@@ -2623,6 +2953,7 @@ fn type_def_flags(flag: Option<LuaDocTypeFlag>, is_meta: bool) -> TypeDefFlags {
         match token.get_name_text() {
             "partial" => flags.partial = true,
             "constructor" => flags.constructor = true,
+            "key" => flags.enum_key = true,
             _ => {}
         }
     }

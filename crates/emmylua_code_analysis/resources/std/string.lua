@@ -47,16 +47,50 @@ function string.char(...) end
 ---
 --- Returns a string containing a binary representation (*a binary chunk*) of
 --- the given function, so that a later `load` on this string returns a
---- copy of the function (but with new upvalues). If strip is a true value, the
---- binary representation may not include all debug information about the
+--- copy of the function (but with new upvalues). If `strip` is a true value,
+--- the binary representation may not include all debug information about the
 --- function, to save space.
 ---
 --- Functions with upvalues have only their number of upvalues saved. When (re)
 --- loaded, those upvalues receive fresh instances containing **nil**. (You can
 --- use the debug library to serialize and reload the upvalues of a function in
 --- a way adequate to your needs.)
+--- @version >5.3
 --- @param func   function
 --- @param strip? boolean
+--- @return string
+function string.dump(func, strip) end
+
+---
+--- Returns a string containing a binary representation (*a binary chunk*) of
+--- the given function, so that a later `load` on this string returns a
+--- copy of the function (but with new upvalues).
+---
+--- Functions with upvalues have only their number of upvalues saved. When (re)
+--- loaded, those upvalues receive fresh instances containing **nil**. (You can
+--- use the debug library to serialize and reload the upvalues of a function in
+--- a way adequate to your needs.)
+--- @version 5.1, 5.2
+--- @param func function
+--- @return string
+function string.dump(func) end
+
+---
+--- Returns a string containing a binary representation (*a binary chunk*) of
+--- the given function, so that a later `load` on this string returns a
+--- copy of the function (but with new upvalues). If `strip` is a true value,
+--- the binary representation may not include all debug information about the
+--- function, to save space. LuaJIT 2.1 also accepts a mode string: a string
+--- containing `s` strips debug information, and a string containing `d`
+--- produces deterministic output.
+---
+--- Functions with upvalues have only their number of upvalues saved. When (re)
+--- loaded, those upvalues receive fresh instances containing **nil**. (You can
+--- use the debug library to serialize and reload the upvalues of a function in
+--- a way adequate to your needs.)
+--- @version JIT
+--- @param func   function
+--- @param strip? boolean | string
 --- @return string
 function string.dump(func, strip) end
 
@@ -284,7 +318,7 @@ function string.match(s, pattern, init) end
 --- Returns a binary string containing the values `v1`, `v2`, etc. packed (that
 --- is, serialized in binary form) according to the format string `fmt`.
 --- @param fmt string
---- @param v1  string | number | integer
+--- @param v1? string | number | integer
 --- @param v2? string | number | integer
 --- @param ... string | number | integer
 --- @return string

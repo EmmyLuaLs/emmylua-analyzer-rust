@@ -2368,6 +2368,20 @@ local a = 1
     }
 
     #[test]
+    fn test_doc_type_spacing_is_kept() {
+        for text in [
+            "---@param fns (fun(): integer)[] the racers\nlocal function f(fns) end\n",
+            "---@field fns (fun(): integer)[]\n",
+            "---@return { x: string }[] r\nlocal function f() end\n",
+            "---@cast t -nil\n",
+            "---@cast t +string\n",
+            "---@type table -- why\nlocal t = {}\n",
+        ] {
+            assert_format!(text, text);
+        }
+    }
+
+    #[test]
     fn test_tuple_type() {
         assert_format!(
             r#"---@cast assert [function]

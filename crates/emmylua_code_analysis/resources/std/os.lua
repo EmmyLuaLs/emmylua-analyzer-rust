@@ -83,6 +83,17 @@ function os.clock() end
 --- @return string
 function os.date(format, time) end
 
+--- @version 5.1, 5.2, JIT
+---
+--- Returns the difference, in seconds, from time `t1` to time `t2`. (where the
+--- times are values returned by `os.time`). In POSIX, Windows, and some other
+--- systems, this value is exactly `t2`-`t1`.
+--- @param t2 number
+--- @param t1? number
+--- @return number
+function os.difftime(t2, t1) end
+
+--- @version >5.3
 ---
 --- Returns the difference, in seconds, from time `t1` to time `t2`. (where the
 --- times are values returned by `os.time`). In POSIX, Windows, and some other
@@ -156,7 +167,8 @@ function os.getenv(varname) end
 --- error and the error code. Otherwise, it returns true.
 --- @param filename string
 --- @return true|nil result
---- @return string err
+--- @return string? err
+--- @return integer? errcode
 function os.remove(filename) end
 
 ---
@@ -166,7 +178,8 @@ function os.remove(filename) end
 --- @param oldname string
 --- @param newname string
 --- @return true|nil result
---- @return string err
+--- @return string? err
+--- @return integer? errcode
 function os.rename(oldname, newname) end
 
 ---
@@ -186,11 +199,39 @@ function os.rename(oldname, newname) end
 ---
 --- This function may be not thread safe because of its reliance on C function
 --- `setlocale`.
---- @param locale    string
+--- @param locale    string?
 --- @param category? string
 --- @return string|nil
 function os.setlocale(locale, category) end
 
+--- @version 5.1, 5.2, JIT
+---
+--- Returns the current time when called without arguments, or a time
+--- representing the date and time specified by the given table. This table
+--- must have fields `year`, `month`, and `day`, and may have fields `hour`
+--- (default is 12), `min` (default is 0), `sec` (default is 0), and `isdst`
+--- (default is **nil**). Other fields are ignored. For a description of these
+--- fields, see the `os.date` function.
+---
+--- When the function is called, the values in these fields do not need to be
+--- inside their valid ranges. For instance, if `sec` is -10, it means 10 seconds
+--- before the time specified by the other fields; if `hour` is 1000, it means
+--- 1000 hours after the time specified by the other fields.
+---
+--- The returned value is a number, whose meaning depends on your system. In
+--- POSIX, Windows, and some other systems, this number counts the number of
+--- seconds since some given start time (the "epoch"). In other systems, the
+--- meaning is not specified, and the number returned by `time` can be used only
+--- as an argument to `os.date` and `os.difftime`.
+---
+--- When called with a table, `os.time` also normalizes all the fields
+--- documented in the `os.date` function, so that they represent the same time
+--- as before the call but with values inside their valid ranges.
+--- @param date? std.osdateparam
+--- @return number
+function os.time(date) end
+
+--- @version >5.3
 ---
 --- Returns the current time when called without arguments, or a time
 --- representing the date and time specified by the given table. This table

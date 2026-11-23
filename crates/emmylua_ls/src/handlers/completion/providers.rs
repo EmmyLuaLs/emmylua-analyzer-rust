@@ -124,8 +124,15 @@ static GENERAL_TERTIARY_PROVIDERS: &[&dyn CompletionProvider] = &[&AutoRequirePr
 
 pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     if let Some(provider) = get_context_provider(builder.context) {
+        let before = builder.get_completion_items_mut().len();
         run_provider(builder, provider);
-        return Some(());
+        // A table without known fields gets no field items; a name typed there can still be a
+        // value (`{ name }`), so it falls through to the general providers.
+        if builder.context != CompletionContext::TableField
+            || builder.get_completion_items_mut().len() > before
+        {
+            return Some(());
+        }
     }
 
     // `c1.on_add = <??>` is a block-context special case for the function provider; keep it at highest priority.

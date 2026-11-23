@@ -5,7 +5,7 @@ use std::rc::Rc;
 use emmylua_code_analysis::{LuaFunctionType, LuaType, LuaTypeDeclId, SemanticId, SemanticModel};
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaDocTagParam,
-    LuaExpr, LuaLiteralExpr, LuaParamList, LuaSyntaxKind, LuaTokenKind,
+    LuaExpr, LuaLiteralExpr, LuaParamList, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind,
 };
 use lsp_types::{CompletionItem, CompletionItemKind};
 
@@ -71,7 +71,7 @@ fn dedup_new_items(builder: &mut CompletionBuilder, before: usize) {
 }
 
 fn supports_provider(builder: &CompletionBuilder) -> bool {
-    let token = builder.trigger_token.clone();
+    let token = completion_anchor(builder);
     let Some(mut parent_node) = token.parent() else {
         return false;
     };
@@ -84,12 +84,36 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
 
     matches!(
         parent_node.kind().into(),
-        LuaSyntaxKind::CallArgList | LuaSyntaxKind::ParamList | LuaSyntaxKind::Block
+        LuaSyntaxKind::CallArgList | LuaSyntaxKind::ParamList | LuaSyntaxKind::AssignStat
     )
 }
 
+/// The token the completion continues from. Whitespace after an unclosed `(`, `,` or `=`
+/// belongs to the enclosing block, so it continues from the token before the whitespace.
+fn completion_anchor(builder: &CompletionBuilder) -> LuaSyntaxToken {
+    let trigger = builder.trigger_token.clone();
+    let mut token = trigger.clone();
+    while matches!(
+        token.kind().into(),
+        LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine
+    ) {
+        let Some(prev) = token.prev_token() else {
+            return trigger;
+        };
+        token = prev;
+    }
+    if matches!(
+        token.kind().into(),
+        LuaTokenKind::TkLeftParen | LuaTokenKind::TkComma | LuaTokenKind::TkAssign
+    ) {
+        token
+    } else {
+        trigger
+    }
+}
+
 fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>> {
-    let token = builder.trigger_token.clone();
+    let token = completion_anchor(builder);
     let mut parent_node = token.parent()?;
     if LuaLiteralExpr::can_cast(parent_node.kind().into()) {
         parent_node = parent_node.parent()?;
@@ -105,14 +129,17 @@ fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>
             }
             infer_param_list(builder, LuaParamList::cast(parent_node)?)
         }
-        LuaSyntaxKind::Block => infer_assign_target(builder),
+        LuaSyntaxKind::AssignStat => {
+            infer_assign_target(builder, LuaAssignStat::cast(parent_node)?)
+        }
         _ => None,
     }
 }
 
-fn infer_assign_target(builder: &CompletionBuilder) -> Option<Vec<LuaType>> {
-    let prev_token = builder.trigger_token.prev_token()?;
-    let assign_stat = LuaAssignStat::cast(prev_token.parent()?)?;
+fn infer_assign_target(
+    builder: &CompletionBuilder,
+    assign_stat: LuaAssignStat,
+) -> Option<Vec<LuaType>> {
     let (vars, exprs) = assign_stat.get_var_and_expr_list();
     if vars.len() != 1 || !exprs.is_empty() {
         return None;
@@ -172,7 +199,7 @@ fn infer_param_list(
 fn infer_call_arg_list(
     builder: &CompletionBuilder,
     call_arg_list: LuaCallArgList,
-    token: emmylua_parser::LuaSyntaxToken,
+    token: LuaSyntaxToken,
 ) -> Option<Vec<LuaType>> {
     let call_expr = call_arg_list.get_parent::<LuaCallExpr>()?;
     let param_idx = get_current_param_index(&call_expr, &token)?;
@@ -877,7 +904,7 @@ pub fn add_function_impl_completion(builder: &mut CompletionBuilder, ty: &LuaTyp
 }
 
 /// Expand `fun?` / alias `fun(...)` into a function type.
-fn resolve_function_type(
+pub(super) fn resolve_function_type(
     builder: &CompletionBuilder,
     ty: &LuaType,
     visited: &mut Vec<LuaTypeDeclId>,

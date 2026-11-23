@@ -18,8 +18,6 @@ use emmylua_parser::LuaChunk;
 use crate::FileId;
 
 use super::SemanticDatabase;
-use super::query::file_facts;
-
 pub use binder::FlowBinder;
 pub use flow_node::*;
 pub use flow_tree::*;
@@ -40,13 +38,9 @@ fn finish_flow_label(binder: &mut FlowBinder, label: FlowId, default: FlowId) ->
     label
 }
 
-pub(super) fn build_flow_tree(db: &SemanticDatabase, file: FileId) -> FlowTree {
-    let file_id = file;
-    let facts = file_facts(db, file);
-    let tree = db
-        .vfs()
-        .get_syntax_tree(&file)
-        .expect("syntax tree must exist");
+pub(super) fn build_flow_tree(db: &SemanticDatabase, file_id: FileId) -> FlowTree {
+    let facts = db.file_facts_of(file_id).expect("file facts must exist");
+    let tree = db.syntax_tree_of(file_id).expect("syntax tree must exist");
     let chunk: LuaChunk = tree.get_chunk_node();
     let mut binder = FlowBinder::new(file_id, facts);
     let start = binder.start;

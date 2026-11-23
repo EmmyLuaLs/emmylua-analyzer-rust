@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
-    MemberInfo, SemanticDatabase, SemanticId, SemanticModel, TypeDef, TypeDefKind, VariadicType,
+    MemberCollectMode, MemberInfo, SemanticDatabase, SemanticId, SemanticModel, TypeDef,
+    TypeDefKind, VariadicType,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallExpr, LuaDocAttributeUse, LuaDocDescriptionOwner, LuaDocType,
@@ -305,7 +306,7 @@ fn member_context_infos(
         let prefix_ty = model.type_of_expr(prefix.get_syntax_id());
         let key = LuaMemberKey::Name(resolved.name.clone());
         return model
-            .member_infos_with_key_all(&prefix_ty, &key)
+            .member_infos_with_key_mode(&prefix_ty, &key, MemberCollectMode::Effective)
             .into_iter()
             .map(|info| MemberContextInfo {
                 info,
@@ -324,7 +325,7 @@ fn member_context_infos(
         };
         if let Some(context_ty) = table_context_type_for_token(model, token) {
             let mut infos = model
-                .member_infos_with_key_all(&context_ty, &member.key)
+                .member_infos_with_key_mode(&context_ty, &member.key, MemberCollectMode::Effective)
                 .into_iter()
                 .map(|info| MemberContextInfo {
                     info,
@@ -1019,7 +1020,7 @@ fn build_decl_hover(
             signature
         };
         let has_named_returns =
-            !call_fun.is_some() && signature_has_named_returns(model, Some(closure));
+            call_fun.is_none() && signature_has_named_returns(model, Some(closure));
         let (params, _) =
             render_function_params_and_ret_mode(model, &signature, false, false, false);
         let ret = if has_named_returns {
@@ -1541,7 +1542,11 @@ fn build_member_hover(
     } else if call_site_substituted {
         // A call-site overload was already selected: show that signature itself, not all overloads.
         if let Some(owner_ty) = runtime_owner_type(model, &runtime_member) {
-            let infos = model.member_infos_with_key_all(&owner_ty, &runtime_member.key);
+            let infos = model.member_infos_with_key_mode(
+                &owner_ty,
+                &runtime_member.key,
+                MemberCollectMode::Effective,
+            );
             if let Some(selected) = infos
                 .iter()
                 .find(|info| info.typ == *typ)
@@ -1569,7 +1574,11 @@ fn build_member_hover(
         let mut function_members = Vec::new();
         if let Some(owner_ty) = owner_ty {
             let type_members = model
-                .member_infos_with_key_all(&owner_ty, &runtime_member.key)
+                .member_infos_with_key_mode(
+                    &owner_ty,
+                    &runtime_member.key,
+                    MemberCollectMode::Effective,
+                )
                 .into_iter()
                 .filter(|info| {
                     info.id.as_ref().is_some_and(|id| {
