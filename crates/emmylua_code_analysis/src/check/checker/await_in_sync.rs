@@ -11,8 +11,6 @@
 //! - a closure is an argument to an async function parameter (`---@param cb async fun()`) → treated as async;
 //! - `pcall/xpcall` callbacks execute immediately in current sync semantics, so skip that closure layer and keep looking outward for an async context.
 
-use std::rc::Rc;
-
 use std::collections::HashSet;
 
 use emmylua_parser::{
@@ -22,7 +20,7 @@ use emmylua_parser::{
 
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
-use crate::{AsyncState, LuaFunctionType, LuaType, LuaUnionType, SemanticId};
+use crate::{AsyncState, LuaFunctionType, LuaType, SemanticId};
 
 use super::param_type_check::callable_candidates;
 use super::{CheckContext, Checker};
@@ -119,10 +117,10 @@ fn doc_signature_for_decl(
             .param_types
             .iter()
             .find(|(param_name, _)| param_name == name)
-            .map(|(_, syntax)| semantic_model.doc_type_lua_rich_in(decl_key.file_id, *syntax))
+            .map(|(_, syntax)| semantic_model.project_doc_type(decl_key.file_id, *syntax, &[]))
             .unwrap_or(LuaType::Any);
-        if docs.nullable_params.iter().any(|n| n == name) && !ty.is_nullable() {
-            ty = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+        if docs.nullable_params.iter().any(|n| n == name) {
+            ty = LuaType::make_nullable(ty);
         }
         params.push((name.to_string(), Some(ty)));
     }

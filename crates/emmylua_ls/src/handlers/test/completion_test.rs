@@ -1219,6 +1219,24 @@ items.<??>
     }
 
     #[gtest]
+    fn test_name_completion_in_table_list_constructor() -> Result<()> {
+        for source in [
+            "aaa_value = 1\nlocal d = {\n    aaa<??>\n}",
+            "aaa_value = 1\nlocal d = { 1, aaa<??> }",
+            "aaa_value = 1\nlocal d = { key = aaa<??> }",
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            let items = get_completion_items(&mut ws, source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items.iter().any(|item| item.label == "aaa_value"),
+                "{source:?}: {:?}",
+                items.iter().map(|item| &item.label).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
     fn test_enum_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
@@ -1382,6 +1400,47 @@ items.<??>
             }],
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_callback_completion_after_whitespace() -> Result<()> {
+        for call in [
+            "first(<??>",
+            "first( <??>",
+            "second(1,<??>",
+            "second(1, <??>",
+            "second(1,\n    <??>",
+            "holder.callback = <??>",
+            "holder.callback =\n    <??>",
+        ] {
+            let mut ws = ProviderVirtualWorkspace::new();
+            let source = format!(
+                r#"
+                ---@param callback fun(name: string, age: number): boolean
+                local function first(callback) end
+
+                ---@param n integer
+                ---@param callback fun(name: string, age: number): boolean
+                local function second(n, callback) end
+
+                ---@class Holder
+                ---@field callback fun(name: string, age: number): boolean
+
+                ---@type Holder
+                local holder
+
+                {call}
+                "#
+            );
+            let items = get_completion_items(&mut ws, &source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items
+                    .iter()
+                    .any(|item| item.label == "function(name, age) end"),
+                "{call:?}"
+            );
+        }
         Ok(())
     }
 
@@ -3018,6 +3077,75 @@ items.<??>
                 ..Default::default()
             }],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_member_completion_of_a_class_table_from_another_file() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        ws.def_file(
+            "lib.lua",
+            "---@class LibClass\nLib = {}\nfunction Lib.start() end\nLib.version = 1\n",
+        );
+        for (source, expected) in [
+            ("io.<??>", "open"),
+            ("string.<??>", "format"),
+            ("Lib.<??>", "start"),
+        ] {
+            let items = get_completion_items(&mut ws, source, CompletionTriggerKind::INVOKED)?;
+            assert!(
+                items.iter().any(|item| item.label == expected),
+                "{source}: {:?}",
+                items.iter().map(|item| &item.label).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_member_completion_merges_stdlib_with_workspace_class() -> Result<()> {
+        // (global module name, a member declared by the stdlib module)
+        let modules = [
+            ("os", "date"),
+            ("table", "insert"),
+            ("math", "abs"),
+            ("io", "open"),
+            ("package", "searchpath"),
+            ("coroutine", "create"),
+            ("debug", "traceback"),
+            ("utf8", "len"),
+            // The stdlib class has the same name as the global here.
+            ("string", "format"),
+        ];
+        for with_assignment in [false, true] {
+            let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+            let mut sources = Vec::new();
+            for (module, _) in modules {
+                let mut source =
+                    format!("---@meta\n---@class {module}\n---@field custom_extra fun(): string\n");
+                if with_assignment {
+                    source.push_str(&format!("\n---@type {module}\n{module} = {{}}\n"));
+                }
+                ws.def_file(&format!("{module}.lua"), &source);
+                sources.push((module, source));
+            }
+
+            for ((module, std_member), (_, source)) in modules.into_iter().zip(sources) {
+                let items = get_completion_items(
+                    &mut ws,
+                    &format!("{module}.<??>"),
+                    CompletionTriggerKind::INVOKED,
+                )?;
+                let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
+                for expected in [std_member, "custom_extra"] {
+                    assert!(
+                        labels.contains(&expected),
+                        "missing {expected} after `{module}.` \
+                         (assignment: {with_assignment})\nstub:\n{source}\nlabels: {labels:?}"
+                    );
+                }
+            }
+        }
         Ok(())
     }
 

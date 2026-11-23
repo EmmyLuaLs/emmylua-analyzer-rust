@@ -128,11 +128,11 @@ fn runtime_member_id(
     let LuaType::TableConst(table) = prefix_ty else {
         return None;
     };
+    let owner = SemanticId::member(table.file_id, table.value);
     let facts = semantic_model.file_facts_of(table.file_id)?;
     facts
-        .members
-        .iter()
-        .find(|member| member.value_syntax.is_some() && member.key.name() == Some(name))
+        .members_of_owner_named(&owner, name)
+        .find(|member| member.value_syntax.is_some())
         .map(|member| member.id.clone())
 }
 

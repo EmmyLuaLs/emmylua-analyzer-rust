@@ -1,4 +1,7 @@
-iolib.close: |
+iolib.close@>5.2: |
+  相当于 `file:close()`。如果没有指定文件，则关闭默认输出文件。
+
+iolib.close@5.1,JIT: |
   相当于 `file:close()`。如果没有指定文件，则关闭默认输出文件。
 
 iolib.flush: |

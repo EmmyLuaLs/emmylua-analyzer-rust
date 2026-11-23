@@ -65,6 +65,13 @@ pub struct Diagnostic {
     pub data: Option<serde_json::Value>,
 }
 
+/// A validation error before diagnostic settings are applied.
+pub(super) struct Mismatch {
+    pub code: DiagnosticCode,
+    pub range: TextRange,
+    pub message: String,
+}
+
 /// Checker trait (mirrors `diagnostic::checker::Checker`).
 pub trait Checker {
     /// Diagnostic codes handled by this check (used to skip the whole check by config).
@@ -124,20 +131,7 @@ impl<'a> CheckContext<'a> {
         message: String,
         data: Option<serde_json::Value>,
     ) {
-        if let Some(facts) = self.semantic_model.file_facts() {
-            let force_enable = facts.file_diagnostic_enabled.contains(&code);
-            if !force_enable {
-                if !self.config.is_code_enabled(&code) {
-                    return;
-                }
-                if facts.file_diagnostic_disabled.contains(&code) {
-                    return;
-                }
-            }
-            if facts.is_range_diagnostic_disabled(&code, &range) {
-                return;
-            }
-        } else if !self.config.is_code_enabled(&code) {
+        if !self.is_diagnostic_enabled(code, range) {
             return;
         }
         let severity = self.config.severity_of(&code);
@@ -150,6 +144,26 @@ impl<'a> CheckContext<'a> {
             tags,
             data,
         });
+    }
+
+    pub(super) fn is_diagnostic_enabled(&self, code: DiagnosticCode, range: TextRange) -> bool {
+        if let Some(facts) = self.semantic_model.file_facts() {
+            let force_enable = facts.file_diagnostic_enabled.contains(&code);
+            if !force_enable {
+                if !self.config.is_code_enabled(&code) {
+                    return false;
+                }
+                if facts.file_diagnostic_disabled.contains(&code) {
+                    return false;
+                }
+            }
+            if facts.is_range_diagnostic_disabled(&code, &range) {
+                return false;
+            }
+        } else if !self.config.is_code_enabled(&code) {
+            return false;
+        }
+        true
     }
 
     /// Whether the name is in the `emmyrc.diagnostics.globals` / `globals_regex` allowlist.

@@ -1,5 +1,13 @@
 use super::prelude::*;
-use crate::{LuaArrayType, LuaConditionalType, LuaGenericType, LuaMappedType};
+use crate::semantic_model::infer::vm::{InferVm, bind_signature_generics};
+use crate::{LuaArrayType, LuaConditionalType, LuaMappedType};
+
+/// 注解投影的定义文件、泛型声明及其已解析元数据.
+pub(crate) struct DocTypeScope<'a> {
+    pub(crate) file_id: FileId,
+    pub(crate) params: &'a [DocGenericParam],
+    pub(crate) templates: Vec<GenericTpl>,
+}
 
 impl<'db> SemanticModel<'db> {
     /// Alias target type (after projection; generic parameter references keep `TplRef`, and instantiation is substituted by the caller).
@@ -26,15 +34,7 @@ impl<'db> SemanticModel<'db> {
     }
     pub(crate) fn alias_target_uncached(&self, def: &TypeDef) -> Option<LuaType> {
         let syntax = def.alias_type?;
-        let mut ty = self
-            .analysis()
-            .doc_type_lua(def.file_id, syntax, &def.generic_params);
-        if matches!(ty, LuaType::Table | LuaType::Unknown) {
-            let rich = self.doc_type_lua_rich_in(def.file_id, syntax);
-            if !matches!(rich, LuaType::Unknown) {
-                ty = rich;
-            }
-        }
+        let mut ty = self.project_doc_type(def.file_id, syntax, &def.generic_params);
         // When the shell layer cannot lower generic `keyof T`, rich projection drops the mapped constraint to None,
         // making it impossible to expand after instantiation. Here we restore the generic keyof constraint on alias targets from the AST;
         // normal doc/completion paths do not go through this restoration, so `keyof T` constraints still display as Unknown there.
@@ -118,6 +118,10 @@ impl<'db> SemanticModel<'db> {
         file_id: FileId,
         params: &[DocGenericParam],
     ) -> Vec<GenericTpl> {
+        if params.is_empty() {
+            return Vec::new();
+        }
+
         params
             .iter()
             .enumerate()
@@ -125,7 +129,7 @@ impl<'db> SemanticModel<'db> {
                 let constraint = param.constraint.map(|syntax| {
                     let ty = self.analysis().doc_type_lua(file_id, syntax, params);
                     if matches!(ty, LuaType::Unknown | LuaType::Table) {
-                        let rich = self.doc_type_lua_rich_in(file_id, syntax);
+                        let rich = self.project_doc_type(file_id, syntax, &[]);
                         if !matches!(rich, LuaType::Unknown) {
                             rich
                         } else {
@@ -137,7 +141,7 @@ impl<'db> SemanticModel<'db> {
                 });
                 let default = param
                     .default
-                    .map(|syntax| self.doc_type_lua_rich_in(file_id, syntax));
+                    .map(|syntax| self.project_doc_type(file_id, syntax, &[]));
                 GenericTpl::new(
                     GenericTplId::Type(index as u32),
                     param.name.clone(),
@@ -149,32 +153,90 @@ impl<'db> SemanticModel<'db> {
             })
             .collect()
     }
-    /// When projection fails, supplement object / intersection / union structures from the AST
-    /// (the `TypeShell` layer does not yet support `{ y: integer } & { z: string }`).
-    pub fn doc_type_lua_rich(&self, type_syntax: LuaSyntaxId) -> LuaType {
-        self.doc_type_lua_rich_in(self.view.file_id(), type_syntax)
+
+    /// Prepares the generic metadata shared by this projection scope.
+    pub(crate) fn doc_type_scope<'a>(
+        &self,
+        file_id: FileId,
+        params: &'a [DocGenericParam],
+    ) -> DocTypeScope<'a> {
+        DocTypeScope {
+            file_id,
+            params,
+            templates: self.generic_tpls_with_metadata(file_id, params),
+        }
     }
-    /// Rich projection for any file (used by cross-file signature doc parameters).
-    pub fn doc_type_lua_rich_in(&self, file_id: FileId, type_syntax: LuaSyntaxId) -> LuaType {
+    /// Projects a complete doc type with the given file and generic scope.
+    pub fn project_doc_type(
+        &self,
+        file_id: FileId,
+        type_syntax: LuaSyntaxId,
+        generics: &[DocGenericParam],
+    ) -> LuaType {
+        let scope = self.doc_type_scope(file_id, generics);
+        self.project_doc_type_in_scope(type_syntax, &scope)
+    }
+
+    /// Projects a doc type inside an already prepared generic scope.
+    pub(crate) fn project_doc_type_in_scope(
+        &self,
+        type_syntax: LuaSyntaxId,
+        scope: &DocTypeScope,
+    ) -> LuaType {
+        let file_id = scope.file_id;
+        let generics = scope.params;
         let Some(tree) = self.syntax_tree_of(file_id) else {
-            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, generics);
         };
         let Some(node) = type_syntax.to_node_from_root(&tree.get_red_root()) else {
-            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, generics);
         };
+
         let Some(doc_ty) = LuaDocType::cast(node) else {
-            return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+            return self.analysis().doc_type_lua(file_id, type_syntax, generics);
         };
+        self.project_doc_type_node(&doc_ty, scope)
+    }
+
+    /// Fully projects a doc type node within its owning generic scope.
+    pub(crate) fn project_doc_type_node(
+        &self,
+        doc_ty: &LuaDocType,
+        scope: &DocTypeScope,
+    ) -> LuaType {
+        let ty = self.project_doc_type_impl(doc_ty, scope);
+        bind_signature_generics(&ty, &scope.templates)
+    }
+
+    /// 投影组合类型时保留声明所属的泛型作用域.
+    fn project_doc_type_impl(&self, doc_ty: &LuaDocType, scope: &DocTypeScope) -> LuaType {
+        let file_id = scope.file_id;
+        let generics = scope.params;
         match doc_ty {
-            LuaDocType::Func(_) => {
-                if let Some(fun) = infer::infer_doc_func(self, file_id, type_syntax) {
-                    LuaType::DocFunction(Rc::new(fun))
-                } else {
-                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
-                }
+            LuaDocType::Array(array) => array
+                .get_type()
+                .map(|base| {
+                    LuaType::Array(Rc::new(LuaArrayType::from_base_type(
+                        self.project_doc_type_impl(&base, scope),
+                    )))
+                })
+                .unwrap_or_else(|| self.analysis().doc_type_node_lua(file_id, doc_ty, generics)),
+            LuaDocType::Tuple(tuple) => {
+                let types = tuple
+                    .get_types()
+                    .map(|item| self.project_doc_type_impl(&item, scope))
+                    .collect();
+                LuaType::Tuple(Rc::new(LuaTupleType::new(
+                    types,
+                    LuaTupleStatus::DocResolve,
+                )))
             }
+            LuaDocType::Func(func) => LuaType::DocFunction(Rc::new(
+                InferVm::new(self, &[]).doc_func_from_ast(func, scope, false),
+            )),
             LuaDocType::Conditional(conditional) => {
-                self.doc_type_lua_rich_conditional(file_id, &conditional)
+                let mut state = ConditionalInferState::default();
+                self.doc_type_lua_rich_conditional_in_state(conditional, scope, &mut state)
             }
             LuaDocType::Mapped(mapped) => {
                 let mut param_name = String::new();
@@ -189,7 +251,7 @@ impl<'db> SemanticModel<'db> {
                             param_name = token.get_name_text().to_string();
                         }
                         if let Some(constraint) = decl.get_constraint_type() {
-                            key_ty = self.doc_type_lua_rich_in(file_id, constraint.get_syntax_id());
+                            key_ty = self.project_doc_type_impl(&constraint, scope);
                         }
                     }
                 }
@@ -200,18 +262,18 @@ impl<'db> SemanticModel<'db> {
                             let mut types = index.syntax().children().filter_map(LuaDocType::cast);
                             let base = types
                                 .next()
-                                .map(|t| self.doc_type_lua_rich_in(file_id, t.get_syntax_id()))
+                                .map(|t| self.project_doc_type_impl(&t, scope))
                                 .unwrap_or(LuaType::Unknown);
                             let key = types
                                 .next()
-                                .map(|t| self.doc_type_lua_rich_in(file_id, t.get_syntax_id()))
+                                .map(|t| self.project_doc_type_impl(&t, scope))
                                 .unwrap_or(LuaType::Unknown);
                             LuaType::Call(Rc::new(LuaAliasCallType::new(
                                 LuaAliasCallKind::Index,
                                 vec![base, key],
                             )))
                         }
-                        _ => self.doc_type_lua_rich_in(file_id, ty.get_syntax_id()),
+                        _ => self.project_doc_type_impl(&ty, scope),
                     })
                     .unwrap_or(LuaType::Unknown);
                 if param_name.is_empty() {
@@ -248,7 +310,7 @@ impl<'db> SemanticModel<'db> {
                     let Some(value_ty) = field.get_type() else {
                         continue;
                     };
-                    let mut value_ty = self.doc_type_lua_rich_in(file_id, value_ty.get_syntax_id());
+                    let mut value_ty = self.project_doc_type_impl(&value_ty, scope);
                     if field.is_nullable() && !value_ty.is_nullable() {
                         value_ty = LuaType::from_vec(vec![value_ty, LuaType::Nil]);
                     }
@@ -271,10 +333,8 @@ impl<'db> SemanticModel<'db> {
                             }
                         }
                         LuaDocObjectFieldKey::Type(key_ty) => {
-                            index_access.push((
-                                self.doc_type_lua_rich_in(file_id, key_ty.get_syntax_id()),
-                                value_ty,
-                            ));
+                            index_access
+                                .push((self.project_doc_type_impl(&key_ty, scope), value_ty));
                         }
                     };
                 }
@@ -287,11 +347,11 @@ impl<'db> SemanticModel<'db> {
                 let mut types = index.syntax().children().filter_map(LuaDocType::cast);
                 let base = types
                     .next()
-                    .map(|ty| self.doc_type_lua_rich_in(file_id, ty.get_syntax_id()))
+                    .map(|ty| self.project_doc_type_impl(&ty, scope))
                     .unwrap_or(LuaType::Unknown);
                 let key = types
                     .next()
-                    .map(|ty| self.doc_type_lua_rich_in(file_id, ty.get_syntax_id()))
+                    .map(|ty| self.project_doc_type_impl(&ty, scope))
                     .unwrap_or(LuaType::Unknown);
                 if let Some(evaluated) = self.try_eval_index_access(&base, &key) {
                     return evaluated;
@@ -303,10 +363,10 @@ impl<'db> SemanticModel<'db> {
             }
             LuaDocType::Binary(binary) => {
                 let Some((left, right)) = binary.get_types() else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
-                let left_ty = self.doc_type_lua_rich_in(file_id, left.get_syntax_id());
-                let right_ty = self.doc_type_lua_rich_in(file_id, right.get_syntax_id());
+                let left_ty = self.project_doc_type_impl(&left, scope);
+                let right_ty = self.project_doc_type_impl(&right, scope);
                 match binary.get_op_token().map(|op| op.get_op()) {
                     Some(LuaTypeBinaryOperator::Intersection) => {
                         LuaType::Intersection(Rc::new(LuaIntersectionType::new(vec![
@@ -323,9 +383,23 @@ impl<'db> SemanticModel<'db> {
                         }
                         LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
                     }
-                    _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
+                    _ => self.analysis().doc_type_node_lua(file_id, doc_ty, generics),
                 }
             }
+            LuaDocType::Nullable(nullable) => nullable
+                .get_type()
+                .map(|inner| {
+                    let ty = self.project_doc_type_impl(&inner, scope);
+                    let mut types = match ty {
+                        LuaType::Union(union) => union.into_vec(),
+                        ty => vec![ty],
+                    };
+                    if !types.contains(&LuaType::Nil) {
+                        types.push(LuaType::Nil);
+                    }
+                    LuaType::from_vec(types)
+                })
+                .unwrap_or(LuaType::Unknown),
             LuaDocType::Literal(literal) => match literal.get_literal() {
                 Some(LuaLiteralToken::String(str_token)) => {
                     LuaType::StringConst(SmolStr::new(str_token.get_value()).into())
@@ -340,26 +414,26 @@ impl<'db> SemanticModel<'db> {
                     LuaType::BooleanConst(bool_token.is_true())
                 }
                 Some(LuaLiteralToken::Nil(_)) => LuaType::Nil,
-                _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
+                _ => self.analysis().doc_type_node_lua(file_id, doc_ty, generics),
             },
             LuaDocType::Unary(unary) => {
                 if !unary
                     .get_op_token()
                     .is_some_and(|op| op.get_op() == LuaTypeUnaryOperator::Keyof)
                 {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 }
                 let Some(target) = unary.get_type() else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
                 let LuaDocType::Name(name_ty) = &target else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
                 let Some(name) = name_ty.get_name_text() else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
                 let Some(def) = self.resolve_type_def_in(file_id, &name) else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
                 let members: Vec<LuaType> = self
                     .member_infos(&self.type_def_ref(&def))
@@ -367,7 +441,7 @@ impl<'db> SemanticModel<'db> {
                     .filter_map(|member| member.key.to_index_type())
                     .collect();
                 if members.is_empty() {
-                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
+                    self.analysis().doc_type_node_lua(file_id, doc_ty, generics)
                 } else {
                     LuaType::Union(Rc::new(LuaUnionType::from_vec(members)))
                 }
@@ -378,7 +452,7 @@ impl<'db> SemanticModel<'db> {
                     let Some(ty) = field.get_type() else {
                         continue;
                     };
-                    let ty = self.doc_type_lua_rich_in(file_id, ty.get_syntax_id());
+                    let ty = self.project_doc_type_impl(&ty, scope);
                     if matches!(ty, LuaType::Unknown) {
                         continue;
                     }
@@ -388,7 +462,7 @@ impl<'db> SemanticModel<'db> {
                     }
                 }
                 if types.is_empty() {
-                    self.analysis().doc_type_lua(file_id, type_syntax, &[])
+                    self.analysis().doc_type_node_lua(file_id, doc_ty, generics)
                 } else {
                     LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
                 }
@@ -396,57 +470,46 @@ impl<'db> SemanticModel<'db> {
             LuaDocType::Variadic(variadic) => variadic
                 .get_type()
                 .map(|inner| {
-                    let base = self.doc_type_lua_rich_in(file_id, inner.get_syntax_id());
+                    let base = self.project_doc_type_impl(&inner, scope);
                     // Rich projection without generic context projects the T in `T...` as `Ref("T")`,
                     // leaving it to the shell layer to handle the original context so the variadic base type keeps TplRef.
                     if matches!(base, LuaType::Unknown | LuaType::Ref(_) | LuaType::Def(_)) {
-                        self.analysis().doc_type_lua(file_id, type_syntax, &[])
+                        self.analysis().doc_type_node_lua(file_id, doc_ty, generics)
                     } else {
                         LuaType::Variadic(VariadicType::Base(base).into())
                     }
                 })
-                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| self.analysis().doc_type_node_lua(file_id, doc_ty, generics)),
             LuaDocType::Generic(generic) => {
                 let Some(name) = generic.get_name_type().and_then(|n| n.get_name_text()) else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self.analysis().doc_type_node_lua(file_id, doc_ty, generics);
                 };
-                let base_id = self.analysis().resolve_named_id(file_id, &name);
                 let params: Vec<LuaType> = generic
                     .get_generic_types()
                     .map(|list| {
                         list.get_types()
-                            .map(|arg| self.doc_type_lua_rich_in(file_id, arg.get_syntax_id()))
+                            .map(|arg| self.project_doc_type_impl(&arg, scope))
                             .collect()
                     })
                     .unwrap_or_default();
-                LuaType::Generic(Rc::new(LuaGenericType::new(base_id, params)))
+                self.analysis().project_generic_type(file_id, &name, params)
             }
-            _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
+            _ => self.analysis().doc_type_node_lua(file_id, doc_ty, generics),
         }
-    }
-    /// Projects `---@alias X<T> T extends Pattern and True or False` to `LuaType::Conditional`.
-    /// `infer` names have an independent scope: declared in the condition phase, referenceable in the true branch, and returning to the outer scope in the false branch.
-    fn doc_type_lua_rich_conditional(
-        &self,
-        file_id: FileId,
-        conditional: &LuaDocConditionalType,
-    ) -> LuaType {
-        let mut state = ConditionalInferState::default();
-        self.doc_type_lua_rich_conditional_in_state(file_id, conditional, &mut state)
     }
     /// Common implementation of conditional type projection. `state` can come from an outer conditional, giving nested `infer`
     /// globally unique IDs, and inner conditionals can see `infer` references bound by outer conditionals.
     fn doc_type_lua_rich_conditional_in_state(
         &self,
-        file_id: FileId,
         conditional: &LuaDocConditionalType,
+        scope: &DocTypeScope,
         state: &mut ConditionalInferState,
     ) -> LuaType {
         let Some((condition, when_true, when_false)) = conditional.get_types() else {
             return LuaType::Unknown;
         };
         state.enter_scope();
-        let condition_ty = self.doc_type_lua_rich_scoped(file_id, condition.get_syntax_id(), state);
+        let condition_ty = self.doc_type_lua_rich_scoped(&condition, scope, state);
         let LuaType::Call(alias_call) = condition_ty else {
             state.leave_scope();
             return LuaType::Unknown;
@@ -462,9 +525,9 @@ impl<'db> SemanticModel<'db> {
         let extends_type = operands[1].clone();
 
         state.set_refs_visible(true);
-        let true_type = self.doc_type_lua_rich_scoped(file_id, when_true.get_syntax_id(), state);
+        let true_type = self.doc_type_lua_rich_scoped(&when_true, scope, state);
         let infer_params = state.leave_scope();
-        let false_type = self.doc_type_lua_rich_scoped(file_id, when_false.get_syntax_id(), state);
+        let false_type = self.doc_type_lua_rich_scoped(&when_false, scope, state);
 
         LuaType::Conditional(Rc::new(LuaConditionalType::new(
             checked_type,
@@ -478,19 +541,12 @@ impl<'db> SemanticModel<'db> {
     /// Inner-scope rich projection for conditional types: handles only `infer`-related structures; other types use ordinary rich projection.
     fn doc_type_lua_rich_scoped(
         &self,
-        file_id: FileId,
-        type_syntax: LuaSyntaxId,
+        doc_ty: &LuaDocType,
+        scope: &DocTypeScope,
         state: &mut ConditionalInferState,
     ) -> LuaType {
-        let Some(tree) = self.syntax_tree_of(file_id) else {
-            return LuaType::Unknown;
-        };
-        let Some(node) = type_syntax.to_node_from_root(&tree.get_red_root()) else {
-            return LuaType::Unknown;
-        };
-        let Some(doc_ty) = LuaDocType::cast(node) else {
-            return LuaType::Unknown;
-        };
+        let file_id = scope.file_id;
+
         match doc_ty {
             LuaDocType::Infer(infer) => {
                 let Some(name) = infer.get_generic_decl_name_text() else {
@@ -507,14 +563,16 @@ impl<'db> SemanticModel<'db> {
                         return LuaType::TplRef(Rc::new(tpl));
                     }
                 }
-                self.doc_type_lua_rich_in(file_id, type_syntax)
+                self.project_doc_type_impl(doc_ty, scope)
             }
             LuaDocType::Binary(binary) => {
                 let Some((left, right)) = binary.get_types() else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self
+                        .analysis()
+                        .doc_type_node_lua(file_id, doc_ty, scope.params);
                 };
-                let left_ty = self.doc_type_lua_rich_scoped(file_id, left.get_syntax_id(), state);
-                let right_ty = self.doc_type_lua_rich_scoped(file_id, right.get_syntax_id(), state);
+                let left_ty = self.doc_type_lua_rich_scoped(&left, scope, state);
+                let right_ty = self.doc_type_lua_rich_scoped(&right, scope, state);
                 match binary.get_op_token().map(|op| op.get_op()) {
                     Some(LuaTypeBinaryOperator::Union) => {
                         let mut types = Vec::new();
@@ -534,7 +592,9 @@ impl<'db> SemanticModel<'db> {
                     Some(LuaTypeBinaryOperator::Extends) => LuaType::Call(Rc::new(
                         LuaAliasCallType::new(LuaAliasCallKind::Extends, vec![left_ty, right_ty]),
                     )),
-                    _ => self.analysis().doc_type_lua(file_id, type_syntax, &[]),
+                    _ => self
+                        .analysis()
+                        .doc_type_node_lua(file_id, doc_ty, scope.params),
                 }
             }
             LuaDocType::Object(object) => {
@@ -547,8 +607,7 @@ impl<'db> SemanticModel<'db> {
                     let Some(value_ty) = field.get_type() else {
                         continue;
                     };
-                    let mut value_ty =
-                        self.doc_type_lua_rich_scoped(file_id, value_ty.get_syntax_id(), state);
+                    let mut value_ty = self.doc_type_lua_rich_scoped(&value_ty, scope, state);
                     if field.is_nullable() && !value_ty.is_nullable() {
                         value_ty = LuaType::from_vec(vec![value_ty, LuaType::Nil]);
                     }
@@ -572,11 +631,7 @@ impl<'db> SemanticModel<'db> {
                         }
                         LuaDocObjectFieldKey::Type(key_ty) => {
                             index_access.push((
-                                self.doc_type_lua_rich_scoped(
-                                    file_id,
-                                    key_ty.get_syntax_id(),
-                                    state,
-                                ),
+                                self.doc_type_lua_rich_scoped(&key_ty, scope, state),
                                 value_ty,
                             ));
                         }
@@ -606,11 +661,10 @@ impl<'db> SemanticModel<'db> {
                         });
                     let mut ty = param
                         .get_type()
-                        .map(|t| self.doc_type_lua_rich_scoped(file_id, t.get_syntax_id(), state))
+                        .map(|t| self.doc_type_lua_rich_scoped(&t, scope, state))
                         .unwrap_or(LuaType::Unknown);
-                    if param.is_nullable() && !ty.is_nullable() {
-                        ty =
-                            LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![ty, LuaType::Nil])));
+                    if param.is_nullable() {
+                        ty = LuaType::make_nullable(ty);
                     }
                     params.push((name, Some(ty)));
                 }
@@ -619,11 +673,7 @@ impl<'db> SemanticModel<'db> {
                         let mut types = Vec::new();
                         for ret in list.get_return_type_list() {
                             if let (_, Some(ret_type)) = ret.get_name_and_type() {
-                                types.push(self.doc_type_lua_rich_scoped(
-                                    file_id,
-                                    ret_type.get_syntax_id(),
-                                    state,
-                                ));
+                                types.push(self.doc_type_lua_rich_scoped(&ret_type, scope, state));
                             }
                         }
                         if types.is_empty() {
@@ -648,43 +698,49 @@ impl<'db> SemanticModel<'db> {
             LuaDocType::Variadic(variadic) => variadic
                 .get_type()
                 .map(|inner| {
-                    let base = self.doc_type_lua_rich_scoped(file_id, inner.get_syntax_id(), state);
+                    let base = self.doc_type_lua_rich_scoped(&inner, scope, state);
                     if matches!(base, LuaType::Unknown | LuaType::Ref(_) | LuaType::Def(_)) {
-                        self.analysis().doc_type_lua(file_id, type_syntax, &[])
+                        self.analysis()
+                            .doc_type_node_lua(file_id, doc_ty, scope.params)
                     } else {
                         LuaType::Variadic(VariadicType::Base(base).into())
                     }
                 })
-                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| {
+                    self.analysis()
+                        .doc_type_node_lua(file_id, doc_ty, scope.params)
+                }),
             LuaDocType::Generic(generic) => {
                 let Some(name) = generic.get_name_type().and_then(|n| n.get_name_text()) else {
-                    return self.analysis().doc_type_lua(file_id, type_syntax, &[]);
+                    return self
+                        .analysis()
+                        .doc_type_node_lua(file_id, doc_ty, scope.params);
                 };
-                let base_id = self.analysis().resolve_named_id(file_id, &name);
                 let params: Vec<LuaType> = generic
                     .get_generic_types()
                     .map(|list| {
                         list.get_types()
-                            .map(|arg| {
-                                self.doc_type_lua_rich_scoped(file_id, arg.get_syntax_id(), state)
-                            })
+                            .map(|arg| self.doc_type_lua_rich_scoped(&arg, scope, state))
                             .collect()
                     })
                     .unwrap_or_default();
-                LuaType::Generic(Rc::new(LuaGenericType::new(base_id, params)))
+                self.analysis().project_generic_type(file_id, &name, params)
             }
             LuaDocType::Array(array) => array
                 .get_type()
                 .map(|base| {
                     LuaType::Array(Rc::new(LuaArrayType::from_base_type(
-                        self.doc_type_lua_rich_scoped(file_id, base.get_syntax_id(), state),
+                        self.doc_type_lua_rich_scoped(&base, scope, state),
                     )))
                 })
-                .unwrap_or_else(|| self.analysis().doc_type_lua(file_id, type_syntax, &[])),
+                .unwrap_or_else(|| {
+                    self.analysis()
+                        .doc_type_node_lua(file_id, doc_ty, scope.params)
+                }),
             LuaDocType::Tuple(tuple) => {
                 let types: Vec<LuaType> = tuple
                     .get_types()
-                    .map(|item| self.doc_type_lua_rich_scoped(file_id, item.get_syntax_id(), state))
+                    .map(|item| self.doc_type_lua_rich_scoped(&item, scope, state))
                     .collect();
                 LuaType::Tuple(Rc::new(LuaTupleType::new(
                     types,
@@ -692,9 +748,9 @@ impl<'db> SemanticModel<'db> {
                 )))
             }
             LuaDocType::Conditional(conditional) => {
-                self.doc_type_lua_rich_conditional_in_state(file_id, &conditional, state)
+                self.doc_type_lua_rich_conditional_in_state(conditional, scope, state)
             }
-            _ => self.doc_type_lua_rich_in(file_id, type_syntax),
+            _ => self.project_doc_type_impl(doc_ty, scope),
         }
     }
 }
