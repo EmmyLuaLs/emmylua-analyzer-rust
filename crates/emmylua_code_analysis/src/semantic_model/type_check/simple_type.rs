@@ -256,8 +256,9 @@ fn check_table_record(
         strict_literals: context.strict_literals || !table.is_constructor(),
         ..context.clone()
     };
-    // Key order, not hash order: the first failing field is the one reported, and a hash map's
-    // order changes per map, so the reported line moved between runs.
+    // Key order (integers ascending, then names), not hash order: the first failing field is the
+    // one reported, and each map's hash order is seeded anew, so the reported line moved between
+    // runs. The map keeps no definition order to use instead.
     let mut sorted: Vec<_> = fields.get_fields().iter().collect();
     sorted.sort_unstable_by_key(|(key, _)| *key);
     let field_checks = check_all(sorted.into_iter().map(|(key, expected)| {

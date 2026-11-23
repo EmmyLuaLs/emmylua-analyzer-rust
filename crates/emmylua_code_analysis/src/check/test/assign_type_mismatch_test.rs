@@ -3337,10 +3337,12 @@ return t
         }
     }
 
-    // A literal with several mismatching entries is reported once, at the entry the record's
-    // fields put first. The fields were walked in hash order, which differs per map, so the
-    // reported line moved between runs of the same binary. Each `check_source` builds a fresh
-    // database, so 16 runs would almost surely see two of three lines if the order leaked.
+    // A literal with several mismatching entries is reported once, at the entry with the lowest
+    // key: `[1]` for the tuple-like target, `x` for the class. That is line 10 of `source` (the
+    // `format!` string starts with a newline), the first `a`. The fields used to be walked in
+    // hash order, which is seeded per map, so the reported line moved between runs of the same
+    // binary. The main check is `[10]`; the 16 fresh databases per target are the stability half:
+    // with the order leaking, each run picked one of the three lines.
     #[test]
     fn test_record_mismatch_reports_the_same_entry_every_run() {
         for (target, keys) in [
