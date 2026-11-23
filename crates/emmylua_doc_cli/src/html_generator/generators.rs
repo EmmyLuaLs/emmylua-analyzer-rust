@@ -102,8 +102,8 @@ pub fn build_module_doc(ctx: &GenContext, module: &DocModule) -> Option<HtmlDoc>
     };
     doc.set_property(collect_property(&module.property));
 
-    let members = ctx.model.members_of_type(&module.export_type);
-    let (methods, fields) = collect_members(ctx, &members, "M");
+    let members = ctx.model.members_for_module(module);
+    let (methods, fields) = collect_members(ctx, &members, &module.name);
     doc.methods = methods;
     doc.fields = fields;
     Some(doc)
@@ -121,7 +121,7 @@ pub fn build_global_doc(ctx: &GenContext, global: &DocGlobal) -> Option<HtmlDoc>
 
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
-            let members = ctx.model.members_of_type(&global.ty);
+            let members = ctx.model.members_for_global(global);
             let (methods, fields) = collect_members(ctx, &members, &name);
             doc.methods = methods;
             doc.fields = fields;
@@ -267,6 +267,9 @@ pub fn collect_members(
             ));
         }
     }
+
+    methods.sort_by(|a, b| a.short_name.cmp(&b.short_name));
+    fields.sort_by(|a, b| a.short_name.cmp(&b.short_name));
 
     (methods, fields)
 }

@@ -10,8 +10,8 @@ pub(crate) use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaDocConditionalType,
     LuaDocNameType, LuaDocObjectFieldKey, LuaDocTagAlias, LuaDocTagClass, LuaDocType, LuaExpr,
     LuaForRangeStat, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaParseError, LuaSyntaxId,
-    LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaSyntaxTree, LuaTableExpr,
-    LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVersionNumber, NumberResult, VisibilityKind,
+    LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaSyntaxTree, LuaTypeBinaryOperator,
+    LuaTypeUnaryOperator, LuaVersionNumber, NumberResult, VisibilityKind,
 };
 pub(crate) use hashbrown::HashMap;
 pub(crate) use rowan::TextSize;
@@ -23,8 +23,8 @@ pub(crate) use crate::LuaTypeNode;
 pub(crate) use crate::member_key::LuaMemberKey;
 
 pub(crate) use crate::semantic_db::def::{
-    ConstructorAttribute, Decl, DeclKind, Member, MemberRef, ModuleExport, NameUse, Scope,
-    SemanticId, Signature, TypeDef, TypeDefKind, TypeScope,
+    AccessPath, ConstructorAttribute, Decl, DeclKind, Member, MemberRef, MemberSource, MemberUse,
+    ModuleExport, NameUse, Scope, SemanticId, Signature, TypeDef, TypeDefKind, TypeScope,
 };
 pub(crate) use crate::semantic_db::flow::FlowTree;
 pub(crate) use crate::signature::LuaSignatureId;

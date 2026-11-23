@@ -38,6 +38,7 @@ mod redundant_parameter_test;
 mod reentry_test;
 mod require_module_visibility_test;
 mod return_type_mismatch_test;
+mod std_version_test;
 mod syntax_error_test;
 mod type_access_modifier_test;
 mod type_mismatch_test;

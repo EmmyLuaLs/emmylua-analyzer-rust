@@ -22,15 +22,13 @@ fn export_modules(model: &DocModel) -> Vec<Module> {
         .modules
         .iter()
         .map(|module| {
-            let (members, typ) = match &module.export_type {
-                LuaType::TableConst(_) | LuaType::Instance(_) => (
-                    export_members(model, &model.members_of_type(&module.export_type)),
-                    None,
-                ),
-                typ => (
-                    Vec::new(),
-                    Some(render_typ(model, typ, RenderLevel::Simple)),
-                ),
+            // Members and `typ` are independent: `typ` describes the exported
+            // value for non-table exports, while `members` covers both runtime
+            // members and members of the exported type. Both may be present.
+            let members = export_members(model, &model.members_for_module(module));
+            let typ = match &module.export_type {
+                LuaType::TableConst(_) | LuaType::Instance(_) => None,
+                typ => Some(render_typ(model, typ, RenderLevel::Simple)),
             };
 
             Module {
@@ -70,7 +68,7 @@ fn export_globals(model: &DocModel) -> Vec<Global> {
                     name: global.name.clone(),
                     property,
                     loc,
-                    members: export_members(model, &model.members_of_type(&global.ty)),
+                    members: export_members(model, &model.members_for_global(global)),
                 }),
                 typ => Global::Field(GlobalField {
                     name: global.name.clone(),

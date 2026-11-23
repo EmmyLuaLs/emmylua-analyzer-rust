@@ -2,14 +2,33 @@ coroutinelib.create: |
   创建一个新的协程，主体函数为 `f`。`f` 必须是一个 Lua 函数。
   返回这个新协程，一个类型为 `"thread"` 的对象。
 
-coroutinelib.isyieldable: |
+coroutinelib.isyieldable@5.3,JIT: |
   当正在运行的协程可以让出时返回 true。
 
   如果正在运行的协程不是主线程且不在不可让出的 C 函数中，
   则该协程是可让出的。
 
-coroutinelib.close: |
+coroutinelib.isyieldable@>5.4: |
+  当协程 `co` 可以让出时返回 true。`co` 默认为正在运行的协程。
+
+  如果协程不是主线程且不在不可让出的 C 函数中，则该协程是可让出的。
+
+coroutinelib.close@5.4: |
   关闭协程 `co`，关闭其所有待关闭的变量，并将协程置于死亡状态。
+  给定的协程必须处于死亡或挂起状态。如果发生错误（要么是停止协程的
+  原始错误，要么是关闭方法中的错误），返回 false 加上错误对象；
+  否则返回 true。
+
+coroutinelib.close@>5.5: |
+  关闭协程 `co`，关闭其所有待关闭的变量，并将协程置于死亡状态。
+  `co` 默认为正在运行的协程。
+
+  给定的协程必须处于死亡、挂起状态，或者是正在运行的协程。
+  对于正在运行的协程，此函数不会返回；而是由（重新）启动该协程的
+  `resume` 返回。
+
+  对于其他协程，如果发生错误（要么是停止协程的原始错误，要么是
+  关闭方法中的错误），返回 false 加上错误对象；否则返回 true。
 
 coroutinelib.resume: |
   开始或继续执行协程 `co`。第一次恢复协程时，它开始运行其主体函数。
@@ -20,8 +39,8 @@ coroutinelib.resume: |
   `yield` 的任何值（当协程让出时）或主体函数返回的任何值（当协程
   终止时）。如果有任何错误，`resume` 返回 **false** 加上错误消息。
 
-# Returns the running coroutine, or nil when called by the main thread.
-coroutinelib.running@5.1,JIT: ""
+coroutinelib.running@5.1,JIT: |
+  返回正在运行的协程，当由主线程调用时返回 nil。
 
 coroutinelib.running@>5.2: |
   返回正在运行的协程加上一个布尔值，当正在运行的协程是主协程时为 true。
@@ -49,7 +68,8 @@ coroutinelib.wrap: |
   创建一个新的协程，主体函数为 `f`。`f` 必须是一个 Lua 函数。
   返回一个函数，每次调用该函数时都会恢复协程。传递给该函数的任何
   参数都作为 `resume` 的额外参数。返回与 `resume` 相同的值，
-  但不包括第一个布尔值。如果发生错误，则传播该错误。
+  但不包括第一个布尔值。如果发生错误，则传播该错误（自 Lua 5.4 起
+  还会关闭协程）。
 
 coroutinelib.yield: |
   挂起调用协程的执行。传递给 `yield` 的任何参数都作为额外结果

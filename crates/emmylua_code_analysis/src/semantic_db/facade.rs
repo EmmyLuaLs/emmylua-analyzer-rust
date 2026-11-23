@@ -6,7 +6,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use emmylua_parser::{LuaChunk, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
+use emmylua_parser::{LuaChunk, LuaDocType, LuaParseError, LuaSyntaxId, LuaSyntaxTree};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
@@ -19,15 +19,16 @@ use crate::{
 
 use super::SemanticDatabase;
 use super::def::{
-    ConstructorAttribute, Decl, DocGenericParam, Member, MemberRef, ModuleExport, NameUse, OwnerId,
-    Scope, SemanticId, Signature, TypeDef, TypeScope,
+    AccessPath, ConstructorAttribute, Decl, DocGenericParam, LuaMemberKey, Member, MemberRef,
+    MemberUse, ModuleExport, NameUse, OwnerId, Scope, SemanticId, Signature, TypeDef, TypeScope,
 };
 use super::exports::FileExports;
 use super::facts::FileFacts;
 use super::flow::FlowTree;
 use super::query::{
-    self, decl_references, decl_type, file_facts, member_keys_of_decl, member_keys_of_type,
-    member_type, module_export_type, resolve_name, resolve_type_def, signature_return,
+    self, decl_references, decl_type, lower_doc_type_node, member_keys_of_decl,
+    member_keys_of_type, member_type, module_export_type, resolve_name, resolve_type_def,
+    signature_return,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
 use crate::{
@@ -347,44 +348,28 @@ impl<'db> AnalysisView<'db> {
         Some(member_type(self.db, file_id, self.db.config()?, member))
     }
 
-    /// Index expression (by syntax position) → `(owner, name)` member reference (for deprecated etc. checks).
-    pub fn member_ref_of_index(
-        &self,
-        file_id: FileId,
-        index_syntax: LuaSyntaxId,
-    ) -> Option<(SemanticId, SmolStr)> {
-        let facts = file_facts(self.db, file_id);
-        let tree = self.db.vfs().get_syntax_tree(&file_id)?;
-        let expr = query::find_expr_by_syntax_id(tree, &index_syntax)?;
-        let emmylua_parser::LuaExpr::IndexExpr(index_expr) = expr else {
-            return None;
-        };
-        query::member_ref_from_index_expr(facts, &index_expr)
+    pub fn member_use(&self, file_id: FileId, index_syntax: LuaSyntaxId) -> Option<&'db MemberUse> {
+        self.db.file_facts_of(file_id)?.member_use(index_syntax)
+    }
+
+    pub fn members_of_receiver_key(&self, receiver: &AccessPath, key: &LuaMemberKey) -> MemberList {
+        MemberList::from(query::members_of_receiver_key(self.db, receiver, key))
     }
 
     /// Direct member names of a local declaration (completion candidates).
     #[allow(unused)]
     pub fn member_keys_of_decl(&self, file_id: FileId, decl: SemanticId) -> Vec<SmolStr> {
-        let Some(file) = self.db.file_data_id(file_id) else {
-            return Vec::new();
-        };
-        member_keys_of_decl(self.db, file, decl)
+        member_keys_of_decl(self.db, file_id, decl)
     }
 
     /// Member keys of a named type (including parent types, completion candidates).
     #[allow(unused)]
     pub fn member_keys_of_type(&self, file_id: FileId, type_def: SemanticId) -> Vec<SmolStr> {
-        let Some(file) = self.db.file_data_id(file_id) else {
-            return Vec::new();
-        };
-        member_keys_of_type(self.db, file, type_def)
+        member_keys_of_type(self.db, file_id, type_def)
     }
 
     /// Cross-file merged member keys (completion candidates): runtime members (Name/Decl keys) + `@field` (TypeDef keys).
     pub fn member_keys_of_owner(&self, owner: SemanticId) -> Vec<SmolStr> {
-        if self.db.config().is_none() {
-            return Vec::new();
-        }
         query::member_keys_of_owner(self.db, owner)
     }
 
@@ -484,10 +469,9 @@ impl<'db> AnalysisView<'db> {
         closure_syntax: LuaSyntaxId,
         param_index: usize,
     ) -> Option<TypeShell> {
-        let file = self.db.file_data_id(file_id)?;
         Some(query::param_type(
             self.db,
-            file,
+            file_id,
             closure_syntax,
             param_index,
         ))
@@ -520,16 +504,12 @@ impl<'db> AnalysisView<'db> {
 
     /// Resolve a named type in the current file scope (same-file Private → Internal → Global).
     pub fn resolve_type_def(&self, file_id: FileId, name: &str) -> Option<TypeDef> {
-        let file = self.db.file_data_id(file_id)?;
-        resolve_type_def(self.db, file, SmolStr::new(name))
+        resolve_type_def(self.db, file_id, SmolStr::new(name))
     }
 
     /// Resolve **all definition locations** of a named type in the current file scope (for duplicate-type checks).
     pub fn type_def_locations(&self, file_id: FileId, name: &str) -> Vec<TypeDef> {
-        let Some(file) = self.db.file_data_id(file_id) else {
-            return Vec::new();
-        };
-        query::resolve_type_def_locations(self.db, file, SmolStr::new(name)).to_vec()
+        query::resolve_type_def_locations(self.db, file_id, SmolStr::new(name)).to_vec()
     }
 
     /// All type definitions for a scope + full name (cross-file, for member queries / inheritance chains).
@@ -572,10 +552,19 @@ impl<'db> AnalysisView<'db> {
         type_syntax: LuaSyntaxId,
         generics: &[DocGenericParam],
     ) -> LuaType {
-        let Some(file) = self.db.file_data_id(file_id) else {
-            return LuaType::Unknown;
-        };
-        let shell = query::lower_doc_type(self.db, file, type_syntax, generics);
+        let shell = query::lower_doc_type(self.db, file_id, type_syntax, generics);
+        let generic_names: Vec<SmolStr> = generics.iter().map(|g| g.name.clone()).collect();
+        self.type_shell_lua_in(file_id, &shell, &generic_names)
+    }
+
+    /// 按所属文件和泛型作用域投影已取得的注解节点.
+    pub(crate) fn doc_type_node_lua(
+        &self,
+        file_id: FileId,
+        doc_type: &LuaDocType,
+        generics: &[DocGenericParam],
+    ) -> LuaType {
+        let shell = lower_doc_type_node(self.db, file_id, generics, doc_type);
         let generic_names: Vec<SmolStr> = generics.iter().map(|g| g.name.clone()).collect();
         self.type_shell_lua_in(file_id, &shell, &generic_names)
     }
@@ -712,25 +701,11 @@ impl<'db> AnalysisView<'db> {
                 TypeCandidate::GenericInstance(ins) => {
                     let name = &ins.name;
                     let args = &ins.args;
-                    let base_id = self.resolve_named_id(file_id, name);
                     let params: Vec<LuaType> = args
                         .iter()
                         .map(|arg| self.project_shell_in(file_id, arg, generic_names))
                         .collect();
-                    // `TypeGuard<T>` is a built-in type guard: projected to `LuaType::TypeGuard(T)`,
-                    // which flow analysis uses to narrow the argument in `if isX(v) then`.
-                    if name == "TypeGuard"
-                        && let Some(inner) = params.first()
-                    {
-                        LuaType::TypeGuard(Rc::new(inner.clone()))
-                    } else if name == "std.Unpack" {
-                        LuaType::Call(Rc::new(LuaAliasCallType::new(
-                            LuaAliasCallKind::Unpack,
-                            params,
-                        )))
-                    } else {
-                        LuaType::Generic(Rc::new(LuaGenericType::new(base_id, params)))
-                    }
+                    self.project_generic_type(file_id, name, params)
                 }
                 // String template type → StrTplRef (string arguments replace placeholder names).
                 TypeCandidate::StrTpl(str_tpl) => {
@@ -757,6 +732,30 @@ impl<'db> AnalysisView<'db> {
             0 => LuaType::Unknown,
             1 => types.pop().expect("len checked"),
             _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+        }
+    }
+
+    /// 根据名称和类型实参投影泛型类型, 保留内建泛型的语义.
+    pub(crate) fn project_generic_type(
+        &self,
+        file_id: FileId,
+        name: &str,
+        params: Vec<LuaType>,
+    ) -> LuaType {
+        // `TypeGuard<T>` is a built-in type guard: projected to `LuaType::TypeGuard(T)`,
+        // which flow analysis uses to narrow the argument in `if isX(v) then`.
+        if name == "TypeGuard"
+            && let Some(inner) = params.first()
+        {
+            LuaType::TypeGuard(Rc::new(inner.clone()))
+        } else if name == "std.Unpack" {
+            LuaType::Call(Rc::new(LuaAliasCallType::new(
+                LuaAliasCallKind::Unpack,
+                params,
+            )))
+        } else {
+            let base_id = self.resolve_named_id(file_id, name);
+            LuaType::Generic(Rc::new(LuaGenericType::new(base_id, params)))
         }
     }
 

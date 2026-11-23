@@ -61,6 +61,7 @@ pub fn load_resource_std(
 
 fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
     const JIT_FILES_TO_REMOVE: &[&str] = &[
+        "bit.lua",
         "jit.lua",
         "jit/profile.lua",
         "jit/util.lua",
@@ -144,11 +145,7 @@ fn check_need_dump_to_file_system() -> bool {
         return true;
     };
     let version = content.trim();
-    if version != VERSION {
-        return true;
-    }
-
-    false
+    version != VERSION
 }
 
 pub fn load_resource_from_include_dir() -> Vec<LuaFileInfo> {
