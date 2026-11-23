@@ -855,9 +855,7 @@ pub(crate) fn callable_functions(
             out
         }
         LuaType::TableConst(table) => {
-            InferVm::setmetatable_call_candidate_for_table(semantic_model, table)
-                .into_iter()
-                .collect()
+            InferVm::setmetatable_call_candidates_for_table(semantic_model, table)
         }
         LuaType::Union(union) => union
             .into_vec()

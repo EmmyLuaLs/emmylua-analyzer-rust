@@ -2505,67 +2505,109 @@ impl<'a> InferVm<'a> {
         if candidates.is_empty() {
             // `setmetatable({}, { __call = ... })`: the table literal itself has no
             // signature, but the `__call` on its metatable makes it callable.
-            if let Some(fun) = self.setmetatable_call_candidate(&callee) {
-                return vec![fun];
+            let call_candidates = self.setmetatable_call_candidates(&callee);
+            if !call_candidates.is_empty() {
+                return call_candidates;
             }
         }
         candidates
     }
 
-    /// Resolve the `__call` candidate from a `setmetatable(t, mt)` initializer.
+    /// Resolve the `__call` candidates from a `setmetatable(t, mt)` initializer.
     ///
     /// Only handles callees whose declaration/table identity is directly created by
-    /// `setmetatable(...)`; the candidate removes the first receiver param of `__call`
+    /// `setmetatable(...)`; each candidate removes the first receiver param of `__call`
     /// (Lua's call operator automatically passes the called table).
-    fn setmetatable_call_candidate(&self, callee: &Value) -> Option<LuaFunctionType> {
+    fn setmetatable_call_candidates(&self, callee: &Value) -> Vec<LuaFunctionType> {
         let LuaType::TableConst(table) = &callee.ty else {
-            return None;
+            return Vec::new();
         };
-        Self::setmetatable_call_candidate_for_table(self.model, table)
+        Self::setmetatable_call_candidates_for_table(self.model, table)
     }
 
-    /// Table identity -> `__call` metamethod candidate (shared by VM call and the
+    /// Table identity -> `__call` metamethod candidates (shared by VM call and the
     /// `callable_functions` diagnostic).
-    pub(crate) fn setmetatable_call_candidate_for_table(
+    pub(crate) fn setmetatable_call_candidates_for_table(
         model: &SemanticModel,
         table: &InFiled<rowan::TextRange>,
-    ) -> Option<LuaFunctionType> {
-        let metatable_ty = table_metatable_type(model, table)?;
-        let call_info =
-            model.member_info(&metatable_ty, &LuaMemberKey::Name(SmolStr::new("__call")))?;
-        let call_file = call_info.file_id?;
-        let call_member = call_info.id?;
-        let facts = model.file_facts_of(call_file)?;
-        let member = facts.member_by_id(&call_member)?;
-        let value_syntax = member.value_syntax?;
-        let mut fun = model.type_of_signature_in_file(call_file, value_syntax)?;
-        // `---@return self` on a table-literal field may not be attached to a function
-        // signature (semantic attaches the field doc to the member); for the `__call`
-        // metamethod, when the return type is missing, treat it as the called table itself.
-        if matches!(fun.get_ret(), LuaType::Unknown) {
-            fun = LuaFunctionType::new(
-                fun.get_async_state(),
-                false,
-                fun.is_variadic(),
-                fun.get_params().to_vec(),
-                LuaType::SelfInfer,
-                Some(fun.get_generic_params().to_vec()),
-            );
-        }
-        let mut params = fun.get_params().to_vec();
-        // `__call`'s first param is the receiver (`self` or `_`), implicitly passed by the
-        // call operator.
-        if !params.is_empty() {
-            params.remove(0);
-        }
-        Some(LuaFunctionType::new(
-            fun.get_async_state(),
-            false,
-            fun.is_variadic(),
-            params,
-            fun.get_ret().clone(),
-            Some(fun.get_generic_params().to_vec()),
-        ))
+    ) -> Vec<LuaFunctionType> {
+        let Some(metatable_ty) = table_metatable_type(model, table) else {
+            return Vec::new();
+        };
+        let Some(call_info) =
+            model.member_info(&metatable_ty, &LuaMemberKey::Name(SmolStr::new("__call")))
+        else {
+            return Vec::new();
+        };
+        let Some(call_file) = call_info.file_id else {
+            return Vec::new();
+        };
+        let value_model = model.model_for(call_file);
+        let value_syntax = call_info.id.as_ref().and_then(|id| {
+            value_model
+                .file_facts_of(call_file)?
+                .member_by_id(id)?
+                .value_syntax
+        });
+        let value_expr = value_syntax.and_then(|syntax| {
+            let tree = value_model.syntax_tree_of(call_file)?;
+            let node = syntax.to_node_from_root(&tree.get_red_root())?;
+            LuaExpr::cast(node)
+        });
+        // Inline closures expose a signature through their syntax. A function stored in
+        // a variable (`__call = handler` / `__call = t.fn`) has a NameExpr/IndexExpr
+        // there, so resolve its callable candidates instead.
+        let functions = if matches!(value_expr, Some(LuaExpr::ClosureExpr(_))) {
+            value_syntax
+                .and_then(|syntax| value_model.type_of_signature_in_file(call_file, syntax))
+                .into_iter()
+                .collect()
+        } else {
+            let expr_candidates = match &value_expr {
+                Some(expr @ (LuaExpr::NameExpr(_) | LuaExpr::IndexExpr(_))) => {
+                    value_model.callable_candidates_for_expr(expr)
+                }
+                _ => Vec::new(),
+            };
+            if expr_candidates.is_empty() {
+                expand_callable_types_in_model(model, &call_info.typ)
+            } else {
+                expr_candidates
+            }
+        };
+        functions
+            .into_iter()
+            .map(|mut fun| {
+                // `---@return self` on a table-literal field may not be attached to a
+                // function signature (semantic attaches the field doc to the member);
+                // for the `__call` metamethod, when the return type is missing, treat
+                // it as the called table itself.
+                if matches!(fun.get_ret(), LuaType::Unknown) {
+                    fun = LuaFunctionType::new(
+                        fun.get_async_state(),
+                        false,
+                        fun.is_variadic(),
+                        fun.get_params().to_vec(),
+                        LuaType::SelfInfer,
+                        Some(fun.get_generic_params().to_vec()),
+                    );
+                }
+                let mut params = fun.get_params().to_vec();
+                // `__call`'s first param is the receiver (`self` or `_`), implicitly
+                // passed by the call operator.
+                if !params.is_empty() {
+                    params.remove(0);
+                }
+                LuaFunctionType::new(
+                    fun.get_async_state(),
+                    false,
+                    fun.is_variadic(),
+                    params,
+                    fun.get_ret().clone(),
+                    Some(fun.get_generic_params().to_vec()),
+                )
+            })
+            .collect()
     }
 
     /// Constructor attribute for a class-table callee: only named type definitions
