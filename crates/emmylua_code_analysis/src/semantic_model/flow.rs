@@ -2334,8 +2334,9 @@ fn trace_decl_uncached(
     let root_mode = mode;
     let mut current = flow_id;
     let mut frames = Vec::new();
-    // Set when the walk skipped a merge whose branches leave `decl` alone (below).
-    let mut skipped_to_common = false;
+    // Set when the walk skipped a merge whose branches leave `decl` alone (below), and
+    // consumed on the very next iteration, where the walk lands on the merge's predecessor.
+    let mut just_skipped_merge = false;
     let result = 'trace: loop {
         // A value read that lands here after skipping a merge, or that reaches a write of
         // `decl`, uses and fills the memo, as `trace_decl` does at its start: the memo holds
@@ -2343,7 +2344,7 @@ fn trace_decl_uncached(
         // Without this, each read of a long chain of such merges or writes walks back
         // through all of them. At a write, the memo frame sits under the write's own frame,
         // so it saves the state after the write.
-        let landed = std::mem::take(&mut skipped_to_common);
+        let landed = std::mem::take(&mut just_skipped_merge);
         if matches!(purpose, DeclTracePurpose::ReadValue)
             && (landed
                 || tree.get_flow_effects(current).iter().any(
@@ -2370,6 +2371,8 @@ fn trace_decl_uncached(
             if let Some(state) = memo {
                 break 'trace state.map(|state| finalize(model, state, path));
             }
+            // Only an empty path may fill it: entries hold the empty-path state, as in
+            // `trace_decl`, and `finalize` applies the path's guards and casts on lookup.
             if absent && path.narrowings.is_empty() && path.casts.is_empty() {
                 frames.push(DeclTraceFrame::Memo {
                     key,
@@ -2639,7 +2642,7 @@ fn trace_decl_uncached(
                         decl_branch_is_pure(model, tree, decl, purpose, *branch, common)
                     }) {
                         current = common;
-                        skipped_to_common = true;
+                        just_skipped_merge = true;
                         continue;
                     }
                     if matches!(purpose, DeclTracePurpose::OriginalSignatures(_))
