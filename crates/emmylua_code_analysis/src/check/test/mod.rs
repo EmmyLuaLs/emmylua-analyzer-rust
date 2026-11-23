@@ -81,8 +81,12 @@ pub(crate) fn check_source_with_emmyrc(source: &str, emmyrc: Emmyrc) -> Vec<Diag
     check_file(&model, config)
 }
 
-/// Run all checks on the last of several files, the others being the rest of its workspace.
+/// Run all checks on the last source, with the preceding sources as the rest of its workspace.
 pub(crate) fn check_last_file(sources: &[&str]) -> Vec<Diagnostic> {
+    assert!(
+        !sources.is_empty(),
+        "check_last_file needs at least one source"
+    );
     let emmyrc = Arc::new(Emmyrc::default());
     let mut db = SemanticDatabase::new();
     db.update_config(emmyrc.clone());
@@ -92,7 +96,7 @@ pub(crate) fn check_last_file(sources: &[&str]) -> Vec<Diagnostic> {
         last = Some(db.set_file_content(&uri, Some(source.to_string())));
     }
     db.update_main_root(std::path::PathBuf::from("C:/ws"));
-    let model = SemanticModel::new(&db, last.expect("a file"));
+    let model = SemanticModel::new(&db, last.expect("sources is not empty"));
     check_file(&model, Arc::new(CheckConfig::new(&emmyrc)))
 }
 
