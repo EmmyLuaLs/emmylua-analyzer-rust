@@ -7,7 +7,7 @@ use std::sync::Arc;
 use lsp_types::Uri;
 
 use crate::DiagnosticCode;
-use crate::{Emmyrc, SemanticDatabase, SemanticModel};
+use crate::{Emmyrc, LuaType, SemanticDatabase, SemanticModel, VirtualWorkspace};
 
 use super::{Diagnostic, check_source, count_by_code};
 use crate::check::{CheckConfig, check_file};
@@ -26,6 +26,38 @@ fn check_export(def_source: &str, use_source: &str) -> Vec<Diagnostic> {
     let model = SemanticModel::new(&db, use_file);
     let config = Arc::new(CheckConfig::new(&emmyrc));
     check_file(&model, config)
+}
+
+// 导出类表时应包含声明字段, 同时继续拒绝不存在的字段.
+#[test]
+fn test_export_declared_class_fields() {
+    let source = r#"
+        ---@class Shared
+        ---@field value integer
+        local M = {}
+        return M
+        "#;
+    let mut ws = VirtualWorkspace::new();
+    ws.def_file("mod.lua", source);
+    assert_eq!(ws.expr_ty("require('mod').value"), LuaType::Integer);
+    let diagnostics = check_export(
+        source,
+        r#"
+        local shared = require 'mod'
+        shared.value = 1
+        return shared.value, shared.missing
+        "#,
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::UndefinedField),
+        1,
+        "{diagnostics:#?}"
+    );
+    assert_eq!(
+        count_by_code(&diagnostics, DiagnosticCode::InjectField),
+        0,
+        "{diagnostics:#?}"
+    );
 }
 
 /// `return { a = 1 }`: imported tables may only read/write fields on the export surface.

@@ -16,11 +16,25 @@
 --- @class iolib
 io = {}
 
+--- @version >5.2
 --- 相当于 `file:close()`。如果没有指定文件，则关闭默认输出文件。
 --- @param file? file
+--- @return_overload true
+--- @return_overload nil, string err, integer errcode
+--- @return_overload true, 'exit' | 'signal', integer
+--- @return_overload nil, 'exit' | 'signal', integer
+function io.close(file) end
+
+--- @version 5.1, JIT
+--- 相当于 `file:close()`。如果没有指定文件，则关闭默认输出文件。
+--- @param file? file
+--- @return_overload true
+--- @return_overload nil, string err, integer errcode
 function io.close(file) end
 
 --- 相当于 `io.output():flush()`。
+--- @return_overload true
+--- @return_overload nil, string err, integer errcode
 function io.flush() end
 
 --- 当使用文件名调用时，它打开命名的文件（以文本模式），并将该文件句柄
@@ -61,7 +75,7 @@ function io.lines(filename, ...) end
 --- @param filename string
 --- @param mode?    iolib.OpenMode
 --- @return_overload file
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function io.open(filename, mode) end
 
 --- 类似于 `io.input`，但操作的是默认输出文件。
@@ -76,7 +90,8 @@ function io.output(file) end
 --- （如果 `mode` 是 "`w`"）。
 --- @param prog  string
 --- @param mode? string | 'r' | 'w'
---- @return file
+--- @return_overload file
+--- @return_overload nil, string err, integer errcode
 function io.popen(prog, mode) end
 
 --- @alias std.readmode
@@ -100,20 +115,21 @@ function io.read(...) end
 
 --- 如果成功，返回一个临时文件的句柄。此文件以更新模式打开，
 --- 并在程序结束时自动删除。
---- @return file
+--- @return_overload file
+--- @return_overload nil, string err, integer errcode
 function io.tmpfile() end
 
 --- 检查 `obj` 是否为有效的文件句柄。如果 `obj` 是打开的文件句柄，
 --- 返回字符串 "`file`"；如果 `obj` 是已关闭的文件句柄，
 --- 返回 "`closed file`"；如果 `obj` 不是文件句柄，返回 **nil**。
---- @param obj file
+--- @param obj any
 --- @return 'file'|'closed file'|nil
 function io.type(obj) end
 
 --- 相当于 `io.output():write(...)`。
 --- @param ... string | number
 --- @return_overload file
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function io.write(...) end
 
 --- 文件对象
@@ -126,6 +142,8 @@ local file = {}
 ---
 --- 当关闭由 `io.popen` 创建的文件句柄时，`file:close` 返回
 --- 与 `os.execute` 相同的返回值。
+--- @return_overload true
+--- @return_overload nil, string err, integer errcode
 --- @return_overload true, 'exit' | 'signal', integer
 --- @return_overload nil, 'exit' | 'signal', integer
 function file:close() end
@@ -136,12 +154,12 @@ function file:close() end
 --- handles are garbage collected, but that takes an unpredictable amount of
 --- time to happen.
 --- @return_overload true
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function file:close() end
 
 --- 将任何写入的数据保存到 `file`。
 --- @return_overload true
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function file:flush() end
 
 --- 返回一个迭代器函数，每次调用时，都会根据给定的格式读取文件。
@@ -190,11 +208,10 @@ function file:read(...) end
 --- 调用 `file:seek()` 返回当前文件位置而不改变它；
 --- 调用 `file:seek("set")` 将位置设置为文件开头（并返回 0）；
 --- 调用 `file:seek("end")` 将位置设置为文件末尾，并返回其大小。
---- @overload fun()
---- @param whence string | 'set' | 'cur' | 'end'
---- @param offset integer
+--- @param whence? 'set' | 'cur' | 'end'
+--- @param offset? integer
 --- @return_overload integer pos
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function file:seek(whence, offset) end
 
 --- 设置输出文件的缓冲模式。有三种可用模式：
@@ -205,8 +222,10 @@ function file:seek(whence, offset) end
 --- （如终端设备）有任何输入。
 ---
 --- 对于后两种情况，`size` 指定缓冲区的大小（以字节为单位）。默认是合适的大小。
---- @param mode  string | 'no' | 'full' | 'line'
+--- @param mode  'no' | 'full' | 'line'
 --- @param size? integer
+--- @return_overload true
+--- @return_overload nil, string err, integer errcode
 function file:setvbuf(mode, size) end
 
 --- 将其每个参数的值写入 `file`。参数必须是字符串或数字。
@@ -214,7 +233,7 @@ function file:setvbuf(mode, size) end
 --- 如果成功，此函数返回 `file`。否则它返回 **nil** 加上描述错误的字符串。
 --- @param ... string | number
 --- @return_overload file
---- @return_overload nil, string err
+--- @return_overload nil, string err, integer errcode
 function file:write(...) end
 
 --- 标准错误输出。

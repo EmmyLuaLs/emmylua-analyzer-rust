@@ -1,8 +1,259 @@
 #[cfg(test)]
 mod test {
+    use emmylua_parser::{LuaAstNode, LuaIndexExpr};
     use smol_str::SmolStr;
 
-    use crate::{LuaType, LuaUnionType, VirtualWorkspace};
+    use crate::{LuaIndexAccessKey, LuaObjectType, LuaType, LuaUnionType, VirtualWorkspace};
+
+    // 可选对象字段在短路条件前后都应保留具名字段类型.
+    #[test]
+    fn test_optional_object_field_preserves_shape() {
+        let mut ws = VirtualWorkspace::new();
+        let post = LuaType::Object(
+            LuaObjectType::new(vec![(
+                LuaIndexAccessKey::String("a".into()),
+                LuaType::String,
+            )])
+            .into(),
+        );
+        let optional_post = LuaType::Union(LuaUnionType::Nullable(post.clone()).into());
+        let headers = ws.ty("string?");
+        let file_id = ws.def(
+            r#"
+        ---@class Fix01
+        ---@field post? { a: string }
+
+        ---@param options? Fix01
+        local function request_url(options)
+            if not options then
+                return
+            end
+            local headers = options.post and options.post.a
+        end
+        "#,
+        );
+        let model = ws.analysis.semantic_model(file_id);
+        let post_types: Vec<_> = model
+            .chunk()
+            .expect("chunk")
+            .descendants::<LuaIndexExpr>()
+            .filter(|expr| expr.get_text() == "options.post")
+            .map(|expr| model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start()))
+            .collect();
+
+        assert_eq!(post_types, vec![optional_post, post]);
+        let facts = model.file_facts().expect("file facts");
+        let decl = facts.decl_named("headers").expect("headers declaration");
+        assert_eq!(model.type_of_decl(&decl.id), Some(headers));
+    }
+
+    // 对象注解的完整投影应在可空和联合类型中保留字段.
+    #[test]
+    fn test_optional_object_type_projection() {
+        let object = LuaType::Object(
+            LuaObjectType::new(vec![(
+                LuaIndexAccessKey::String("a".into()),
+                LuaType::String,
+            )])
+            .into(),
+        );
+        let optional = LuaType::Union(LuaUnionType::Nullable(object.clone()).into());
+        for (type_repr, expected) in [
+            ("{ a: string }?", optional.clone()),
+            ("{ a: string }|nil", optional),
+            ("{ a: string }", object),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            let file_id = ws.def(&format!(
+                r#"
+                ---@type {type_repr}
+                local post
+                "#,
+            ));
+            let model = ws.analysis.semantic_model(file_id);
+            let facts = model.file_facts().expect("file facts");
+            let decl = facts.decl_named("post").expect("post declaration");
+            let syntax = decl.doc_type_syntax.expect("post annotation");
+            assert_eq!(
+                model.project_doc_type(model.file_id(), syntax, &[]),
+                expected,
+                "{type_repr}"
+            );
+            assert_eq!(model.type_of_decl(&decl.id), Some(expected), "{type_repr}");
+        }
+    }
+
+    // 可选对象字段保留泛型实参, 类的泛型参数优先于命名空间中的同名类型.
+    #[test]
+    fn test_optional_object_generic_field_projection() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@namespace OptionalObject
+            ---@class T
+
+            ---@class Request<T>
+            ---@field post? { a: T, nested?: { value: T }, [integer]: { value: T } }
+            ---@field transform fun(value: T): T
+
+            ---@type Request<string>
+            local options
+            Post = options.post
+            A = options.post and options.post.a
+            Nested = options.post and options.post.nested and options.post.nested.value
+            Transform = options.transform
+            "#,
+        );
+
+        let nested = LuaType::Object(
+            LuaObjectType::new(vec![(
+                LuaIndexAccessKey::String("value".into()),
+                LuaType::String,
+            )])
+            .into(),
+        );
+        let post = LuaType::Object(
+            LuaObjectType::new(vec![
+                (LuaIndexAccessKey::String("a".into()), LuaType::String),
+                (
+                    LuaIndexAccessKey::String("nested".into()),
+                    LuaType::Union(LuaUnionType::Nullable(nested.clone()).into()),
+                ),
+                (LuaIndexAccessKey::Type(LuaType::Integer), nested),
+            ])
+            .into(),
+        );
+        assert_eq!(
+            ws.expr_ty("Post"),
+            LuaType::Union(LuaUnionType::Nullable(post).into())
+        );
+        let optional_string = ws.ty("string?");
+        for name in ["A", "Nested"] {
+            assert_eq!(ws.expr_ty(name), optional_string, "{name}");
+        }
+        let LuaType::DocFunction(transform) = ws.expr_ty("Transform") else {
+            panic!("transform must be a function");
+        };
+        assert_eq!(transform.get_params()[0].1, Some(LuaType::String));
+        assert_eq!(transform.get_ret(), &LuaType::String);
+    }
+
+    // 可选对象的泛型别名应保留字段类型和定义所在的作用域.
+    #[test]
+    fn test_optional_object_alias_projection() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@namespace OptionalObjectAlias
+            ---@class T
+            ---@alias Post<T> { a: T }?
+            ---@class Request<T>
+            ---@field post Post<T>
+
+            ---@type Request<string>
+            local options
+            Headers = options.post and options.post.a
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("Headers"), ws.ty("string?"));
+    }
+
+    // 字段使用完整注解投影时仍保留内建泛型语义和数值常量.
+    #[test]
+    fn test_doc_field_projection_preserves_leaf_types() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Fields
+            ---@field guard TypeGuard<string>
+            ---@field value 42
+            ---@type Fields
+            local fields
+            Guard = fields.guard
+            Value = fields.value
+            "#,
+        );
+
+        assert_eq!(
+            [ws.expr_ty("Guard"), ws.expr_ty("Value")],
+            [
+                LuaType::TypeGuard(LuaType::String.into()),
+                LuaType::IntegerConst(42)
+            ]
+        );
+    }
+
+    // 容器内函数的泛型独立于类泛型, 未声明泛型的函数仍使用类的实参.
+    #[test]
+    fn test_doc_projection_array_function_generic_scope() {
+        for (field_type, callback) in [
+            ("(fun<U>(value: U): U)[]", "instance.callbacks[1]"),
+            ("(fun<T>(value: T): T)[]", "instance.callbacks[1]"),
+            (
+                "fun(): ((fun<U>(value: U): U)[])",
+                "instance.callbacks()[1]",
+            ),
+            (
+                "fun(): ((fun<T>(value: T): T)[])",
+                "instance.callbacks()[1]",
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            ws.def(&format!(
+                r#"
+                ---@class Callbacks<T>
+                ---@field callbacks {field_type}
+                ---@field inherited (fun(value: T): T)[]
+                ---@type Callbacks<string>
+                local instance
+                NumberResult = {callback}(123)
+                BooleanResult = {callback}(true)
+                InheritedResult = instance.inherited[1]("value")
+                "#,
+            ));
+
+            assert_eq!(
+                [
+                    ws.expr_ty("NumberResult"),
+                    ws.expr_ty("BooleanResult"),
+                    ws.expr_ty("InheritedResult"),
+                ],
+                [
+                    LuaType::Integer,
+                    LuaType::BooleanConst(true),
+                    LuaType::String
+                ],
+                "{field_type}",
+            );
+        }
+    }
+
+    // 函数放入数组或元组后, 其类型应与独立声明时一致.
+    #[test]
+    fn test_doc_projection_container_function_type() {
+        for function_type in ["fun<U>(value: U): U", "fun<U>(value: [U]): [U]"] {
+            for field_type in [format!("({function_type})[]"), format!("[{function_type}]")] {
+                let mut ws = VirtualWorkspace::new();
+                ws.def(&format!(
+                    r#"
+                    ---@class Container<T>
+                    ---@field callbacks {field_type}
+                    ---@type Container<string>
+                    local instance
+                    Callbacks = instance.callbacks
+                    "#,
+                ));
+                let callbacks = ws.expr_ty("Callbacks");
+                let callback = match callbacks {
+                    LuaType::Array(array) => array.get_base().clone(),
+                    LuaType::Tuple(tuple) => tuple.get_types()[0].clone(),
+                    other => panic!("expected a container, got {other:?}"),
+                };
+                assert_eq!(callback, ws.ty(function_type), "{field_type}");
+            }
+        }
+    }
 
     #[test]
     fn test_issue_318() {

@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 toml_edit.workspace = true
+
+[lints]
+workspace = true

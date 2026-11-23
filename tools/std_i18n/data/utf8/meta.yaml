@@ -28,6 +28,6 @@ b:
   - ['utf8lib.len@@1', 'd', doc, [72, 0, 77, 0], '02bcfb79f2709c26']
 - a: 'function utf8.offset(s, n, i) end'
   g: 'Returns the position (in bytes) where the encoding of the `n`-th character'
-  r: [95, 0, 111, 19]
+  r: [95, 0, 115, 24]
   e:
-  - ['utf8lib.offset', 'd', doc, [95, 0, 107, 0], '021a0690a3ca0f56']
+  - ['utf8lib.offset', 'd', doc, [95, 0, 110, 0], '78ed2aa8dffa2911']

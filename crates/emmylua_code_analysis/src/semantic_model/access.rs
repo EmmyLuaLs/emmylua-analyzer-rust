@@ -1,12 +1,170 @@
+use std::cell::LazyCell;
+
 use super::prelude::*;
+use crate::MemberList;
 use crate::check::checker::generic_constraint_mismatch::resolved_call_signatures;
 use crate::check::checker::param_count::callable_functions;
 use crate::check::checker::param_type_check::callable_candidates_uncached;
+use emmylua_parser::LuaIndexKey;
 
 impl<'db> SemanticModel<'db> {
     /// Currently configured runtime version (used for `---@version` visibility checks).
     pub fn lua_version(&self) -> Option<LuaVersionNumber> {
         self.db().lua_version()
+    }
+    /// Whether any of the `---@version` conditions matches the configured runtime.
+    ///
+    /// An empty condition list means the declaration is visible in every version.
+    pub(crate) fn versions_visible(
+        &self,
+        versions: &[emmylua_parser::LuaVersionCondition],
+    ) -> bool {
+        let Some(version) = self.lua_version() else {
+            return true;
+        };
+        versions.is_empty() || versions.iter().any(|condition| condition.check(&version))
+    }
+    /// Whether a cross-file member reference is visible under the configured runtime version.
+    ///
+    /// Used where raw members are selected by key (e.g. stdlib global-table members): a
+    /// `---@version`-hidden declaration must not shadow a later visible one.
+    ///
+    /// Missing file facts / member data is treated as visible: that is the safe
+    /// default, so incomplete indexes do not hide declarations.
+    pub(crate) fn member_ref_versions_visible(&self, member_ref: &MemberRef) -> bool {
+        let Some(facts) = self.file_facts_of(member_ref.file_id) else {
+            return true;
+        };
+        let Some(member) = facts.member_by_id(&member_ref.id) else {
+            return true;
+        };
+        member::member_version_visible(self, facts, member)
+    }
+
+    /// Whether a declaration/member is visible under the configured Lua version.
+    pub(crate) fn semantic_id_version_visible(&self, id: &SemanticId) -> bool {
+        // Declarations store their `---@version` conditions directly, which
+        // covers non-function declarations (for example `bit = {}`).
+        if let SemanticId::Decl(key) = id
+            && let Some(facts) = self.file_facts_of(key.file_id)
+            && let Some(decl) = facts.decl_by_id(id)
+            && !decl.version_conds.is_empty()
+        {
+            return self.versions_visible(&decl.version_conds);
+        }
+        let Some((file_id, signature_syntax)) = self.versioned_signature_syntax(id) else {
+            return true;
+        };
+        let Some(facts) = self.file_facts_of(file_id) else {
+            return true;
+        };
+        let Some(signature) = facts.signature_by_closure(signature_syntax) else {
+            return true;
+        };
+        signature
+            .docs
+            .as_ref()
+            .is_none_or(|docs| self.versions_visible(&docs.versions))
+    }
+
+    /// Whether a callee expression refers to a declaration/member that is
+    /// visible under the configured Lua version. Used to avoid cascading
+    /// parameter diagnostics for version-gated callees.
+    pub(crate) fn is_callee_version_visible(&self, callee: &LuaExpr) -> bool {
+        match callee {
+            LuaExpr::NameExpr(name_expr) => {
+                let Some(name) = name_expr.get_name_text() else {
+                    return true;
+                };
+                if let Some(local) = self.resolve_local_name(name_expr.get_position()) {
+                    return self.semantic_id_version_visible(&local);
+                }
+                let decls = self.global_decls_named_for_file(self.file_id(), name.as_str());
+                decls.is_empty()
+                    || decls
+                        .iter()
+                        .any(|decl| self.semantic_id_version_visible(decl))
+            }
+            LuaExpr::IndexExpr(index_expr) => !self.is_version_hidden_member_access(index_expr),
+            _ => true,
+        }
+    }
+
+    /// Whether a static index access resolves to a member that exists only in
+    /// declarations hidden by `---@version` for the configured runtime.
+    ///
+    /// `member_infos_with_key` already filters version-hidden members, so an
+    /// empty result plus a hidden resolved member means there is no visible
+    /// candidate with this key. Owner types whose members `collect_members`
+    /// cannot enumerate keep the optimistic "visible" default.
+    pub(crate) fn is_version_hidden_member_access(&self, index_expr: &LuaIndexExpr) -> bool {
+        let Some(index_key) = index_expr.get_index_key() else {
+            return false;
+        };
+        let Some(key) = static_index_member_key(&index_key) else {
+            return false;
+        };
+        let Some(prefix) = index_expr.get_prefix_expr() else {
+            return false;
+        };
+        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
+        if !member_surface_is_enumerable(&prefix_ty) {
+            return false;
+        }
+        // `member_infos_with_key` covers `@field`, table literals, string
+        // methods and class methods; if it finds a visible member, the access
+        // is not hidden.
+        if !self.member_infos_with_key(&prefix_ty, &key).is_empty() {
+            return false;
+        }
+        let Some(resolved) = self.resolve_member(index_expr) else {
+            return false;
+        };
+        let Some(member_id) = resolved.member_id.as_ref() else {
+            return false;
+        };
+        if self.semantic_id_version_visible(member_id) {
+            return false;
+        }
+        // Global std tables keep their runtime members under `Name("os")`
+        // rather than the class `Ref`, so `member_infos_with_key` is empty for
+        // them. Check the resolved owner for a visible sibling declaration
+        // (e.g. `string.dump` exists in 5.1/5.2 and in 5.3+).
+        if let LuaMemberKey::Name(name) = &key
+            && self
+                .members_of_owner_named(&resolved.owner, name)
+                .iter()
+                .any(|member| self.member_ref_versions_visible(member))
+        {
+            return false;
+        }
+        true
+    }
+
+    /// Whether a global name exists only in declarations hidden by `---@version`.
+    pub(crate) fn is_version_hidden_global(&self, name: &str) -> bool {
+        let decls = self.global_decls_named_for_file(self.file_id(), name);
+        !decls.is_empty()
+            && decls
+                .iter()
+                .all(|decl| !self.semantic_id_version_visible(decl))
+    }
+
+    fn versioned_signature_syntax(&self, id: &SemanticId) -> Option<(FileId, LuaSyntaxId)> {
+        match id {
+            SemanticId::Decl(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let decl = facts.decl_by_id(id)?;
+                let syntax = decl.value_expr_syntax.or(decl.owner_syntax)?;
+                Some((key.file_id, syntax))
+            }
+            SemanticId::Member(key) => {
+                let facts = self.file_facts_of(key.file_id)?;
+                let member = facts.member_by_id(id)?;
+                Some((key.file_id, member.value_syntax?))
+            }
+            _ => None,
+        }
     }
     /// A file view that shares this model's query results and recursion state.
     pub fn model_for(&self, file_id: FileId) -> Self {
@@ -127,6 +285,68 @@ impl<'db> SemanticModel<'db> {
     pub fn decl_by_offset(&self, offset: TextSize) -> Option<SemanticId> {
         self.view.decl_by_offset(offset)
     }
+
+    // -- 成员查询 --
+
+    pub fn member_use(&self, syntax: LuaSyntaxId) -> Option<&'db MemberUse> {
+        self.analysis().member_use(self.file_id(), syntax)
+    }
+
+    /// Members whose owner is a `SemanticId` (cross-file).
+    pub fn members_of_owner(&self, owner: &SemanticId) -> MemberList {
+        if let Some(cached) = self.cache.borrow().members_of_owner.get(owner) {
+            return cached.clone();
+        }
+        let result = self.analysis().members_of_owner(owner.clone());
+        self.cache
+            .borrow_mut()
+            .members_of_owner
+            .insert(owner.clone(), result.clone());
+        result
+    }
+
+    /// Members of an owner with a specific name.
+    pub fn members_of_owner_named(&self, owner: &SemanticId, name: &str) -> MemberList {
+        let key = (owner.clone(), SmolStr::new(name));
+        if let Some(cached) = self.cache.borrow().members_of_owner_named.get(&key) {
+            return cached.clone();
+        }
+        let result = self
+            .analysis()
+            .members_of_owner_named(owner.clone(), SmolStr::new(name));
+        self.cache
+            .borrow_mut()
+            .members_of_owner_named
+            .insert(key, result.clone());
+        result
+    }
+
+    pub fn members_of_owner_key(&self, owner: &SemanticId, key: &LuaMemberKey) -> MemberList {
+        match key {
+            LuaMemberKey::Name(name) => self.members_of_owner_named(owner, name),
+            LuaMemberKey::None => MemberList::default(),
+            LuaMemberKey::Integer(_) => self
+                .members_of_owner(owner)
+                .iter()
+                .filter(|member| {
+                    self.file_facts_of(member.file_id)
+                        .and_then(|facts| facts.member_by_id(&member.id))
+                        .is_some_and(|member| &member.key == key)
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+                .into(),
+        }
+    }
+
+    pub fn members_of_receiver_key(&self, receiver: &AccessPath, key: &LuaMemberKey) -> MemberList {
+        self.analysis().members_of_receiver_key(receiver, key)
+    }
+
+    pub fn member_keys_of_owner(&self, owner: &SemanticId) -> Vec<SmolStr> {
+        self.analysis().member_keys_of_owner(owner.clone())
+    }
+
     // -- Names / references --
 
     pub fn resolve_name(&self, offset: TextSize) -> Option<SemanticId> {
@@ -442,15 +662,19 @@ impl<'db> SemanticModel<'db> {
         member_id: Option<SemanticId>,
         file_id: Option<FileId>,
         owner: SemanticId,
-        name: SmolStr,
+        member_use: &MemberUse,
     ) -> ResolvedMember {
         let mut member_type = None;
         let mut visibility = None;
         let mut is_method = false;
+        let mut key = member_use.key.clone();
         if let (Some(member_id), Some(file_id)) = (&member_id, file_id)
             && let Some(facts) = self.file_facts_of(file_id)
             && let Some(member) = facts.member_by_id(member_id)
         {
+            if key.is_none() {
+                key = member.key.clone();
+            }
             // Type is computed lazily (avoids recursion when resolve_member is reverse-called by type_of_member);
             // Consumers can query type_of_member later when they need the full type.
             member_type = None;
@@ -465,7 +689,12 @@ impl<'db> SemanticModel<'db> {
             member_id,
             file_id,
             owner,
-            name,
+            receiver: member_use.receiver.clone(),
+            name: match &key {
+                LuaMemberKey::Name(name) => name.clone(),
+                key => key.to_path().into(),
+            },
+            key,
             member_type,
             visibility,
             is_method,
@@ -484,7 +713,8 @@ impl<'db> SemanticModel<'db> {
                 {
                     ty = param_ty;
                 }
-                return self.attach_param_decl_constraint(&decl, ty);
+                let ty = self.attach_param_decl_constraint(&decl, ty);
+                return self.generic_constraint_at(&ty, expr).unwrap_or(ty);
             }
         }
         self.type_of_expr(expr.get_syntax_id())
@@ -551,62 +781,115 @@ impl<'db> SemanticModel<'db> {
     ///
     /// `f` may be declared in multiple files (global overloads); this entry goes
     /// through the same `signature_candidates` projection used by the VM, so
-    /// diagnostics/completion see the same set.
+    /// diagnostics/completion see the same set. `None` keeps single-declaration
+    /// inference; `Some` includes the current file's casts and guards.
     pub(crate) fn callable_candidates_for_name_expr(
         &self,
         callee: &LuaExpr,
-    ) -> Vec<LuaFunctionType> {
+    ) -> Option<Vec<LuaFunctionType>> {
         let LuaExpr::NameExpr(name_expr) = callee else {
-            return Vec::new();
+            return None;
         };
-        let Some(owner) = self.resolve_name(name_expr.get_position()) else {
-            return Vec::new();
-        };
+        let owner = self.resolve_name(name_expr.get_position())?;
         // Only intervene for actual same-workspace global overloads. A single
         // declaration keeps the legacy projection path, which preserves its
         // generic/closure details.
         let SemanticId::Decl(key) = &owner else {
-            return Vec::new();
+            return None;
         };
-        let Some(facts) = self.file_facts_of(key.file_id) else {
-            return Vec::new();
-        };
-        let Some(decl) = facts.decl_by_id(&owner) else {
-            return Vec::new();
-        };
+        let facts = self.file_facts_of(key.file_id)?;
+        let decl = facts.decl_by_id(&owner)?;
         if !matches!(decl.kind, DeclKind::Global) {
-            return Vec::new();
+            return None;
         }
         let decls = self.global_decls_named_for_file(key.file_id, decl.name.as_str());
         if decls.len() <= 1 {
-            return Vec::new();
+            return None;
         }
         let vm = infer::vm::InferVm::new(self, &[]);
         // Identical duplicate declarations (same file content loaded twice, common in
         // tests / project duplicates) must keep the legacy single-symbol path; only
         // genuinely different global declarations are overloads.
         let mut per_decl: Vec<Vec<LuaFunctionType>> = Vec::with_capacity(decls.len());
+        let mut contracts = Vec::with_capacity(decls.len());
         for decl in &decls {
-            let candidates = vm
-                .callable_candidates_for_owner_single(decl)
-                .unwrap_or_default();
+            let mut candidates = if let SemanticId::Decl(key) = decl
+                && self
+                    .file_facts_of(key.file_id)
+                    .and_then(|facts| facts.decl_by_id(decl))
+                    .is_some_and(|decl| decl.doc_type_syntax.is_some())
+                && let Some(declared) = self.type_of_decl(decl)
+            {
+                let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+                if !candidates.is_empty() {
+                    contracts.push(declared);
+                }
+                candidates
+            } else {
+                Vec::new()
+            };
+            if candidates.is_empty() {
+                candidates = vm
+                    .callable_candidates_for_owner_single(decl)
+                    .unwrap_or_default();
+                contracts.extend(
+                    candidates
+                        .iter()
+                        .cloned()
+                        .map(|fun| LuaType::DocFunction(Rc::new(fun))),
+                );
+            }
             per_decl.push(candidates);
         }
-        let Some(first) = per_decl.first() else {
-            return Vec::new();
-        };
+        let first = per_decl.first()?;
         if per_decl.iter().all(|candidates| candidates == first) {
-            return Vec::new();
+            return None;
         }
-        per_decl.into_iter().flatten().collect()
+        // Apply this file's casts and guards once to the combined contract.
+        // Keep callable class types intact until guards have narrowed them.
+        let contract = flow::type_of_decl_contract_at(
+            self,
+            &owner,
+            name_expr.get_position(),
+            LuaType::from_vec(contracts),
+        );
+        // Some(empty) is a complete result: a cast can remove every callable.
+        let mut candidates = Vec::new();
+        for candidate in infer::vm::expand_callable_types_in_model(self, &contract) {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        }
+        Some(candidates)
     }
 
-    /// Public unified candidates for call rendering (signature help / completion / hover).
+    /// All callable candidates for call checks and rendering, before argument matching.
     ///
     /// Combines the diagnostic candidate path (member `CallableCandidateSet`,
     /// cross-file globals) with the full signature projection (main + `---@overload`)
     /// so all rendering paths share one candidate list.
     pub fn callable_candidates_for_expr(&self, callee: &LuaExpr) -> Vec<LuaFunctionType> {
+        if let Some(globals) = self.callable_candidates_for_name_expr(callee) {
+            return globals;
+        }
+        // The declared contract, including named casts, takes priority over
+        // implementation docs and assignments.
+        if let LuaExpr::NameExpr(name_expr) = callee
+            && let Some(SemanticId::Decl(key)) = self.resolve_name(name_expr.get_position())
+            && self
+                .file_facts_of(key.file_id)
+                .and_then(|facts| facts.decl_by_id(&SemanticId::Decl(key.clone())))
+                .is_some_and(|decl| decl.doc_type_syntax.is_some())
+        {
+            let owner = SemanticId::Decl(key);
+            let contract = self.type_of_decl(&owner).unwrap_or(LuaType::Unknown);
+            let declared =
+                flow::type_of_decl_contract_at(self, &owner, name_expr.get_position(), contract);
+            let candidates = infer::vm::expand_callable_types_in_model(self, &declared);
+            if !candidates.is_empty() {
+                return candidates;
+            }
+        }
         let mut out = self.callable_candidates_cached(callee);
         // The value type may omit `---@overload` signatures. Keep its richer
         // generic projection when there are no overloads to add.
@@ -692,7 +975,7 @@ impl<'db> SemanticModel<'db> {
                 explicit_generics: Vec::new(),
             };
         };
-        let candidates = self.callable_candidates_cached(&callee);
+        let candidates = self.callable_candidates_for_expr(&callee);
         if candidates.is_empty() {
             return CallSiteAnalysis {
                 candidates,
@@ -782,50 +1065,61 @@ impl<'db> SemanticModel<'db> {
         result
     }
     pub(crate) fn resolve_member_impl(&self, index_expr: &LuaIndexExpr) -> Option<ResolvedMember> {
-        let (owner, name) = self
-            .analysis()
-            .member_ref_of_index(self.view.file_id(), index_expr.get_syntax_id())?;
+        let member_use = self.member_use(index_expr.get_syntax_id())?;
+        let owner = member_use.owner.clone()?;
+        let name = LazyCell::new(|| match &member_use.key {
+            LuaMemberKey::Name(name) => name.clone(),
+            key => key.to_path().into(),
+        });
+        let prefix_ty = LazyCell::new(|| {
+            index_expr
+                .get_prefix_expr()
+                .map(|prefix| self.prefix_type_for_member_resolution(&prefix))
+        });
+        let module_owner = LazyCell::new(|| self.require_module_owner(index_expr));
 
         // 1. Same-file members (owner key). Members with explicit `---@type` take priority over purely inferred runtime members;
         // if only runtime members exist and the prefix type is a named type with a same-named `@field`, skip this step --
         // under `---@param data CreateData`, `data.owner = ""` should resolve to the class field rather than this assignment.
         {
             let facts = self.file_facts()?;
-            let same_name = facts
-                .members_of_owner_named(&owner, name.as_str())
-                .collect::<Vec<_>>();
-            let prefer_typed = same_name
-                .iter()
-                .all(|member| member.doc_type_syntax.is_none())
-                && (self.prefix_has_named_member(index_expr, &name)
-                    || self.require_module_has_member(index_expr, &name));
-            if !prefer_typed {
-                let typed_here = same_name
-                    .iter()
-                    .find(|member| member.doc_type_syntax.is_some());
+            let same_file_member = facts.member_for_use(member_use);
+            let prefer_typed = same_file_member
+                .is_none_or(|member| member.doc_type_syntax.is_none())
+                && (prefix_ty
+                    .as_ref()
+                    .and_then(|ty| match ty {
+                        LuaType::Ref(id) | LuaType::Def(id) => Some(id),
+                        LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
+                        _ => None,
+                    })
+                    .and_then(|id| self.type_def_of(id))
+                    .is_some_and(|def| {
+                        !self
+                            .members_of_owner_key(&def.id, &member_use.key)
+                            .is_empty()
+                    })
+                    || module_owner.as_ref().is_some_and(|owner| {
+                        !self.members_of_owner_key(owner, &member_use.key).is_empty()
+                    }));
+            if !prefer_typed && let Some(member) = same_file_member {
                 // Across files too: a write here is held to a global member's `---@type` elsewhere.
-                if typed_here.is_none()
-                    && !same_name.is_empty()
-                    && let Some(typed) = self.typed_member_of_owner(&owner, &name)
+                if member.doc_type_syntax.is_none()
+                    && let Some(typed) = self.typed_member_of_owner_key(&owner, &member_use.key)
                 {
                     return Some(self.resolved_member(
                         Some(typed.id),
                         Some(typed.file_id),
                         owner,
-                        name,
+                        member_use,
                     ));
                 }
-                let member_id = typed_here
-                    .or_else(|| same_name.first())
-                    .map(|member| member.id.clone());
-                if let Some(member_id) = member_id {
-                    return Some(self.resolved_member(
-                        Some(member_id),
-                        Some(self.view.file_id()),
-                        owner,
-                        name,
-                    ));
-                }
+                return Some(self.resolved_member(
+                    Some(member.id.clone()),
+                    Some(self.view.file_id()),
+                    owner,
+                    member_use,
+                ));
             }
         }
 
@@ -842,20 +1136,14 @@ impl<'db> SemanticModel<'db> {
                 Some(member_id),
                 Some(self.view.file_id()),
                 owner,
-                name,
+                member_use,
             ));
         }
-
-        // Compute the prefix type once for the remaining slow-path stages. `resolve_member`
-        // must not repeatedly infer the same prefix expression (3 / 3.5 / inherited fallback).
-        let prefix_ty = index_expr
-            .get_prefix_expr()
-            .map(|prefix| self.prefix_type_for_member_resolution(&prefix));
 
         // 3. Prefix type is a named type -> its `@field` members (cross-file, e.g. `c.secret` where c: C).
         //    Also look up the runtime value declaration for that type (`---@class Game` + `local Game = {}`),
         //    otherwise dot access like `game.add` cannot resolve `function Game:add()`.
-        if let Some(prefix_ty) = &prefix_ty {
+        if let Some(prefix_ty) = prefix_ty.as_ref() {
             let type_id = match prefix_ty {
                 LuaType::Ref(id) | LuaType::Def(id) => Some(id),
                 LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
@@ -879,14 +1167,14 @@ impl<'db> SemanticModel<'db> {
                 };
                 for resolved in owners {
                     if let Some(member_ref) = self
-                        .members_of_owner_named(&resolved, name.as_str())
+                        .members_of_owner_key(&resolved, &member_use.key)
                         .first()
                     {
                         return Some(self.resolved_member(
                             Some(member_ref.id.clone()),
                             Some(member_ref.file_id),
                             owner,
-                            name,
+                            member_use,
                         ));
                     }
                     // Runtime members from `self.x = ...` in method bodies: attach members on the implicit self parameter
@@ -921,7 +1209,7 @@ impl<'db> SemanticModel<'db> {
                                 Some(self_member_ref.id.clone()),
                                 file_id,
                                 owner,
-                                name,
+                                member_use,
                             ));
                         }
                     }
@@ -929,15 +1217,14 @@ impl<'db> SemanticModel<'db> {
                 // Alias types have no `@field` surface of their own. Resolve through the alias
                 // target so `---@type SomeAlias` values can still find class/table members.
                 if def.kind == TypeDefKind::Alias
-                    && let Some(info) =
-                        self.member_info(prefix_ty, &LuaMemberKey::Name(name.clone()))
+                    && let Some(info) = self.member_info(prefix_ty, &member_use.key)
                     && let Some(member_id) = info.id
                 {
                     let file_id = match &member_id {
                         SemanticId::Member(key) => Some(key.file_id),
                         _ => None,
                     };
-                    return Some(self.resolved_member(Some(member_id), file_id, owner, name));
+                    return Some(self.resolved_member(Some(member_id), file_id, owner, member_use));
                 }
             }
         }
@@ -957,14 +1244,14 @@ impl<'db> SemanticModel<'db> {
             }
             for table_owner in table_owners {
                 if let Some(member) = self
-                    .members_of_owner_named(&table_owner, name.as_str())
+                    .members_of_owner_key(&table_owner, &member_use.key)
                     .first()
                 {
                     return Some(self.resolved_member(
                         Some(member.id.clone()),
                         Some(member.file_id),
                         owner,
-                        name,
+                        member_use,
                     ));
                 }
                 // Runtime members defined by `self.x = ...` in that table's method bodies are also attached to the table.
@@ -1000,7 +1287,7 @@ impl<'db> SemanticModel<'db> {
                             Some(self_member_ref.id.clone()),
                             file_id,
                             owner,
-                            name,
+                            member_use,
                         ));
                     }
                 }
@@ -1014,22 +1301,24 @@ impl<'db> SemanticModel<'db> {
         // P5b: candidate owners come from deterministic canonical owner
         // resolution instead of ad-hoc type/global/alias heuristics.
         let mut cross_owners: Vec<SemanticId> = Vec::new();
-        for owner_id in self.analysis().resolve_owner_ids(&owner) {
-            if let Some(raw) = self.analysis().owner_id_to_semantic_id(&owner_id)
-                && !cross_owners.contains(&raw)
-            {
-                cross_owners.push(raw);
+        if member_use.has_direct_owner() {
+            for owner_id in self.analysis().resolve_owner_ids(&owner) {
+                if let Some(raw) = self.analysis().owner_id_to_semantic_id(&owner_id)
+                    && !cross_owners.contains(&raw)
+                {
+                    cross_owners.push(raw);
+                }
             }
         }
         // Keep the raw owner itself for members stored under `Name` / `Decl` /
         // `Member` keys (global runtime members, local table members).
-        if !cross_owners.contains(&owner) {
+        if member_use.has_direct_owner() && !cross_owners.contains(&owner) {
             cross_owners.push(owner.clone());
         }
-        if let Some(module_owner) = self.require_module_owner(index_expr)
-            && !cross_owners.contains(&module_owner)
+        if let Some(module_owner) = module_owner.as_ref()
+            && !cross_owners.contains(module_owner)
         {
-            cross_owners.push(module_owner);
+            cross_owners.push(module_owner.clone());
         }
         // Explicit, deterministic preference order (replaces the previous
         // numeric score). The key is intentionally orderable, not weighted:
@@ -1037,46 +1326,62 @@ impl<'db> SemanticModel<'db> {
         //   2. non-public members before public ones;
         //   3. documented members before inferred ones;
         //   4. source/discovery order.
-        // This preserves the historical score outcome while making the rule
-        // inspectable and easy to change in P6.
         let mut best: Option<((u8, u8, u8, usize), MemberRef)> = None;
-        let mut candidate_index = 0usize;
-        for resolved in &cross_owners {
-            let owner_rank = if old_owner.as_ref() == Some(resolved) {
-                1
-            } else {
-                0
-            };
-            for member in self.members_of_owner(resolved).iter() {
-                if member.name != name {
-                    continue;
-                }
-                let mut visibility_rank = 1u8;
-                let mut doc_rank = 1u8;
-                if let Some(facts) = self.file_facts_of(member.file_id)
-                    && let Some(member_facts) = facts.member_by_id(&member.id)
+        let mut candidate_index = 0;
+        let mut consider = |resolved: &SemanticId, member: &MemberRef, def: &Member| {
+            let key = (
+                u8::from(old_owner.as_ref() == Some(resolved)),
+                u8::from(def.visibility == VisibilityKind::Public),
+                u8::from(def.doc_type_syntax.is_none()),
+                candidate_index,
+            );
+            candidate_index += 1;
+            if best.as_ref().is_none_or(|(best_key, _)| key < *best_key) {
+                best = Some((key, member.clone()));
+            }
+        };
+        if let Some(receiver) = &member_use.receiver {
+            for member in self
+                .members_of_receiver_key(receiver, &member_use.key)
+                .iter()
+            {
+                if let Some(def) = self
+                    .file_facts_of(member.file_id)
+                    .and_then(|facts| facts.member_definition(&member.id))
                 {
-                    if member_facts.visibility != VisibilityKind::Public {
-                        visibility_rank = 0;
-                    }
-                    if member_facts.doc_type_syntax.is_some() {
-                        doc_rank = 0;
-                    }
+                    let mut member = member.clone();
+                    member.id = def.id.clone();
+                    consider(&def.owner, &member, def);
                 }
-                let key = (owner_rank, visibility_rank, doc_rank, candidate_index);
-                candidate_index += 1;
-                if best.as_ref().is_none_or(|(best_key, _)| key < *best_key) {
-                    best = Some((key, member.clone()));
+            }
+        }
+        for resolved in &cross_owners {
+            let members = self.members_of_owner_key(resolved, &member_use.key);
+            for member in members.iter() {
+                if let Some(def) = self
+                    .file_facts_of(member.file_id)
+                    .and_then(|facts| facts.member_by_id(&member.id))
+                    .filter(|def| {
+                        def.key == member_use.key
+                            && !matches!(def.source, MemberSource::Runtime { .. })
+                    })
+                {
+                    consider(resolved, member, def);
                 }
             }
         }
         if let Some((_, member)) = best {
-            return Some(self.resolved_member(Some(member.id), Some(member.file_id), owner, name));
+            return Some(self.resolved_member(
+                Some(member.id),
+                Some(member.file_id),
+                owner,
+                member_use,
+            ));
         }
 
         // Inherited/cross-class members: `member_info` projects along parent types, enabled only for class types;
         // same-name member resolution on unions is left to flow narrowing to avoid breaking dynamic field tests on `Foo|Bar`.
-        if let Some(prefix_ty) = &prefix_ty {
+        if let Some(prefix_ty) = prefix_ty.as_ref() {
             let is_class = match prefix_ty {
                 LuaType::Ref(id) | LuaType::Def(id) => self
                     .type_def_of(id)
@@ -1087,43 +1392,24 @@ impl<'db> SemanticModel<'db> {
                 _ => false,
             };
             if is_class {
-                let key = LuaMemberKey::Name(name.clone());
-                if let Some(info) = self.member_info(prefix_ty, &key)
+                if let Some(info) = self.member_info(prefix_ty, &member_use.key)
                     && let Some(id) = info.id
                     && let Some(file_id) = info.file_id
                 {
-                    return Some(self.resolved_member(Some(id), Some(file_id), owner, name));
+                    return Some(self.resolved_member(Some(id), Some(file_id), owner, member_use));
                 }
             }
         }
 
-        Some(self.resolved_member(None, None, owner, name))
+        Some(self.resolved_member(None, None, owner, member_use))
     }
-    /// Whether the prefix type is a named type with a same-named member (avoids runtime inferred members shadowing class `@field`).
-    pub(crate) fn prefix_has_named_member(
+    /// The owner's member with this key that carries a `---@type`, in any file.
+    fn typed_member_of_owner_key(
         &self,
-        index_expr: &LuaIndexExpr,
-        name: &SmolStr,
-    ) -> bool {
-        let Some(prefix) = index_expr.get_prefix_expr() else {
-            return false;
-        };
-        let prefix_ty = self.prefix_type_for_member_resolution(&prefix);
-        let type_id = match &prefix_ty {
-            LuaType::Ref(id) | LuaType::Def(id) => Some(id),
-            LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
-            _ => None,
-        };
-        let Some(def) = type_id.and_then(|id| self.type_def_of(id)) else {
-            return false;
-        };
-        self.members_of_owner(&def.id)
-            .iter()
-            .any(|member| member.name == *name)
-    }
-    /// The owner's member of this name that carries a `---@type`, in any file.
-    fn typed_member_of_owner(&self, owner: &SemanticId, name: &SmolStr) -> Option<MemberRef> {
-        self.members_of_owner_named(owner, name.as_str())
+        owner: &SemanticId,
+        key: &LuaMemberKey,
+    ) -> Option<MemberRef> {
+        self.members_of_owner_key(owner, key)
             .iter()
             .find(|member| {
                 self.file_facts_of(member.file_id)
@@ -1131,19 +1417,6 @@ impl<'db> SemanticModel<'db> {
                     .is_some_and(|member| member.doc_type_syntax.is_some())
             })
             .cloned()
-    }
-    /// Whether the require module export declares this member (same-name assignments do not shadow exported members).
-    pub(crate) fn require_module_has_member(
-        &self,
-        index_expr: &LuaIndexExpr,
-        name: &SmolStr,
-    ) -> bool {
-        let Some(owner) = self.require_module_owner(index_expr) else {
-            return false;
-        };
-        self.members_of_owner(&owner)
-            .iter()
-            .any(|member| member.name == *name)
     }
     /// `local M = require("mod")` / `require("mod")` -> module export declaration owner.
     ///
@@ -1268,4 +1541,35 @@ impl<'db> SemanticModel<'db> {
             _ => None,
         }
     }
+}
+
+/// Static member key of an index expression (`t.x`, `t["x"]`, `t[1]`).
+fn static_index_member_key(key: &LuaIndexKey) -> Option<LuaMemberKey> {
+    match key {
+        LuaIndexKey::Name(name) => Some(LuaMemberKey::Name(name.get_name_text().into())),
+        LuaIndexKey::String(string) => Some(LuaMemberKey::Name(string.get_value().into())),
+        LuaIndexKey::Integer(integer) => match integer.get_number_value() {
+            NumberResult::Int(value) => Some(LuaMemberKey::Integer(value)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Owner types handled by `member::collect_members`; only for these can
+/// `member_infos_with_key` authoritatively decide whether a visible member exists.
+fn member_surface_is_enumerable(ty: &LuaType) -> bool {
+    matches!(
+        ty,
+        LuaType::Ref(_)
+            | LuaType::Def(_)
+            | LuaType::TableConst(_)
+            | LuaType::Object(_)
+            | LuaType::Generic(_)
+            | LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::DocStringConst(_)
+            | LuaType::Intersection(_)
+            | LuaType::Union(_)
+    )
 }

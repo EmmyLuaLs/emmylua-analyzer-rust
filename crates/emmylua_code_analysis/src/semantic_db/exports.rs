@@ -19,13 +19,14 @@ use hashbrown::HashMap;
 use smol_str::SmolStr;
 
 use crate::semantic_db::def::{
-    DeclKind, ExportKey, LuaMemberKey, ModuleExport, OwnerId, SemanticId, TypeDef, TypeScope,
+    DeclKind, ExportKey, LuaMemberKey, MemberPathKey, ModuleExport, OwnerId, SemanticId, TypeDef,
+    TypeScope,
 };
 use crate::{Emmyrc, FileId};
 
 use super::SemanticDatabase;
 use super::facts::FileFacts;
-use super::query::{self, file_facts};
+use super::query::{self};
 
 /// Export contribution visible from a single file.
 ///
@@ -135,6 +136,9 @@ pub struct MemberExport {
     /// Canonical owner identity used by the incremental workspace-index layer.
     pub owner_id: OwnerId,
     pub key: LuaMemberKey,
+    /// 运行时成员的完整路径键, 与静态 owner 关联分别保存.
+    pub path_key: Option<MemberPathKey>,
+    pub is_direct: bool,
     // used for incremental updates.
     pub index_key_syntax: Option<LuaSyntaxId>,
     pub index_key_text: Option<SmolStr>,
@@ -152,7 +156,10 @@ pub struct MemberExport {
 
 impl MemberExport {
     pub fn export_key(&self) -> ExportKey {
-        ExportKey::Member(self.owner_id.clone(), self.key.clone())
+        match &self.path_key {
+            Some(key) => ExportKey::RuntimeMember(key.clone()),
+            None => ExportKey::Member(self.owner_id.clone(), self.key.clone()),
+        }
     }
 
     /// Surface equality for workspace-index updates: ignore `value_syntax` only.
@@ -161,6 +168,8 @@ impl MemberExport {
             && self.owner == other.owner
             && self.owner_id == other.owner_id
             && self.key == other.key
+            && self.path_key == other.path_key
+            && self.is_direct == other.is_direct
             && self.index_key_syntax == other.index_key_syntax
             && self.index_key_text == other.index_key_text
             && self.member == other.member
@@ -205,7 +214,7 @@ pub(super) fn build_file_exports(
     file: FileId,
     file_id: FileId,
 ) -> FileExportContribution {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file).expect("file facts must exist");
     let aliases = build_require_alias_contributions(db, file_id);
 
     let types = facts.type_defs.clone();
@@ -230,10 +239,21 @@ pub(super) fn build_file_exports(
             owner: member.owner.clone(),
             owner_id: canonical_member_owner_id(facts, file_id, &member.owner, &aliases),
             key: member.key.clone(),
+            path_key: facts
+                .member_receiver(member)
+                .filter(|receiver| receiver.is_exact() && !member.key.is_none())
+                .map(|receiver| {
+                    MemberPathKey::new(
+                        canonical_member_owner_id(facts, file_id, &receiver.root, &aliases),
+                        &receiver.keys,
+                        member.key.clone(),
+                    )
+                }),
+            is_direct: facts.is_direct_member(member),
             index_key_syntax: member.index_key_syntax,
             index_key_text: member.index_key_syntax.and_then(|syntax| {
                 syntax
-                    .to_node_from_root(&db.vfs().get_syntax_tree(&file_id)?.get_red_root())
+                    .to_node_from_root(&db.syntax_tree_of(file_id)?.get_red_root())
                     .map(|node| node.text().to_string().into())
             }),
             member: member.id.clone(),
@@ -316,7 +336,7 @@ pub(crate) fn build_require_alias_contributions(
     let Some(config) = db.config() else {
         return Vec::new();
     };
-    let facts = file_facts(db, file_id);
+    let facts = db.file_facts_of(file_id).expect("file facts must exist");
     if facts.decls.is_empty() {
         return Vec::new();
     }

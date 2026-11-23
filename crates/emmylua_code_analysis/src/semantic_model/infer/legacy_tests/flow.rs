@@ -1652,7 +1652,7 @@ print(a.field)
 
         let a = ws.expr_ty("A");
         let a_desc = ws.humanize_type_detailed(a);
-        assert_eq!(a_desc, "fun()");
+        assert_eq!(a_desc, "fun() -> ()");
     }
 
     #[test]

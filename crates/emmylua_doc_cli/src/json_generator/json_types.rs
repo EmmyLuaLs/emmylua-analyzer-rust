@@ -42,7 +42,15 @@ pub struct Module {
     #[serde(flatten)]
     pub property: Property,
     pub file: Option<PathBuf>,
+    /// Rendered export type. `None` (serialized as JSON `null`) for
+    /// table/instance exports; `Some` for other exports (aliases, class
+    /// references, functions, ...). A module may carry both a rendered type and
+    /// non-empty `members` when the exported type is described by `members`,
+    /// e.g. a `---@class` module with runtime members declared after the module
+    /// table.
     pub typ: Option<String>,
+    /// Runtime members (`function m.foo`, `m.bar = ...`) plus members of the
+    /// exported type. Not mutually exclusive with `typ`.
     pub members: Vec<Member>,
     pub namespace: Option<String>,
     pub using: Vec<String>,

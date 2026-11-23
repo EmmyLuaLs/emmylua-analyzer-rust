@@ -53,6 +53,11 @@ fn check_call(
     let Some(callee) = call_expr.get_prefix_expr() else {
         return;
     };
+    // A callee hidden by `---@version` does not exist in the configured runtime;
+    // do not re-derive candidates from its type in the fallbacks below.
+    if !semantic_model.is_callee_version_visible(&callee) {
+        return;
+    }
     let callee_ty = semantic_model.type_of_expr(callee.get_syntax_id());
     let analysis = semantic_model.call_site_analysis(call_expr);
     let mut candidates = analysis.candidates;
@@ -546,7 +551,7 @@ fn doc_func_from_syntax(
                 String::new(),
                 param
                     .get_type()
-                    .map(|ty| semantic_model.doc_type_lua_rich_in(file_id, ty.get_syntax_id())),
+                    .map(|ty| semantic_model.project_doc_type(file_id, ty.get_syntax_id(), &[])),
             )
         })
         .collect();
@@ -827,7 +832,9 @@ pub(crate) fn callable_functions(
             };
             let mut out = Vec::new();
             for syntax in &def.call_overloads {
-                if let LuaType::DocFunction(func) = semantic_model.doc_type_lua(*syntax) {
+                if let LuaType::DocFunction(func) =
+                    semantic_model.doc_type_lua_in(def.file_id, *syntax, &def.generic_params)
+                {
                     out.push(func.as_ref().clone());
                 }
             }
@@ -836,6 +843,14 @@ pub(crate) fn callable_functions(
                 && let Some(op) = facts.operator_of(&def.id, "call")
             {
                 out.push(semantic_model.call_operator_type(def.file_id, op));
+            }
+            // `meta("Class")` + `---@[constructor("init")]`: calling the class table
+            // forwards to the constructor method, exactly as VM call inference does.
+            if out.is_empty()
+                && let Some(candidate) =
+                    crate::semantic_model::infer::vm::constructor_call_candidate(semantic_model, ty)
+            {
+                out.push(candidate);
             }
             out
         }

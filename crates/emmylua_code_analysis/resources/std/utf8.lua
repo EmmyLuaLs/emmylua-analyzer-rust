@@ -105,9 +105,13 @@ function utf8.len(s, i, j, lax) end
 --- byte of `s`.
 ---
 --- This function assumes that `s` is a valid UTF-8 string.
---- @overload fun(s: string): integer
+---
+--- Since Lua 5.5 the function also returns the final position of the character.
+--- On Lua 5.3 and 5.4 only the start position is returned.
+--- @version >5.3
 --- @param s  string
 --- @param n  integer
 --- @param i? integer
---- @return integer
+--- @return integer? start
+--- @return integer? end
 function utf8.offset(s, n, i) end
