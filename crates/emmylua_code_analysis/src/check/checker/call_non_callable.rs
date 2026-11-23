@@ -108,7 +108,9 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             has_call_candidate(model, &def)
         }
         // Generic instances (`Box<integer>`): an alias is checked on its instantiation, a class
-        // by its base type's call candidates.
+        // by its base type's call candidates. An unresolved base passes, as for `Ref` above.
+        // `alias_target` is the alias body with its parameters unbound, so the alias case asks
+        // `callable_functions_cached`, which instantiates it.
         LuaType::Generic(generic) => {
             let Some(def) = model.type_def_of(&generic.get_base_type_id()) else {
                 return true;

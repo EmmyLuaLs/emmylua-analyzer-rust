@@ -388,6 +388,38 @@ mod test {
     }
 
     #[test]
+    fn test_call_non_callable_on_generic_alias_instance() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@alias Cb<T> fun(v: T)
+            ---@type Cb<string>
+            local c
+            c('a')
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@alias Num<T> integer
+            ---@type Num<string>
+            local n
+            n('a')
+            "#
+        ));
+        // An unresolved base is left to the undefined-type diagnostic, as for a plain name.
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CallNonCallable,
+            r#"
+            ---@type MissingBase<string>
+            local m
+            m('a')
+            "#
+        ));
+    }
+
+    #[test]
     fn test_no_call_non_callable_on_undefined_type() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
