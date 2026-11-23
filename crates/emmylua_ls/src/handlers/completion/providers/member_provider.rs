@@ -2,10 +2,11 @@
 
 use emmylua_code_analysis::{
     DeclKind, FileId, LuaAliasCallKind, LuaFunctionType, LuaGenericType, LuaMemberKey, LuaType,
-    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDefKind,
+    LuaTypeDeclId, MemberInfo, SemanticId, SemanticModel, TypeDef, TypeDefKind,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::handlers::hover::render::humanize;
@@ -320,27 +321,55 @@ fn associated_type_member_infos(
     let emmylua_parser::LuaExpr::NameExpr(name_expr) = prefix_expr else {
         return Vec::new();
     };
-    let Some(decl) = model.resolve_name(name_expr.get_position()) else {
-        return Vec::new();
-    };
-    let SemanticId::Decl(key) = &decl else {
-        return Vec::new();
-    };
-    let Some(facts) = model.file_facts_of(key.file_id) else {
-        return Vec::new();
-    };
-    let Some(decl_info) = facts.decl_by_id(&decl) else {
-        return Vec::new();
-    };
-    let Some(def) = facts
-        .type_defs
-        .iter()
-        .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl_info.owner_syntax)
-    else {
-        return Vec::new();
-    };
-    let mut owners = vec![def.id.clone(), decl.clone()];
-    owners.dedup();
+    let mut owners = Vec::new();
+    let mut is_global_runtime = false;
+    let resolved_decl = model.resolve_name(name_expr.get_position());
+
+    // The runtime value declaration and the class declared above it.
+    if let Some(decl) = &resolved_decl
+        && let SemanticId::Decl(key) = decl
+        && let Some(facts) = model.file_facts_of(key.file_id)
+        && let Some(decl_info) = facts.decl_by_id(decl)
+    {
+        is_global_runtime = matches!(decl_info.kind, DeclKind::Global);
+        if let Some(def) = facts
+            .type_defs
+            .iter()
+            .find(|def| def.owner_syntax.is_some() && def.owner_syntax == decl_info.owner_syntax)
+        {
+            push_type_and_bases(model, def, &mut owners);
+            owners.push(decl.clone());
+        }
+    }
+
+    // Standard library modules often name their type differently from the global
+    // table (`---@class oslib` + `os = {}`). A workspace `---@class os` extends
+    // that module, so complete its members alongside the stdlib ones.
+    //
+    // Only global prefixes inherit these members: a local `local os = {}` shadows
+    // the global `os` and must not expose unrelated stdlib members. A missing
+    // runtime declaration is still a global name (workspace `---@class os` only).
+    if let Some(name) = name_expr.get_name_text()
+        && (resolved_decl.is_none() || is_global_runtime)
+    {
+        // Runtime members of the global table (`function os.date`).
+        owners.push(SemanticId::name(name.as_str().into()));
+        if let Some(def) = model.resolve_type_def(&name) {
+            push_type_and_bases(model, &def, &mut owners);
+        }
+    }
+
+    // `TypeDef`s are pushed from several independent sources (owner-syntax class,
+    // same-named global class, their base types), so duplicate identities may be
+    // non-adjacent; `Vec::dedup` would miss them.
+    let mut seen = HashSet::new();
+    owners.retain(|owner| seen.insert(owner.clone()));
+    member_infos_of_owners(model, owners)
+}
+
+/// Add a type definition and its parents to a member-owner list.
+fn push_type_and_bases(model: &SemanticModel<'_>, def: &TypeDef, owners: &mut Vec<SemanticId>) {
+    owners.push(def.id.clone());
     let mut super_stack = model.base_type_defs(&def.type_decl_id());
     let mut visited_supers = Vec::new();
     while let Some(parent) = super_stack.pop() {
@@ -351,8 +380,6 @@ fn associated_type_member_infos(
         owners.push(parent.id.clone());
         super_stack.extend(model.base_type_defs(&parent.type_decl_id()));
     }
-    owners.dedup();
-    member_infos_of_owners(model, owners)
 }
 
 /// Members of the table a class annotates (`---@class iolib` above `io = {}`): they belong to
