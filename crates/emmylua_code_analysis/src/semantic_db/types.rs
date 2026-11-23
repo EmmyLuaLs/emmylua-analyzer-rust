@@ -297,6 +297,7 @@ impl TypeShell {
                         }
                     }
                 }
+                // `T...` repeats one type, so every slot is `T`.
                 TypeCandidate::Repeat(base) => out.merge(base),
                 TypeCandidate::Multi(slots) => {
                     let Some(last) = slots.len().checked_sub(1) else {
