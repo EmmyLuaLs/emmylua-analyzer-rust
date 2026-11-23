@@ -1265,6 +1265,58 @@ mod tests {
         assert!(found_time, "未找到 os.time");
     }
 
+    /// Workspace global classes extend matching stdlib modules even when the
+    /// stdlib declares the module class under a different name
+    /// (`---@class oslib` + `os = {}`); members merge by global name.
+    fn check_stdlib_global_class_extension(with_assignment: bool) {
+        let modules = [
+            ("os", "date"),
+            ("table", "insert"),
+            ("math", "abs"),
+            ("io", "open"),
+            ("package", "searchpath"),
+            ("coroutine", "create"),
+            ("debug", "traceback"),
+            ("utf8", "len"),
+            ("string", "format"),
+        ];
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut sources = Vec::new();
+        for (module, _) in modules {
+            let mut source =
+                format!("---@meta\n---@class {module}\n---@field custom_extra fun(): string\n");
+            if with_assignment {
+                source.push_str(&format!("\n---@type {module}\n{module} = {{}}\n"));
+            }
+            ws.def_file(&format!("{module}.lua"), &source);
+            sources.push((module, source));
+        }
+
+        for ((module, std_member), (_, source)) in modules.into_iter().zip(sources) {
+            for expected in [std_member, "custom_extra"] {
+                let expr = format!("{module}.{expected}");
+                let ty = ws.expr_ty(&expr);
+                assert!(
+                    ty.is_function(),
+                    "{expr} must resolve to a function type, got {ty:?} \
+                     (assignment: {with_assignment})\n{source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_stdlib_global_class_extension_without_assignment() {
+        check_stdlib_global_class_extension(false);
+    }
+
+    /// The same extension with an explicit global declaration: workspace members
+    /// are added, but stdlib members must stay available.
+    #[test]
+    fn test_stdlib_global_class_extension_with_assignment() {
+        check_stdlib_global_class_extension(true);
+    }
+
     /// LuaJIT workspace: set the runtime version before `init_std_lib`, because
     /// `new_with_init_std_lib` would load the default (non-JIT) std first.
     /// `new()` does not load std, so ffi/jit are registered exactly once.
