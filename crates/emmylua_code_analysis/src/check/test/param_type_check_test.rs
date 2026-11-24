@@ -4704,6 +4704,39 @@ mod test {
     }
 
     #[test]
+    fn test_inherited_method_binds_the_declaring_class_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Parent<T>
+                local Parent = {}
+
+                ---@param value T
+                function Parent:set(value) end
+
+                ---@class Child<T>: Parent<string>
+                local Child = {}
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Child<integer>
+            local child
+            child:set("parent uses string")
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Child<integer>
+            local child
+            child:set(1)
+            "#
+        ));
+    }
+
+    #[test]
     fn test_bare_generic_receiver_method_param_uses_defaults() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

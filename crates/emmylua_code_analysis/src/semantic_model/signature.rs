@@ -565,7 +565,17 @@ impl<'db> SemanticModel<'db> {
         let params = def
             .generic_params
             .iter()
-            .map(|param| LuaType::Ref(LuaTypeDeclId::global(&param.name)))
+            .enumerate()
+            .map(|(index, param)| {
+                LuaType::TplRef(Rc::new(GenericTpl::new(
+                    def.generic_tpl_id(index),
+                    param.name.clone(),
+                    None,
+                    None,
+                    param.is_const,
+                    None,
+                )))
+            })
             .collect();
         Some(LuaType::Generic(Rc::new(LuaGenericType::new(
             id.clone(),

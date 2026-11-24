@@ -968,9 +968,7 @@ impl GenericTplId {
         match self {
             GenericTplId::Type(_) => GenericTplId::Type(idx),
             GenericTplId::Func(_) => GenericTplId::Func(idx),
-            GenericTplId::ClassType {
-                file_id, start, ..
-            } => GenericTplId::ClassType {
+            GenericTplId::ClassType { file_id, start, .. } => GenericTplId::ClassType {
                 file_id: *file_id,
                 start: *start,
                 index: idx,
