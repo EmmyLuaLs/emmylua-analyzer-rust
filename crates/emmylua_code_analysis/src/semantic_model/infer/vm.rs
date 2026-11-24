@@ -27,7 +27,7 @@ use crate::semantic_model::doc_types::DocTypeScope;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
 use crate::semantic_model::member::{
     MemberInfo, class_generic_context_for_member_id, metatable_type, table_const_class_type,
-    table_metatable_index_info, table_metatable_type,
+    table_metatable_index_info,
 };
 use crate::semantic_model::type_eval::{
     bind_class_generic_names, class_generic_definition, class_generic_map, eval_conditionals,
