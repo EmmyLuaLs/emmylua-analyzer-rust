@@ -478,4 +478,24 @@ mod test {
             "visible members must still report missing parameters"
         );
     }
+
+    /// A bare `?` in a param union (LuaLS `T|?`) makes the param optional, like `T?`.
+    #[test]
+    fn test_param_union_with_bare_question_is_optional() {
+        for (ty, missing) in [("integer|?", false), ("integer", true)] {
+            let mut ws = VirtualWorkspace::new();
+            let source = format!(
+                r#"
+                ---@param n {ty}
+                local function f(n) end
+                f()
+                "#,
+            );
+            assert_eq!(
+                !ws.has_no_diagnostic(DiagnosticCode::MissingParameter, &source),
+                missing,
+                "{ty}"
+            );
+        }
+    }
 }

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaAstNode, LuaExpr, LuaTableExpr, LuaTableField};
 use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
@@ -204,7 +204,7 @@ pub(super) fn inherited_base_types(
         .collect()
 }
 
-fn direct_member_info(
+pub(super) fn direct_member_info(
     model: &SemanticModel,
     prefix_type: &LuaType,
     key: &LuaMemberKey,
@@ -417,17 +417,22 @@ pub fn member_type(
     member_info(model, prefix_type, key).map(|info| info.typ)
 }
 
-/// Returns the second argument type of `setmetatable(t, mt)` for the given `t` table identity.
-/// Supports a table literal as the first argument, and also a local name indirection (`local t = {...}; setmetatable(t, mt)`).
-pub(crate) fn table_metatable_type(
+/// Use the reaching attachments when the read site is available. Type-only
+/// callers can still look up a metatable by the identity of its table literal.
+pub(crate) fn metatable_type(
     model: &SemanticModel,
-    table: &InFiled<rowan::TextRange>,
+    expr: Option<&LuaExpr>,
+    table: Option<&InFiled<rowan::TextRange>>,
 ) -> Option<LuaType> {
+    if let Some(metatable) = expr.and_then(|expr| super::flow::metatable_type_at(model, expr)) {
+        return Some(metatable);
+    }
+    let table = table?;
     // Cross-file: a diagnostic/consumer model's `type_of_expr` may return Unknown for expressions in the defining file,
     // so delegate to the model for the file containing the table.
     if model.file_id() != table.file_id {
         let foreign = model.model_for(table.file_id);
-        return table_metatable_type(&foreign, table);
+        return metatable_type(&foreign, None, Some(table));
     }
     let facts = model.file_facts_of(table.file_id)?;
     for &(first_range, first_syntax, metatable_syntax) in facts.setmetatable_calls() {
@@ -463,7 +468,7 @@ pub(crate) fn table_metatable_index_info(
     model: &SemanticModel,
     table: &InFiled<rowan::TextRange>,
 ) -> Option<MemberInfo> {
-    let metatable_ty = table_metatable_type(model, table)?;
+    let metatable_ty = metatable_type(model, None, Some(table))?;
     let key = LuaMemberKey::Name(SmolStr::new("__index"));
     member_info(model, &metatable_ty, &key)
 }
@@ -1277,6 +1282,58 @@ mod tests {
         }
         assert!(found_randomseed, "未找到 math.randomseed");
         assert!(found_time, "未找到 os.time");
+    }
+
+    /// Workspace global classes extend matching stdlib modules even when the
+    /// stdlib declares the module class under a different name
+    /// (`---@class oslib` + `os = {}`); members merge by global name.
+    fn check_stdlib_global_class_extension(with_assignment: bool) {
+        let modules = [
+            ("os", "date"),
+            ("table", "insert"),
+            ("math", "abs"),
+            ("io", "open"),
+            ("package", "searchpath"),
+            ("coroutine", "create"),
+            ("debug", "traceback"),
+            ("utf8", "len"),
+            ("string", "format"),
+        ];
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut sources = Vec::new();
+        for (module, _) in modules {
+            let mut source =
+                format!("---@meta\n---@class {module}\n---@field custom_extra fun(): string\n");
+            if with_assignment {
+                source.push_str(&format!("\n---@type {module}\n{module} = {{}}\n"));
+            }
+            ws.def_file(&format!("{module}.lua"), &source);
+            sources.push((module, source));
+        }
+
+        for ((module, std_member), (_, source)) in modules.into_iter().zip(sources) {
+            for expected in [std_member, "custom_extra"] {
+                let expr = format!("{module}.{expected}");
+                let ty = ws.expr_ty(&expr);
+                assert!(
+                    ty.is_function(),
+                    "{expr} must resolve to a function type, got {ty:?} \
+                     (assignment: {with_assignment})\n{source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_stdlib_global_class_extension_without_assignment() {
+        check_stdlib_global_class_extension(false);
+    }
+
+    /// The same extension with an explicit global declaration: workspace members
+    /// are added, but stdlib members must stay available.
+    #[test]
+    fn test_stdlib_global_class_extension_with_assignment() {
+        check_stdlib_global_class_extension(true);
     }
 
     /// LuaJIT workspace: set the runtime version before `init_std_lib`, because

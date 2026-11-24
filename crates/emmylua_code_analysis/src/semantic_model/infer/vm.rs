@@ -26,7 +26,7 @@ use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::doc_types::DocTypeScope;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
 use crate::semantic_model::member::{
-    MemberInfo, class_generic_context_for_member_id, table_const_class_type,
+    MemberInfo, class_generic_context_for_member_id, metatable_type, table_const_class_type,
     table_metatable_index_info, table_metatable_type,
 };
 use crate::semantic_model::type_eval::{
@@ -2564,7 +2564,7 @@ impl<'a> InferVm<'a> {
         model: &SemanticModel,
         table: &InFiled<rowan::TextRange>,
     ) -> Option<LuaFunctionType> {
-        let metatable_ty = table_metatable_type(model, table)?;
+        let metatable_ty = metatable_type(model, None, Some(table))?;
         let call_info =
             model.member_info(&metatable_ty, &LuaMemberKey::Name(SmolStr::new("__call")))?;
         let call_file = call_info.file_id?;
@@ -3914,22 +3914,15 @@ pub(crate) fn unify_call_bindings(
             if let DocFunction(arg_fun) = arg {
                 let param_params = param_fun.get_params();
                 let arg_params = arg_fun.get_params();
-                let mut i = 0;
                 let mut arg_index = 0;
-                while i < param_params.len() {
-                    let Some((param_name, param_ty)) =
-                        param_params.get(i).map(|p| (p.0.as_str(), p.1.clone()))
+                for (i, (param_name, param_ty)) in param_params.iter().enumerate() {
+                    let Some(param_ty) =
+                        param_ty.as_ref().filter(|ty| !matches!(ty, Unknown | Any))
                     else {
-                        break;
-                    };
-                    let Some(param_ty) = param_ty else {
-                        i += 1;
+                        // An untyped fixed parameter still occupies a slot before the pack.
+                        arg_index += usize::from(param_name != "...");
                         continue;
                     };
-                    if matches!(param_ty, Unknown | Any) {
-                        i += 1;
-                        continue;
-                    }
                     // Param is a variadic slot (`fun(...: T..., cb: ...)`): the variadic only
                     // consumes the actual function's params that come before the later ordinary
                     // params; remaining ordinary params continue matching.
@@ -3938,17 +3931,19 @@ pub(crate) fn unify_call_bindings(
                             .iter()
                             .filter(|(n, ty)| n != "..." && !matches!(ty, Some(Variadic(_))))
                             .count();
-                        let consume = if let Variadic(variadic) = &param_ty
+                        let consume = if let Variadic(variadic) = param_ty
                             && let VariadicType::Base(base) = variadic.as_ref()
                             && let TplRef(tpl) = base
                             && let Some(bound) = bindings.get(&tpl.get_tpl_id())
                         {
                             match bound {
                                 Tuple(tuple) => tuple.get_types().len(),
-                                Variadic(v) => match v.as_ref() {
-                                    VariadicType::Multi(types) => types.len(),
-                                    VariadicType::Base(_) | VariadicType::Repeat(_) => 1,
-                                },
+                                Variadic(v) => {
+                                    v.get_max_len().unwrap_or_else(|| match v.as_ref() {
+                                        VariadicType::Multi(types) => types.len(),
+                                        VariadicType::Base(_) | VariadicType::Repeat(_) => 1,
+                                    })
+                                }
                                 _ => 1,
                             }
                         } else {
@@ -3976,14 +3971,19 @@ pub(crate) fn unify_call_bindings(
                                 }
                             })
                             .collect();
-                        if let Variadic(variadic) = &param_ty
+                        // A fixed signature can establish the prefix length even
+                        // if the prefix is empty or its parameters are untyped.
+                        let has_fixed_suffix = trailing > 0
+                            && !arg_fun.is_variadic()
+                            && arg_params.len() - start >= trailing;
+                        if let Variadic(variadic) = param_ty
                             && let VariadicType::Base(base) = variadic.as_ref()
                             && let TplRef(tpl) = base
                             && !bindings.contains_key(&tpl.get_tpl_id())
-                            && !remaining.is_empty()
-                            && arg_params[start..start + consume].iter().any(|(_, ty)| {
-                                ty.as_ref().is_some_and(|t| !matches!(t, Unknown | Any))
-                            })
+                            && (has_fixed_suffix
+                                || arg_params[start..start + consume].iter().any(|(_, ty)| {
+                                    ty.as_ref().is_some_and(|t| !matches!(t, Unknown | Any))
+                                }))
                             && !remaining.iter().any(|t| {
                                 matches!(
                                     t,
@@ -4010,20 +4010,17 @@ pub(crate) fn unify_call_bindings(
                                 return false;
                             }
                         }
-                        // The variadic slot only consumes actual function params; the param index
-                        // still advances by 1 (later ordinary params like `cb` may still match).
-                        i += 1;
-                        arg_index += consume.max(1);
+                        // An empty pack leaves the next actual parameter for the suffix.
+                        arg_index += consume;
                         continue;
                     }
                     let arg_ty = arg_params
                         .get(arg_index)
-                        .and_then(|p| p.1.clone())
-                        .unwrap_or(Unknown);
-                    if !unify_call_bindings(model, &param_ty, &arg_ty, bindings) {
+                        .and_then(|p| p.1.as_ref())
+                        .unwrap_or(&Unknown);
+                    if !unify_call_bindings(model, param_ty, arg_ty, bindings) {
                         return false;
                     }
-                    i += 1;
                     arg_index += 1;
                 }
                 // When the actual function is the same generic function value (e.g.

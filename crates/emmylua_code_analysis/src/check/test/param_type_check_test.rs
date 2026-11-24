@@ -4701,6 +4701,96 @@ mod test {
             ch2.send(ch2, "x")
             "#
         ));
+    fn test_generic_pack_before_callback_accepts_fixed_parameters() {
+        let source = r#"
+            ---@generic T, R
+            ---@param argc integer
+            ---@param func fun(...: T..., cb: fun(...: R...)): any
+            local function wrap(argc, func) end
+
+            ---@param duration integer
+            ---@param done fun()
+            local function delay(duration, done) end
+
+            ---@param done fun()
+            local function schedule(done) end
+
+            wrap(2, delay)
+            wrap(1, schedule)
+
+            ---@generic T, R
+            ---@param func fun(context, ...: T..., cb: fun(...: R...)): any
+            local function wrap_with_context(func) end
+
+            ---@param context string
+            ---@param duration integer
+            ---@param done fun()
+            local function delay_with_context(context, duration, done) end
+
+            wrap_with_context(delay_with_context)
+        "#;
+        let diagnostics = check_source(source);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_generic_pack_before_callback_inferred_from_returns() {
+        let source = r#"
+            ---@generic T
+            ---@param provide fun(): T...
+            ---@param receive fun(...: T..., cb: fun())
+            local function register(provide, receive) end
+
+            ---@return string, integer
+            local function values() return 'job', 1 end
+
+            ---@param name string
+            ---@param count integer
+            ---@param done fun()
+            local function receive(name, count, done) end
+
+            register(values, receive)
+        "#;
+        let diagnostics = check_source(source);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_generic_pack_before_callback_checks_trailing_callback() {
+        let source = r#"
+            ---@generic T, R
+            ---@param argc integer
+            ---@param func fun(...: T..., cb: fun(...: R...): boolean): any
+            local function wrap(argc, func) end
+
+            ---@param duration integer
+            ---@param done fun(): string
+            local function delay(duration, done) end
+
+            wrap(2, delay)
+        "#;
+        let diagnostics = check_source(source);
+        let mismatches: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+            .collect();
+
+        assert_eq!(mismatches.len(), 1, "{diagnostics:?}");
+        let range = mismatches[0].range;
+        assert_eq!(
+            &source[u32::from(range.start()) as usize..u32::from(range.end()) as usize],
+            "delay"
+        );
     }
 
     #[test]
