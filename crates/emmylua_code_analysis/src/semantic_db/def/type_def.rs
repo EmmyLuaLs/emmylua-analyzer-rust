@@ -4,7 +4,7 @@ use emmylua_parser::LuaSyntaxId;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::{FileId, LuaTypeDeclId, semantic_db::def::WorkspaceId};
+use crate::{FileId, GenericTplId, LuaTypeDeclId, semantic_db::def::WorkspaceId};
 
 use super::{DocGenericParam, SemanticId};
 
@@ -75,6 +75,15 @@ pub struct TypeDef {
 }
 
 impl TypeDef {
+    /// Stable generic identity for this type definition's `index`th parameter.
+    pub fn generic_tpl_id(&self, index: usize) -> GenericTplId {
+        GenericTplId::ClassType {
+            file_id: self.file_id.id,
+            start: self.name_range.start().into(),
+            index: index as u32,
+        }
+    }
+
     pub fn new(
         file_id: FileId,
         workspace_id: WorkspaceId,

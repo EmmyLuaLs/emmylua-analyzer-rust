@@ -26,11 +26,13 @@ use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::doc_types::DocTypeScope;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
 use crate::semantic_model::member::{
-    MemberInfo, table_const_class_type, table_metatable_index_info, table_metatable_type,
+    MemberInfo, class_generic_context_for_member_id, table_const_class_type,
+    table_metatable_index_info, table_metatable_type,
 };
 use crate::semantic_model::type_eval::{
-    class_generic_map, eval_conditionals, expand_alias_generic, expand_alias_head,
-    sanitize_unresolved_generics, sanitize_unresolved_generics_with_model, substitute_named_refs,
+    bind_class_generic_names, class_generic_definition, class_generic_map, eval_conditionals,
+    expand_alias_generic, expand_alias_head, sanitize_unresolved_generics,
+    sanitize_unresolved_generics_with_model, substitute_named_refs,
 };
 use crate::{
     AsyncState, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind, LuaArrayType,
@@ -1702,6 +1704,10 @@ impl<'a> InferVm<'a> {
 
         // Fill unresolved function generics with defaults/constraints; class-method defaults
         // may reference class generics (`U = T`).
+        let class_def = callee
+            .receiver
+            .as_ref()
+            .and_then(|receiver| class_generic_definition(self.model, receiver));
         let class_map = callee
             .receiver
             .as_ref()
@@ -1712,17 +1718,25 @@ impl<'a> InferVm<'a> {
                 continue;
             }
             if let Some(default) = param.get_default_type() {
-                let default = substitute_named_refs(default, &class_map);
+                let default = class_def
+                    .as_ref()
+                    .map(|def| bind_class_generic_names(default, def))
+                    .unwrap_or_else(|| default.clone());
+                let default = unify::substitute(&default, &class_map);
                 bindings.insert(param.get_tpl_id(), default);
             } else if let Some(constraint) = param.get_constraint() {
-                let constraint = substitute_named_refs(constraint, &class_map);
+                let constraint = class_def
+                    .as_ref()
+                    .map(|def| bind_class_generic_names(constraint, def))
+                    .unwrap_or_else(|| constraint.clone());
+                let constraint = unify::substitute(&constraint, &class_map);
                 bindings.insert(param.get_tpl_id(), constraint);
             }
         }
         // Defaults may reference earlier generics (`U = T[]`); iteratively substitute until stable.
         for _ in 0..callee_fun.get_generic_params().len().max(1) {
             let mut changed = false;
-            let mut name_bindings: HashMap<String, LuaType> = class_map.clone();
+            let mut name_bindings: HashMap<String, LuaType> = HashMap::new();
             for param in callee_fun.get_generic_params() {
                 if let Some(value) = bindings.get(&param.get_tpl_id()) {
                     name_bindings.insert(param.get_name().to_string(), value.clone());
@@ -2001,8 +2015,22 @@ impl<'a> InferVm<'a> {
         let ret = callee
             .receiver
             .as_ref()
-            .and_then(|receiver| class_generic_map(self.model, receiver))
-            .map(|class_map| substitute_named_refs(&ret, &class_map))
+            .and_then(|receiver| {
+                let (def, class_map) = callee
+                    .owner
+                    .as_ref()
+                    .and_then(|owner| {
+                        class_generic_context_for_member_id(self.model, receiver, owner)
+                    })
+                    .or_else(|| {
+                        Some((
+                            class_generic_definition(self.model, receiver)?,
+                            class_generic_map(self.model, receiver)?,
+                        ))
+                    })?;
+                let scoped = bind_class_generic_names(&ret, &def);
+                Some(unify::substitute(&scoped, &class_map))
+            })
             .unwrap_or(ret);
         let call_self_ty = if colon_call {
             callee.receiver.as_ref().and_then(|receiver| {

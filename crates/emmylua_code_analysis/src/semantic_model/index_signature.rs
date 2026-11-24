@@ -1,16 +1,14 @@
 //! Index signature collection, type projection and inheritance.
 
-use hashbrown::HashMap;
-
 use crate::semantic_db::def::TypeDefKind;
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::cache::{CacheEntry, QueryCacheScope, TypeEvaluationScope};
 use crate::semantic_model::infer::unify::{self, TplBindings};
 use crate::semantic_model::member::{inherited_base_types, projected_member_type};
 use crate::semantic_model::type_eval::{
-    expand_alias_branches, substitute_named_refs, with_expanded_alias,
+    bind_class_doc_tpls, expand_alias_branches, with_expanded_alias,
 };
-use crate::{FileId, GenericTplId, LuaType, LuaTypeDeclId, SemanticId};
+use crate::{FileId, LuaType, LuaTypeDeclId, SemanticId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexInfo {
@@ -166,18 +164,19 @@ fn collect_named_indexes(
         return;
     }
     let mut bindings = TplBindings::new();
-    let mut names = HashMap::new();
     for (index, param) in def.generic_params.iter().enumerate() {
-        let value = params.get(index).cloned().or_else(|| {
-            param.default.or(param.constraint).map(|syntax| {
-                let value = model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
-                substitute_named_refs(&unify::substitute(&value, &bindings), &names)
-            })
+        let value = params.get(index).cloned().unwrap_or_else(|| {
+            param
+                .default
+                .or(param.constraint)
+                .map(|syntax| {
+                    let value = model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+                    let value = bind_class_doc_tpls(&value, &def);
+                    unify::substitute(&value, &bindings)
+                })
+                .unwrap_or(LuaType::Any)
         });
-        if let Some(value) = value {
-            bindings.insert(GenericTplId::Type(index as u32), value.clone());
-            names.insert(param.name.to_string(), value);
-        }
+        bindings.insert(def.generic_tpl_id(index), value);
     }
     let mut candidates = Vec::new();
     for member_ref in model.members_of_owner(&def.id).iter() {
@@ -196,27 +195,15 @@ fn collect_named_indexes(
             .type_def_by_id(&member.owner)
             .map(|declaration| declaration.generic_params.as_slice())
             .unwrap_or_default();
-        let declaration_names = generics
-            .iter()
-            .enumerate()
-            .filter_map(|(index, param)| {
-                bindings
-                    .get(&GenericTplId::Type(index as u32))
-                    .map(|value| (param.name.to_string(), value.clone()))
-            })
-            .collect();
         let key = model.doc_type_lua_in(member_ref.file_id, key_syntax, generics);
-        let key = substitute_named_refs(&unify::substitute(&key, &bindings), &declaration_names);
+        let key = bind_class_doc_tpls(&key, &def);
+        let key = unify::substitute(&key, &bindings);
         let Some(key_type) = expand_alias_branches(model, &key) else {
             continue;
         };
-        let Some(value_type) = projected_member_type(
-            model,
-            member_ref,
-            member,
-            Some(&bindings),
-            Some(&declaration_names),
-        ) else {
+        let Some(value_type) =
+            projected_member_type(model, member_ref, member, Some(&bindings), None)
+        else {
             model.cache.borrow().mark_incomplete();
             continue;
         };
@@ -227,7 +214,7 @@ fn collect_named_indexes(
             file_id: Some(member_ref.file_id),
         });
     }
-    for base in inherited_base_types(model, &def, Some(&bindings), Some(&names)) {
+    for base in inherited_base_types(model, &def, Some(&bindings)) {
         collect_index_infos(model, &base, path, &mut candidates);
     }
     // 同一具名类型的声明与父类按键域选取优先项, 不影响外层分支.
