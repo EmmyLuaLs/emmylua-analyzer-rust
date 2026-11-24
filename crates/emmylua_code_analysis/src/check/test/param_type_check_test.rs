@@ -4654,6 +4654,9 @@ mod test {
                 ---@param v T
                 function Ch:send(v) end
 
+                ---@param values T[]
+                function Ch:send_all(values) end
+
                 ---@class Ch2<T>
                 local Ch2 = {}
 
@@ -4668,6 +4671,7 @@ mod test {
             ---@type Ch<integer>
             local ch
             ch:send(1)
+            ch:send_all({1})
             "#
         ));
         assert!(!ws.has_no_diagnostic(
@@ -4676,6 +4680,7 @@ mod test {
             ---@type Ch<integer>
             local ch
             ch:send("x")
+            ch:send_all({"x"})
             "#
         ));
         assert!(ws.has_no_diagnostic(
