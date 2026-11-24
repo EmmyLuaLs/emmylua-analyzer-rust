@@ -402,6 +402,24 @@ pub fn substitute_named_refs(ty: &LuaType, map: &HashMap<String, LuaType>) -> Lu
     })
 }
 
+/// Substitute named refs in a function signature without wrapping and cloning it through `LuaType`.
+pub(super) fn substitute_named_refs_in_function(
+    fun: &LuaFunctionType,
+    map: &HashMap<String, LuaType>,
+) -> LuaFunctionType {
+    LuaFunctionType::new(
+        fun.get_async_state(),
+        fun.is_colon_define(),
+        fun.is_variadic(),
+        fun.get_params()
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.as_ref().map(|ty| substitute_named_refs(ty, map))))
+            .collect(),
+        substitute_named_refs(fun.get_ret(), map),
+        Some(fun.get_generic_params().to_vec()),
+    )
+}
+
 /// Rewrite the existing type tree iteratively, without visiting replacements.
 pub(super) fn map_type(
     ty: &LuaType,
