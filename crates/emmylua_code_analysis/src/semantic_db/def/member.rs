@@ -57,15 +57,10 @@ pub struct Member {
 }
 
 impl Member {
-    /// Positional table field (`{ value }`): there is no key token, so the key range falls
-    /// back to the whole field and therefore contains the value expression. A real key
-    /// (`x = v`, `[k] = v`) never contains its value.
+    /// Positional table field (`{ value }`): there is no key expression, so its key range
+    /// falls back to the whole field. Real keys (`x = v`, `[k] = v`) always have a key expr.
     pub fn is_positional_table_field(&self) -> bool {
         matches!(self.source, MemberSource::TableField { key_expr: None })
-            && match (self.id.member_key_range(), self.value_syntax) {
-                (Some(key_range), Some(value)) => key_range.contains_range(value.get_range()),
-                _ => false,
-            }
     }
 
     pub fn new(
