@@ -22,53 +22,28 @@ pub fn function_details_md(
     typ: &LuaType,
     signature: Option<&DocSignature>,
 ) -> Option<FunctionDetails> {
-    let (params, returns) = if let Some(signature) = signature {
-        let params = signature
-            .params
-            .iter()
-            .map(|param| MemberParam {
-                name: param.name.clone(),
-                type_text: render_param_type(model, param.ty.as_ref()),
-                description: param.description.clone(),
-            })
-            .collect::<Vec<_>>();
-        let returns = signature
-            .returns
-            .iter()
-            .map(|ret| MemberParam {
-                name: ret.name.clone().unwrap_or_default(),
-                type_text: render_param_type(model, Some(&ret.ty)),
-                description: ret.description.clone(),
-            })
-            .collect::<Vec<_>>();
-        (params, returns)
-    } else if let LuaType::DocFunction(func) = typ {
-        let params = func
-            .get_params()
-            .iter()
-            .map(|(name, ty)| MemberParam {
-                name: name.clone(),
-                type_text: render_param_type(model, ty.as_ref()),
-                description: None,
-            })
-            .collect::<Vec<_>>();
-        let returns = vec![MemberParam {
-            name: String::new(),
-            type_text: render_param_type(model, Some(func.get_ret())),
-            description: None,
-        }];
-        (params, returns)
-    } else {
-        return None;
-    };
+    let details = model.function_details(typ, signature)?;
 
-    let has_details = params
+    let params = details
+        .params
         .iter()
-        .any(|p| p.type_text.is_some() || p.description.is_some())
-        || returns
-            .iter()
-            .any(|r| r.type_text.is_some() || r.description.is_some());
-    has_details.then_some((params, returns))
+        .map(|param| MemberParam {
+            name: param.name.clone(),
+            type_text: render_param_type(model, param.ty.as_ref()),
+            description: param.description.clone(),
+        })
+        .collect::<Vec<_>>();
+    let returns = details
+        .returns
+        .iter()
+        .map(|ret| MemberParam {
+            name: ret.name.clone(),
+            type_text: render_param_type(model, ret.ty.as_ref()),
+            description: ret.description.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    Some((params, returns))
 }
 
 /// Renders the `---@overload` signatures of a signature-backed function as

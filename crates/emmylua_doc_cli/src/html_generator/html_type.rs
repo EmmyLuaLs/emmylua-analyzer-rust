@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{LuaType, LuaTypeDeclId, RenderLevel};
 
-use crate::doc_model::{DocModel, DocTypeKey};
+use crate::doc_model::{DocModel, DocSignature, DocTypeKey};
 
 use super::render::html_escape;
 
@@ -224,9 +224,14 @@ fn param_name(text: &str) -> String {
 
 /// Renders a compact `function Name(params) -> ret` signature with linked and
 /// highlighted types.
+///
+/// A bare `LuaType::Function` has no parameter list of its own, so the
+/// documented `signature` (from `---@param` / `---@return`) is rendered
+/// instead. This keeps types linked to their class pages.
 pub fn render_function_signature_html(
     model: &DocModel,
     typ: &LuaType,
+    signature: Option<&DocSignature>,
     func_name: &str,
     is_local: bool,
     linker: &TypeLinker,
@@ -239,7 +244,35 @@ pub fn render_function_signature_html(
     let fn_kw = kw("function ");
     let name = fn_name(func_name);
     match typ {
-        LuaType::Function => format!("{local}{fn_kw}{name}()"),
+        LuaType::Function => {
+            let Some(signature) = signature else {
+                return format!("{local}{fn_kw}{name}()");
+            };
+            let params: Vec<String> = signature
+                .params
+                .iter()
+                .map(|param| match &param.ty {
+                    Some(ty) => format!(
+                        "{}: {}",
+                        param_name(&param.name),
+                        render_type_html(model, ty, linker)
+                    ),
+                    None => param_name(&param.name),
+                })
+                .collect();
+            let returns: Vec<String> = signature
+                .returns
+                .iter()
+                .map(|ret| render_type_html(model, &ret.ty, linker))
+                .filter(|ret| !ret.is_empty())
+                .collect();
+            let ret_suffix = if returns.is_empty() {
+                String::new()
+            } else {
+                format!(" <span class=\"hl-op\">-&gt;</span> {}", returns.join(", "))
+            };
+            format!("{local}{fn_kw}{name}({}){ret_suffix}", params.join(", "))
+        }
         LuaType::DocFunction(func) => {
             let params: Vec<String> = func
                 .get_params()
@@ -303,6 +336,9 @@ fn fallback(model: &DocModel, typ: &LuaType) -> String {
 }
 
 /// Renders `---@overload` signatures for a function type as `<pre>` blocks.
+///
+/// Overloads are always `LuaType`s (never a bare `Function`), so they carry
+/// their own parameter list and are rendered without a `DocSignature`.
 pub fn signature_overloads_html(
     model: &DocModel,
     overloads: &[LuaType],
@@ -311,7 +347,9 @@ pub fn signature_overloads_html(
 ) -> Vec<String> {
     overloads
         .iter()
-        .map(|overload| render_function_signature_html(model, overload, func_name, false, linker))
+        .map(|overload| {
+            render_function_signature_html(model, overload, None, func_name, false, linker)
+        })
         .collect()
 }
 
