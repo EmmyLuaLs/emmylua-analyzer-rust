@@ -671,8 +671,17 @@ impl<'db> SemanticModel<'db> {
                     .type_of_signature_in_file(file, member.value_syntax?)?
                     .get_ret()
                     .clone();
-                type_eval::class_generic_map(self, receiver)
-                    .map(|bindings| substitute_named_refs(&ret, &bindings))
+                member::class_generic_context_for_member_id(self, receiver, generator.id.as_ref()?)
+                    .or_else(|| {
+                        Some((
+                            type_eval::class_generic_definition(self, receiver)?,
+                            type_eval::class_generic_map(self, receiver)?,
+                        ))
+                    })
+                    .map(|(def, bindings)| {
+                        let scoped = type_eval::bind_class_generic_names(&ret, &def);
+                        infer::unify::substitute(&scoped, &bindings)
+                    })
                     .unwrap_or(ret)
             }
             _ => return None,
