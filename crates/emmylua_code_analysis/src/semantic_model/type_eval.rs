@@ -382,7 +382,7 @@ pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<
     };
     let def = model.type_def_of(&base)?;
     if def.generic_params.is_empty() {
-        return matches!(ty, LuaType::Generic(_)).then(HashMap::new);
+        return None;
     }
     let args = class_generic_args_with_defaults(model, &def, provided);
     Some(
@@ -394,8 +394,9 @@ pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<
     )
 }
 
-/// Provided class generic arguments, followed by declared defaults (which may reference
-/// earlier parameters) and `any` for parameters without a default.
+/// Apply positional class arguments, then fill missing trailing parameters from their
+/// defaults (which may reference earlier parameters) or `any`. Generic arguments cannot
+/// skip an earlier defaulted parameter to provide a later variadic argument.
 fn class_generic_args_with_defaults(
     model: &SemanticModel,
     def: &TypeDef,

@@ -549,15 +549,15 @@ impl<'db> SemanticModel<'db> {
         let SemanticId::Decl(key) = decl else {
             return None;
         };
-        if key.file_id != self.file_id() {
-            return None;
-        }
-        let facts = self.file_facts()?;
+        // `self` may be queried while analyzing a different file that uses this
+        // method, so resolve the parameter and method in the declaration's file.
+        let file_model = self.model_for(key.file_id);
+        let facts = file_model.file_facts()?;
         let decl = facts.decl_by_id(decl)?;
         if decl.name != "self" || !matches!(decl.kind, DeclKind::Param) {
             return None;
         }
-        self.method_closure_for_self_decl(decl)?;
+        file_model.method_closure_for_self_decl(decl)?;
         let def = self.type_def_of(id)?;
         if def.generic_params.is_empty() {
             return None;
