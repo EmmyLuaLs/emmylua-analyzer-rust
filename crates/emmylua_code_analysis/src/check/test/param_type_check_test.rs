@@ -4693,6 +4693,7 @@ mod test {
             ---@type Ch2<integer>
             local ch2
             ch2:send("x")
+            ch2.send(ch2, "x")
             "#
         ));
     }

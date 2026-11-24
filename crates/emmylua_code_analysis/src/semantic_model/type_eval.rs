@@ -382,7 +382,7 @@ pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<
     };
     let def = model.type_def_of(&base)?;
     if def.generic_params.is_empty() {
-        return matches!(ty, LuaType::Generic(_)).then(HashMap::new);
+        return None;
     }
     let args = class_generic_args_with_defaults(model, &def, provided);
     Some(
@@ -394,8 +394,9 @@ pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<
     )
 }
 
-/// Provided class generic arguments, followed by declared defaults (which may reference
-/// earlier parameters) and `any` for parameters without a default.
+/// Apply positional class arguments, then fill missing trailing parameters from their
+/// defaults (which may reference earlier parameters) or `any`. Generic arguments cannot
+/// skip an earlier defaulted parameter to provide a later variadic argument.
 fn class_generic_args_with_defaults(
     model: &SemanticModel,
     def: &TypeDef,
@@ -453,6 +454,24 @@ pub fn substitute_named_refs(ty: &LuaType, map: &HashMap<String, LuaType>) -> Lu
         },
         _ => None,
     })
+}
+
+/// Substitute named refs in a function signature without wrapping and cloning it through `LuaType`.
+pub(super) fn substitute_named_refs_in_function(
+    fun: &LuaFunctionType,
+    map: &HashMap<String, LuaType>,
+) -> LuaFunctionType {
+    LuaFunctionType::new(
+        fun.get_async_state(),
+        fun.is_colon_define(),
+        fun.is_variadic(),
+        fun.get_params()
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.as_ref().map(|ty| substitute_named_refs(ty, map))))
+            .collect(),
+        substitute_named_refs(fun.get_ret(), map),
+        Some(fun.get_generic_params().to_vec()),
+    )
 }
 
 /// Rewrite the existing type tree iteratively, without visiting replacements.
