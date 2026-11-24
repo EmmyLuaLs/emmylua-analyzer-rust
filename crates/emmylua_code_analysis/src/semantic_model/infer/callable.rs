@@ -71,7 +71,15 @@ impl CallableCandidateSet {
         if let Some(member_id) = member_id {
             let vm = InferVm::new(model, &[]);
             if let Some(resolved_candidates) = vm.callable_candidates_for_owner_single(member_id) {
-                candidates.extend(resolved_candidates);
+                if let Some((def, bindings)) =
+                    member::class_generic_context_for_member_id(model, prefix_type, member_id)
+                {
+                    candidates.extend(resolved_candidates.iter().map(|candidate| {
+                        substitute_class_generics_in_function(candidate, &def, &bindings)
+                    }));
+                } else {
+                    candidates.extend(resolved_candidates);
+                }
             }
         }
         let infos = member::member_infos_with_key_mode(

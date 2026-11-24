@@ -673,7 +673,7 @@ mod tests {
                 A.<??>next()
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) A.next(value: T)\n```\n\n---\n\n测试".to_string(),
+                value: "```lua\n(field) A.next(value: any)\n```\n\n---\n\n测试".to_string(),
             },
         ));
         Ok(())
