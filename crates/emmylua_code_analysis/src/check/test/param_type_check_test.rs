@@ -4701,6 +4701,9 @@ mod test {
             ch2.send(ch2, "x")
             "#
         ));
+    }
+
+    #[test]
     fn test_generic_pack_before_callback_accepts_fixed_parameters() {
         let source = r#"
             ---@generic T, R
