@@ -25,10 +25,17 @@ pub fn unify_bindings(param: &LuaType, arg: &LuaType, bindings: &mut TplBindings
     match param {
         // Generic parameter -> bind (if the actual arg is a concrete type).
         TplRef(tpl) => {
+            let tpl_id = tpl.get_tpl_id();
+            if matches!(tpl_id, GenericTplId::ClassType { .. }) {
+                return match arg {
+                    Any | Unknown => true,
+                    TplRef(arg_tpl) => arg_tpl.get_tpl_id() == tpl_id,
+                    _ => false,
+                };
+            }
             if matches!(arg, Any) {
                 return true;
             }
-            let tpl_id = tpl.get_tpl_id();
             match bindings.get(&tpl_id) {
                 Some(existing) => existing == arg,
                 None => {

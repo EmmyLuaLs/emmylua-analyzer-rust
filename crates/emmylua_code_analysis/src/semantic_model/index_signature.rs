@@ -191,18 +191,32 @@ fn collect_named_indexes(
         let Some(key_syntax) = member.index_key_syntax else {
             continue;
         };
-        let generics = facts
-            .type_def_by_id(&member.owner)
+        let declaration = facts.type_def_by_id(&member.owner);
+        let generics = declaration
             .map(|declaration| declaration.generic_params.as_slice())
             .unwrap_or_default();
+        let declaration_bindings = declaration
+            .map(|declaration| {
+                def.generic_params
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, _)| {
+                        bindings
+                            .get(&def.generic_tpl_id(index))
+                            .map(|value| (declaration.generic_tpl_id(index), value.clone()))
+                    })
+                    .collect::<TplBindings>()
+            })
+            .unwrap_or_else(|| bindings.clone());
+        let declaration = declaration.unwrap_or(&def);
         let key = model.doc_type_lua_in(member_ref.file_id, key_syntax, generics);
-        let key = bind_class_doc_tpls(&key, &def);
-        let key = unify::substitute(&key, &bindings);
+        let key = bind_class_doc_tpls(&key, declaration);
+        let key = unify::substitute(&key, &declaration_bindings);
         let Some(key_type) = expand_alias_branches(model, &key) else {
             continue;
         };
         let Some(value_type) =
-            projected_member_type(model, member_ref, member, Some(&bindings), None)
+            projected_member_type(model, member_ref, member, Some(&declaration_bindings), None)
         else {
             model.cache.borrow().mark_incomplete();
             continue;
