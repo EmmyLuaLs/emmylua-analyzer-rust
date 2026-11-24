@@ -32,7 +32,9 @@ pub(crate) use simple_type::table_index_accepts;
 
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_head;
-use crate::{InFiled, LuaMemberKey, LuaObjectType, LuaType, SemanticId, TypeDef, TypeDefKind};
+use crate::{
+    GenericTplId, InFiled, LuaMemberKey, LuaObjectType, LuaType, SemanticId, TypeDef, TypeDefKind,
+};
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
@@ -585,7 +587,10 @@ fn eval_enum_integer_expr(text: String) -> Option<i64> {
 fn is_like_any(ty: &LuaType) -> bool {
     match ty {
         LuaType::Any | LuaType::Unknown => true,
-        LuaType::TplRef(tpl) => tpl.get_constraint().is_none(),
+        LuaType::TplRef(tpl) => {
+            tpl.get_constraint().is_none()
+                && !matches!(tpl.get_tpl_id(), GenericTplId::ClassType { .. })
+        }
         _ => false,
     }
 }
