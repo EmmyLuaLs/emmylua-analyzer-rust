@@ -3553,9 +3553,6 @@ pub(crate) fn resolve_callable_closure(
         return None;
     }
     loop {
-        if visited.len() > 16 {
-            return None;
-        }
         let (file_id, value_syntax, has_explicit_type) = match &owner {
             SemanticId::Decl(key) => {
                 let facts = model.file_facts_of(key.file_id)?;
@@ -3576,9 +3573,7 @@ pub(crate) fn resolve_callable_closure(
         let tree = model.syntax_tree_of(file_id)?;
         let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
         let expr = unparenthesized(LuaExpr::cast(node)?)?;
-        if matches!(expr, LuaExpr::ClosureExpr(_))
-            || LuaClosureExpr::cast(expr.syntax().clone()).is_some()
-        {
+        if matches!(expr, LuaExpr::ClosureExpr(_)) {
             return Some((file_id, expr.get_syntax_id()));
         }
         // A typed alias (`---@type fun()`) uses the annotation as its contract.

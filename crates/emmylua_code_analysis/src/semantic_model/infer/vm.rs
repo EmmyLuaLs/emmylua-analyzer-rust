@@ -1686,6 +1686,9 @@ impl<'a> InferVm<'a> {
         // A local alias's owner is the alias decl; follow it to the original
         // closure, then keep only signatures that still reach this call so a
         // later assignment or `@cast` (#1356) is not overwritten.
+        // Filter only declaration aliases here. Direct member calls retain the
+        // member's candidates; a local alias of a member has a Decl owner and
+        // follows this path through `resolve_callable_closure`.
         if let Some(owner) = &callee.owner
             && matches!(owner, SemanticId::Decl(_))
             && let Some((_, original)) = resolve_callable_closure(self.model, owner.clone())
@@ -1701,6 +1704,8 @@ impl<'a> InferVm<'a> {
             if !filtered.is_empty() {
                 candidates = filtered;
             } else {
+                // The original closure no longer reaches this call (for example,
+                // the alias was reassigned), so use the current value's callable type.
                 candidates = expand_callable_types_in_model(self.model, &callee.ty);
             }
         }

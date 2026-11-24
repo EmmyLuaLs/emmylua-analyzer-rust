@@ -4703,6 +4703,35 @@ mod test {
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
         assert_eq!(&chained_bad[diagnostics[0].range], "42");
 
+        let chained_reassignment = r#"
+            ---@param value number
+            ---@overload fun(value: string): string
+            local function accept(value) return value end
+            local a = accept
+            local b = a
+            ---@param value boolean
+            b = function(value) return value end
+            b('stale overload')
+        "#;
+        let diagnostics = param_mismatches(chained_reassignment);
+        assert_eq!(diagnostics.len(), 1, "{chained_reassignment}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(
+            &chained_reassignment[diagnostics[0].range],
+            "'stale overload'"
+        );
+
+        let direct_member_bad = format!(
+            r#"
+            {helper}
+            Helper.runtest(42)
+            "#
+        );
+        let diagnostics = param_mismatches(&direct_member_bad);
+        assert_eq!(diagnostics.len(), 1, "{direct_member_bad}\n{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+        assert_eq!(&direct_member_bad[diagnostics[0].range], "42");
+
         let local_fn_bad = r#"
             ---@param value number
             ---@return number
