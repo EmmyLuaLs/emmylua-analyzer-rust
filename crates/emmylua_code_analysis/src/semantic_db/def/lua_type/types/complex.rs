@@ -147,19 +147,27 @@ impl LuaFunctionType {
 
     /// Parameter slots, including the receiver and any expanding or repeated tail.
     pub fn get_variadic_params(&self) -> VariadicType {
-        let mut types: Vec<_> = self
-            .params
-            .iter()
-            .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
-            .collect();
+        let mut types = Vec::with_capacity(self.params.len() + usize::from(self.is_colon_define));
         if self.is_colon_define {
-            types.insert(0, LuaType::SelfInfer);
+            types.push(LuaType::SelfInfer);
         }
-        if self.is_variadic
-            && let Some(last) = types.last_mut()
-            && !matches!(last, LuaType::Variadic(_))
-        {
-            *last = LuaType::Variadic(Rc::new(VariadicType::Repeat(last.clone())));
+        for (index, (name, ty)) in self.params.iter().enumerate() {
+            let ty = ty.clone().unwrap_or(LuaType::Unknown);
+            let is_last = index + 1 == self.params.len();
+            let is_vararg_tail = is_last && self.is_variadic && name == "...";
+
+            // Multi expands only its tail. A bound prefix pack must supply its
+            // own slots so that parameters after it keep their positions.
+            if !is_last
+                && let LuaType::Variadic(pack) = &ty
+                && pack.get_max_len().is_some()
+            {
+                pack.append_fixed_slots(&mut types);
+            } else if is_vararg_tail && !matches!(ty, LuaType::Variadic(_)) {
+                types.push(LuaType::Variadic(Rc::new(VariadicType::Repeat(ty))));
+            } else {
+                types.push(ty);
+            }
         }
         VariadicType::Multi(types)
     }
@@ -779,6 +787,23 @@ pub enum VariadicType {
 }
 
 impl VariadicType {
+    /// Append the slots of a pack whose length is known.
+    fn append_fixed_slots(&self, slots: &mut Vec<LuaType>) {
+        match self {
+            Self::Base(LuaType::Tuple(tuple)) => slots.extend_from_slice(tuple.get_types()),
+            Self::Multi(types) => {
+                for ty in types {
+                    if let LuaType::Variadic(pack) = ty {
+                        pack.append_fixed_slots(slots);
+                    } else {
+                        slots.push(ty.clone());
+                    }
+                }
+            }
+            _ => unreachable!("a fixed pack must have a known sequence of slots"),
+        }
+    }
+
     pub fn get_type(&self, idx: usize) -> Option<&LuaType> {
         match self {
             VariadicType::Multi(types) => {
