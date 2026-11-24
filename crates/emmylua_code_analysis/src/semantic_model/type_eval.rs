@@ -428,7 +428,15 @@ fn class_generic_args_with_defaults(
         for (earlier, value) in resolved.iter().enumerate() {
             bindings.insert(GenericTplId::Type(earlier as u32), value.clone());
         }
-        resolved.push(unify::substitute(&default, &bindings));
+        let default = unify::substitute(&default, &bindings);
+        if param.is_variadic {
+            resolved.push(match default {
+                slots @ LuaType::Variadic(_) => slots,
+                single => LuaType::Variadic(Rc::new(VariadicType::Multi(vec![single]))),
+            });
+        } else {
+            resolved.push(default);
+        }
     }
     resolved
 }
