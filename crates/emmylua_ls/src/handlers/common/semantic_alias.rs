@@ -60,8 +60,9 @@ pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Opt
                             _ => return None,
                         }
                     }
-                    // Any other value (a table constructor, a call, a literal, ...) is not an
-                    // alias: this declaration is the origin, e.g. a module's `local M = {}`.
+                    // A non-alias expression is a terminal value: there is no declaration
+                    // identity farther along the chain. Keep this declaration as the origin,
+                    // including table exports (`local M = {}`) and call/literal initializers.
                     _ => return Some(current),
                 }
             }

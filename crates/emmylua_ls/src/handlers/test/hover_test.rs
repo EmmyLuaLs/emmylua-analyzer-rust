@@ -610,6 +610,17 @@ mod tests {
                     "```lua\nfunction Mod.fn()\n```\n\n---\n\nFunction documentation.".to_string(),
             },
         ));
+        check!(ws.check_hover(
+            r#"
+                local m = require("mod")
+                local alias = m
+                local <??>chained = alias
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal M: Mod {\n    fn: function,\n}\n```\n\n---\n\nModule documentation."
+                    .to_string(),
+            },
+        ));
         Ok(())
     }
 
