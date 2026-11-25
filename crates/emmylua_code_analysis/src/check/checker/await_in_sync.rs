@@ -14,15 +14,15 @@
 use std::collections::HashSet;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaComment, LuaDocTag,
-    LuaExpr, LuaSyntaxId,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaComment,
+    LuaDocTag, LuaExpr, LuaSyntaxId, LuaVarExpr,
 };
 
 use crate::DiagnosticCode;
 use crate::semantic_model::SemanticModel;
-use crate::{AsyncState, LuaFunctionType, LuaType, SemanticId};
+use crate::{AsyncState, DeclKind, LuaFunctionType, LuaType, SemanticId};
 
-use super::param_type_check::callable_candidates;
+use super::param_type_check::{callable_candidates, callable_candidates_uncached};
 use super::{CheckContext, Checker};
 
 pub struct AwaitInSyncChecker;
@@ -78,6 +78,26 @@ fn callee_candidates(
         return Vec::new();
     };
     let mut candidates = callable_candidates(semantic_model, &prefix_expr);
+    // A local alias of a required module member can retain the callable shape
+    // while losing async state on callback parameters during value inference.
+    // Recover the declaration-site contract from the alias initializer, just
+    // as we do for function declarations below.
+    if let LuaExpr::NameExpr(name_expr) = &prefix_expr
+        && let Some(alias_candidates) =
+            local_alias_callable_candidates(semantic_model, name_expr, call_expr.get_position())
+        && alias_candidates.iter().any(|candidate| {
+            candidate.get_async_state() == AsyncState::Async
+                || candidate.get_params().iter().any(|(_, ty)| {
+                    ty.as_ref().and_then(param_type_async_state) == Some(AsyncState::Async)
+                })
+        })
+    {
+        for candidate in alias_candidates {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        }
+    }
     // The VM prefers inferred closure-body signatures, so doc details such as `---@param f sync fun()` / `---@async`
     // are lost; put the declaration-site doc signature first here (legacy infer_call_expr_func preferred docs).
     if let LuaExpr::NameExpr(name_expr) = &prefix_expr
@@ -95,6 +115,45 @@ fn callee_candidates(
         }
     }
     candidates
+}
+
+fn local_alias_callable_candidates(
+    semantic_model: &SemanticModel<'_>,
+    name_expr: &emmylua_parser::LuaNameExpr,
+    call_position: rowan::TextSize,
+) -> Option<Vec<LuaFunctionType>> {
+    let SemanticId::Decl(key) = semantic_model.resolve_name(name_expr.get_position())? else {
+        return None;
+    };
+    let facts = semantic_model.file_facts_of(key.file_id)?;
+    let decl = facts.decl_by_id(&SemanticId::Decl(key.clone()))?;
+    if !matches!(decl.kind, DeclKind::Local { .. }) {
+        return None;
+    }
+    let initializer = decl.value_expr_syntax?;
+    let tree = semantic_model.syntax_tree_of(key.file_id)?;
+    let root = tree.get_red_root();
+    // Do not resurrect the initializer's contract after a prior reassignment.
+    // A later assignment does not affect this call site.
+    for assignment in root.descendants().filter_map(LuaAssignStat::cast) {
+        if assignment.get_position() >= call_position {
+            continue;
+        }
+        let (vars, _) = assignment.get_var_and_expr_list();
+        if vars.iter().any(|var| match var {
+            LuaVarExpr::NameExpr(name) => {
+                name.get_position() > initializer.get_range().start()
+                    && semantic_model.resolve_name(name.get_position())
+                        == Some(SemanticId::Decl(key.clone()))
+            }
+            LuaVarExpr::IndexExpr(_) => false,
+        }) {
+            return None;
+        }
+    }
+    let node = initializer.to_node_from_root(&root)?;
+    let expr = LuaExpr::cast(node)?;
+    Some(callable_candidates_uncached(semantic_model, &expr))
 }
 
 /// Structural signature from declaration-site doc annotations (the `type_of_signature_in_file` version without a return point:
