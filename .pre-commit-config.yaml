@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: crate-paths
         name: crate paths
-        description: reject long crate: paths in changed Rust files
+        description: reject long crate paths in changed Rust files
         entry: python lint/crate_paths.py check --changed
         language: system
         types: [rust]
