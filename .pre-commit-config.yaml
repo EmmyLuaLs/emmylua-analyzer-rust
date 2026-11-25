@@ -56,7 +56,7 @@ repos:
         exclude: ^.vscode/
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
-        exclude_types: [rust]
+        exclude_types: [rust,python]
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-vcs-permalinks

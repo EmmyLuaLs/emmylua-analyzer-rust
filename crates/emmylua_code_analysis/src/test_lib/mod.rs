@@ -164,7 +164,7 @@ impl VirtualWorkspace {
         source: &str,
         callee: &str,
     ) -> (Vec<Vec<String>>, u64) {
-        use crate::semantic_model::flow::flow_metrics;
+        use crate::{SemanticModel, semantic_model::flow::flow_metrics};
         use emmylua_parser::LuaCallExpr;
         use std::rc::Rc;
 
