@@ -1,5 +1,8 @@
 //! Infer-layer tests: faithful projection + name/member/expression inference.
 
+use crate::LuaTupleStatus;
+use crate::LuaTupleType;
+use crate::VirtualWorkspace;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -626,9 +629,9 @@ fn test_vararg_packing_distinguishes_tuple_values_and_sequences() {
     "#,
     );
     let model = env.model();
-    let tuple = LuaType::Tuple(Rc::new(crate::LuaTupleType::new(
+    let tuple = LuaType::Tuple(Rc::new(LuaTupleType::new(
         vec![LuaType::String, LuaType::Integer],
-        crate::LuaTupleStatus::DocResolve,
+        LuaTupleStatus::DocResolve,
     )));
     for name in [
         "tuple_first",
@@ -697,7 +700,7 @@ fn test_vararg_packing_expands_only_the_last_unkeyed_field() {
 
 #[test]
 fn test_vararg_return_lists_preserve_value_positions() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     ws.def(
         r#"
         ---@param ... integer
@@ -769,9 +772,9 @@ fn test_vararg_pcall_keeps_repeated_result_types() {
     "#,
     );
     let model = env.model();
-    let pair = LuaType::Tuple(Rc::new(crate::LuaTupleType::new(
+    let pair = LuaType::Tuple(Rc::new(LuaTupleType::new(
         vec![LuaType::String, LuaType::Integer],
-        crate::LuaTupleStatus::DocResolve,
+        LuaTupleStatus::DocResolve,
     )));
     for name in ["selected_tuple", "extended_tuple"] {
         assert_eq!(
@@ -839,9 +842,9 @@ fn test_vararg_generic_callback_keeps_result_tail() {
     "#,
     );
     let model = env.model();
-    let pair = LuaType::Tuple(Rc::new(crate::LuaTupleType::new(
+    let pair = LuaType::Tuple(Rc::new(LuaTupleType::new(
         vec![LuaType::String, LuaType::Integer],
-        crate::LuaTupleStatus::DocResolve,
+        LuaTupleStatus::DocResolve,
     )));
     for (name, expected) in [
         ("third_pair", pair),
@@ -876,7 +879,7 @@ fn test_vararg_index_keys_take_the_first_value() {
 
 #[test]
 fn test_vararg_nested_returns_do_not_change_outer_result_types() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     ws.def(
         r#"
         ---@param ... integer
@@ -1448,7 +1451,7 @@ fn test_cross_file_member_cycles_keep_independent_fields() {
         ("42", LuaType::IntegerConst(42)),
         ("a.value", LuaType::Unknown),
     ] {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def_files(vec![
             (
                 "a.lua",
@@ -1872,7 +1875,7 @@ fn test_operator_len() {
 
 #[test]
 fn expression_casts_use_the_current_file() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let plain = ws.def_file(
         "plain.lua",
         "local first = 1\nlocal other = 2 --[[@as boolean]]",

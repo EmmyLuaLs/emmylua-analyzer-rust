@@ -178,7 +178,7 @@ impl VirtualWorkspace {
             .filter_map(|call| call.get_prefix_expr())
             .filter(|prefix| prefix.syntax().text() == callee)
             .collect();
-        let read_types = |model: &crate::SemanticModel, prefix: &emmylua_parser::LuaExpr| {
+        let read_types = |model: &SemanticModel, prefix: &emmylua_parser::LuaExpr| {
             model
                 .callable_candidates_for_expr(prefix)
                 .into_iter()

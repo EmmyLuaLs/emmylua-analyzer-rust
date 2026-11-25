@@ -1,6 +1,10 @@
 //! Compatibility of base types and constants (fully ported from the old
 //! `semantic::type_check::simple_type`, with db access going through the semantic context).
 
+use crate::FileId;
+use crate::InFiled;
+use crate::TypeDefKind;
+use crate::semantic_model;
 use emmylua_parser::{LuaAstNode, LuaIndexKey};
 
 use crate::semantic_model::table_constructor::{ConstructorValue, key_type};
@@ -45,13 +49,10 @@ pub fn check_simple_type_compact(
                         };
                         if context
                             .type_def_of(&id)
-                            .is_some_and(|def| def.kind == crate::TypeDefKind::Class)
+                            .is_some_and(|def| def.kind == TypeDefKind::Class)
                         {
                             let fields = context.require_complete(|| {
-                                crate::semantic_model::member::class_fields(
-                                    context.model,
-                                    compact_type,
-                                )
+                                semantic_model::member::class_fields(context.model, compact_type)
                             })?;
                             return check_table_record(context, table, &fields);
                         }
@@ -246,7 +247,7 @@ pub fn check_simple_type_compact(
 
 fn check_table_record(
     context: &mut TypeCheckContext,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
     fields: &LuaObjectType,
 ) -> TypeCheckResult {
     context.comparisons.borrow_mut().mark_structural();
@@ -295,7 +296,7 @@ fn check_table_record(
 
 fn check_constructor_value(
     context: &mut TypeCheckContext,
-    file_id: crate::FileId,
+    file_id: FileId,
     actual: Option<ConstructorValue<'_>>,
     expected: &LuaType,
 ) -> TypeCheckResult {
@@ -307,7 +308,7 @@ fn check_constructor_value(
     {
         return Err(super::TypeCheckFailReason::TypeNotMatchAtField(Box::new(
             super::fail_reason::FieldMismatch {
-                location: crate::InFiled::new(file_id, expr.get_range()),
+                location: InFiled::new(file_id, expr.get_range()),
                 source: source.clone(),
                 target: expected.clone(),
                 reason: reason.clone(),
@@ -319,7 +320,7 @@ fn check_constructor_value(
 
 /// Use the constructor's key rules for field diagnostics as well as compatibility.
 pub(crate) fn table_index_accepts(
-    model: &crate::semantic_model::SemanticModel,
+    model: &semantic_model::SemanticModel,
     index: &LuaType,
     key: &LuaIndexKey,
 ) -> bool {
@@ -334,7 +335,7 @@ pub(crate) fn table_index_accepts(
 /// The shared comparison queue handles aliases, unions, and recursive values.
 fn check_table_entries(
     context: &mut TypeCheckContext,
-    table: &crate::InFiled<rowan::TextRange>,
+    table: &InFiled<rowan::TextRange>,
     key_type: &LuaType,
     value_type: &LuaType,
 ) -> TypeCheckResult {

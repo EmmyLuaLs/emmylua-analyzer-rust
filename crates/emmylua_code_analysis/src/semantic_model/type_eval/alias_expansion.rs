@@ -1,6 +1,7 @@
 //! Resolve computations to their outer constructor; data fields remain lazy.
 
 use super::*;
+use crate::semantic_model;
 
 /// Resolve outer type computations, leaving fields and array elements intact.
 pub(crate) fn expand_alias_head(model: &SemanticModel, ty: &LuaType) -> Option<LuaType> {
@@ -52,7 +53,7 @@ pub(crate) fn with_expanded_alias<T>(
 pub(super) struct AliasPath<'a, 'db> {
     model: &'a SemanticModel<'db>,
     path: Vec<LuaType>,
-    evaluation: crate::semantic_model::cache::TypeEvaluationScope<'a>,
+    evaluation: semantic_model::cache::TypeEvaluationScope<'a>,
 }
 
 impl<'a, 'db> AliasPath<'a, 'db> {
@@ -60,7 +61,7 @@ impl<'a, 'db> AliasPath<'a, 'db> {
         Some(Self {
             model,
             path: Vec::new(),
-            evaluation: crate::semantic_model::cache::TypeEvaluationScope::new(&model.cache)?,
+            evaluation: semantic_model::cache::TypeEvaluationScope::new(&model.cache)?,
         })
     }
 

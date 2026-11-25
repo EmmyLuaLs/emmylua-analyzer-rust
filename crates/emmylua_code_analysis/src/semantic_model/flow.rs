@@ -12,6 +12,8 @@
 //! - `---@cast x +string` adds string to x's path type;
 //! - Flow type for member assignment `t.x = v` / `self.x = v` (FlowEffect::AssignMember).
 
+use crate::DeclKind;
+use crate::semantic_db;
 mod array;
 #[cfg(test)]
 mod callable_tests;
@@ -370,7 +372,7 @@ fn unchanged_local_call_return_type(
     }
     let facts = model.file_facts()?;
     let decl = facts.decl_by_id(&owner)?;
-    if !matches!(decl.kind, crate::DeclKind::Local { .. }) {
+    if !matches!(decl.kind, DeclKind::Local { .. }) {
         return None;
     }
     let original = decl.value_expr_syntax?;
@@ -1973,7 +1975,7 @@ fn local_alias_path(
         }
         if !matches!(
             info.kind,
-            crate::DeclKind::Local { is_iter: false, .. } | crate::DeclKind::Param
+            DeclKind::Local { is_iter: false, .. } | DeclKind::Param
         ) || flow.latest_decl_assignment(&decl, context.at).is_some()
             || (all_writes && flow.has_decl_assignment(&decl))
             || info.multi_return_index.is_some_and(|index| index > 0)
@@ -3637,7 +3639,7 @@ fn correlated_narrowing_for_condition(
                 .file_facts()
                 .and_then(|facts| facts.decl_by_value_range(writer.get_range()))
                 .is_some_and(|writer| {
-                    matches!(writer.kind, crate::DeclKind::Local { .. })
+                    matches!(writer.kind, DeclKind::Local { .. })
                         && model.decl_references(&writer.id).is_empty()
                 })
             {
@@ -6357,7 +6359,7 @@ impl PathState {
         self.narrowings.push(narrowing);
     }
 
-    fn for_origin(&self, reference: Option<&crate::semantic_db::flow::DeclMultiReturnRef>) -> Self {
+    fn for_origin(&self, reference: Option<&semantic_db::flow::DeclMultiReturnRef>) -> Self {
         let mut path = self.clone();
         path.narrowings.retain_mut(|narrowing| {
             if let Narrowing::Correlated(constraints) = narrowing {

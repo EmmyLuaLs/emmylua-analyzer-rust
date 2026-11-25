@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::LuaType;
 
     use crate::{DiagnosticCode, VirtualWorkspace};
 
@@ -209,7 +210,7 @@ mod tests {
                 .expect("param decl")
                 .id
                 .clone();
-            let ty = model.type_of_decl(&decl).unwrap_or(crate::LuaType::Unknown);
+            let ty = model.type_of_decl(&decl).unwrap_or(LuaType::Unknown);
             ws.humanize_type(ty)
         }
         let mut ws = VirtualWorkspace::new();

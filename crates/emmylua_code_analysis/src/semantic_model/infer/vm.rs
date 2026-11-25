@@ -7,6 +7,8 @@
 //! Values = `LuaType` + optional owner (for member lookup). Cross-file member/declaration
 //! resolution is delegated to semantic queries.
 
+use crate::semantic_db;
+use crate::semantic_model;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -2190,7 +2192,7 @@ impl<'a> InferVm<'a> {
             }
         }
         if self.model.file_facts().is_some_and(|facts| !facts.is_meta)
-            && crate::semantic_db::query::closure_can_fall_through(
+            && semantic_db::query::closure_can_fall_through(
                 self.model.db(),
                 self.model.file_id(),
                 &closure,
@@ -4541,8 +4543,7 @@ pub(crate) fn binary_type(
             if let (Some(left_i), Some(right_i)) =
                 (integer_const_value(left), integer_const_value(&right))
             {
-                let value =
-                    crate::semantic_db::types::checked_integer_arithmetic(op, left_i, right_i);
+                let value = semantic_db::types::checked_integer_arithmetic(op, left_i, right_i);
                 return value.map(LuaType::IntegerConst).unwrap_or(LuaType::Number);
             }
             // Addition like `integer + 1` (one side is the integer base type, the other is an
@@ -4562,7 +4563,7 @@ pub(crate) fn binary_type(
                 && right != 0
             {
                 // Lua `/` converts both operands to floating-point before division.
-                crate::semantic_db::types::checked_integer_arithmetic(op, left, right)
+                semantic_db::types::checked_integer_arithmetic(op, left, right)
                     .map(LuaType::IntegerConst)
                     .unwrap_or(LuaType::Number)
             } else if matches!(op, OpIDiv | OpMod)
@@ -4919,7 +4920,7 @@ fn unary_type(
 /// Resolve only the outer operand shape. Expanding array elements or restarting
 /// the recursive alias evaluator here can lose flow bounds or grow aliases forever.
 fn length_type(model: &SemanticModel, operand: &LuaType) -> Option<LuaType> {
-    let operand = crate::semantic_model::type_eval::expand_alias_branches(model, operand)?;
+    let operand = semantic_model::type_eval::expand_alias_branches(model, operand)?;
     let mut pending = vec![operand];
     let mut results = Vec::new();
     while let Some(ty) = pending.pop() {
