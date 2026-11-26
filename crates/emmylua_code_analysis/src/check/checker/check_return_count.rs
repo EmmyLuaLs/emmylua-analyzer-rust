@@ -1,26 +1,25 @@
 //! # check_return_count — mismatch between function body return count and `---@return` annotations
 //!
-//! The return count is expanded from the annotation types:
-//! - Fixed annotations -> both min and max are the annotation count; `?` / `any` reduce the minimum;
-//! - `T...` -> `Variadic::Base`, with no upper bound on the max count;
-//! - `return foo()` expands according to foo's multi-return types (`Variadic::Multi`).
+//! Declared and inferred results use the same fixed slots and repeating tails.
 //!
 //! `MissingReturn` uses control-flow analysis consistent with the old implementation: truthy/falsy/never
 //! condition judgment, break/infinite-loop paths in while/repeat loops, and if-branch merging.
 
 use crate::semantic_db;
-use std::rc::Rc;
 
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaBlock, LuaCallExprStat, LuaClosureExpr, LuaDoStat, LuaExpr,
-    LuaForRangeStat, LuaForStat, LuaIfClauseStat, LuaIfStat, LuaRepeatStat, LuaReturnStat, LuaStat,
-    LuaTokenKind, LuaWhileStat,
+    LuaAstNode, LuaAstToken, LuaBlock, LuaCallExprStat, LuaClosureExpr, LuaDoStat, LuaDocType,
+    LuaExpr, LuaForRangeStat, LuaForStat, LuaIfClauseStat, LuaIfStat, LuaRepeatStat, LuaReturnStat,
+    LuaStat, LuaTokenKind, LuaWhileStat,
 };
 
 use crate::DiagnosticCode;
-use crate::semantic_db::def::{SemanticId, Signature};
-use crate::semantic_model::SemanticModel;
-use crate::{FileId, LuaType, VariadicType};
+use crate::semantic_db::def::Signature;
+use crate::semantic_model::{
+    SemanticModel,
+    result_pack::{ResultPack, can_expand_results},
+};
+use crate::{GenericTpl, LuaType};
 
 use super::{CheckContext, Checker};
 
@@ -50,7 +49,10 @@ impl Checker for CheckReturnCountChecker {
                 continue;
             };
 
-            let expectation = return_expectation_of(semantic_model, signature, &closure);
+            let Some(expectation) = return_expectation_of(semantic_model, signature, &closure)
+            else {
+                continue;
+            };
             check_return_stats(context, semantic_model, &closure, &expectation);
             check_missing_return(context, semantic_model, &closure, &expectation);
         }
@@ -63,195 +65,87 @@ struct ReturnExpectation {
     max: Option<usize>,
 }
 
-impl ReturnExpectation {
-    fn none() -> Self {
-        Self { min: 0, max: None }
-    }
-
-    fn fixed(count: usize) -> Self {
-        Self {
-            min: count,
-            max: Some(count),
+/// Own annotations take precedence over the function type declared on a field.
+pub(super) fn declared_return_type(
+    model: &SemanticModel<'_>,
+    signature: &Signature,
+) -> Option<(LuaType, Vec<GenericTpl>)> {
+    if let Some(docs) = &signature.docs {
+        if !docs.returns.is_empty() {
+            let scope = model.doc_type_scope(model.file_id(), &docs.generic_params);
+            let ty = model.project_return_types_in_scope(&docs.returns, &scope);
+            return Some((ty, scope.templates));
+        }
+        // The body can implement several call overloads with different result packs.
+        if !docs.overloads.is_empty() {
+            return None;
         }
     }
+
+    let functions = model.expected_member_signatures_for_closure(signature.closure_syntax)?;
+    let [function] = functions.as_slice() else {
+        return None;
+    };
+    Some((function.get_ret().clone(), Vec::new()))
 }
 
-/// Signature doc annotation + contextual member annotation -> expected return count.
 fn return_expectation_of(
-    semantic_model: &SemanticModel<'_>,
+    model: &SemanticModel<'_>,
     signature: &Signature,
     closure: &LuaClosureExpr,
-) -> ReturnExpectation {
-    let mut syntaxes: Vec<(rowan::TextSize, emmylua_parser::LuaSyntaxId)> = Vec::new();
-    if let Some(docs) = &signature.docs {
-        syntaxes.extend(
-            docs.returns
-                .iter()
-                .map(|syntax| (syntax.get_range().start(), *syntax)),
-        );
-        syntaxes.extend(
-            docs.return_overloads
-                .iter()
-                .filter(|(name, _)| name.is_some())
-                .map(|(_, syntax)| (syntax.get_range().start(), *syntax)),
-        );
-    }
-    if !syntaxes.is_empty() {
-        syntaxes.sort_by_key(|(start, _)| *start);
-        let types: Vec<LuaType> = syntaxes
-            .into_iter()
-            .map(|(_, syntax)| project_return_annotation(semantic_model, syntax))
-            .collect();
-        return expectation_from_types(&types);
+) -> Option<ReturnExpectation> {
+    let (ty, _) = declared_return_type(model, signature)?;
+    let use_context = signature
+        .docs
+        .as_ref()
+        .is_none_or(|docs| docs.returns.is_empty());
+    if ty == LuaType::Nil
+        || (ty == LuaType::Unknown
+            && use_context
+            && field_omits_return_list(model, closure).unwrap_or(false))
+    {
+        return Some(ReturnExpectation {
+            min: 0,
+            max: Some(0),
+        });
     }
 
-    // No own `---@return`: contextual function types such as `---@field event fun(aaa)` may constrain the return count.
-    contextual_return_expectation(semantic_model, closure).unwrap_or_else(ReturnExpectation::none)
+    let pack = ResultPack::from_type(&ty, Some(model));
+    Some(ReturnExpectation {
+        min: pack.required_len(),
+        max: pack.bounds().1,
+    })
 }
 
-/// Anonymous function for `---@field event fun(aaa)`: take the return annotation from the contextual member type.
-fn contextual_return_expectation(
-    semantic_model: &SemanticModel<'_>,
-    closure: &LuaClosureExpr,
-) -> Option<ReturnExpectation> {
-    let facts = semantic_model.file_facts()?;
+/// The projected type uses Unknown both for `fun()` and `fun(): unknown`.
+/// Preserve the zero-return convention for a field that omits the list.
+fn field_omits_return_list(model: &SemanticModel<'_>, closure: &LuaClosureExpr) -> Option<bool> {
+    let facts = model.file_facts()?;
     let member = facts
         .members
         .iter()
         .find(|member| member.value_syntax == Some(closure.get_syntax_id()))?;
     let key = member.key.name()?;
-    let owner_ty = semantic_model.type_of_decl(&member.owner)?;
+    let owner_ty = model.type_of_decl(&member.owner)?;
     let (LuaType::Ref(id) | LuaType::Def(id)) = &owner_ty else {
         return None;
     };
-    let def = semantic_model.type_def_of(id)?;
-    let members = semantic_model.members_of_owner(&def.id);
+    let def = model.type_def_of(id)?;
+    let members = model.members_of_owner(&def.id);
     let field_ref = members.iter().find(|field| field.name.as_str() == key)?;
-    let field_facts = semantic_model.file_facts_of(field_ref.file_id)?;
+    let field_facts = model.file_facts_of(field_ref.file_id)?;
     let field = field_facts.member_by_id(&field_ref.id)?;
     let syntax = field.value_syntax?;
-    let tree = semantic_model.syntax_tree_of(field_ref.file_id)?;
+    let tree = model.syntax_tree_of(field_ref.file_id)?;
     let node = syntax.to_node_from_root(&tree.get_red_root())?;
-    let doc_ty = emmylua_parser::LuaDocType::cast(node)?;
-    let emmylua_parser::LuaDocType::Func(func) = doc_ty else {
+    let LuaDocType::Func(func) = LuaDocType::cast(node)? else {
         return None;
     };
-    let Some(return_list) = func.get_return_type_list() else {
-        // `fun(aaa)` has no return type -> 0 return values.
-        return Some(ReturnExpectation::fixed(0));
-    };
-    let types: Vec<LuaType> = return_list
-        .get_return_type_list()
-        .filter_map(|ret| ret.get_name_and_type().1)
-        .map(|ty| {
-            project_return_annotation_in(semantic_model, field_ref.file_id, ty.get_syntax_id())
-        })
-        .collect();
-    Some(expectation_from_types(&types))
-}
-
-/// Annotation type list -> min/max count.
-fn expectation_from_types(types: &[LuaType]) -> ReturnExpectation {
-    if types.is_empty() {
-        return ReturnExpectation::fixed(0);
-    }
-    if types.len() == 1 {
-        let ty = &types[0];
-        if let LuaType::Variadic(variadic) = ty {
-            return expectation_from_variadic(variadic);
-        }
-        if matches!(ty, LuaType::Any | LuaType::Unknown) {
-            return ReturnExpectation {
-                min: 0,
-                max: Some(1),
-            };
-        }
-        if matches!(ty, LuaType::Nil) {
-            return ReturnExpectation {
-                min: 0,
-                max: Some(0),
-            };
-        }
-        let min = usize::from(!ty.is_optional());
-        return ReturnExpectation { min, max: Some(1) };
-    }
-
-    let mut min = types.len();
-    // Trailing consecutive optionals are not required to be returned.
-    for ty in types.iter().rev() {
-        if ty.is_optional() {
-            min -= 1;
-        } else {
-            break;
-        }
-    }
-    let mut max = Some(0usize);
-    for ty in types {
-        match ty {
-            LuaType::Variadic(variadic) => {
-                let Some(len) = variadic.get_max_len() else {
-                    return ReturnExpectation { min, max: None };
-                };
-                *max.as_mut().expect("max is Some") += len;
-            }
-            _ => *max.as_mut().expect("max is Some") += 1,
-        }
-    }
-    ReturnExpectation { min, max }
-}
-
-fn expectation_from_variadic(variadic: &VariadicType) -> ReturnExpectation {
-    let Some(min_len) = variadic.get_min_len() else {
-        return ReturnExpectation::none();
-    };
-    let mut min = min_len;
-    if min_len > 0 {
-        for idx in (0..min_len).rev() {
-            if let Some(ty) = variadic.get_type(idx)
-                && ty.is_optional()
-            {
-                min -= 1;
-            } else {
-                break;
-            }
-        }
-    }
-    ReturnExpectation {
-        min,
-        max: variadic.get_max_len(),
-    }
-}
-
-/// Project the `---@return` type node (`T...` becomes Variadic::Base).
-fn project_return_annotation(
-    semantic_model: &SemanticModel<'_>,
-    syntax: emmylua_parser::LuaSyntaxId,
-) -> LuaType {
-    project_return_annotation_in(semantic_model, semantic_model.file_id(), syntax)
-}
-
-fn project_return_annotation_in(
-    semantic_model: &SemanticModel<'_>,
-    file_id: FileId,
-    syntax: emmylua_parser::LuaSyntaxId,
-) -> LuaType {
-    if let Some(tree) = semantic_model.syntax_tree_of(file_id)
-        && let Some(node) = syntax.to_node_from_root(&tree.get_red_root())
-        && let Some(doc_ty) = emmylua_parser::LuaDocType::cast(node)
-    {
-        if let emmylua_parser::LuaDocType::Variadic(variadic) = &doc_ty {
-            let inner = variadic
-                .get_type()
-                .map(|ty| project_return_annotation_in(semantic_model, file_id, ty.get_syntax_id()))
-                .unwrap_or(LuaType::Any);
-            return LuaType::Variadic(Rc::new(VariadicType::Base(inner)));
-        }
-    }
-    semantic_model.project_doc_type(file_id, syntax, &[])
+    Some(func.get_return_type_list().is_none())
 }
 
 /// Only check return statements belonging to this closure itself.
-fn own_return_stats(closure: &LuaClosureExpr) -> Vec<LuaReturnStat> {
+pub(super) fn own_return_stats(closure: &LuaClosureExpr) -> Vec<LuaReturnStat> {
     closure
         .descendants::<LuaReturnStat>()
         .filter(|stat| {
@@ -272,19 +166,18 @@ fn check_return_stats(
         return;
     }
     for return_stat in own_return_stats(closure) {
-        let Some((total, redundant_ranges)) =
-            analyze_return_values(semantic_model, &return_stat, expectation.max)
-        else {
-            continue;
-        };
-        if total < expectation.min {
+        let (min, max, redundant_ranges) =
+            analyze_return_values(semantic_model, &return_stat, expectation.max);
+        if let Some(max) = max
+            && max < expectation.min
+        {
             context.add_diagnostic(
                 DiagnosticCode::MissingReturnValue,
                 return_stat.get_range(),
                 t!(
                     "Annotations specify that at least %{min} return value(s) are required, found %{rmin} returned here instead.",
                     min = expectation.min,
-                    rmin = total
+                    rmin = max
                 ),
             );
         }
@@ -296,7 +189,7 @@ fn check_return_stats(
                     t!(
                         "Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.",
                         max = max,
-                        rmax = total
+                        rmax = min
                     ),
                 );
             }
@@ -304,107 +197,36 @@ fn check_return_stats(
     }
 }
 
-/// Expand the `return` expression list: multi-return calls expand by Variadic::Multi.
-/// Returns `(total count, redundant expression ranges)`; returns `None` when the max argument count is unknown.
+/// A count error must apply to every result alternative. Only the final
+/// expression can expand, so each preceding expression supplies one value.
 fn analyze_return_values(
-    semantic_model: &SemanticModel<'_>,
+    model: &SemanticModel<'_>,
     return_stat: &LuaReturnStat,
     expected_max: Option<usize>,
-) -> Option<(usize, Vec<rowan::TextRange>)> {
-    let expr_list = return_stat.get_expr_list().collect::<Vec<_>>();
-    let mut total = 0usize;
-    let mut redundant_ranges = Vec::new();
-    let mut tail_return_nil = false;
-
-    for (index, expr) in expr_list.iter().enumerate() {
-        let expr_type = full_return_type(semantic_model, expr);
-        match &expr_type {
-            LuaType::Variadic(variadic) => {
-                total += variadic.get_max_len()?;
-            }
-            LuaType::Nil => {
-                if index == expr_list.len() - 1 {
-                    tail_return_nil = true;
-                }
-                total += 1;
-            }
-            _ => total += 1,
-        }
-        if let Some(max) = expected_max
-            && total > max
-        {
-            if tail_return_nil && total - 1 == max {
-                continue;
-            }
-            redundant_ranges.push(expr.get_range());
-        }
-    }
-    Some((total, redundant_ranges))
-}
-
-/// Full return-expression type: multi-return call expressions expand by the callee's signature annotations into `Variadic::Multi`.
-fn full_return_type(semantic_model: &SemanticModel<'_>, expr: &LuaExpr) -> LuaType {
-    if let LuaExpr::CallExpr(call_expr) = expr
-        && let Some(types) = call_return_annotations(semantic_model, call_expr)
-    {
-        return match types.len() {
-            0 => LuaType::Nil,
-            1 => types.into_iter().next().expect("len checked"),
-            _ => LuaType::Variadic(Rc::new(VariadicType::Multi(types))),
-        };
-    }
-    semantic_model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start())
-}
-
-/// All `---@return` types from the callee signature doc (sorted by source position).
-fn call_return_annotations(
-    semantic_model: &SemanticModel<'_>,
-    call_expr: &emmylua_parser::LuaCallExpr,
-) -> Option<Vec<LuaType>> {
-    let callee = call_expr.get_prefix_expr()?;
-    let (file_id, closure_syntax) = match &callee {
-        LuaExpr::NameExpr(name_expr) => {
-            let decl = semantic_model.resolve_name(name_expr.get_position())?;
-            let SemanticId::Decl(decl_key) = decl else {
-                return None;
-            };
-            let facts = semantic_model.file_facts_of(decl_key.file_id)?;
-            let decl = facts.decl_by_id(&SemanticId::Decl(decl_key.clone()))?;
-            (decl.file_id, decl.value_expr_syntax?)
-        }
-        LuaExpr::IndexExpr(index_expr) => {
-            let resolved = semantic_model.resolve_member(index_expr)?;
-            let member_file = resolved.file_id?;
-            let facts = semantic_model.file_facts_of(member_file)?;
-            let member = facts.member_by_id(&resolved.member_id?)?;
-            (member_file, member.value_syntax?)
-        }
-        _ => return None,
+) -> (usize, Option<usize>, Vec<rowan::TextRange>) {
+    let exprs = return_stat.get_expr_list().collect::<Vec<_>>();
+    let Some((last, prefix)) = exprs.split_last() else {
+        return (0, Some(0), Vec::new());
     };
-    let facts = semantic_model.file_facts_of(file_id)?;
-    let signature = facts.signature_by_closure(closure_syntax)?;
-    let docs = signature.docs.as_ref()?;
-    let mut syntaxes: Vec<(rowan::TextSize, emmylua_parser::LuaSyntaxId)> = docs
-        .returns
-        .iter()
-        .map(|syntax| (syntax.get_range().start(), *syntax))
-        .chain(
-            docs.return_overloads
-                .iter()
-                .filter(|(name, _)| name.is_some())
-                .map(|(_, syntax)| (syntax.get_range().start(), *syntax)),
-        )
-        .collect();
-    if syntaxes.is_empty() {
-        return Some(Vec::new());
+    let actual = ResultPack::from_expr(model, last);
+    let (last_min, last_max) = if can_expand_results(last) {
+        (actual.min_len(), actual.bounds().1)
+    } else {
+        (1, Some(1))
+    };
+    let min = prefix.len() + last_min;
+    let max = last_max.map(|count| prefix.len() + count);
+
+    let mut redundant_ranges = Vec::new();
+    if let Some(allowed) = expected_max {
+        redundant_ranges.extend(prefix.iter().skip(allowed).map(LuaAstNode::get_range));
+        // Allow a single trailing nil beyond the declared result count.
+        let trailing_nil = prefix.len() == allowed && actual.is_single(&LuaType::Nil);
+        if last_min > 0 && min > allowed && !trailing_nil {
+            redundant_ranges.push(last.get_range());
+        }
     }
-    syntaxes.sort_by_key(|(start, _)| *start);
-    Some(
-        syntaxes
-            .into_iter()
-            .map(|(_, syntax)| project_return_annotation_in(semantic_model, file_id, syntax))
-            .collect(),
-    )
+    (min, max, redundant_ranges)
 }
 
 /// `LuaClosureExpr::get_block()` is unreliable for `local function`/`function` statements

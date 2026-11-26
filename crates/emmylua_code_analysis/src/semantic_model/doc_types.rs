@@ -166,6 +166,25 @@ impl<'db> SemanticModel<'db> {
             templates: self.generic_tpls_with_metadata(file_id, params),
         }
     }
+
+    /// Keep declared return values in annotation order.
+    pub(crate) fn project_return_types_in_scope(
+        &self,
+        returns: &[LuaSyntaxId],
+        scope: &DocTypeScope<'_>,
+    ) -> LuaType {
+        match returns {
+            [] => LuaType::Unknown,
+            [single] => self.project_doc_type_in_scope(*single, scope),
+            _ => LuaType::Variadic(Rc::new(VariadicType::Multi(
+                returns
+                    .iter()
+                    .map(|syntax| self.project_doc_type_in_scope(*syntax, scope))
+                    .collect(),
+            ))),
+        }
+    }
+
     /// Projects a complete doc type with the given file and generic scope.
     pub fn project_doc_type(
         &self,

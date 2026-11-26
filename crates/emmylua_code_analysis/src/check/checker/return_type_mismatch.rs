@@ -1,18 +1,21 @@
-//! # return_type_mismatch: actual return types in the function body do not match the `---@return` annotation
-//!
-//! Only functions **with `@return` annotations** are checked: signature annotation types vs function-body return expression types.
-//! Supports multiple return values (union components checked individually), generic parameters (uninstantiated `Ref("T")` skipped),
-//! class inheritance alias function types, and `return expr ---@as type` inline assertions.
+//! Check a function body's return values against its declared signature.
+//! Undocumented closure fields use the class field's function signature.
 
-use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaReturnStat};
+use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaExpr, LuaReturnStat};
 
-use crate::LuaType;
-use crate::semantic_model::SemanticModel;
-use crate::semantic_model::type_check::check_type_at;
-use crate::{DiagnosticCode, SemanticId, SignatureDoc, TypeDef};
+use crate::semantic_model::{
+    SemanticModel,
+    infer::vm::{bind_signature_generics, replace_self_type},
+    render::humanize_type,
+    result_pack::{ResultPack, can_expand_results},
+    type_check::check_type_at,
+};
+use crate::{DiagnosticCode, GenericTpl, LuaType, LuaTypeNode, SemanticId, SignatureDoc, TypeDef};
 
-use super::{CheckContext, Checker};
-use crate::semantic_model::render::humanize_type;
+use super::{
+    CheckContext, Checker,
+    check_return_count::{declared_return_type, own_return_stats},
+};
 
 pub struct ReturnTypeMismatchChecker;
 
@@ -35,87 +38,117 @@ impl Checker for ReturnTypeMismatchChecker {
             let Some(closure) = LuaClosureExpr::cast(node) else {
                 continue;
             };
-            // Signatures with `---@return` annotations are checked against the annotation;
-            // closure fields in table literals without annotations are checked against the `---@field func? fun(...)` field signature.
-            let (expected, docs) = if let Some(sig_docs) = signature.docs.as_deref() {
-                if sig_docs.returns.is_empty() {
-                    continue;
-                }
-                let Some(expected) = semantic_model.return_type(signature.closure_syntax) else {
-                    continue;
-                };
-                (expected, sig_docs)
-            } else {
-                let Some(expected_fun) =
-                    semantic_model.expected_member_signature_for_closure(signature.closure_syntax)
-                else {
-                    continue;
-                };
-                (expected_fun.get_ret().clone(), &default_docs)
+            let Some((expected, templates)) = declared_return_type(semantic_model, signature)
+            else {
+                continue;
             };
+            let docs = signature.docs.as_deref().unwrap_or(&default_docs);
+
+            let mut expected = ResultPack::from_type(&expected, Some(semantic_model));
+            if let Some(owner) = semantic_model.method_owner_type(signature.closure_syntax) {
+                for ty in expected.values_mut() {
+                    *ty = replace_self_type(ty, &owner);
+                }
+            }
             for ret in own_return_stats(&closure) {
-                check_return_stat(context, semantic_model, &ret, &expected, docs);
+                check_return_slots(context, semantic_model, &ret, &expected, docs, &templates);
             }
         }
     }
 }
 
-/// Only check return statements belonging to this closure itself.
-fn own_return_stats(closure: &LuaClosureExpr) -> Vec<LuaReturnStat> {
-    closure
-        .descendants::<LuaReturnStat>()
-        .filter(|stat| {
-            stat.ancestors::<LuaClosureExpr>()
-                .next()
-                .is_some_and(|expr| &expr == closure)
-        })
-        .collect()
-}
-
-fn check_return_stat(
+/// Only the final call or `...` expands into multiple return values in Lua.
+fn check_return_slots(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
     ret: &LuaReturnStat,
+    expected: &ResultPack,
+    docs: &SignatureDoc,
+    templates: &[GenericTpl],
+) {
+    let (expected_fixed, expected_max) = expected.bounds();
+    let expressions = ret.get_expr_list().collect::<Vec<_>>();
+    let checked_exprs = expressions
+        .iter()
+        .take(expected_max.unwrap_or(expressions.len()));
+    for (index, expr) in checked_exprs.enumerate() {
+        let range = expr.get_range();
+        let expands = index + 1 == expressions.len() && can_expand_results(expr);
+        let actual = ResultPack::from_expr(semantic_model, expr);
+
+        let slots = if expands {
+            let (source_fixed, source_max) = actual.bounds();
+            let expected_prefix = expected_fixed.saturating_sub(index);
+            let expected_max = expected_max.map(|max| max.saturating_sub(index));
+            match (source_max, expected_max) {
+                (Some(source), Some(target)) => source.min(target),
+                (Some(source), None) => source,
+                (None, Some(target)) => target,
+                // Compare both fixed prefixes and one slot from each repeating tail.
+                (None, None) => source_fixed.max(expected_prefix) + 1,
+            }
+        } else {
+            1
+        };
+
+        for offset in 0..slots {
+            let slot = index + offset;
+            let Some(target) = expected.slot(slot, true) else {
+                break;
+            };
+            // An omitted result in a repeating tail supplies no value to check.
+            let pad_missing = !expands || slot < expected_fixed;
+            // Lua substitutes nil when a single-value expression supplies no result.
+            let Some(actual) = actual
+                .slot(offset, pad_missing)
+                .or((!expands).then_some(LuaType::Nil))
+            else {
+                break;
+            };
+            // Try the function's generic identities before falling back to constraints.
+            if !templates.is_empty()
+                && actual.any_type(|ty| is_unresolved_generic_ref(semantic_model, ty, docs))
+            {
+                let bound = bind_signature_generics(&actual, templates);
+                if return_compatible(semantic_model, &bound, &target, range) {
+                    continue;
+                }
+            }
+            check_return_value(context, semantic_model, actual, &target, expr, docs);
+        }
+    }
+}
+
+fn check_return_value(
+    context: &mut CheckContext<'_>,
+    semantic_model: &SemanticModel<'_>,
+    raw: LuaType,
     expected: &LuaType,
+    expr: &LuaExpr,
     docs: &SignatureDoc,
 ) {
-    for expr in ret.get_expr_list() {
-        let raw = semantic_model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start());
-        // Uninstantiated function generic argument `Ref("T")`: check against the constraint when present, otherwise skip.
-        if is_unresolved_generic_ref(semantic_model, &raw, docs) {
-            if let Some(constraint) = generic_constraint_type(semantic_model, &raw)
-                && !return_compatible(semantic_model, &constraint, expected, expr.get_range())
-            {
-                context.add_diagnostic(
-                    DiagnosticCode::ReturnTypeMismatch,
-                    expr.get_range(),
-                    t!(
-                        "expected `%{source}` but found `%{found}`. %{reason}",
-                        source = humanize_type(semantic_model, expected),
-                        found = humanize_type(semantic_model, &constraint),
-                        reason = ""
-                    ),
-                );
-            }
-            continue;
-        }
-        let actual = generic_constraint_type(semantic_model, &raw).unwrap_or(raw);
-        if matches!(actual, LuaType::Unknown | LuaType::Any | LuaType::Never)
-            || return_compatible(semantic_model, &actual, expected, expr.get_range())
-        {
-            continue;
-        }
-        context.add_diagnostic(
-            DiagnosticCode::ReturnTypeMismatch,
-            expr.get_range(),
-            t!(
-                "expected `%{source}` but found `%{found}`. %{reason}",
-                source = humanize_type(semantic_model, expected),
-                found = humanize_type(semantic_model, &actual),
-                reason = ""
-            ),
-        );
+    let range = expr.get_range();
+    // An uninstantiated return parameter can only be checked through its constraint.
+    let actual = match semantic_model.generic_constraint_at(&raw, expr) {
+        Some(constraint) => constraint,
+        None if is_unresolved_generic_ref(semantic_model, &raw, docs) => return,
+        None => raw,
+    };
+    if matches!(actual, LuaType::Unknown | LuaType::Any | LuaType::Never)
+        || return_compatible(semantic_model, &actual, expected, range)
+    {
+        return;
     }
+    context.add_diagnostic(
+        DiagnosticCode::ReturnTypeMismatch,
+        range,
+        t!(
+            "expected `%{source}` but found `%{found}`. %{reason}",
+            source = humanize_type(semantic_model, expected),
+            found = humanize_type(semantic_model, &actual),
+            reason = ""
+        ),
+    );
 }
 
 /// Return type compatibility:
@@ -196,31 +229,8 @@ fn is_unresolved_generic_ref(
     let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
         return false;
     };
-    if semantic_model.type_def_of(id).is_some() {
-        return false;
-    }
     docs.generic_params
         .iter()
-        .any(|param| param.name.as_str() == id.get_name())
-}
-
-/// `Ref("T")` when the signature declares `---@generic T: Animal` -> project to the constraint `Animal`.
-fn generic_constraint_type(semantic_model: &SemanticModel<'_>, ty: &LuaType) -> Option<LuaType> {
-    let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
-        return None;
-    };
-    if semantic_model.type_def_of(id).is_some() {
-        return None;
-    }
-    let name = id.get_name();
-    for (_signature, param) in semantic_model.file_facts()?.generic_param_constraints(name) {
-        let Some(constraint) = param.constraint else {
-            continue;
-        };
-        let constraint_ty = semantic_model.doc_type_lua(constraint);
-        if !matches!(constraint_ty, LuaType::Unknown) {
-            return Some(constraint_ty);
-        }
-    }
-    None
+        .any(|param| param.name == id.get_name())
+        && semantic_model.type_def_of(id).is_none()
 }
