@@ -1088,4 +1088,29 @@ mod tests {
         );
         Ok(())
     }
+
+    /// Hover on a `---@param` parameter of a function in a table field, at the
+    /// declaration and in the body, for each table position.
+    #[gtest]
+    fn test_table_field_param_hover() -> Result<()> {
+        for template in [
+            "local t = {\n---@param opts Opts\nf = function(%DECL%opts) local _ = %USE%opts end,\n}",
+            "local t = {\n{\n---@param opts Opts\nf = function(%DECL%opts) local _ = %USE%opts end,\n},\n}",
+            "print({\n---@param opts Opts\nf = function(%DECL%opts) local _ = %USE%opts end,\n})",
+            "return {\n---@param opts Opts\nf = function(%DECL%opts) local _ = %USE%opts end,\n}",
+        ] {
+            for (cursor, other) in [("%DECL%", "%USE%"), ("%USE%", "%DECL%")] {
+                let mut ws = ProviderVirtualWorkspace::new();
+                ws.def("---@class Opts\n---@field name string\n");
+                let source = template.replace(cursor, "<??>").replace(other, "");
+                check!(ws.check_hover(
+                    &source,
+                    VirtualHoverResult {
+                        value: "```lua\n(parameter) opts: Opts\n```".to_string(),
+                    },
+                ));
+            }
+        }
+        Ok(())
+    }
 }
