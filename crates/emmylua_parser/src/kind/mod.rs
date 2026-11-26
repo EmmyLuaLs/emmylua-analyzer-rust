@@ -192,7 +192,8 @@ impl LuaOpKind {
         match kind {
             LuaTokenKind::TkDocOr => LuaTypeBinaryOperator::Union,
             LuaTokenKind::TkDocAnd => LuaTypeBinaryOperator::Intersection,
-            LuaTokenKind::TkIn => LuaTypeBinaryOperator::In,
+            // `in` is only an operator in a mapped type's key (`[K in Keys]`), which parses it
+            // itself; elsewhere `integer in worldspace` is a type and a description.
             LuaTokenKind::TkDocExtends => LuaTypeBinaryOperator::Extends,
             LuaTokenKind::TkPlus => LuaTypeBinaryOperator::Add,
             LuaTokenKind::TkMinus => LuaTypeBinaryOperator::Sub,
@@ -204,7 +205,6 @@ impl LuaOpKind {
         match kind {
             LuaTokenKind::TkDocOr | LuaTokenKind::TkDocContinueOr => LuaTypeBinaryOperator::Union,
             LuaTokenKind::TkDocAnd => LuaTypeBinaryOperator::Intersection,
-            LuaTokenKind::TkIn => LuaTypeBinaryOperator::In,
             LuaTokenKind::TkDocExtends => LuaTypeBinaryOperator::Extends,
             LuaTokenKind::TkPlus => LuaTypeBinaryOperator::Add,
             LuaTokenKind::TkMinus => LuaTypeBinaryOperator::Sub,
