@@ -1908,3 +1908,25 @@ fn expression_casts_use_the_current_file() {
         }
     }
 }
+
+/// Upstream 1340: a missing member of an undeclared type (neovim's `vim.Range` under an empty config) has no index
+/// signature to read, and asking for one marks the query incomplete, which sweeps the query caches on every such
+/// read (gitsigns.nvim +77% CPU). The read leaves the cache's revision alone.
+#[test]
+fn test_missing_member_of_an_undeclared_type_keeps_the_cache_complete() {
+    let env = model_of(
+        "---@param r vim.Range\nlocal function f(r)\n    local a = r.start_row\n    return a\nend\nreturn f",
+    );
+    let model = env.model();
+    let a = model
+        .decls()
+        .expect("decls")
+        .iter()
+        .find(|d| d.name == "a")
+        .expect("a")
+        .value_expr_syntax
+        .expect("init expr");
+    let revision = model.cache.borrow().revision();
+    let _ = infer_expr(&model, a);
+    assert_eq!(model.cache.borrow().revision(), revision);
+}
