@@ -15,6 +15,7 @@
 
 - **🚀 Blazing Fast**: Leverages Rust's performance to parse and generate documentation for large codebases in seconds.
 - **✍️ Rich Annotation Support**: Intelligently interprets EmmyLua annotations (`---@class`, `---@field`, `---@param`, etc.) to generate detailed and accurate documentation.
+- **🔗 Symbol Links**: Rust-like intra-doc links such as ``[`Widget`]`` resolve to the generated type, module, global or member pages in HTML and Markdown output.
 - **🔧 Highly Customizable**:
     - Override the default templates with `--override-template` to match your project's branding.
     - Inject custom content into the main page using the `--mixin` option to add guides, tutorials, or other static pages.

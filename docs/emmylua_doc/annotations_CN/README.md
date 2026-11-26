@@ -49,6 +49,18 @@
 - [`@source`](./source.md) - 源代码引用
 - [`@version`](./version.md) - 版本要求
 
+## 文档链接
+
+在文档注释中可以使用类似 Rust 的文档内链接引用已文档化的符号：
+
+```lua
+--- 参见 [`Widget`]、[`Widget.name`] 和 [`module.function`]。
+```
+
+仅支持反引号包裹的形式。普通的 `[Widget]` 仍然是常规 Markdown 链接。
+语言服务器（跳转定义、补全、文档链接）以及 `emmylua_doc_cli` 的
+HTML/Markdown 输出都会解析这类链接。
+
 ## 使用指南
 
 ### 基础用法

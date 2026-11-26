@@ -51,6 +51,19 @@ The following notation symbols are used in annotation syntax descriptions:
 - [`@source`](./source.md) - Source code reference
 - [`@version`](./version.md) - Version requirements
 
+## Documentation Links
+
+In doc comments you can reference a documented symbol with a Rust-like intra-doc link:
+
+```lua
+--- See [`Widget`], [`Widget.name`] and [`module.function`].
+```
+
+Only the code-span form is recognized. Plain `[Widget]` stays a regular
+Markdown link. The link resolves to types, modules, globals and their members
+in the language server (goto definition, completion, document links) and in
+`emmylua_doc_cli` HTML/Markdown output.
+
 ## Usage Guide
 
 ### Basic Usage
