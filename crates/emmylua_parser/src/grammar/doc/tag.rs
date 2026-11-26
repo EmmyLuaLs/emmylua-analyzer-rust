@@ -246,6 +246,7 @@ fn parse_enum_field(p: &mut LuaDocParser) -> DocParseResult {
 fn parse_tag_alias(p: &mut LuaDocParser) -> DocParseResult {
     p.set_lexer_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagAlias);
+    let tag_start = p.current_token_range().start_offset;
     p.bump();
     if p.current_token() == LuaTokenKind::TkLeftParen {
         parse_doc_type_flag(p)?;
@@ -258,11 +259,36 @@ fn parse_tag_alias(p: &mut LuaDocParser) -> DocParseResult {
 
     if_token_bump(p, LuaTokenKind::TkDocDetail);
 
+    // Lines between the alias name and its first `---|` member are descriptions.
+    if p.current_token() != LuaTokenKind::TkDocContinueOr
+        && p.origin_text()[tag_start..p.current_token_range().start_offset].contains('\n')
+        && has_union_member_below(p)
+    {
+        p.set_lexer_state(LuaDocLexerState::Description);
+        parse_description(p);
+        p.set_lexer_state(LuaDocLexerState::Normal);
+    }
+
     parse_type(p)?;
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))
+}
+
+/// Whether a `---|` line follows the current line in this comment before another tag.
+fn has_union_member_below(p: &LuaDocParser) -> bool {
+    let rest = &p.origin_text()[p.current_token_range().start_offset..];
+    for line in rest.lines().skip(1) {
+        let line = line.trim_start();
+        if line.starts_with("---|") {
+            return true;
+        }
+        if !line.starts_with("---") || line.starts_with("---@") {
+            return false;
+        }
+    }
+    false
 }
 
 // ---@module "aaa.bbb.ccc" force variable be "aaa.bbb.ccc"
