@@ -333,6 +333,15 @@ impl ProviderVirtualWorkspace {
         Self::assert_definition(result, expected)
     }
 
+    pub fn check_no_definition(&mut self, block_str: &str) -> Result<()> {
+        let (content, position) = Self::handle_file_content(block_str)?;
+        let file_id = self.def(&content);
+        match definition(&self.analysis, file_id, position) {
+            None => Ok(()),
+            Some(result) => fail!("expected no definition, got {result:?}"),
+        }
+    }
+
     fn assert_definition(
         result: GotoDefinitionResponse,
         expected: Vec<VirtualLocation>,

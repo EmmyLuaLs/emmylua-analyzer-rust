@@ -127,14 +127,17 @@ fn add_by_prefix(
     }
 
     // Prefix resolves to a module: complete its exported members.
-    let module_name = name_parts.join(".");
-    if builder
-        .semantic_model
-        .module_file_of(&module_name)
-        .is_some()
+    let full_name = name_parts.join(".");
+    if builder.semantic_model.module_file_of(&full_name).is_some() {
+        let ty = builder.semantic_model.require_module_type(&full_name);
+        add_members_for_type(builder, &ty, &mut seen_labels, Some(&full_name), None);
+    }
+
+    // Prefix resolves to a global value: complete the members of its type.
+    if let Some(global) = builder.semantic_model.global_decl(&full_name)
+        && let Some(ty) = builder.semantic_model.type_of_decl(&global)
     {
-        let ty = builder.semantic_model.require_module_type(&module_name);
-        add_members_for_type(builder, &ty, &mut seen_labels, Some(&module_name), None);
+        add_members_for_type(builder, &ty, &mut seen_labels, None, None);
     }
 
     // Sub-namespaces / types + submodule files.
