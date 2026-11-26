@@ -1,0 +1,135 @@
+v: 2
+f: 'io.lua'
+b:
+- a: 'function io.close(file) end'
+  g: '@version >5.2'
+  r: [18, 0, 26, 52]
+  e:
+  - ['iolib.close@>5.2', 'd', doc, [19, 0, 22, 0], '44b6d4a010496577']
+- a: 'function io.close(file) end'
+  g: '@version 5.1, JIT'
+  r: [29, 0, 35, 53]
+  e:
+  - ['iolib.close@5.1,JIT', 'd', doc, [30, 0, 33, 0], '44b6d4a010496577']
+- a: 'function io.flush() end'
+  g: 'Equivalent to `io.output():flush()`.'
+  r: [38, 0, 41, 53]
+  e:
+  - ['iolib.flush', 'd', doc, [38, 0, 40, 0], '8eb20015eef82425']
+- a: 'function io.input(file) end'
+  g: 'When called with a file name, it opens the named file (in text mode), and'
+  r: [44, 0, 53, 16]
+  e:
+  - ['iolib.input', 'd', doc, [44, 0, 52, 0], 'ae460a87629bf10c']
+- a: 'function io.lines(filename, ...) end'
+  g: 'Opens the given file name in read mode and returns an iterator function'
+  r: [56, 0, 70, 22]
+  e:
+  - ['iolib.lines', 'd', doc, [56, 0, 69, 0], 'b5a3c25c8f6d6c53']
+- a: 'function io.open(filename, mode) end'
+  g: 'This function opens a file, in the mode specified in the string `mode`. In'
+  r: [75, 0, 93, 53]
+  e:
+  - ['iolib.open', 'd', doc, [75, 0, 90, 0], 'd92b4d80b6dab9e8']
+- a: 'function io.output(file) end'
+  g: 'Similar to `io.input`, but operates over the default output file.'
+  r: [96, 0, 99, 16]
+  e:
+  - ['iolib.output', 'd', doc, [96, 0, 98, 0], 'e615c6164764f06a']
+- a: 'function io.popen(prog, mode) end'
+  g: 'This function is system dependent and is not available on all platforms.'
+  r: [102, 0, 111, 53]
+  e:
+  - ['iolib.popen', 'd', doc, [102, 0, 108, 0], 'ed9fe53d586ce4f7']
+- a: '---'
+  g: '@alias std.readmode'
+  r: [114, 0, 124, 63]
+  e:
+  - ['std.readmode.item.n', 'i:n', tail, [117, 12, 117, 92], '09724402d824ca77', ' ']
+  - ['std.readmode.item.a', 'i:a', tail, [118, 12, 118, 70], '0b0543502b6fe843', ' ']
+  - ['std.readmode.item.l', 'i:l', tail, [119, 12, 119, 61], '2232740e3160cdc8', ' ']
+  - ['std.readmode.item.L', 'i:L', tail, [120, 12, 120, 63], '4942667b1190a4de', ' ']
+  - ['std.readmode.item.*n', 'i:*n', tail, [121, 12, 121, 92], '09724402d824ca77', ' ']
+  - ['std.readmode.item.*a', 'i:*a', tail, [122, 12, 122, 70], '0b0543502b6fe843', ' ']
+  - ['std.readmode.item.*l', 'i:*l', tail, [123, 12, 123, 61], '2232740e3160cdc8', ' ']
+  - ['std.readmode.item.*L', 'i:*L', tail, [124, 12, 124, 63], '4942667b1190a4de', ' ']
+- a: 'function io.read(...) end'
+  g: 'Equivalent to `io.input():read(···)`.'
+  r: [126, 0, 131, 14]
+  e:
+  - ['iolib.read', 'd', doc, [126, 0, 128, 0], '54506e4af4c5171d']
+- a: 'function io.tmpfile() end'
+  g: 'In case of success, returns a handle for a temporary file. This file is'
+  r: [134, 0, 138, 53]
+  e:
+  - ['iolib.tmpfile', 'd', doc, [134, 0, 137, 0], 'c32f01b42c8a68a4']
+- a: 'function io.type(obj) end'
+  g: 'Checks whether `obj` is a valid file handle. Returns the string "`file`"'
+  r: [141, 0, 146, 36]
+  e:
+  - ['iolib.type', 'd', doc, [141, 0, 145, 0], '0c2c9cc2436170fc']
+- a: 'function io.write(...) end'
+  g: 'Equivalent to `io.output():write(···)`.'
+  r: [149, 0, 153, 53]
+  e:
+  - ['iolib.write', 'd', doc, [149, 0, 151, 0], 'cddfb7fad90f9885']
+- a: 'local file = {}'
+  g: 'File object'
+  r: [156, 0, 157, 15]
+  e:
+  - ['file', 'd', doc, [156, 0, 157, 0], '045bdb188ddcd0b3']
+- a: 'function file:close() end'
+  g: '@version >5.2'
+  r: [160, 0, 171, 52]
+  e:
+  - ['file.close@>5.2', 'd', doc, [161, 0, 168, 0], '925e9a7d74c51050']
+- a: 'function file:close() end'
+  g: '@version 5.1, JIT'
+  r: [174, 0, 180, 53]
+  e:
+  - ['file.close@5.1,JIT', 'd', doc, [175, 0, 179, 0], '0564fc98d5b21d64']
+- a: 'function file:flush() end'
+  g: 'Saves any written data to `file`.'
+  r: [183, 0, 186, 53]
+  e:
+  - ['file.flush', 'd', doc, [183, 0, 185, 0], 'f7013005b20a614b']
+- a: 'function file:lines(...) end'
+  g: 'Returns an iterator function that, each time it is called, reads the file'
+  r: [189, 0, 200, 37]
+  e:
+  - ['file.lines', 'd', doc, [189, 0, 200, 0], '508dc2e1535ff268']
+- a: 'function file:read(...) end'
+  g: 'Reads the file `file`, according to the given formats, which specify'
+  r: [205, 0, 232, 14]
+  e:
+  - ['file.read', 'd', doc, [205, 0, 229, 0], '9c2591fadc17287e']
+- a: 'function file:seek(whence, offset) end'
+  g: 'Sets and gets the file position, measured from the beginning of the'
+  r: [235, 0, 255, 53]
+  e:
+  - ['file.seek', 'd', doc, [235, 0, 252, 0], '5c24a5255775d005']
+- a: 'function file:setvbuf(mode, size) end'
+  g: 'Sets the buffering mode for an output file. There are three available'
+  r: [258, 0, 273, 53]
+  e:
+  - ['file.setvbuf', 'd', doc, [258, 0, 270, 0], 'a3b3e8e9502ee3dd']
+- a: 'function file:write(...) end'
+  g: 'Writes the value of each of its arguments to the `file`. The arguments'
+  r: [276, 0, 284, 53]
+  e:
+  - ['file.write', 'd', doc, [276, 0, 282, 0], '4ce76ceb7010e8d4']
+- a: 'io.stderr = nil'
+  g: '`io.stderr`: Standard error.'
+  r: [287, 0, 288, 14]
+  e:
+  - ['iolib.stderr', 'd', doc, [287, 0, 288, 0], '1b5f68f38cdd9a69']
+- a: 'io.stdin = nil'
+  g: '`io.stdin`: Standard in.'
+  r: [291, 0, 292, 14]
+  e:
+  - ['iolib.stdin', 'd', doc, [291, 0, 292, 0], '32f29311d09500d0']
+- a: 'io.stdout = nil'
+  g: '`io.stdout`: Standard out.'
+  r: [295, 0, 296, 14]
+  e:
+  - ['iolib.stdout', 'd', doc, [295, 0, 296, 0], '4bd0399405177ed2']

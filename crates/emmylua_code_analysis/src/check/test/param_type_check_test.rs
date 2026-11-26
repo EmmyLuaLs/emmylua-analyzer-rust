@@ -1,12 +1,900 @@
 #[cfg(test)]
 mod test {
+    use crate::CheckConfig;
+    use crate::check;
     use std::{ops::Deref, sync::Arc};
 
-    use lsp_types::{Diagnostic, NumberOrString};
+    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaIndexExpr};
+    use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
     use tokio_util::sync::CancellationToken;
 
     use crate::check::test::{check_source, check_source_with_emmyrc};
-    use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
+    use crate::{DiagnosticCode, Emmyrc, LuaType, VirtualWorkspace};
+
+    // 普通联合参数接受其中的具体类型, 保留返回信息并拒绝不属于联合的实参.
+    #[test]
+    fn test_concrete_union_argument_preserves_return() {
+        let mut ws = VirtualWorkspace::new();
+        let file = ws.def(
+            r#"
+            local M = {}
+            ---@param value string | integer
+            ---@return string
+            function M.normalize(value) return '' end
+
+            ---@param value string
+            local function consume(value) end
+            ---@param value? string
+            function M.fill(value)
+                if not value then
+                    value = M.normalize(1)
+                end
+                consume(value)
+            end
+
+            local text = M.normalize('name')
+            local invalid = M.normalize(true)
+            return M, text, invalid
+            "#,
+        );
+        let model = ws.analysis.semantic_model(file);
+        for call in model.chunk().unwrap().descendants::<LuaCallExpr>() {
+            let source = call.syntax().text().to_string();
+            if source.starts_with("M.normalize(") {
+                assert_eq!(
+                    model.type_of_expr(call.get_syntax_id()),
+                    if source == "M.normalize(true)" {
+                        LuaType::Unknown
+                    } else {
+                        LuaType::String
+                    },
+                    "{source}"
+                );
+            }
+        }
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file, CancellationToken::new())
+            .unwrap();
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(&diagnostic.code,
+                    Some(NumberOrString::String(code)) if code == "param-type-mismatch"))
+                .count(),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 泛型约束取自调用所在函数, 跳过无注释方法并区分不同函数的同名泛型.
+    #[test]
+    fn test_parameter_constraint_uses_enclosing_signature() {
+        let source = r#"
+            ---@param value table
+            local function consume(value) end
+
+            ---@class Host
+            local M = {}
+            function M:other() end
+
+            ---@generic T: table
+            ---@param obj T | function
+            function M:bind(obj)
+                if type(obj) == 'table' then
+                    consume(obj)
+                end
+            end
+
+            ---@generic T: string
+            ---@param invalid T
+            function M:reject(invalid)
+                consume(invalid)
+            end
+
+            ---@generic T: table
+            function M:outer()
+                ---@generic T: string
+                ---@param invalid T
+                local function inner(invalid)
+                    consume(invalid)
+                end
+                return inner
+            end
+            return M
+            "#;
+        let diagnostics = check_source(source);
+        let mismatches: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+            .collect();
+        assert_eq!(mismatches.len(), 2, "{diagnostics:#?}");
+        assert_eq!(
+            mismatches
+                .iter()
+                .map(|diagnostic| u32::from(diagnostic.range.start()) as usize)
+                .collect::<Vec<_>>(),
+            source
+                .match_indices("consume(invalid)")
+                .map(|(start, _)| start + "consume(".len())
+                .collect::<Vec<_>>(),
+            "{mismatches:#?}"
+        );
+    }
+
+    // 重载参数名后的可选标记应影响参数数量筛选和显式 nil 的类型检查.
+    #[test]
+    fn test_overload_optional_parameter_marker() {
+        for (args, expected) in [
+            ("'message'", 0),
+            ("'message', nil", 0),
+            ("'message', 1", 0),
+            ("'message', false", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                local M = {{}}
+                ---@overload fun(message: string, level?: integer): string
+                ---@param thread thread
+                ---@return string
+                function M.trace(thread) return '' end
+                M.trace({args})
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                    .count(),
+                expected,
+                "{args}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 显式参数注释优先于字段签名, 未标注的参数仍从字段类型推断.
+    #[test]
+    fn test_member_callback_explicit_param_overrides_context() {
+        for (annotation, expected) in [
+            ("---@param value integer", 0),
+            ("---@param value string", 1),
+            ("", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Data
+                ---@field callback fun(value: string, count: integer)
+                local Data = {{}}
+
+                ---@param number integer
+                local function consume(number) return number end
+                ---@param data Data
+                local function wrap(data)
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    {annotation}
+                    data.callback = function(value, count)
+                        consume(value)
+                        consume(count)
+                    end
+                end
+                return wrap
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                    .count(),
+                expected,
+                "{annotation}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 联合接收者的同名函数重载仍应完整参与调用检查.
+    #[test]
+    fn test_union_member_overloads_remain_available() {
+        let diagnostics = check_source(
+            r#"
+            ---@class A
+            ---@field run fun(value: string)
+            ---@field run fun(value: integer)
+            local A = {}
+            ---@class B
+            ---@field run fun(value: string)
+            ---@field run fun(value: integer)
+            local B = {}
+            ---@param obj A|B
+            local function run(obj)
+                obj.run('a')
+                obj.run(1)
+            end
+            return A, B, run
+            "#,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 联合类型的每个分支都应使用派生类覆盖后的字段, 未覆盖的分支仍保留 nil.
+    #[test]
+    fn test_union_member_overrides_base_field() {
+        for (receiver, expected_mismatches) in [("A|B", 0), ("A|Base", 1)] {
+            let mut ws = VirtualWorkspace::new();
+            let expected_type = ws.ty("integer|string");
+            let file_id = ws.def(&format!(
+                r#"
+                ---@class Base
+                ---@field handle? unknown
+                local Base = {{}}
+                ---@class A: Base
+                ---@field handle integer
+                local A = {{}}
+                ---@class B: Base
+                ---@field handle string
+                local B = {{}}
+
+                ---@param handle integer|string
+                local function consume(handle) return handle end
+                ---@param obj {receiver}
+                local function read(obj) return consume(obj.handle) end
+                return Base, A, B, read
+                "#,
+            ));
+            let model = ws.analysis.semantic_model(file_id);
+            let index = model
+                .chunk()
+                .expect("chunk")
+                .descendants::<LuaIndexExpr>()
+                .next()
+                .expect("member access");
+            let ty = model.type_of_expr(index.get_syntax_id());
+            if expected_mismatches == 0 {
+                assert_eq!(ty, expected_type);
+            } else {
+                assert!(ty.is_nullable(), "{ty:?}");
+            }
+            let diagnostics = ws
+                .analysis
+                .diagnose_file(file_id, CancellationToken::new())
+                .expect("diagnostics");
+            let count = diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    diagnostic.code
+                        == Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string(),
+                        ))
+                })
+                .count();
+            assert_eq!(count, expected_mismatches, "{receiver}: {diagnostics:#?}");
+        }
+    }
+
+    // 全局环境是表, 应可用作 load 环境和普通表参数, 但不能用作字符串.
+    #[test]
+    fn test_global_environment_table_compatibility() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+            ---@param env table
+            local function accept(env)
+                return env
+            end
+            accept(_G)
+            accept(_ENV)
+            load('return 1', nil, 't', _G)
+
+            ---@type table
+            local globals = _G
+
+            ---@return table
+            local function environment()
+                return _ENV
+            end
+
+            ---@type string
+            local invalid = _G
+            return globals, environment, invalid
+            "#,
+        );
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .expect("diagnostics");
+        let codes = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == Some(DiagnosticSeverity::WARNING))
+            .map(|diagnostic| diagnostic.code.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            codes,
+            vec![Some(NumberOrString::String(
+                DiagnosticCode::AssignTypeMismatch.get_name().to_string()
+            ))],
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 绑定到模块成员的枚举应接受已声明的值, 并拒绝枚举之外的值.
+    #[test]
+    fn test_enum_declared_on_member_assignment() {
+        for (attribute, valid, invalid) in [("", "1", "2"), ("(key)", "'circle'", "'other'")] {
+            let diagnostics = check_source(&format!(
+                r#"
+                local M = {{}}
+                ---@enum{attribute} Shape
+                M.shape = {{ circle = 1 }}
+
+                ---@param shape Shape
+                local function draw(shape)
+                    return shape
+                end
+                draw({valid})
+                draw({invalid})
+                return M
+                "#,
+            ));
+            let mismatches = diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+                .collect::<Vec<_>>();
+            assert_eq!(mismatches.len(), 1, "{attribute}: {diagnostics:#?}");
+        }
+    }
+
+    #[test]
+    fn test_pcall_preserves_the_declared_callback_type() {
+        for callback_type in [
+            "fun(x: string|boolean): integer",
+            "Callback",
+            "(fun(x: string): integer) | (fun(x: boolean): integer)",
+            "OverloadedCallback",
+        ] {
+            let source = format!(
+                r#"
+                ---@alias Callback fun(x: string|boolean): integer
+                ---@alias OverloadedCallback (fun(x: string): integer) | (fun(x: boolean): integer)
+                ---@type {callback_type}
+                ---@return integer
+                local callback = function(x) return x and 1 or 0 end
+                callback('ok')
+                callback(true)
+                pcall(callback, 'ok')
+                pcall(callback, true)
+                callback(1)
+                pcall(callback, 1)
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 2, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "1");
+            }
+        }
+    }
+
+    #[test]
+    fn test_callable_contracts_keep_branch_guards() {
+        let source = r#"
+            ---@class NumberCallback
+            ---@overload fun(value: number)
+            local NumberCallback = {}
+            ---@type (fun(value: string)) | NumberCallback
+            local accept
+            if type(accept) == 'function' then
+                accept('ok')
+                pcall(accept, 'ok')
+                accept = (accept)
+                accept(42)
+                pcall(accept, 42)
+            end
+            return NumberCallback
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
+        for diagnostic in diagnostics {
+            assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(&source[diagnostic.range], "42");
+        }
+    }
+
+    #[test]
+    fn test_callable_contract_guards_follow_writes_and_branch_joins() {
+        for (body, expected) in [
+            (
+                "if type(accept) == 'function' then accept = replacement; accept(42); pcall(accept, 42) end",
+                0,
+            ),
+            (
+                "if type(accept) == 'function' then accept('ok') else accept(42) end\naccept('ok'); pcall(accept, 'ok'); accept(42); pcall(accept, 42)",
+                0,
+            ),
+            (
+                "---@cast accept fun(value: boolean)|NumberCallback\nif type(accept) == 'function' then accept = replacement; accept(true); pcall(accept, true); accept('wrong'); pcall(accept, 'wrong') end",
+                2,
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@class NumberCallback
+                ---@overload fun(value: number)
+                local NumberCallback = {{}}
+                ---@type (fun(value: string)) | NumberCallback
+                local accept
+                ---@type NumberCallback
+                local replacement
+                {body}
+                return NumberCallback
+                "#
+            );
+            let diagnostics = check_source(&source)
+                .into_iter()
+                .filter(|diagnostic| {
+                    matches!(
+                        diagnostic.code,
+                        DiagnosticCode::ParamTypeMismatch | DiagnosticCode::AssignTypeMismatch
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_callable_contracts_include_later_named_casts() {
+        for (arguments, expected) in [("'ok', 1", 0), ("'ok', 'wrong'", 2)] {
+            let source = format!(
+                r#"
+                ---@type fun(value: string)
+                local accept
+                accept('ok')
+                ---@cast accept fun(value: string, count: number)
+                accept({arguments})
+                pcall(accept, {arguments})
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_overloads_preserve_nested_function_generics() {
+        for (overload, extra_argument) in [
+            ("fun()", ""),
+            (
+                "fun(item: T, values: {[K in 'x']: {[P in 'y']: T}}, mode: boolean)",
+                ", true",
+            ),
+        ] {
+            for (value, expected) in [("42", 0), ("'wrong'", 2)] {
+                let source = format!(
+                    r#"
+                    ---@generic T: number
+                    ---@param item T
+                    ---@param values {{[K in 'x']: {{[P in 'y']: T}}}}
+                    ---@overload {overload}
+                    local function accept(item, values) return item, values end
+                    accept(42, {{x = {{y = {value}}}}}{extra_argument})
+                    pcall(accept, 42, {{x = {{y = {value}}}}}{extra_argument})
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                    assert_eq!(&source[diagnostic.range], "{x = {y = 'wrong'}}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_replacement_casts_do_not_restore_original_overloads() {
+        for returns in ["", ": number"] {
+            let source = format!(
+                r#"
+                ---@param value number
+                ---@return number
+                ---@overload fun(value: string): string
+                local function accept(value) return value end
+                ---@type number|string
+                local other
+                ---@cast other string
+                accept('ok')
+                pcall(accept, 'ok')
+                ---@cast accept fun(value: number){returns}
+                accept(42)
+                pcall(accept, 42)
+                accept('wrong')
+                pcall(accept, 'wrong')
+                return other
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 2, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'wrong'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_removal_casts_do_not_restore_removed_overloads() {
+        for (cast, expected) in [("-nil", 0), ("-fun(value: string)", 2)] {
+            let source = format!(
+                r#"
+                ---@param value number
+                ---@overload fun(value: string)
+                ---@overload fun(value: boolean)
+                local function accept(value) return value end
+                ---@cast accept {cast}
+                accept(42)
+                pcall(accept, 42)
+                accept(true)
+                pcall(accept, true)
+                accept('text')
+                pcall(accept, 'text')
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                assert_eq!(&source[diagnostic.range], "'text'");
+            }
+        }
+    }
+
+    #[test]
+    fn test_typed_globals_keep_contracts_from_each_file() {
+        let mut ws = VirtualWorkspace::new();
+        for (file, domain) in [("strings.lua", "string"), ("numbers.lua", "number")] {
+            ws.def_file(
+                file,
+                &format!(
+                    r#"
+                    ---@alias Callback_{domain} fun(value: {domain}): {domain}
+                    ---@type Callback_{domain}
+                    ---@param value any
+                    ---@return any
+                    function accept(value) return value end
+                    "#
+                ),
+            );
+        }
+        for (argument, expected) in [("42", 0), ("'text'", 0), ("false", 2)] {
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!("accept({argument})\npcall(accept, {argument})"),
+            );
+            assert_eq!(diagnostics.len(), expected, "{argument}: {diagnostics:#?}");
+        }
+    }
+
+    #[test]
+    fn test_typed_global_contracts_apply_casts_after_collecting_files() {
+        for domains in [["string", "number"], ["number", "string"]] {
+            let mut ws = VirtualWorkspace::new();
+            for domain in domains {
+                ws.def_file(
+                    &format!("{domain}.lua"),
+                    &format!(
+                        "---@type fun(value: {domain})\n---@param value any\nfunction accept(value) return value end"
+                    ),
+                );
+            }
+            for (cast, accepted) in [
+                ("+fun(value: boolean)", [true, true, true]),
+                ("-fun(value: string)", [false, true, false]),
+                ("fun(value: boolean)", [false, false, true]),
+                ("", [true, true, false]),
+            ] {
+                for (argument, accepted) in ["'text'", "42", "false"].into_iter().zip(accepted) {
+                    let source = format!(
+                        "{}\naccept({argument})\npcall(accept, {argument})",
+                        if cast.is_empty() {
+                            String::new()
+                        } else {
+                            format!("---@cast accept {cast}")
+                        }
+                    );
+                    let diagnostics = param_type_diagnostics(&mut ws, &source);
+                    assert_eq!(
+                        diagnostics.len(),
+                        if accepted { 0 } else { 2 },
+                        "{domains:?}, {source}: {diagnostics:#?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_typed_global_contracts_keep_function_guards() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "strings.lua",
+            "---@type fun(value: string)\naccept = function(value) return value end",
+        );
+        ws.def_file(
+            "numbers.lua",
+            r#"
+            ---@class NumberCallback
+            ---@overload fun(value: number)
+            local NumberCallback = {}
+            ---@type NumberCallback
+            accept = function(value) return value end
+            return NumberCallback
+        "#,
+        );
+        let diagnostics = param_type_diagnostics(
+            &mut ws,
+            r#"
+            if type(accept) == 'function' then
+                accept('ok')
+                pcall(accept, 'ok')
+                accept(42)
+                pcall(accept, 42)
+            else
+                accept(42)
+                pcall(accept, 42)
+                accept('wrong')
+                pcall(accept, 'wrong')
+            end
+            accept('ok')
+            accept(42)
+            ---@type NumberCallback
+            local replacement
+            ---@cast accept +fun(value: boolean)
+            if type(accept) == 'function' then
+                accept = replacement
+                accept('ok')
+                pcall(accept, 'ok')
+                accept(true)
+                pcall(accept, true)
+                accept(42)
+                pcall(accept, 42)
+            end
+        "#,
+        );
+        assert_eq!(diagnostics.len(), 4, "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn test_custom_pcall_checks_its_own_parameters() {
+        for (definition, self_assignment) in [
+            ("local function pcall", "pcall = pcall"),
+            ("function pcall", ""),
+        ] {
+            for (options, expected) in [("42", 0), ("'wrong'", 1)] {
+                let source = format!(
+                    r#"
+                    ---@alias Callback fun(value: string)
+                    ---@param callback Callback
+                    local function run(callback)
+                        ---@type Callback
+                        local target = callback
+                        ---@param cb Callback
+                        ---@param options integer
+                        {definition}(cb, options) return cb, options end
+                        {self_assignment}
+                        return pcall(target, {options})
+                    end
+                    return run
+                "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(diagnostic.code, DiagnosticCode::ParamTypeMismatch);
+                    assert_eq!(&source[diagnostic.range], "'wrong'");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_local_pcall_alias_keeps_builtin_forwarding() {
+        for alias in [
+            "",
+            "local pcall = pcall",
+            "local original = pcall; local pcall = original",
+            "local pcall = (pcall)",
+            "local pcall = pcall; pcall = pcall",
+            "local original = pcall; local pcall; pcall = original",
+        ] {
+            for (callback, valid, invalid) in [
+                (
+                    "---@type fun(fields: {value: number})\nlocal accept",
+                    "{value = 42}",
+                    "{value = 'wrong'}",
+                ),
+                (
+                    "---@param value number\nlocal function accept(value) return value end",
+                    "42",
+                    "'wrong'",
+                ),
+            ] {
+                for (argument, accepted) in [(valid, true), (invalid, false)] {
+                    let source = format!("{alias}\n{callback}\npcall(accept, {argument})");
+                    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                    let file_id = ws.def(&source);
+                    let diagnostics = ws
+                        .analysis
+                        .diagnose_file(file_id, CancellationToken::new())
+                        .unwrap();
+                    assert_eq!(
+                        diagnostics.is_empty(),
+                        accepted,
+                        "{source}: {diagnostics:#?}"
+                    );
+                    for diagnostic in diagnostics {
+                        assert!(matches!(
+                            diagnostic.code,
+                            Some(NumberOrString::String(code))
+                                if code == DiagnosticCode::AssignTypeMismatch.get_name()
+                                    || code == DiagnosticCode::ParamTypeMismatch.get_name()
+                        ));
+                        // Report the bad argument, not a mismatch on the callback itself.
+                        assert!(diagnostic.range.start.character >= "pcall(accept, ".len() as u32);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_builtin_forwarding() {
+        for (setup, before, after) in [
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do",
+                "end\npcall = pcall",
+            ),
+            (
+                "local pcall = pcall",
+                "local function run()",
+                "end\npcall = (pcall)\nreturn run",
+            ),
+            ("pcall = pcall", "", ""),
+            (
+                "local original = pcall; local pcall = original",
+                "for _ = 1, 2 do",
+                "end\npcall = original",
+            ),
+            (
+                "local original = pcall; local pcall; pcall = original",
+                "for _ = 1, 2 do\npcall = original",
+                "end",
+            ),
+            (
+                "local original = pcall; local pcall = original",
+                "local function run()",
+                "end\npcall = original\nreturn run",
+            ),
+            ("local original = pcall; pcall = original", "", ""),
+            (
+                "local pcall = pcall",
+                "for _ = 1, 2 do\nlocal previous = pcall; pcall = previous",
+                "end",
+            ),
+        ] {
+            for (value, accepted) in [("42", true), ("'wrong'", false)] {
+                let source = format!(
+                    "{setup}\n---@type fun(fields: {{value: number}})\nlocal accept\n{before}\npcall(accept, {{value = {value}}})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(
+                    diagnostics.is_empty(),
+                    accepted,
+                    "{source}: {diagnostics:#?}"
+                );
+                for diagnostic in diagnostics {
+                    assert!(matches!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(code))
+                            if code == DiagnosticCode::AssignTypeMismatch.get_name()
+                                || code == DiagnosticCode::ParamTypeMismatch.get_name()
+                    ));
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pcall_alias_writes_keep_replacement_parameters() {
+        for (before, after) in [
+            ("for _ = 1, 2 do", "end"),
+            ("local function run()", "end\nreturn run"),
+        ] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let source = format!(
+                    "---@type function\nlocal pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\n---@param callback fun(fields: {{value: number}})\n---@param options integer\nlocal function replacement(callback, options) return callback, options end\npcall = replacement\n{before}\npcall(accept, {value})\n{after}"
+                );
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                let file_id = ws.def(&source);
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_global_pcall_self_assignment_keeps_cross_file_replacements() {
+        let custom = "---@param callback fun(fields: {value: number})\n---@param options integer\nfunction pcall(callback, options) return callback, options end";
+        for custom_first in [true, false] {
+            for (value, expected) in [("42", 0), ("'wrong'", 1)] {
+                let mut ws = VirtualWorkspace::new_with_init_std_lib();
+                if custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let source = format!(
+                    "pcall = pcall\n---@type fun(fields: {{value: number}})\nlocal accept\npcall(accept, {value})"
+                );
+                let file_id = ws.def_file("calls.lua", &source);
+                if !custom_first {
+                    ws.def_file("custom.lua", custom);
+                }
+                let diagnostics = ws
+                    .analysis
+                    .diagnose_file(file_id, CancellationToken::new())
+                    .unwrap();
+                assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:#?}");
+                for diagnostic in diagnostics {
+                    assert_eq!(
+                        diagnostic.code,
+                        Some(NumberOrString::String(
+                            DiagnosticCode::ParamTypeMismatch.get_name().to_string()
+                        ))
+                    );
+                    assert_eq!(
+                        diagnostic.range.start.character,
+                        "pcall(accept, ".len() as u32
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     #[ignore = "Known bug before ef507415: overload contracts and candidate selection"]
@@ -287,10 +1175,8 @@ mod test {
                             "---@param first number\n---@param second number\n---@overload fun(...: string)\n{definition}\nlocal alias = accept\nlocal mod = {{accept = accept}}\n{call}\nreturn alias, mod"
                         ));
                         let model = ws.analysis.semantic_model(file_id);
-                        let diagnostics = crate::check::check_file(
-                            &model,
-                            Arc::new(crate::CheckConfig::new(&ws.get_emmyrc())),
-                        );
+                        let diagnostics =
+                            check::check_file(&model, Arc::new(CheckConfig::new(&ws.get_emmyrc())));
                         assert_eq!(
                             diagnostics.is_empty(),
                             valid,
@@ -332,7 +1218,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: dictionary key and value validation"]
     fn test_dictionary_overload_requires_matching_keys_values_and_mode() {
         for (call, valid) in [
             ("accept({'a'}, 'a')", true),
@@ -341,7 +1226,10 @@ mod test {
             ("accept({'a'}, 1)", false),
             ("accept({[key] = 1}, 1)", true),
             ("accept({[key] = 1}, 'a')", false),
+            ("accept({count = nil}, 'a')", true),
+            ("accept({count = nil}, 1)", true),
         ] {
+            let protected_call = call.replacen("accept(", "pcall(accept, ", 1);
             let diagnostics = check_source(&format!(
                 r#"
                 local key = 'count'
@@ -350,10 +1238,15 @@ mod test {
                 ---@overload fun(values: table<string, integer>, mode: integer)
                 local function accept(values, mode) return values, mode end
                 {call}
+                {protected_call}
                 return key
                 "#,
             ));
-            assert_eq!(diagnostics.is_empty(), valid, "{call}: {diagnostics:?}");
+            assert_eq!(
+                diagnostics.len(),
+                if valid { 0 } else { 2 },
+                "{call}: {diagnostics:?}"
+            );
             assert!(
                 diagnostics
                     .iter()
@@ -390,7 +1283,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: dictionary key and value validation"]
     fn test_dictionary_arguments_check_the_final_value_of_repeated_keys() {
         for (constructor, valid) in [
             ("{entry = 42, [key] = 'ok'}", true),
@@ -399,11 +1291,11 @@ mod test {
             ("{entry = 42, [key] = nil}", true),
         ] {
             let diagnostics = check_source(&format!(
-                "local key = 'entry'\n---@param values table<string, string>\nlocal function accept(values) return values end\naccept({constructor})\nreturn key"
+                "local key = 'entry'\n---@param values table<string, string>\nlocal function accept(values) return values end\naccept({constructor})\npcall(accept, {constructor})\nreturn key"
             ));
             assert_eq!(
-                diagnostics.is_empty(),
-                valid,
+                diagnostics.len(),
+                if valid { 0 } else { 2 },
                 "{constructor}: {diagnostics:?}"
             );
             assert!(
@@ -416,11 +1308,41 @@ mod test {
     }
 
     #[test]
-    fn test_dictionary_argument_checks_do_not_read_later_mutations() {
+    fn test_dictionary_arguments_allow_absent_nullable_entries() {
+        for (value_type, expected) in [("integer|nil", 0), ("string|nil", 2)] {
+            let source = format!(
+                r#"
+                ---@param values table<string, integer>
+                local function accept(values) return values end
+                ---@param value {value_type}
+                local function use(value)
+                    accept({{entry = value}})
+                    pcall(accept, {{entry = value}})
+                end
+                return use
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), expected, "{source}\n{diagnostics:#?}");
+            assert!(
+                diagnostics
+                    .iter()
+                    .all(|d| d.code == DiagnosticCode::ParamTypeMismatch),
+                "{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_dictionary_arguments_check_the_completed_stable_interface() {
         let diagnostics = check_source(
             "---@param values table<string, string>\nlocal function accept(values) return values end\nlocal values = {}\naccept(values)\nvalues.count = 1\nreturn values",
         );
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(
+            diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [DiagnosticCode::ParamTypeMismatch],
+            "{diagnostics:?}"
+        );
     }
 
     #[test]
@@ -682,13 +1604,12 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: overload contracts and candidate selection"]
     fn test_protected_calls_use_count_matching_overloads() {
         for (fields, valid) in [("{value = 2}", true), ("{value = 'text'}", false)] {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
             assert_eq!(
                 ws.has_no_diagnostic(
-                    DiagnosticCode::AssignTypeMismatch,
+                    DiagnosticCode::ParamTypeMismatch,
                     &format!(
                         r#"
                         ---@type fun() | fun(fields: {{[string]: number}})
@@ -704,13 +1625,12 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: protected calls select incompatible overloads"]
     fn test_protected_calls_keep_fixed_arguments_with_varargs() {
         for (fields, valid) in [("{value = 2}", true), ("{value = 'text'}", false)] {
             let mut ws = VirtualWorkspace::new_with_init_std_lib();
             assert_eq!(
                 ws.has_no_diagnostic(
-                    DiagnosticCode::AssignTypeMismatch,
+                    DiagnosticCode::ParamTypeMismatch,
                     &format!(
                         r#"
                         ---@type fun() | fun(fields: {{[string]: number}}, ...: any)
@@ -1014,7 +1934,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Known bug before ef507415: replaced pcall still uses builtin forwarding"]
     fn test_replaced_pcall_uses_its_new_parameters() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(
@@ -1129,13 +2048,13 @@ mod test {
     }
 
     #[test]
-    fn test_table_argument_fields_keep_assignment_diagnostic_settings() {
+    fn test_table_argument_fields_use_parameter_diagnostic_settings() {
         for (disabled, expected) in [
             (
-                DiagnosticCode::ParamTypeMismatch,
-                vec![DiagnosticCode::AssignTypeMismatch],
+                DiagnosticCode::AssignTypeMismatch,
+                vec![DiagnosticCode::ParamTypeMismatch],
             ),
-            (DiagnosticCode::AssignTypeMismatch, vec![]),
+            (DiagnosticCode::ParamTypeMismatch, vec![]),
         ] {
             let mut emmyrc = Emmyrc::default();
             emmyrc.diagnostics.disable.push(disabled);
@@ -1200,6 +2119,64 @@ mod test {
                     "{diagnostics:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_table_overloads_use_the_same_candidates_through_pcall() {
+        for (valid, invalid) in [
+            ("accept({count = 1}, true)", "accept({count = 1})"),
+            (
+                "pcall(accept, {count = 1}, true)",
+                "pcall(accept, {count = 1})",
+            ),
+        ] {
+            let source = format!(
+                r#"
+                ---@param entries table<integer, string>
+                ---@overload fun(entries: table<string, integer>, required: boolean)
+                local function accept(entries) return entries end
+                {valid}
+                {invalid}
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(
+                usize::from(diagnostics[0].range.start()),
+                source.rfind("{count = 1}").unwrap(),
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_table_constructor_record_literals_use_the_same_rules() {
+        for (declaration, valid, invalid) in [
+            (
+                "---@param value {mode: 'read'}",
+                "{mode = 'read'}",
+                "{mode = 'write'}",
+            ),
+            (
+                "---@class Options\n---@field mode 'read'\n\n---@param value Options",
+                "{mode = 'read'}",
+                "{mode = 'write'}",
+            ),
+            (
+                "---@alias Options {mode: 'read'}\n\n---@param value table<integer, Options>",
+                "{{mode = 'read'}}",
+                "{{mode = 'write'}}",
+            ),
+        ] {
+            let source = format!(
+                "{declaration}\nlocal function accept(value) return value end\naccept({valid})\naccept({invalid})"
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParamTypeMismatch);
+            assert_eq!(&source[diagnostics[0].range], invalid);
         }
     }
 
@@ -1440,6 +2417,75 @@ mod test {
         assert!(message.contains("boolean"), "{message}");
         assert!(message.contains("游戏-初始化"), "{message}");
         assert!(message.contains("游戏-开始"), "{message}");
+    }
+
+    #[test]
+    fn test_protected_call_sync_callback_with_vararg_alias() {
+        for declaration in [
+            "---@alias OnTimer fun(timer: Timer, ...)",
+            r#"
+            ---@alias TimerCallback fun(timer: Timer, ...)
+            ---@alias OnTimer TimerCallback
+            "#,
+            r#"
+            ---@alias Callback<T> fun(value: T, ...)
+            ---@alias OnTimer Callback<Timer>
+            "#,
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!(
+                    r#"
+                    ---@class Timer
+                    {declaration}
+                    ---@type OnTimer
+                    local on_timer
+                    ---@type Timer
+                    local timer
+                    local protected = pcall
+                    xpcall(on_timer)
+                    pcall(on_timer, timer, 1, 'text')
+                    protected(on_timer, timer, 1, 'text')
+                    xpcall(on_timer, tostring, timer, 1, 'text')
+                    "#
+                ),
+            );
+
+            assert!(diagnostics.is_empty(), "{declaration}: {diagnostics:?}");
+        }
+    }
+
+    #[test]
+    fn test_protected_call_sync_callback_checks_vararg_tail() {
+        for call in [
+            "xpcall(on_timer, tostring, timer, 1, 'wrong')",
+            "protected(on_timer, timer, 1, 'wrong')",
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let diagnostics = param_type_diagnostics(
+                &mut ws,
+                &format!(
+                    r#"
+                    ---@class Timer
+                    ---@alias OnTimer fun(timer: Timer, ...: number)
+                    ---@type OnTimer
+                    local on_timer
+                    ---@type Timer
+                    local timer
+                    local protected = pcall
+                    pcall(on_timer, timer, 1, 2, 3)
+                    protected(on_timer, timer, 1, 2, 3)
+                    xpcall(on_timer, tostring, timer, 1, 2, 3)
+                    {call}
+                    "#
+                ),
+            );
+
+            assert_eq!(diagnostics.len(), 1, "{call}: {diagnostics:?}");
+            assert!(diagnostics[0].message.contains("number"), "{diagnostics:?}");
+            assert!(diagnostics[0].message.contains("wrong"), "{diagnostics:?}");
+        }
     }
 
     #[test]
@@ -3559,6 +4605,134 @@ mod test {
             1,
             "diagnostics: {:?}",
             diagnostics
+        );
+    }
+
+    /// A callback with fewer params than the expected function's fixed prefix, where a variadic
+    /// follows that prefix. The variadic's slice of the callback's params started past their end
+    /// and panicked.
+    #[test]
+    fn test_short_callback_against_variadic_tail_does_not_panic() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param f fun(x: integer, ...: string)
+            local function g(f) end
+            g(function() end)
+        "#
+        ));
+    }
+
+    /// Around the panic's boundary: a callback with exactly the fixed prefix, and one whose extra
+    /// params the variadic takes.
+    #[test]
+    fn test_callback_at_and_past_variadic_prefix() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param f fun(x: integer, ...: string)
+            local function g(f) end
+            g(function(x) end)
+            g(function(x, a, b) end)
+            ---@param a string
+            ---@param b string
+            g(function(x, a, b) end)
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_pack_before_callback_accepts_fixed_parameters() {
+        let source = r#"
+            ---@generic T, R
+            ---@param argc integer
+            ---@param func fun(...: T..., cb: fun(...: R...)): any
+            local function wrap(argc, func) end
+
+            ---@param duration integer
+            ---@param done fun()
+            local function delay(duration, done) end
+
+            ---@param done fun()
+            local function schedule(done) end
+
+            wrap(2, delay)
+            wrap(1, schedule)
+
+            ---@generic T, R
+            ---@param func fun(context, ...: T..., cb: fun(...: R...)): any
+            local function wrap_with_context(func) end
+
+            ---@param context string
+            ---@param duration integer
+            ---@param done fun()
+            local function delay_with_context(context, duration, done) end
+
+            wrap_with_context(delay_with_context)
+        "#;
+        let diagnostics = check_source(source);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_generic_pack_before_callback_inferred_from_returns() {
+        let source = r#"
+            ---@generic T
+            ---@param provide fun(): T...
+            ---@param receive fun(...: T..., cb: fun())
+            local function register(provide, receive) end
+
+            ---@return string, integer
+            local function values() return 'job', 1 end
+
+            ---@param name string
+            ---@param count integer
+            ---@param done fun()
+            local function receive(name, count, done) end
+
+            register(values, receive)
+        "#;
+        let diagnostics = check_source(source);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::ParamTypeMismatch),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn test_generic_pack_before_callback_checks_trailing_callback() {
+        let source = r#"
+            ---@generic T, R
+            ---@param argc integer
+            ---@param func fun(...: T..., cb: fun(...: R...): boolean): any
+            local function wrap(argc, func) end
+
+            ---@param duration integer
+            ---@param done fun(): string
+            local function delay(duration, done) end
+
+            wrap(2, delay)
+        "#;
+        let diagnostics = check_source(source);
+        let mismatches: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ParamTypeMismatch)
+            .collect();
+
+        assert_eq!(mismatches.len(), 1, "{diagnostics:?}");
+        let range = mismatches[0].range;
+        assert_eq!(
+            &source[u32::from(range.start()) as usize..u32::from(range.end()) as usize],
+            "delay"
         );
     }
 }

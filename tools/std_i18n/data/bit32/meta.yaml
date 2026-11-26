@@ -1,0 +1,68 @@
+v: 2
+f: 'bit32.lua'
+b:
+- a: 'bit32 = {}'
+  g: '@version 5.2'
+  r: [5, 0, 11, 19]
+  e:
+  - ['bit32lib', 'd', doc, [6, 0, 11, 0], '23873f84d92d8349']
+- a: 'function bit32.arshift(x, disp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the right. Negative displacements shift to the left.'
+  r: [14, 0, 25, 14]
+  e:
+  - ['bit32lib.arshift', 'd', doc, [14, 0, 22, 0], '796a58c7e2774ee2']
+- a: 'function bit32.band(...) end'
+  g: 'Returns the bitwise *and* of its operands.'
+  r: [28, 0, 35, 14]
+  e:
+  - ['bit32lib.band', 'd', doc, [28, 0, 33, 0], '4cb0cb704246ce2b']
+- a: 'function bit32.bnot(x) end'
+  g: 'Returns the bitwise negation of `x`.'
+  r: [38, 0, 51, 14]
+  e:
+  - ['bit32lib.bnot', 'd', doc, [38, 0, 49, 0], '7da2534dd67210f2']
+- a: 'function bit32.bor(...) end'
+  g: 'Returns the bitwise *or* of its operands.'
+  r: [54, 0, 61, 14]
+  e:
+  - ['bit32lib.bor', 'd', doc, [54, 0, 59, 0], '8b83f8b38a0a5f61']
+- a: 'function bit32.btest(...) end'
+  g: 'Returns a boolean signaling whether the bitwise *and* of its operands is different from zero.'
+  r: [64, 0, 71, 14]
+  e:
+  - ['bit32lib.btest', 'd', doc, [64, 0, 69, 0], 'fc26d51afb00e25f']
+- a: 'function bit32.bxor(...) end'
+  g: 'Returns the bitwise *exclusive or* of its operands.'
+  r: [74, 0, 81, 14]
+  e:
+  - ['bit32lib.bxor', 'd', doc, [74, 0, 79, 0], '1750b1b6711f0063']
+- a: 'function bit32.extract(n, field, width) end'
+  g: 'Returns the unsigned number formed by the bits `field` to `field + width - 1` from `n`.'
+  r: [84, 0, 93, 14]
+  e:
+  - ['bit32lib.extract', 'd', doc, [84, 0, 89, 0], 'e643f88a5428609b']
+- a: 'function bit32.replace(n, v, field, width) end'
+  g: 'Returns a copy of `n` with the bits `field` to `field + width - 1` replaced by the value `v` .'
+  r: [96, 0, 106, 14]
+  e:
+  - ['bit32lib.replace', 'd', doc, [96, 0, 101, 0], '6f8af46463e18d03']
+- a: 'function bit32.lrotate(x, disp) end'
+  g: 'Returns the number `x` rotated `disp` bits to the left. Negative displacements rotate to the right.'
+  r: [109, 0, 117, 14]
+  e:
+  - ['bit32lib.lrotate', 'd', doc, [109, 0, 114, 0], '1a0618270cd9cbf7']
+- a: 'function bit32.lshift(x, disp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the left. Negative displacements shift to the right. In any direction, vacant bits are filled with zeros.'
+  r: [120, 0, 134, 14]
+  e:
+  - ['bit32lib.lshift', 'd', doc, [120, 0, 131, 0], '71fc2c0651f3bfd8']
+- a: 'function bit32.rrotate(x, disp) end'
+  g: 'Returns the number `x` rotated `disp` bits to the right. Negative displacements rotate to the left.'
+  r: [137, 0, 145, 14]
+  e:
+  - ['bit32lib.rrotate', 'd', doc, [137, 0, 142, 0], '654f78777665a2e9']
+- a: 'function bit32.rshift(x, disp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the right. Negative displacements shift to the left. In any direction, vacant bits are filled with zeros.'
+  r: [148, 0, 162, 14]
+  e:
+  - ['bit32lib.rshift', 'd', doc, [148, 0, 159, 0], '365df43d83dd0ad3']

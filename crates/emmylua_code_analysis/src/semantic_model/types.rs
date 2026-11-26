@@ -2,6 +2,7 @@ use super::prelude::*;
 use crate::LuaTypeIdentifier;
 use crate::semantic_db::TypeDefList;
 use crate::semantic_model::type_eval::substitute_named_refs;
+use emmylua_parser::{LuaForStat, LuaTableExpr};
 
 impl<'db> SemanticModel<'db> {
     pub(crate) fn type_evaluation_errors(&self) -> Vec<Option<LuaTypeDeclId>> {
@@ -155,9 +156,10 @@ impl<'db> SemanticModel<'db> {
             {
                 return Some(ty);
             }
-            // `for k, v in pairs(x)`: iteration variables are inferred from the iterator's return slots.
+            // Loop variables of both `for i = a, b, step` and `for k, v in pairs(x)` have no initializer expression,
+            // so their types come from the loop header.
             if matches!(decl.kind, DeclKind::Local { is_iter: true, .. })
-                && let Some(ty) = self.infer_for_range_var(decl)
+                && let Some(ty) = self.infer_for_loop_var(decl)
                 && !matches!(ty, LuaType::Unknown)
             {
                 return Some(ty);
@@ -190,7 +192,7 @@ impl<'db> SemanticModel<'db> {
                     };
                     // Rich projection takes priority: structural annotations like Object / Intersection / keyof must not be
                     // overridden by shell's broad Table / Nil fallback.
-                    let rich = self.doc_type_lua_rich(doc_syntax);
+                    let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                     if !matches!(rich, LuaType::Unknown) && rich != ty {
                         let rich_is_index_not_precise = matches!(
                             &rich,
@@ -213,7 +215,7 @@ impl<'db> SemanticModel<'db> {
                         ty,
                         LuaType::String | LuaType::Number | LuaType::Integer | LuaType::Boolean
                     ) {
-                        let rich = self.doc_type_lua_rich(doc_syntax);
+                        let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                         if matches!(
                             rich,
                             LuaType::Union(_)
@@ -229,7 +231,7 @@ impl<'db> SemanticModel<'db> {
                     }
                     return Some(ty);
                 }
-                let rich = self.doc_type_lua_rich(doc_syntax);
+                let rich = self.project_doc_type(self.file_id(), doc_syntax, &[]);
                 if !matches!(rich, LuaType::Unknown) {
                     return Some(rich);
                 }
@@ -262,6 +264,10 @@ impl<'db> SemanticModel<'db> {
                 && let Some(facts) = self.file_facts()
                 && let Some((signature, param_index)) =
                     facts.signature_and_param_index_of_decl(decl)
+                && !signature
+                    .docs
+                    .as_ref()
+                    .is_some_and(|docs| docs.param_types.iter().any(|(name, _)| name == &decl.name))
             {
                 let closure_syntax = signature.closure_syntax;
                 let ty = infer::closure_param_lua(self, closure_syntax, param_index);
@@ -327,6 +333,35 @@ impl<'db> SemanticModel<'db> {
         }
         self.analysis().decl_type_lua(self.file_id(), decl.clone())
     }
+    /// 表达式所在词法作用域内的泛型约束, 同名声明由内向外遮蔽.
+    pub(crate) fn generic_constraint_at(&self, ty: &LuaType, expr: &LuaExpr) -> Option<LuaType> {
+        let (LuaType::Ref(id) | LuaType::Def(id)) = ty else {
+            return None;
+        };
+        if self.type_def_of(id).is_some() {
+            return None;
+        }
+        let facts = self.file_facts()?;
+        for closure in expr.ancestors::<LuaClosureExpr>() {
+            let Some(docs) = facts
+                .signature_by_closure(closure.get_syntax_id())
+                .and_then(|signature| signature.docs.as_ref())
+            else {
+                continue;
+            };
+            let Some(param) = docs
+                .generic_params
+                .iter()
+                .find(|param| param.name.as_str() == id.get_name())
+            else {
+                continue;
+            };
+            let constraint = self.doc_type_lua(param.constraint?);
+            return (!matches!(constraint, LuaType::Unknown)).then_some(constraint);
+        }
+        None
+    }
+
     /// Parameter declarations may lose generic constraints in `type_of_decl`'s fallback path; re-attach them here.
     pub(crate) fn attach_param_decl_constraint(&self, decl: &SemanticId, ty: LuaType) -> LuaType {
         let Some(facts) = self.file_facts() else {
@@ -432,12 +467,28 @@ impl<'db> SemanticModel<'db> {
             _ => Some(LuaType::from_vec(types)),
         }
     }
-    /// Iteration variable types for `for k, v in pairs(x)`:
-    /// taken from the return function slots of the iteration expression's callee (pairs/ipairs/next or custom `__pairs` members).
-    pub(crate) fn infer_for_range_var(&self, decl: &Decl) -> Option<LuaType> {
+    /// Loop variable type of a `for` statement:
+    /// numeric loops derive it from the initial value and step (integer only when both are integers),
+    /// while `for k, v in pairs(x)` takes it from the iterator's return slots.
+    pub(crate) fn infer_for_loop_var(&self, decl: &Decl) -> Option<LuaType> {
         let owner = decl.owner_syntax?;
         let tree = self.syntax_tree()?;
         let node = owner.to_node_from_root(&tree.get_red_root())?;
+        if let Some(stat) = LuaForStat::cast(node.clone()) {
+            let mut bounds = stat.get_iter_expr();
+            let initial = bounds.next()?;
+            let initial_ty = self.type_of_expr_at(initial.get_syntax_id(), initial.get_position());
+            // The limit does not affect whether the loop stays integral, only the initial value and step do.
+            let step_ty = bounds
+                .nth(1)
+                .map(|step| self.type_of_expr_at(step.get_syntax_id(), step.get_position()))
+                .unwrap_or(LuaType::Integer);
+            return Some(if initial_ty.is_integer() && step_ty.is_integer() {
+                LuaType::Integer
+            } else {
+                LuaType::Number
+            });
+        }
         let stat = LuaForRangeStat::cast(node)?;
         let vars = stat.get_var_name_list().collect::<Vec<_>>();
         let index = vars
@@ -445,30 +496,27 @@ impl<'db> SemanticModel<'db> {
             .position(|var| var.get_name_text() == decl.name.as_str())?;
         let iter_expr = stat.get_expr_list().next()?;
 
-        // Standard `pairs(x)` / `ipairs(x)` / `next(x)`.
-        if let LuaExpr::CallExpr(call) = &iter_expr
-            && let LuaExpr::NameExpr(name_expr) = call.get_prefix_expr()?
-            && let Some(name) = name_expr.get_name_text()
-            && matches!(name.as_str(), "pairs" | "ipairs" | "next")
-        {
-            let arg = call.get_args_list()?.get_args().next()?;
-            let arg_ty = self.type_of_expr(arg.get_syntax_id());
-            let member = if name.as_str() == "ipairs" {
-                "__ipairs"
-            } else {
-                "__pairs"
-            };
-            // 1. Custom `__pairs` / `__ipairs`.
-            if let Some(gen_ty) =
-                self.member_type(&arg_ty, &LuaMemberKey::Name(SmolStr::new(member)))
-                && let LuaType::DocFunction(generator) = gen_ty
-            {
-                if let Some(slot) = generator.get_ret().get_result_slot_type(index) {
+        if let LuaExpr::CallExpr(call) = &iter_expr {
+            let callee = call.get_prefix_expr()?;
+            if self.resolves_to_builtin(callee.clone(), "pairs").is_some() {
+                let table = call.get_args_list()?.get_args().next()?;
+                return self.infer_pairs_slot(&table, index);
+            }
+
+            if self.resolves_to_builtin(callee, "ipairs").is_some() {
+                let arg = call.get_args_list()?.get_args().next()?;
+                let arg_ty = self.type_of_expr_node(&arg);
+                let key = LuaMemberKey::Name(SmolStr::new("__ipairs"));
+                if let Some(LuaType::DocFunction(generator)) = self.member_type(&arg_ty, &key)
+                    && let Some(slot) = generator.get_ret().get_result_slot_type(index)
+                {
                     return Some(slot);
                 }
+                let callee = self.global_decl("ipairs").filter(
+                    |decl| matches!(decl, SemanticId::Decl(key) if self.is_std_file(key.file_id)),
+                );
+                return self.infer_standard_iter_slot(callee, &arg_ty, index);
             }
-            // 2. Standard global pairs/ipairs: bind K/V from the parameter structure, then take the return function slot.
-            return self.infer_standard_iter_slot(call.get_prefix_expr()?.clone(), &arg_ty, index);
         }
 
         // Generic iterator functions: `for k in test()` / `for k in iter_fn`.
@@ -528,27 +576,127 @@ impl<'db> SemanticModel<'db> {
         } else {
             iter_fun.get_ret().clone()
         };
-        let slot = ret.get_result_slot_type(index)?;
+        let mut slot = ret.get_result_slot_type(index)?;
+        // A custom `pairs` signature can leave K/V unbound for an indexed table.
+        if slot.contain_tpl()
+            && let LuaExpr::CallExpr(call) = &iter_expr
+            && let LuaExpr::NameExpr(callee) = call.get_prefix_expr()?
+            && callee.get_name_text().as_deref() == Some("pairs")
+            && let Some(table) = call.get_args_list()?.get_args().next()
+        {
+            let table_ty = self.type_of_expr(table.get_syntax_id());
+            let callee = self.resolve_name(callee.get_position());
+            if let Some(bound) = self.infer_standard_iter_slot(callee, &table_ty, index) {
+                slot = bound;
+            }
+        }
+        let slot = type_eval::expand_alias_head(self, &slot)?;
         if index == 0 {
             Some(remove_nil_from_type(slot))
         } else {
             Some(slot)
         }
     }
-    /// Standard `pairs(x)` / `ipairs(x)`: take the type from the inner slot of the global function signature's return function.
-    pub(crate) fn infer_standard_iter_slot(
+    fn infer_pairs_slot(&self, table: &LuaExpr, index: usize) -> Option<LuaType> {
+        let table_ty = self.type_of_expr_node(table);
+        let literal = match &table_ty {
+            LuaType::TableConst(literal) => Some(literal),
+            _ => None,
+        };
+        let metatable = member::metatable_type(self, Some(table), literal);
+        if let Some(LuaType::Union(alternatives)) = &metatable {
+            let slots = alternatives
+                .iter()
+                .map(|meta| self.infer_pairs_slot_with_metatable(&table_ty, Some(meta), index))
+                .collect::<Option<Vec<_>>>()?;
+            return Some(LuaType::from_vec(slots));
+        }
+        self.infer_pairs_slot_with_metatable(&table_ty, metatable.as_ref(), index)
+    }
+
+    fn infer_pairs_slot_with_metatable(
         &self,
-        callee: LuaExpr,
+        table_ty: &LuaType,
+        metatable: Option<&LuaType>,
+        index: usize,
+    ) -> Option<LuaType> {
+        let key = LuaMemberKey::Name(SmolStr::new("__pairs"));
+        let receiver =
+            metatable.or_else(|| (!matches!(table_ty, LuaType::TableConst(_))).then_some(table_ty));
+        let generator = receiver
+            .and_then(|ty| match ty {
+                // Lua reads the metatable's stored field directly.
+                LuaType::TableConst(_) => member::direct_member_info(self, ty, &key),
+                _ => self.member_info(ty, &key),
+            })
+            .filter(|info| !info.typ.is_nil());
+        if let (Some(receiver), Some(generator)) = (receiver, &generator) {
+            let slot = self.infer_pairs_metamethod_slot(receiver, generator, index);
+            if slot.is_some() || metatable.is_none() {
+                return slot;
+            }
+        }
+
+        let callee = self
+            .global_decl("pairs")
+            .filter(|decl| matches!(decl, SemanticId::Decl(key) if self.is_std_file(key.file_id)));
+        let slot = self.infer_standard_iter_slot(callee, table_ty, index)?;
+        // The default iterator visits stored entries. Assigning nil removes an entry.
+        let default_iterator = generator.is_none()
+            && matches!(
+                metatable,
+                None | Some(LuaType::Nil | LuaType::TableConst(_) | LuaType::Object(_))
+            );
+        Some(if index == 1 && default_iterator {
+            remove_nil_from_type(slot)
+        } else {
+            slot
+        })
+    }
+
+    fn infer_pairs_metamethod_slot(
+        &self,
+        receiver: &LuaType,
+        generator: &member::MemberInfo,
+        index: usize,
+    ) -> Option<LuaType> {
+        let ret = match &generator.typ {
+            LuaType::DocFunction(fun) => fun.get_ret().clone(),
+            LuaType::Function => {
+                let file = generator.file_id?;
+                let member = self
+                    .file_facts_of(file)?
+                    .member_by_id(generator.id.as_ref()?)?;
+                let ret = self
+                    .type_of_signature_in_file(file, member.value_syntax?)?
+                    .get_ret()
+                    .clone();
+                type_eval::class_generic_map(self, receiver)
+                    .map(|bindings| substitute_named_refs(&ret, &bindings))
+                    .unwrap_or(ret)
+            }
+            _ => return None,
+        };
+        // The first result is the iterator. Its second result can be nil.
+        let iterator = type_eval::expand_alias_head(self, &ret.get_result_slot_type(0)?)?;
+        let LuaType::DocFunction(iterator) = iterator else {
+            return None;
+        };
+        let slot = iterator.get_ret().get_result_slot_type(index)?;
+        Some(if index == 0 {
+            remove_nil_from_type(slot)
+        } else {
+            slot
+        })
+    }
+
+    /// Take a slot from the iterator returned by the standard function signature.
+    fn infer_standard_iter_slot(
+        &self,
+        callee: Option<SemanticId>,
         arg_ty: &LuaType,
         index: usize,
     ) -> Option<LuaType> {
-        let LuaExpr::NameExpr(name_expr) = callee else {
-            return None;
-        };
-        let name = name_expr.get_name_text()?;
-        if !matches!(name.as_str(), "pairs" | "ipairs" | "next") {
-            return None;
-        }
         // Integer-index members of named types (`@field [integer] string` / `@field [1] string`)
         // do not need global pairs/ipairs signatures; infer directly from the type definition.
         if let LuaType::Ref(id) | LuaType::Def(id) = &arg_ty {
@@ -556,7 +704,7 @@ impl<'db> SemanticModel<'db> {
                 return Some(ty);
             }
         }
-        let callee_decl = self.resolve_name(name_expr.get_position())?;
+        let callee_decl = callee?;
         let decl_file = match &callee_decl {
             SemanticId::Decl(key) => key.file_id,
             _ => self.view.file_id(),
@@ -592,7 +740,7 @@ impl<'db> SemanticModel<'db> {
                 .is_none_or(|ty| matches!(ty, LuaType::Table))
                 && let Some(syntax) = def.alias_type
             {
-                let rich = self.doc_type_lua_rich_in(def.file_id, syntax);
+                let rich = self.project_doc_type(def.file_id, syntax, &[]);
                 if !matches!(rich, LuaType::Unknown) {
                     target = Some(rich);
                 }
@@ -799,6 +947,25 @@ impl<'db> SemanticModel<'db> {
         if let Some(enum_const) = self.enum_member_const(member_file, member) {
             return Some(enum_const);
         }
+        if let Some(facts) = self.file_facts_of(member_file)
+            && let Some(def) = facts.member_by_id(member)
+        {
+            let doc_syntax = match def.source {
+                MemberSource::DocField => def.value_syntax,
+                _ => def.doc_type_syntax,
+            };
+            if let Some(syntax) = doc_syntax {
+                let generics = facts
+                    .type_def_by_id(&def.owner)
+                    .map(|owner| owner.generic_params.as_slice())
+                    .unwrap_or(&[]);
+                let mut ty = self.project_doc_type(member_file, syntax, generics);
+                if def.is_nullable && !ty.is_nullable() {
+                    ty = LuaType::from_vec(vec![ty, LuaType::Nil]);
+                }
+                return Some(ty);
+            }
+        }
         // Runtime member assignments prefer VM projection: the TypeShell path does not perform higher-order generic call inference,
         // and would keep `E.foo_wrapped = wrap(function(a) ... end)` as `fun(...: T...)`.
         // Cycles/reentry are handled by `CacheEntry::InProgress` in the shared cache.
@@ -814,7 +981,7 @@ impl<'db> SemanticModel<'db> {
                 let tree = self.syntax_tree_of(member_file)?;
                 let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
                 let expr = LuaExpr::cast(node)?;
-                let eval = if self.is_initializer_table_field(member, &member_def) {
+                let eval = if self.is_initializer_table_field(&member_def) {
                     flow::type_of_expr_with_cast(
                         self,
                         expr.get_syntax_id(),
@@ -848,56 +1015,19 @@ impl<'db> SemanticModel<'db> {
         };
         Some(ty)
     }
-    /// Whether this is a table-literal field in a declaration initializer.
-    /// Such members keep the literal shape from table construction; explicit `t.x = v` is not an initializer field.
-    /// Evaluate a member's value expression with the same-member reentry guard.
-    /// Member resolution can recursively need this expression's type; without sharing the
-    /// SemanticModel cycle guard, `member_info -> type_of_expr -> new InferVm -> member_info`
-    /// can restart and eventually overflow the native stack.
-    pub(crate) fn is_initializer_table_field(
-        &self,
-        _member: &SemanticId,
-        member_def: &Member,
-    ) -> bool {
-        let Some(value_syntax) = member_def.value_syntax else {
-            return false;
-        };
-        let value_range = value_syntax.get_range();
-        match &member_def.owner {
-            SemanticId::Decl(decl_key) => {
-                let Some(facts) = self.file_facts_of(decl_key.file_id) else {
-                    return false;
-                };
-                let Some(decl) = facts.decl_by_id(&SemanticId::Decl(decl_key.clone())) else {
-                    return false;
-                };
-                let Some(init_syntax) = decl.value_expr_syntax else {
-                    return false;
-                };
-                let Some(tree) = self.syntax_tree_of(decl_key.file_id) else {
-                    return false;
-                };
-                let Some(node) = init_syntax.to_node_from_root(&tree.get_red_root()) else {
-                    return false;
-                };
-                LuaTableExpr::cast(node)
-                    .is_some_and(|table| table.get_range().contains(value_range.start()))
-            }
-            SemanticId::Member(table_key) => {
-                let Some(tree) = self.syntax_tree_of(table_key.file_id) else {
-                    return false;
-                };
-                let root = tree.get_red_root();
-                root.descendants()
-                    .filter_map(LuaTableExpr::cast)
-                    .any(|table| {
-                        table.get_range() == table_key.key_range
-                            && table.get_range().contains(value_range.start())
-                    })
-            }
-            _ => false,
-        }
+    /// 表构造字段的来源由 facts 记录, 无需查找表节点或声明初始化表达式.
+    pub(crate) fn is_initializer_table_field(&self, member_def: &Member) -> bool {
+        member_def.value_syntax.is_some()
+            && matches!(member_def.source, MemberSource::TableField { .. })
     }
+    /// 枚举声明绑定的运行时表.
+    pub(crate) fn enum_table_owner(&self, def: &TypeDef) -> Option<SemanticId> {
+        let tree = self.syntax_tree_of(def.file_id)?;
+        let owner = def.owner_syntax?.to_node_from_root(&tree.get_red_root())?;
+        let table = owner.children().find_map(LuaTableExpr::cast)?;
+        Some(SemanticId::member(def.file_id, table.get_range()))
+    }
+
     /// If the member belongs to an `---@enum` table and its value is an integer literal, return the corresponding IntegerConst.
     pub(crate) fn enum_member_const(
         &self,
@@ -1033,13 +1163,13 @@ impl<'db> SemanticModel<'db> {
         let call = LuaCallExpr::cast(node)?;
         let callee = call.get_prefix_expr()?;
 
-        // Member overloads: collect all `@field` candidates with `member_infos_with_key_all`, then select by arguments.
+        // Member overloads: collect the effective `@field` candidates, then select by arguments.
         if let LuaExpr::IndexExpr(index_expr) = &callee
             && let Some(prefix) = index_expr.get_prefix_expr()
             && let Some(resolved) = self.resolve_member(index_expr)
         {
             let prefix_ty = self.type_of_expr(prefix.get_syntax_id());
-            let key = LuaMemberKey::Name(resolved.name.clone());
+            let key = resolved.key.clone();
             let candidate_set = match &resolved.member_id {
                 Some(member_id) => {
                     infer::callable::CallableCandidateSet::from_prefix_type_for_member(
@@ -1155,7 +1285,7 @@ impl<'db> SemanticModel<'db> {
                 .collect(),
         )
     }
-    /// The specified-key members of a prefix type (all matches, overload scenarios).
+    /// The effective specified-key member of a prefix type (first declaration per key).
     pub fn member_infos_with_key(
         &self,
         prefix_type: &LuaType,
@@ -1163,13 +1293,14 @@ impl<'db> SemanticModel<'db> {
     ) -> Vec<member::MemberInfo> {
         member::member_infos_with_key(self, prefix_type, key)
     }
-    /// The specified-key members of a prefix type (all matches, no dedup; keeps repeated `@field` lines as overloads).
-    pub fn member_infos_with_key_all(
+    /// Members with the given key of a prefix type under the given collection mode.
+    pub fn member_infos_with_key_mode(
         &self,
         prefix_type: &LuaType,
         key: &LuaMemberKey,
+        mode: member::MemberCollectMode,
     ) -> Vec<member::MemberInfo> {
-        member::member_infos_with_key_all(self, prefix_type, key)
+        member::member_infos_with_key_mode(self, prefix_type, key, mode)
     }
     /// Member type for prefix type + key (old `infer_member_type`).
     pub fn member_type(&self, prefix_type: &LuaType, key: &LuaMemberKey) -> Option<LuaType> {
@@ -1264,6 +1395,14 @@ impl<'db> SemanticModel<'db> {
         });
         ty
     }
+    /// Assignment contract of a member: casts apply, conditional narrowing does not.
+    pub fn type_of_member_assign_target_at(
+        &self,
+        member: &SemanticId,
+        offset: TextSize,
+    ) -> LuaType {
+        flow::type_of_member_assign_target_at(self, member, offset)
+    }
     /// Decl type before the flow node at offset (for assignment checks: this assignment does not participate in the target type).
     pub fn type_of_decl_before_at(&self, decl: &SemanticId, offset: TextSize) -> LuaType {
         self.type_of_decl_before_at_impl(decl, offset)
@@ -1298,14 +1437,19 @@ impl<'db> SemanticModel<'db> {
             target
         }
     }
-    /// Member assignment contract, keeping explicit field annotations exact.
-    pub(crate) fn member_assignment_type(&self, member: &SemanticId, target: LuaType) -> LuaType {
+    /// Stable field type for writes and whole-table checks. Inferred literals
+    /// widen; explicit field annotations keep their declared types.
+    pub(crate) fn member_contract_type(
+        &self,
+        member: Option<&SemanticId>,
+        target: LuaType,
+    ) -> LuaType {
         let inferred = match member {
-            SemanticId::Member(key) => self.file_facts_of(key.file_id),
+            Some(SemanticId::Member(key)) => self.file_facts_of(key.file_id),
             _ => None,
         }
-        .and_then(|facts| facts.member_by_id(member))
-        .is_some_and(|member| {
+        .and_then(|facts| facts.member_by_id(member?))
+        .is_none_or(|member| {
             member.doc_type_syntax.is_none() && !matches!(member.owner, SemanticId::TypeDef(_))
         });
         if inferred {
@@ -1556,7 +1700,7 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
         }
     }
     if matches!(doc_type, LuaDocType::Object(_)) {
-        return model.doc_type_lua_rich_in(def.file_id, doc_type.get_syntax_id());
+        return model.project_doc_type(def.file_id, doc_type.get_syntax_id(), &[]);
     }
     model.doc_type_lua_in(def.file_id, doc_type.get_syntax_id(), &def.generic_params)
 }

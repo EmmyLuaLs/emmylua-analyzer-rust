@@ -1,0 +1,108 @@
+v: 2
+f: 'string.lua'
+b:
+- a: 'string = {}'
+  g: 'The type *string* represents immutable sequences of bytes. Lua is 8-bit'
+  r: [15, 0, 20, 27]
+  e:
+  - ['string', 'd', doc, [15, 0, 20, 0], '7d45b1fdfe103330']
+- a: 'function string.byte(s, i, j) end'
+  g: 'Returns the internal numerical codes of the characters `s[i]`, `s[i+1]`,'
+  r: [23, 0, 33, 19]
+  e:
+  - ['string.byte', 'd', doc, [23, 0, 30, 0], '23728f6e2128c3d8']
+- a: 'function string.char(...) end'
+  g: 'Receives zero or more integers. Returns a string with length equal to'
+  r: [36, 0, 43, 18]
+  e:
+  - ['string.char', 'd', doc, [36, 0, 42, 0], '466e7ba52bffb517']
+- a: 'function string.dump(func, strip) end'
+  g: 'Returns a string containing a binary representation (*a binary chunk*) of'
+  r: [46, 0, 60, 18]
+  e:
+  - ['string.dump@>5.3', 'd', doc, [46, 0, 57, 0], 'c15f0fcd88d28f51']
+- a: 'function string.dump(func) end'
+  g: 'Returns a string containing a binary representation (*a binary chunk*) of'
+  r: [63, 0, 74, 18]
+  e:
+  - ['string.dump@5.1,5.2', 'd', doc, [63, 0, 72, 0], '1bdf20586d0b66f9']
+- a: 'function string.dump(func, strip) end'
+  g: 'Returns a string containing a binary representation (*a binary chunk*) of'
+  r: [77, 0, 93, 18]
+  e:
+  - ['string.dump@JIT', 'd', doc, [77, 0, 90, 0], '09e2bd2b9592d070']
+- a: 'function string.find(s, pattern, init, plain) end'
+  g: 'Looks for the first match of `pattern` in the string `s`. If it finds a'
+  r: [96, 0, 116, 14]
+  e:
+  - ['string.find', 'd', doc, [96, 0, 109, 0], 'cdd72941a616aba1']
+- a: 'function string.format(fmt, ...) end'
+  g: 'Returns a formatted version of its variable number of arguments following'
+  r: [119, 0, 155, 14]
+  e:
+  - ['string.format', 'd', doc, [119, 0, 152, 0], 'dc3c7e8a399b8a19']
+- a: 'function string.gmatch(s, pattern) end'
+  g: 'Returns an iterator function that, each time it is called, returns the'
+  r: [158, 0, 188, 29]
+  e:
+  - ['string.gmatch@@1', 'd', doc, [158, 0, 186, 0], '399042c53e7281f3']
+- a: 'function string.gmatch(s, pattern, init) end'
+  g: 'Returns an iterator function that, each time it is called, returns the'
+  r: [191, 0, 225, 28]
+  e:
+  - ['string.gmatch@>5.4', 'd', doc, [191, 0, 221, 0], '4a8ebdd2a1ad63c2']
+- a: 'function string.gsub(s, pattern, repl, n) end'
+  g: 'Returns a copy of `s` in which all (or the first `n`, if given)'
+  r: [228, 0, 285, 25]
+  e:
+  - ['string.gsub', 'd', doc, [228, 0, 280, 0], '7b69acde2027409a']
+- a: 'function string.len(s) end'
+  g: 'Receives a string and returns its length. The empty string `""` has'
+  r: [288, 0, 292, 19]
+  e:
+  - ['string.len', 'd', doc, [288, 0, 291, 0], 'd1ec499f5425418f']
+- a: 'function string.lower(s) end'
+  g: 'Receives a string and returns a copy of this string with all uppercase'
+  r: [295, 0, 300, 18]
+  e:
+  - ['string.lower', 'd', doc, [295, 0, 299, 0], '22f67fb9bd5cd794']
+- a: 'function string.match(s, pattern, init) end'
+  g: 'Looks for the first *match* of `pattern` in the string `s`. If it'
+  r: [303, 0, 312, 22]
+  e:
+  - ['string.match', 'd', doc, [303, 0, 309, 0], '0e062e6519cf2d1c']
+- a: 'function string.pack(fmt, v1, v2, ...) end'
+  g: '@version >5.3'
+  r: [315, 0, 323, 18]
+  e:
+  - ['string.pack', 'd', doc, [316, 0, 319, 0], 'e64055d51fc2dd11']
+- a: 'function string.packsize(fmt) end'
+  g: '@version >5.3'
+  r: [326, 0, 332, 19]
+  e:
+  - ['string.packsize', 'd', doc, [327, 0, 331, 0], 'd0c02d546b981c9d']
+- a: 'function string.rep(s, n, sep) end'
+  g: 'Returns a string that is the concatenation of `n` copies of the string'
+  r: [335, 0, 346, 18]
+  e:
+  - ['string.rep', 'd', doc, [335, 0, 343, 0], '60de02d42aa83f5c']
+- a: 'function string.reverse(s) end'
+  g: 'Returns a string that is the string `s` reversed.'
+  r: [349, 0, 352, 18]
+  e:
+  - ['string.reverse', 'd', doc, [349, 0, 351, 0], '5e3925d65b609ff2']
+- a: 'function string.sub(s, i, j) end'
+  g: 'Returns the substring of `s` that starts at `i` and continues until'
+  r: [355, 0, 371, 14]
+  e:
+  - ['string.sub', 'd', doc, [355, 0, 367, 0], '3523053a2ef82144']
+- a: 'function string.unpack(fmt, s, pos) end'
+  g: '@version >5.3'
+  r: [374, 0, 384, 26]
+  e:
+  - ['string.unpack', 'd', doc, [375, 0, 380, 0], 'b7f21ca278df908f']
+- a: 'function string.upper(s) end'
+  g: 'Receives a string and returns a copy of this string with all lowercase'
+  r: [387, 0, 392, 18]
+  e:
+  - ['string.upper', 'd', doc, [387, 0, 391, 0], '6908766e93c8de31']

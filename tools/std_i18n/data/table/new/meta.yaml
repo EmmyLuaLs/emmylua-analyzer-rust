@@ -1,0 +1,8 @@
+v: 2
+f: 'table/new.lua'
+b:
+- a: 'local function new(narray, nhash) end'
+  g: '@version JIT'
+  r: [4, 0, 16, 17]
+  e:
+  - ['new', 'd', doc, [5, 0, 14, 0], '833def96359a4a7f']

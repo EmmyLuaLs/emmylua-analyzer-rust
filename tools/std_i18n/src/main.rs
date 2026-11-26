@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 mod analysis;
+mod apply;
 mod diagnostics;
 mod doc_text;
 mod fs;
@@ -10,6 +11,7 @@ mod meta_format;
 mod model;
 mod pipeline;
 mod target;
+mod translated_std;
 
 fn main() {
     // 是否全量输出翻译条目：
@@ -24,18 +26,26 @@ fn main() {
         .to_path_buf();
 
     let std_dir = repo_root.join("crates/emmylua_code_analysis/resources/std");
-    let out_root = repo_root.join("crates/emmylua_ls/std_i18n");
+    // 翻译数据
+    let data_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data");
 
     let mut diagnostics = diagnostics::Diagnostics::default();
     let project = pipeline::analyze_std_i18n_project(&std_dir, full_output, &mut diagnostics)
         .expect("analyze std i18n project should succeed");
 
     // zh_CN
-    locale_yaml::write_std_locales_yaml(&project, "zh_CN", &out_root)
+    locale_yaml::write_std_locales_yaml(&project, "zh_CN", &data_root)
         .expect("write std zh_CN locales should succeed");
     // meta
-    meta_format::write_std_meta_yaml(&project, &out_root)
+    meta_format::write_std_meta_yaml(&project, &data_root)
         .expect("write std meta.yaml should succeed");
+    translated_std::generate_translated_std(
+        &std_dir,
+        &data_root,
+        &repo_root.join("crates/emmylua_code_analysis/resources/std-zh_CN"),
+        "zh_CN",
+    )
+    .expect("generate translated std should succeed");
 
     diagnostics.emit();
 }

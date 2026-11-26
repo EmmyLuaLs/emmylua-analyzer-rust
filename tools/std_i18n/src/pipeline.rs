@@ -17,7 +17,8 @@ pub fn analyze_std_i18n_project(
 ) -> Result<StdI18nProject, Box<dyn std::error::Error>> {
     let mut out = Vec::new();
     for (rel_path, full_path) in collect_std_lua_files(std_dir)? {
-        let content = std::fs::read_to_string(&full_path)?;
+        // 统一换行为 LF, 保证生成的区间与哈希不受检出环境换行符影响.
+        let content = std::fs::read_to_string(&full_path)?.replace("\r\n", "\n");
         let file_label = path_label(&rel_path);
         let analyzed = analyze_lua_doc_file(&file_label, &content, include_empty, diagnostics);
         let targets = compute_replace_targets(

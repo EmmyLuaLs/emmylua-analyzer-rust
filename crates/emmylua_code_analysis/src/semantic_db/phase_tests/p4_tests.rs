@@ -3,6 +3,7 @@
 //! File add / remove / metadata changes must update workspace indexes from
 //! old/new contributions without calling the full rebuild path.
 
+use crate::semantic_db;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ fn setup() -> SemanticDatabase {
 /// registered roots, a relative root stops containing the test files there and
 /// workspace lookups return `None`, so these tests only passed on Windows.
 fn test_root() -> PathBuf {
-    crate::semantic_db::tests::portable_test_root()
+    semantic_db::tests::portable_test_root()
 }
 
 /// Path for a file under [`test_root`], e.g. `&test_file("a.lua")`.
@@ -123,5 +124,5 @@ fn p4_path_change_does_not_full_rebuild() {
     assert_eq!(db.analysis().module_file_of("new"), Some(fid));
 
     // Workspace id stays stable for the same FileId.
-    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::MAIN));
+    assert_eq!(db.workspace_id_of(fid), Some(WorkspaceId::Main));
 }

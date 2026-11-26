@@ -8,6 +8,32 @@
 ---@operator <操作符>[(参数类型)]:<返回类型>
 ```
 
+## 支持的操作符
+
+- `add` (+) - 加法
+- `sub` (-) - 减法
+- `mul` (*) - 乘法
+- `div` (/) - 除法
+- `idiv` (//) - 整除
+- `mod` (%) - 取模
+- `pow` (^) - 幂运算
+- `unm` (-) - 取负
+- `band` (&) - 按位与
+- `bor` (|) - 按位或
+- `bxor` (~) - 按位异或
+- `bnot` (~) - 按位取反
+- `shl` (<<) - 左移
+- `shr` (>>) - 右移
+- `concat` (..) - 连接
+- `len` (#) - 长度
+- `eq` (==) - 相等
+- `lt` (<) - 小于
+- `le` (<=) - 小于等于
+- `call` (...) - 调用
+
+`@operator` 只接受操作符名称。`__tostring` 等元方法不是操作符，应使用
+`---@field` 记录，例如 `---@field __tostring fun(self: T): string`。
+
 ## 示例
 
 ```lua
@@ -52,7 +78,6 @@ local Complex = {}
 ---@operator mul(Complex): Complex
 ---@operator div(Complex): Complex
 ---@operator eq(Complex): boolean
----@operator tostring: string
 
 function Complex:__add(other)
     return Complex.new(self.real + other.real, self.imag + other.imag)

@@ -22,14 +22,17 @@ mod sub_type;
 #[cfg(test)]
 mod test;
 
+use comparison::Target;
+
 pub(crate) use complex_type::integer_index_applies;
 pub use context::TypeCheckContext;
 pub use fail_reason::TypeCheckFailReason;
 pub(crate) use func_type::function_param_pairs;
+pub(crate) use simple_type::table_index_accepts;
 
 use crate::semantic_model::SemanticModel;
 use crate::semantic_model::type_eval::expand_alias_head;
-use crate::{InFiled, LuaType, SemanticId, TypeDef, TypeDefKind};
+use crate::{InFiled, LuaMemberKey, LuaObjectType, LuaType, SemanticId, TypeDef, TypeDefKind};
 
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
@@ -92,7 +95,13 @@ fn check_alternatives(
     for result in checks {
         match result {
             Ok(()) => return Ok(()),
-            Err(err) if err.is_type_not_match() => {}
+            Err(err) if err.is_type_not_match() => {
+                if matches!(err, TypeCheckFailReason::TypeNotMatchAtField(_))
+                    && matches!(failure, TypeCheckFailReason::TypeNotMatchWithReason(_))
+                {
+                    failure = err;
+                }
+            }
             Err(err) if err.is_unresolved() => failure = err,
             Err(err) => return Err(err),
         }
@@ -107,6 +116,19 @@ pub fn check_type_detail(
     target: &LuaType,
 ) -> TypeCheckResult {
     let mut context = TypeCheckContext::new(model, true);
+    check_general_type_compact(&mut context, source, target)
+}
+
+/// Check an expression without using later writes to validate its constructors.
+pub(crate) fn check_type_at(
+    model: &SemanticModel,
+    source: &LuaType,
+    target: &LuaType,
+    range: rowan::TextRange,
+    detail: bool,
+) -> TypeCheckResult {
+    let mut context = TypeCheckContext::new(model, detail);
+    context.source_range = Some(InFiled::new(model.file_id(), range));
     check_general_type_compact(&mut context, source, target)
 }
 
@@ -163,8 +185,11 @@ fn check_comparison(
 
     // Resolve outer computations before comparing their data constructors.
     for (is_source, ty) in [(false, compact_type), (true, source)] {
+        let comparison_alias = comparison::alias_for_comparison(context, ty);
         let expanded = context
-            .require_complete(|| expand_alias_head(context.model, ty))?
+            .require_complete(|| {
+                expand_alias_head(context.model, comparison_alias.as_ref().unwrap_or(ty))
+            })?
             .ok_or(TypeCheckFailReason::Unresolved)?;
         if expanded == *ty {
             continue;
@@ -271,6 +296,14 @@ fn check_general_type_compact_inner(
 
     // `compact` is an intersection: source satisfies all components.
     if let LuaType::Intersection(compact_intersection) = compact_type {
+        if matches!(source, LuaType::TableConst(_)) {
+            return check_all(
+                compact_intersection
+                    .get_types()
+                    .iter()
+                    .map(|component| check_general_type_compact(context, source, component)),
+            );
+        }
         if !matches!(source, LuaType::Intersection(_)) {
             return check_alternatives(
                 context.mismatch(source, compact_type),
@@ -370,7 +403,46 @@ fn check_union_intersection_source(
 ) -> TypeCheckResult {
     match source {
         LuaType::Intersection(intersection) => {
-            // Source intersection: any member matching is enough.
+            if let LuaType::Object(object) = compact_type
+                && !object.get_fields().is_empty()
+            {
+                return check_all(object.get_fields().iter().map(|(key, expected)| {
+                    let field = LuaType::Object(std::rc::Rc::new(LuaObjectType::new_with_fields(
+                        [(key.clone(), expected.clone())].into(),
+                        object.get_index_access().to_vec(),
+                    )));
+                    let supplied = check_alternatives(
+                        context.mismatch(source, &field),
+                        intersection.get_types().iter().map(|member| {
+                            check_all([
+                                comparison::check_target(
+                                    context,
+                                    member,
+                                    Target::FieldPresent(key.clone()),
+                                ),
+                                check_general_type_compact(context, member, &field),
+                            ])
+                        }),
+                    );
+                    let failure = match supplied {
+                        Ok(()) => return Ok(()),
+                        Err(err) => err,
+                    };
+                    // Absence can match an optional field only when no
+                    // component supplies that field.
+                    let absent = check_all([
+                        comparison::check_target(context, source, Target::FieldAbsent(key.clone())),
+                        check_alternatives(
+                            context.mismatch(source, &field),
+                            intersection
+                                .get_types()
+                                .iter()
+                                .map(|member| check_general_type_compact(context, member, &field)),
+                        ),
+                    ]);
+                    check_alternatives(failure, [absent])
+                }));
+            }
             check_alternatives(
                 context.mismatch(source, compact_type),
                 intersection
@@ -383,13 +455,63 @@ fn check_union_intersection_source(
     }
 }
 
+fn check_field_presence(
+    context: &mut TypeCheckContext,
+    source: &LuaType,
+    key: &LuaMemberKey,
+    present: bool,
+) -> TypeCheckResult {
+    let target = if present {
+        Target::FieldPresent(key.clone())
+    } else {
+        Target::FieldAbsent(key.clone())
+    };
+    let expanded = context
+        .require_complete(|| expand_alias_head(context.model, source))?
+        .ok_or(TypeCheckFailReason::Unresolved)?;
+    if expanded != *source {
+        return comparison::check_target(context, &expanded, target);
+    }
+    let members: Vec<_> = match source {
+        LuaType::Union(union) => union.iter().collect(),
+        LuaType::Intersection(intersection) => intersection.get_types().iter().collect(),
+        _ => {
+            let exists = context.require_complete(|| {
+                complex_type::field_type(source, key).is_some()
+                    || context.model.member_type(source, key).is_some()
+            })?;
+            return if exists == present {
+                Ok(())
+            } else {
+                Err(TypeCheckFailReason::TypeNotMatch)
+            };
+        }
+    };
+    let checks = members
+        .into_iter()
+        .map(|member| comparison::check_target(context, member, target.clone()));
+    if present {
+        check_alternatives(TypeCheckFailReason::TypeNotMatch, checks)
+    } else {
+        check_all(checks)
+    }
+}
+
 fn table_associated_type_def(
     model: &SemanticModel,
     table: &InFiled<rowan::TextRange>,
 ) -> Option<TypeDef> {
     let facts = model.file_facts_of(table.file_id)?;
     let decl = facts.decl_by_value_range(table.value)?;
-    facts.type_def_by_owner_syntax(decl.owner_syntax?).cloned()
+    // An explicit value annotation supplies the contract, even when the same
+    // comment block contains class definitions used by that annotation.
+    if decl.doc_type_syntax.is_some() {
+        return None;
+    }
+    facts
+        .type_defs_by_owner_syntax(decl.owner_syntax?)
+        .last()
+        .cloned()
 }
 
 fn defs_related_ctx(
@@ -424,12 +546,15 @@ fn def_extends_ctx(
 }
 
 fn enum_value_type(model: &SemanticModel, def: &TypeDef) -> Option<LuaType> {
-    let facts = model.file_facts_of(def.file_id)?;
-    let decl = facts.decl_named(def.name.as_str())?;
+    let owner = model.enum_table_owner(def)?;
     let mut values = Vec::new();
-    for member_ref in model.members_of_owner(&decl.id).iter() {
+    for member_ref in model.members_of_owner(&owner).iter() {
         let facts = model.file_facts_of(member_ref.file_id)?;
         let member = facts.member_by_id(&member_ref.id)?;
+        if def.flags.enum_key {
+            values.extend(member.key.to_index_type());
+            continue;
+        }
         let syntax = member.value_syntax?;
         let tree = model.syntax_tree_of(member_ref.file_id)?;
         let node = syntax.to_node_from_root(&tree.get_red_root())?;

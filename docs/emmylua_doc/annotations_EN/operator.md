@@ -8,20 +8,32 @@ Define operator overloads for classes, enabling custom operator behavior.
 ---@operator <operator>(<operand_types>): <return_type>
 ```
 
-## Supported Operators
+## Valid Operator Names
 
 - `add` (+) - Addition
 - `sub` (-) - Subtraction
 - `mul` (*) - Multiplication
 - `div` (/) - Division
+- `idiv` (//) - Floor division
 - `mod` (%) - Modulo
 - `pow` (^) - Exponentiation
 - `unm` (-) - Unary minus
+- `band` (&) - Bitwise AND
+- `bor` (|) - Bitwise OR
+- `bxor` (~) - Bitwise XOR
+- `bnot` (~) - Bitwise NOT
+- `shl` (<<) - Bitwise left shift
+- `shr` (>>) - Bitwise right shift
 - `concat` (..) - Concatenation
 - `len` (#) - Length
 - `eq` (==) - Equality
 - `lt` (<) - Less than
 - `le` (<=) - Less than or equal
+- `call` (...) - Call
+
+Only operator names are accepted. Metamethods such as `__tostring` are not
+operators: document them with `@field`, for example
+`---@field __tostring fun(self: T): string`.
 
 ## Examples
 

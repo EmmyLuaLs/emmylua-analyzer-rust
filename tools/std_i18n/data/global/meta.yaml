@@ -1,0 +1,254 @@
+v: 2
+f: 'global.lua'
+b:
+- a: 'function assert(v, ...) end'
+  g: 'Calls error if the value of its argument `v` is false (i.e., **nil** or'
+  r: [15, 0, 23, 33]
+  e:
+  - ['assert', 'd', doc, [15, 0, 20, 0], 'a04606caad8dd4b1']
+- a: '--- @alias std.collectgarbage.param'
+  g: '@alias std.collectgarbage_opt'
+  r: [26, 0, 37, 80]
+  e:
+  - ['std.collectgarbage_opt.item.collect', 'i:collect', tail, [27, 23, 27, 93], '229e8488ba07e8ea', ' ']
+  - ['std.collectgarbage_opt.item.stop', 'i:stop', tail, [28, 22, 28, 155], '96adf3b32ca6e135', ' ']
+  - ['std.collectgarbage_opt.item.restart', 'i:restart', tail, [29, 22, 29, 77], 'b48fe98ac44cdf12', ' ']
+  - ['std.collectgarbage_opt.item.count', 'i:count', tail, [30, 22, 30, 205], '177a9a4fd31e4486', ' ']
+  - ['std.collectgarbage_opt.item.step', 'i:step', tail, [31, 22, 31, 335], 'b4f96b76a038d88b', ' ']
+  - ['std.collectgarbage_opt.item.setpause', 'i:setpause', tail, [32, 22, 32, 136], '3727b48717039660', ' ']
+  - ['std.collectgarbage_opt.item.setstepmul', 'i:setstepmul', tail, [33, 22, 33, 145], '8a91801d3f89e5cb', ' ']
+  - ['std.collectgarbage_opt.item.incremental', 'i:incremental', tail, [34, 22, 34, 179], 'b74ab58b9c276d37', ' ']
+  - ['std.collectgarbage_opt.item.generational', 'i:generational', tail, [35, 22, 35, 174], '6f28b79368adc435', ' ']
+  - ['std.collectgarbage_opt.item.isrunning', 'i:isrunning', tail, [36, 22, 36, 105], 'ffcec93fe4c3260d', ' ']
+  - ['std.collectgarbage_opt.item.param', 'i:param', tail, [37, 22, 37, 80], 'abb94ec97f21a820', ' ']
+- a: '--- @alias std.collectgarbage_opt_51 "collect" | "stop" | "restart" | "count" | "step" | "setpause" | "setstepmul"'
+  g: '@alias std.collectgarbage.param'
+  r: [39, 0, 45, 30]
+  e:
+  - ['std.collectgarbage.param.item.minormul', 'i:minormul', tail, [40, 20, 40, 37], '17c912903d2b33e7', ' ']
+  - ['std.collectgarbage.param.item.majorminor', 'i:majorminor', tail, [41, 20, 41, 38], 'ca29b001e432351d', ' ']
+  - ['std.collectgarbage.param.item.minormajor', 'i:minormajor', tail, [42, 20, 42, 38], '45e16901f0e1c945', ' ']
+  - ['std.collectgarbage.param.item.pause', 'i:pause', tail, [43, 20, 43, 36], '035f4092820a2d28', ' ']
+  - ['std.collectgarbage.param.item.stepmul', 'i:stepmul', tail, [44, 20, 44, 36], 'f0701f65388feb8c', ' ']
+  - ['std.collectgarbage.param.item.stepsize', 'i:stepsize', tail, [45, 20, 45, 30], '92c7a59e2065582e', ' ']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.1'
+  r: [53, 0, 61, 15]
+  e:
+  - ['collectgarbage@5.1', 'd', doc, [54, 0, 57, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.2'
+  r: [64, 0, 73, 15]
+  e:
+  - ['collectgarbage@5.2', 'd', doc, [65, 0, 68, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.3, JIT'
+  r: [76, 0, 85, 15]
+  e:
+  - ['collectgarbage@5.3,JIT', 'd', doc, [77, 0, 80, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.4'
+  r: [88, 0, 97, 15]
+  e:
+  - ['collectgarbage@5.4', 'd', doc, [89, 0, 92, 0], 'b0182f679af8884f']
+- a: 'function collectgarbage(opt, ...) end'
+  g: '@version 5.5'
+  r: [100, 0, 111, 15]
+  e:
+  - ['collectgarbage@5.5', 'd', doc, [101, 0, 105, 0], '68b2fe64e8dca8f5']
+- a: 'function gcinfo() end'
+  g: '@version 5.1, JIT'
+  r: [114, 0, 119, 14]
+  e:
+  - ['gcinfo', 'd', doc, [115, 0, 118, 0], '47c45531f376c179']
+- a: 'function dofile(filename) end'
+  g: 'Opens the named file and executes its contents as a Lua chunk. When called'
+  r: [122, 0, 129, 19]
+  e:
+  - ['dofile', 'd', doc, [122, 0, 128, 0], 'c825642b6b44c7c5']
+- a: 'function error(message, level) end'
+  g: 'Terminates the last protected function called and returns `message` as the'
+  r: [132, 0, 142, 26]
+  e:
+  - ['error', 'd', doc, [132, 0, 141, 0], '81879d09ef03c7c5']
+- a: '_G = {}'
+  g: 'A global variable (not a function) that holds the global environment. Lua'
+  r: [145, 0, 149, 16]
+  e:
+  - ['_G', 'd', doc, [145, 0, 149, 0], 'bdd640b6033d9688']
+- a: 'function getmetatable(object) end'
+  g: 'If `object` does not have a metatable, returns **nil**. Otherwise, if the'
+  r: [152, 0, 157, 15]
+  e:
+  - ['getmetatable', 'd', doc, [152, 0, 156, 0], 'c0aa4bd98f53dd45']
+- a: '---'
+  g: '@alias std.pairs_iterator<K, V> fun(tbl: table<K, V>, index?: K): K, V'
+  r: [162, 0, 164, 63]
+  e:
+  - ['std.pairs_iterator', 'd', doc, [163, 0, 164, 63], 'b205b9411daa649d']
+- a: 'function ipairs(t) end'
+  g: 'Returns three values (an iterator function, the table `t`, and 0) so that'
+  r: [166, 0, 174, 110]
+  e:
+  - ['ipairs', 'd', doc, [166, 0, 172, 0], 'f7e9dd303f83d75c']
+- a: '--- @alias std.load_reader fun(): string?'
+  g: '@alias std.loadmode'
+  r: [177, 0, 180, 33]
+  e:
+  - ['std.loadmode.item.b', 'i:b', tail, [178, 12, 178, 31], 'a7b23db765875ab4', ' ']
+  - ['std.loadmode.item.t', 'i:t', tail, [179, 12, 179, 29], '3f888b84d5ff9cb6', ' ']
+  - ['std.loadmode.item.bt', 'i:bt', tail, [180, 12, 180, 33], '6281255a2e74d843', ' ']
+- a: 'function load(chunk, chunkname) end'
+  g: '@version 5.1'
+  r: [184, 0, 194, 14]
+  e:
+  - ['load@5.1', 'd', doc, [185, 0, 190, 0], '64f4c6bbc11a35e5']
+- a: 'function load(chunk, chunkname, mode, env) end'
+  g: '@version >5.2, JIT'
+  r: [197, 0, 233, 14]
+  e:
+  - ['load@>5.2,JIT', 'd', doc, [198, 0, 227, 0], '9b1f3f8370f55492']
+- a: 'function loadstring(text, chunkname) end'
+  g: '@version 5.1'
+  r: [236, 0, 243, 14]
+  e:
+  - ['loadstring@5.1', 'd', doc, [237, 0, 239, 0], 'f48d0ce581463e55']
+- a: 'function loadstring(text, chunkname, mode, env) end'
+  g: '@version JIT'
+  r: [246, 0, 256, 14]
+  e:
+  - ['loadstring@JIT', 'd', doc, [247, 0, 250, 0], '120f55ca4fe849ef']
+- a: 'function loadfile(filename) end'
+  g: '@version 5.1'
+  r: [259, 0, 266, 14]
+  e:
+  - ['loadfile@5.1', 'd', doc, [260, 0, 263, 0], 'f973f805658a8a32']
+- a: 'function loadfile(filename, mode, env) end'
+  g: '@version >5.2, JIT'
+  r: [269, 0, 278, 14]
+  e:
+  - ['loadfile@>5.2,JIT', 'd', doc, [270, 0, 273, 0], 'f973f805658a8a32']
+- a: 'function module(name, ...) end'
+  g: '@version 5.1, JIT'
+  r: [286, 0, 292, 19]
+  e:
+  - ['module', 'd', doc, [287, 0, 291, 0], '96d94858b124b359']
+- a: 'function next(table, index) end'
+  g: 'Allows a program to traverse all fields of a table. Its first argument is'
+  r: [295, 0, 316, 18]
+  e:
+  - ['next', 'd', doc, [295, 0, 312, 0], '431cf1e327403b46']
+- a: 'function pairs(t) end'
+  g: 'If `t` has a metamethod `__pairs`, calls it with `t` as argument and returns'
+  r: [319, 0, 332, 70]
+  e:
+  - ['pairs', 'd', doc, [319, 0, 330, 0], '1a7f95aa4362e930']
+- a: 'function pcall(f, ...) end'
+  g: 'Calls function `f` with the given arguments in *protected mode*. This'
+  r: [335, 0, 346, 34]
+  e:
+  - ['pcall', 'd', doc, [335, 0, 342, 0], '1f340e7d3461d4ae']
+- a: 'function print(...) end'
+  g: 'Receives any number of arguments, and prints their values to `stdout`,'
+  r: [349, 0, 354, 35]
+  e:
+  - ['print', 'd', doc, [349, 0, 354, 35], '64fc74d7af730bec']
+- a: 'function rawequal(v1, v2) end'
+  g: 'Checks whether `v1` is equal to `v2`, without the `__eq` metamethod. Returns'
+  r: [357, 0, 362, 19]
+  e:
+  - ['rawequal', 'd', doc, [357, 0, 360, 0], '0cec4f0b3fdbc099']
+- a: 'function rawget(table, index) end'
+  g: 'Gets the real value of `table[index]`, the `__index` metamethod. `table`'
+  r: [365, 0, 371, 28]
+  e:
+  - ['rawget', 'd', doc, [365, 0, 368, 0], '44a4244f6dfbe0ee']
+- a: 'function rawlen(v) end'
+  g: '@version >5.2'
+  r: [374, 0, 379, 19]
+  e:
+  - ['rawlen', 'd', doc, [375, 0, 378, 0], '07f69e94e4daa054']
+- a: 'function rawset(table, index, value) end'
+  g: 'Sets the real value of `table[index]` to `value`, without invoking the'
+  r: [382, 0, 390, 13]
+  e:
+  - ['rawset', 'd', doc, [382, 0, 386, 0], '16e809b0963bd346']
+- a: 'function require(modname) end'
+  g: 'Loads the given module. The function starts by looking into the'
+  r: [393, 0, 424, 15]
+  e:
+  - ['require', 'd', doc, [393, 0, 423, 0], 'f661cf52fac913b3']
+- a: 'function select(index, ...) end'
+  g: 'If `index` is a number, returns all arguments after argument number'
+  r: [427, 0, 435, 33]
+  e:
+  - ['select', 'd', doc, [427, 0, 432, 0], '721ecd0e987e2ba7']
+- a: '-- NOTE: The actual implementation of setmetatable is provided by the language server'
+  g: '`__pairs` is available in Lua 5.2+ and `__ipairs` in Lua 5.2/5.3'
+  r: [438, 0, 471, 43]
+  e:
+  - ['std.metatable', 'd', doc, [438, 0, 441, 0], '9088c9c0e368e051']
+- a: 'function setmetatable(table, metatable) end'
+  g: 'Sets the metatable for the given table. (To change the metatable of other'
+  r: [475, 0, 485, 13]
+  e:
+  - ['setmetatable', 'd', doc, [475, 0, 482, 0], '25474b66521bebe3']
+- a: 'function tonumber(e) end'
+  g: 'When called with no `base`, `tonumber` tries to convert its argument to a'
+  r: [488, 0, 506, 14]
+  e:
+  - ['tonumber', 'd', doc, [488, 0, 503, 0], '5d06a5a2b00378b0']
+- a: 'function tostring(v) end'
+  g: 'Receives a value of any type and converts it to a string in a human-readable'
+  r: [509, 0, 518, 18]
+  e:
+  - ['tostring', 'd', doc, [509, 0, 517, 0], 'eb7a0cd064f9b7a3']
+- a: '---'
+  g: '@alias std.type'
+  r: [521, 0, 530, 27]
+  e:
+  - ['std.type.item.cdata', 'i:cdata', tail, [530, 15, 530, 27], '9540448154e052f0', ' ']
+- a: 'function type(v) end'
+  g: 'Returns the type of its only argument, coded as a string. The possible'
+  r: [532, 0, 538, 25]
+  e:
+  - ['type', 'd', doc, [532, 0, 537, 0], '595832312bb8fe9f']
+- a: '_VERSION = "Lua 5.5"'
+  g: 'A global variable (not a function) that holds a string containing the'
+  r: [541, 0, 544, 16]
+  e:
+  - ['_VERSION', 'd', doc, [541, 0, 544, 0], '7b8dacd71a947be4']
+- a: 'function xpcall(f, msgh) end'
+  g: '@version 5.1'
+  r: [547, 0, 555, 31]
+  e:
+  - ['xpcall@5.1', 'd', doc, [548, 0, 551, 0], 'dc8a1c68d79dae75']
+- a: 'function xpcall(f, msgh, ...) end'
+  g: '@version >5.2, JIT'
+  r: [558, 0, 567, 31]
+  e:
+  - ['xpcall@>5.2,JIT', 'd', doc, [559, 0, 562, 0], 'dc8a1c68d79dae75']
+- a: 'function warn(msg1, ...) end'
+  g: '@version >5.4'
+  r: [579, 0, 588, 31]
+  e:
+  - ['warn', 'd', doc, [580, 0, 587, 0], '2e4312489bfc7d9c']
+- a: '_ENV = {}'
+  g: 'This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.'
+  r: [594, 0, 597, 16]
+  e:
+  - ['_ENV', 'd', doc, [594, 0, 596, 0], '0e721e4ff07c6e6b']
+- a: 'function setfenv(f, env) end'
+  g: '@version 5.1, JIT'
+  r: [600, 0, 608, 20]
+  e:
+  - ['setfenv', 'd', doc, [601, 0, 605, 0], 'a3911a9349078616']
+  - ['setfenv.param.f', 'p:f', tail, [606, 34, 606, 86], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [607, 34, 607, 82], '405f4286ea2c7329']
+- a: 'function getfenv(f) end'
+  g: '@version 5.1, JIT'
+  r: [611, 0, 615, 75]
+  e:
+  - ['getfenv', 'd', doc, [612, 0, 614, 0], '7ec4ca6b1f97e9ee']
+  - ['getfenv.param.f', 'p:f', tail, [614, 33, 614, 83], '61d794dd7c91d37d']
+  - ['getfenv.return.1', 'r:1', tail, [615, 22, 615, 75], '41910412fe03bad4']

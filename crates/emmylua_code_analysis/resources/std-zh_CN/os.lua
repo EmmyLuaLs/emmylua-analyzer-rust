@@ -76,6 +76,16 @@ function os.clock() end
 --- @return string
 function os.date(format, time) end
 
+--- @version 5.1, 5.2, JIT
+--- 返回从时间 `t1` 到时间 `t2` 的差值（以秒为单位）。（其中时间是
+--- `os.time` 返回的值）。在 POSIX、Windows 和其他一些系统中，
+--- 此值正好是 `t2`-`t1`。
+--- @param t2 number
+--- @param t1? number
+--- @return number
+function os.difftime(t2, t1) end
+
+--- @version >5.3
 --- 返回从时间 `t1` 到时间 `t2` 的差值（以秒为单位）。（其中时间是
 --- `os.time` 返回的值）。在 POSIX、Windows 和其他一些系统中，
 --- 此值正好是 `t2`-`t1`。
@@ -143,7 +153,8 @@ function os.getenv(varname) end
 --- 否则，它返回 true。
 --- @param filename string
 --- @return true|nil result
---- @return string err
+--- @return string? err
+--- @return integer? errcode
 function os.remove(filename) end
 
 --- 将名为 `oldname` 的文件或目录重命名为 `newname`。如果此函数失败，
@@ -151,7 +162,8 @@ function os.remove(filename) end
 --- @param oldname string
 --- @param newname string
 --- @return true|nil result
---- @return string err
+--- @return string? err
+--- @return integer? errcode
 function os.rename(oldname, newname) end
 
 --- 设置程序的当前区域设置。`locale` 是一个依赖于系统的字符串，指定区域设置；
@@ -165,11 +177,32 @@ function os.rename(oldname, newname) end
 --- 当使用 **nil** 作为第一个参数调用时，此函数仅返回给定类别的当前区域设置名称。
 ---
 --- 此函数可能不是线程安全的，因为它依赖于 C 函数 `setlocale`。
---- @param locale    string
+--- @param locale    string?
 --- @param category? string
 --- @return string|nil
 function os.setlocale(locale, category) end
 
+--- @version 5.1, 5.2, JIT
+--- 当不带参数调用时返回当前时间，或者返回由给定表指定的日期和时间对应的时间。
+--- 此表必须有 `year`、`month` 和 `day` 字段，并且可以有 `hour`（默认为 12）、
+--- `min`（默认为 0）、`sec`（默认为 0）和 `isdst`（默认为 **nil**）。
+--- 忽略其他字段。有关这些字段的描述，请参见 `os.date` 函数。
+---
+--- 调用该函数时，这些字段中的值不需要在其有效范围内。例如，如果 `sec` 为 -10，
+--- 则表示在其他字段指定的时间之前 10 秒；如果 `hour` 为 1000，则表示在
+--- 其他字段指定的时间之后 1000 小时。
+---
+--- 返回的值是一个数字，其含义取决于你的系统。在 POSIX、Windows 和其他一些系统中，
+--- 此数字计算自某个给定开始时间（"epoch"）以来的秒数。在其他系统中，
+--- 含义未指定，`time` 返回的数字只能用作 `os.date` 和 `os.difftime` 的参数。
+---
+--- 当使用表调用时，`os.time` 还会规范化 `os.date` 函数中记录的所有字段，
+--- 以便它们表示与调用前相同的时间，但值在其有效范围内。
+--- @param date? std.osdateparam
+--- @return number
+function os.time(date) end
+
+--- @version >5.3
 --- 当不带参数调用时返回当前时间，或者返回由给定表指定的日期和时间对应的时间。
 --- 此表必须有 `year`、`month` 和 `day` 字段，并且可以有 `hour`（默认为 12）、
 --- `min`（默认为 0）、`sec`（默认为 0）和 `isdst`（默认为 **nil**）。

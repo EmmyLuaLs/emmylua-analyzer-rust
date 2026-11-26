@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use crate::config;
+    use crate::format_text;
     use crate::{
         assert_format,
         config::{AlignConfig, CommentConfig, EmmyDocConfig, ExpandStrategy},
@@ -2368,6 +2370,20 @@ local a = 1
     }
 
     #[test]
+    fn test_doc_type_spacing_is_kept() {
+        for text in [
+            "---@param fns (fun(): integer)[] the racers\nlocal function f(fns) end\n",
+            "---@field fns (fun(): integer)[]\n",
+            "---@return { x: string }[] r\nlocal function f() end\n",
+            "---@cast t -nil\n",
+            "---@cast t +string\n",
+            "---@type table -- why\nlocal t = {}\n",
+        ] {
+            assert_format!(text, text);
+        }
+    }
+
+    #[test]
     fn test_tuple_type() {
         assert_format!(
             r#"---@cast assert [function]
@@ -2398,10 +2414,10 @@ function foo(a, ...) end
         use emmylua_parser::LuaLanguageLevel;
 
         let source = "local x = f() --[[c]] -- a\n-- b\nlocal y = 1\n";
-        let config = crate::config::LuaFormatConfig::default();
-        let first = crate::format_text(source, LuaLanguageLevel::default(), &config).formatted;
+        let config = config::LuaFormatConfig::default();
+        let first = format_text(source, LuaLanguageLevel::default(), &config).formatted;
         assert_eq!(first, source);
-        let second = crate::format_text(&first, LuaLanguageLevel::default(), &config).formatted;
+        let second = format_text(&first, LuaLanguageLevel::default(), &config).formatted;
         assert_eq!(second, first);
     }
 }

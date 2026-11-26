@@ -132,9 +132,14 @@ function math.rad(x) end
 --- @return integer
 function math.random(m, n) end
 
---- Sets `x` as the "seed" for the pseudo-random generator: equal seeds
---- produce equal sequences of numbers.
+--- 将 `x` 设置为伪随机生成器的“种子”：相同的种子产生相同的数字序列。
+--- @version 5.1, 5.2, 5.3
 --- @param x integer
+function math.randomseed(x) end
+
+--- @version JIT
+--- 将 `x` 设置为伪随机生成器的“种子”。当不带参数调用时，LuaJIT 会生成一个随机种子。
+--- @param x? number
 function math.randomseed(x) end
 
 --- @version > 5.4

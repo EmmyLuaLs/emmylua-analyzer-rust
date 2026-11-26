@@ -1,48 +1,39 @@
-use std::{fmt, path::PathBuf};
-
-use crate::WorkspaceImport;
-
-#[allow(unused)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Workspace {
-    pub root: PathBuf,
-    pub import: WorkspaceImport,
-    pub id: WorkspaceId,
-}
-
-impl Workspace {
-    #[allow(unused)]
-    pub fn new(root: PathBuf, import: WorkspaceImport, id: WorkspaceId) -> Self {
-        Self { root, import, id }
-    }
-}
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WorkspaceId {
-    pub id: u32,
+pub enum WorkspaceId {
+    Std,
+    Main,
+    Library(u32),
 }
 
-#[allow(unused)]
 impl WorkspaceId {
-    pub const STD: WorkspaceId = WorkspaceId { id: 0 };
-    pub const MAIN: WorkspaceId = WorkspaceId { id: 1 };
-    pub const REMOTE: WorkspaceId = WorkspaceId { id: 2 };
-    pub const LIBRARY_START: WorkspaceId = WorkspaceId { id: 3 };
-
     pub fn is_library(&self) -> bool {
-        self.id >= Self::LIBRARY_START.id
-    }
-
-    pub fn is_remote(&self) -> bool {
-        self.id == 2
+        matches!(self, WorkspaceId::Library(_))
     }
 
     pub fn is_main(&self) -> bool {
-        self.id == 1
+        self == &WorkspaceId::Main
     }
 
     pub fn is_std(&self) -> bool {
-        self.id == 0
+        self == &WorkspaceId::Std
+    }
+
+    pub fn unique_id(&self) -> u32 {
+        match self {
+            WorkspaceId::Std => 0,
+            WorkspaceId::Main => 1,
+            WorkspaceId::Library(id) => *id + 2,
+        }
+    }
+
+    pub fn from_unique_id(id: u32) -> Self {
+        match id {
+            0 => WorkspaceId::Std,
+            1 => WorkspaceId::Main,
+            n => WorkspaceId::Library(n - 2),
+        }
     }
 }
 
@@ -54,17 +45,24 @@ impl PartialOrd for WorkspaceId {
 
 impl Ord for WorkspaceId {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
+        match (self, other) {
+            (WorkspaceId::Std, WorkspaceId::Std) => std::cmp::Ordering::Equal,
+            (WorkspaceId::Std, _) => std::cmp::Ordering::Less,
+            (_, WorkspaceId::Std) => std::cmp::Ordering::Greater,
+            (WorkspaceId::Main, WorkspaceId::Main) => std::cmp::Ordering::Equal,
+            (WorkspaceId::Main, _) => std::cmp::Ordering::Less,
+            (_, WorkspaceId::Main) => std::cmp::Ordering::Greater,
+            (WorkspaceId::Library(a), WorkspaceId::Library(b)) => a.cmp(b),
+        }
     }
 }
 
 impl fmt::Display for WorkspaceId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.id {
-            0 => write!(f, "std"),
-            1 => write!(f, "main"),
-            2 => write!(f, "remote"),
-            _ => write!(f, "lib{}", self.id - 2),
+        match self {
+            WorkspaceId::Std => write!(f, "std"),
+            WorkspaceId::Main => write!(f, "main"),
+            WorkspaceId::Library(id) => write!(f, "lib{}", id),
         }
     }
 }

@@ -1,0 +1,62 @@
+v: 2
+f: 'coroutine.lua'
+b:
+- a: 'function coroutine.create(f) end'
+  g: 'Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns'
+  r: [18, 0, 23, 14]
+  e:
+  - ['coroutinelib.create', 'd', doc, [18, 0, 21, 0], '1f3f260a67000226']
+- a: 'function coroutine.isyieldable() end'
+  g: '@version 5.3, JIT'
+  r: [26, 0, 33, 14]
+  e:
+  - ['coroutinelib.isyieldable@5.3,JIT', 'd', doc, [27, 0, 32, 0], '362633ff752f9974']
+- a: 'function coroutine.isyieldable(co) end'
+  g: '@version >5.4'
+  r: [36, 0, 45, 14]
+  e:
+  - ['coroutinelib.isyieldable@>5.4', 'd', doc, [37, 0, 43, 0], 'e20981dfdf12dac9']
+- a: 'function coroutine.close(co) end'
+  g: '@version 5.4'
+  r: [48, 0, 57, 27]
+  e:
+  - ['coroutinelib.close@5.4', 'd', doc, [49, 0, 55, 0], '15c1a2f3f2e5e62b']
+- a: 'function coroutine.close(co) end'
+  g: '@version >5.5'
+  r: [60, 0, 75, 27]
+  e:
+  - ['coroutinelib.close@>5.5', 'd', doc, [61, 0, 73, 0], '091af1a0936e36e5']
+- a: 'function coroutine.resume(co, val1, ...) end'
+  g: 'Starts or continues the execution of coroutine `co`. The first time you'
+  r: [78, 0, 93, 31]
+  e:
+  - ['coroutinelib.resume', 'd', doc, [78, 0, 89, 0], 'f66e7ece974f2146']
+- a: 'function coroutine.running() end'
+  g: '@version 5.1, JIT'
+  r: [96, 0, 100, 14]
+  e:
+  - ['coroutinelib.running@5.1,JIT', 'd', doc, [97, 0, 99, 0], '318729b21bc53fd4']
+- a: 'function coroutine.running() end'
+  g: '@version >5.2'
+  r: [103, 0, 108, 14]
+  e:
+  - ['coroutinelib.running@>5.2', 'd', doc, [104, 0, 107, 0], '5586d0268eacaa38']
+- a: 'function coroutine.status(co) end'
+  g: 'Returns the status of coroutine `co`, as a string: "`running`", if the'
+  r: [111, 0, 124, 14]
+  e:
+  - ['coroutinelib.status', 'd', doc, [111, 0, 118, 0], 'd9bdbdaac77cb29d']
+  - ['coroutinelib.status.return.1.running', 'ri:1:running', tail, [120, 17, 120, 29], 'c82a37900965429a', ' ']
+  - ['coroutinelib.status.return.1.suspended', 'ri:1:suspended', tail, [121, 19, 121, 48], 'fa936af8644ed8c3', ' ']
+  - ['coroutinelib.status.return.1.normal', 'ri:1:normal', tail, [122, 16, 122, 43], 'a13ab0138fac6604', ' ']
+  - ['coroutinelib.status.return.1.dead', 'ri:1:dead', tail, [123, 14, 123, 53], '72fe2d58f456cb94', ' ']
+- a: 'function coroutine.wrap(f) end'
+  g: 'Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns'
+  r: [127, 0, 135, 14]
+  e:
+  - ['coroutinelib.wrap', 'd', doc, [127, 0, 133, 0], 'a573160ea7a961a1']
+- a: 'function coroutine.yield(...) end'
+  g: 'Suspends the execution of the calling coroutine. Any arguments to `yield`'
+  r: [138, 0, 143, 19]
+  e:
+  - ['coroutinelib.yield', 'd', doc, [138, 0, 141, 0], 'e6bb9bfdfef14140']

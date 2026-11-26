@@ -1,8 +1,290 @@
 #[cfg(test)]
 mod tests {
-    use crate::check::test::{check_source, check_source_with_emmyrc};
+    use crate::check::test::{check_source, check_source_with_emmyrc, count_by_code};
     use crate::{DiagnosticCode, Emmyrc, LuaMemberKey, LuaType, VirtualWorkspace};
     use tokio_util::sync::CancellationToken;
+
+    // 闭包整体的行内 cast 不影响闭包内部的操作数和后续变量读取.
+    #[test]
+    fn test_inline_cast_does_not_enter_closure_body() {
+        let diagnostics = check_source(
+            r#"
+            ---@type integer
+            local value = 1
+            local callback = (function()
+                ---@type integer
+                local result = value
+                return result
+            end)--[[@cast +string]]
+            ---@type integer
+            local after = value
+            return callback, after
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 键枚举接受字符串键和整数键, 普通枚举仍按表值检查赋值.
+    #[test]
+    fn test_enum_key_assignment_uses_member_keys() {
+        for binding in ["local levels", "M.levels"] {
+            for (flag, value, expected) in [
+                ("(key)", "'debug'", 0),
+                ("(key)", "2", 0),
+                ("(key)", "1", 1),
+                ("(key)", "'warning'", 1),
+                ("(key)", "'missing'", 1),
+                ("", "1", 0),
+                ("", "'warning'", 0),
+                ("", "'debug'", 1),
+            ] {
+                let diagnostics = check_source(&format!(
+                    r#"
+                    local M = {{}}
+                    ---@enum {flag} Level
+                    {binding} = {{ debug = 1, [2] = 'warning' }}
+                    ---@type Level
+                    local level = {value}
+                    return level
+                    "#,
+                ));
+                assert_eq!(
+                    count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+                    expected,
+                    "{flag} / {binding} / {value}: {diagnostics:#?}"
+                );
+            }
+        }
+    }
+
+    // 变量上的行内 cast 应影响当前算术操作数, 后续未断言的读取仍保留可空类型.
+    #[test]
+    fn test_inline_variable_cast_in_arithmetic() {
+        let diagnostics = check_source(
+            r#"
+            ---@param value? integer
+            local function add(value)
+                ---@type integer
+                local result = value--[[@cast -?]] + 1
+                ---@type integer
+                local unchecked = value + 1
+                return result, unchecked
+            end
+            return add
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 可选字段首次赋值给方法中的 self 成员时不应报告类型不匹配.
+    #[test]
+    fn test_optional_field_assignment_in_method() {
+        let diagnostics = check_source(
+            r#"
+            local M = {}
+
+            ---@class Optional
+            ---@field a? string
+
+            ---@param optional Optional
+            function M:__init(optional)
+                self.a = optional.a
+            end
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+    }
+
+    // 两种可选字段写法赋值给空表成员时应具有相同的类型行为.
+    #[test]
+    fn test_optional_field_assignment_to_table() {
+        for field in ["a string?", "a? string"] {
+            let source = format!(
+                r#"
+                local M = {{}}
+                ---@class Optional
+                ---@field {field}
+                ---@param optional Optional
+                local function init(optional)
+                    M.a = optional.a
+                end
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+                0,
+                "{field}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    // 可选字段赋给明确声明为 string 的目标时仍需报告类型不匹配.
+    #[test]
+    fn test_optional_field_assignment_respects_required_member() {
+        let diagnostics = check_source(
+            r#"
+            ---@class Required
+            ---@field a string
+            local M = {}
+
+            ---@class Optional
+            ---@field a? string
+
+            ---@param optional Optional
+            function M:__init(optional)
+                self.a = optional.a
+            end
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn test_constructor_errors_point_to_the_invalid_value() {
+        for (target, constructor, invalid_value) in [
+            (
+                "{item: {count: integer}}",
+                "{item = {count = 'bad'}}",
+                "'bad'",
+            ),
+            ("integer[]", "{1, 'bad'}", "'bad'"),
+            ("table<integer, integer>", "{1, 'bad'}", "'bad'"),
+            ("{item: integer}|{other: string}", "{item = 'bad'}", "'bad'"),
+            ("{[1]: string, [2]: integer}", "{pair()}", "pair()"),
+        ] {
+            let source = format!(
+                "local function pair() return 'ok', false end\n---@type {target}\nlocal value = ({constructor})\nreturn value, pair"
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| (d.code, &source[d.range]))
+                    .collect::<Vec<_>>(),
+                [(DiagnosticCode::AssignTypeMismatch, invalid_value)],
+                "{source}\n{diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_class_initializers_can_omit_instance_fields() {
+        for (setup, scope) in [("", "local "), ("", ""), ("local Record, Broken", "")] {
+            for (initializers, valid, invalid) in [
+                ("", "{}", "{count = 'bad'}"),
+                ("", "({})", "({count = 'bad'})"),
+                (
+                    "local valid = {}; local invalid = {count = 'bad'}",
+                    "valid",
+                    "invalid",
+                ),
+                (
+                    "local function valid() return {} end; local function invalid() return {count = 'bad'} end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid() return {}, 1 end; local function invalid() return {count = 'bad'}, 1 end",
+                    "valid()",
+                    "invalid()",
+                ),
+                (
+                    "local function valid(flag) if flag then return {} end return {count = 1} end; local function invalid(flag) if flag then return {} end return {count = 'bad'} end",
+                    "valid(true)",
+                    "invalid(false)",
+                ),
+            ] {
+                let source = format!(
+                    r#"
+                    {setup}
+                    {initializers}
+                    ---@class Record
+                    ---@field count integer
+                    {scope}Record = {valid}
+                    ---@class Broken
+                    ---@field count integer
+                    {scope}Broken = {invalid}
+                    ---@type Record
+                    local instance = {{}}
+                    instance = {{}}
+                    return Record, Broken, instance
+                    "#
+                );
+                let diagnostics = check_source(&source);
+                assert_eq!(
+                    diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+                    [
+                        DiagnosticCode::AssignTypeMismatch,
+                        DiagnosticCode::MissingFields,
+                        DiagnosticCode::MissingFields,
+                    ],
+                    "{source}\n{diagnostics:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_class_factory_initializers_check_nested_fields_across_files() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def_file(
+            "class_factory.lua",
+            r#"
+            local factory = {}
+            function factory.empty() return {} end
+            function factory.valid() return {child = {count = 1}} end
+            function factory.invalid() return {child = {}} end
+            return factory
+            "#,
+        );
+        let source = r#"
+            local factory = require('class_factory')
+            ---@class Child
+            ---@field count integer
+            local _Child = {}
+            ---@class Empty
+            ---@field child Child
+            local Empty = factory.empty()
+            ---@class Valid
+            ---@field child Child
+            local Valid = factory.valid()
+            ---@class Invalid
+            ---@field child Child
+            local Invalid = factory.invalid()
+            return Empty, Valid, Invalid
+        "#;
+        let file = ws.def(source);
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file, CancellationToken::new())
+            .unwrap();
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                DiagnosticCode::AssignTypeMismatch.get_name().into()
+            )),
+            "{diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].range.start.line, 13, "{diagnostics:?}");
+    }
 
     #[test]
     fn test_numeric_member_guards_use_equivalent_integer_keys() {
@@ -150,40 +432,45 @@ mod tests {
         }
     }
 
+    // 值枚举在赋值、参数和返回检查中使用同一值集合, 不接受字段名称.
     #[test]
     fn test_string_enum_values_across_assignment_argument_and_return() {
-        for (value, accepted, argument_accepted) in [
-            ("'a'", true, true),
-            ("'b'", true, true),
-            ("'first'", false, true),
-            ("'x'", false, false),
+        for (value, accepted) in [
+            ("'a'", true),
+            ("'b'", true),
+            ("'first'", false),
+            ("'x'", false),
         ] {
             for (code, usage) in [
                 (
                     DiagnosticCode::AssignTypeMismatch,
-                    format!("---@type Kind\nlocal value = {value}"),
+                    format!(
+                        r#"---@type Kind
+                        local value = {value}"#,
+                    ),
                 ),
                 (
                     DiagnosticCode::ParamTypeMismatch,
                     format!(
-                        "---@param value Kind\nlocal function consume(value) end\nconsume({value})"
+                        r#"---@param value Kind
+                        local function consume(value) end
+                        consume({value})"#
                     ),
                 ),
                 (
                     DiagnosticCode::ReturnTypeMismatch,
-                    format!("---@return Kind\nlocal function read() return {value} end"),
+                    format!(
+                        r#"---@return Kind
+                        local function read() return {value} end"#,
+                    ),
                 ),
             ] {
                 let mut ws = VirtualWorkspace::new();
                 let source = format!(
-                    "---@enum Kind\nlocal Kind = {{ first = 'a', second = ('b') }}\n{usage}"
+                    r#"---@enum Kind
+                    local Kind = {{ first = 'a', second = ('b') }}
+                    {usage}"#
                 );
-                // Arguments also accept enum member names.
-                let accepted = if code == DiagnosticCode::ParamTypeMismatch {
-                    argument_accepted
-                } else {
-                    accepted
-                };
                 assert_eq!(ws.has_no_diagnostic(code, &source), accepted, "{source}");
             }
         }
@@ -1505,6 +1792,31 @@ mod tests {
     }
 
     #[test]
+    fn test_table_constructor_intersection_checks_all_fields() {
+        let source = r#"
+            ---@type {a: string} & {b: integer}
+            local valid = {a = 'ok', b = 1}
+            ---@type {a: string} & {b: integer}
+            local wrong = {a = 'ok', b = false}
+            ---@type {a: string} & {b: integer}
+            local missing = {a = 'ok'}
+            return valid, wrong, missing
+        "#;
+        let diagnostics = check_source(source);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| (d.code, &source[d.range]))
+                .collect::<Vec<_>>(),
+            [
+                (DiagnosticCode::AssignTypeMismatch, "false"),
+                (DiagnosticCode::MissingFields, "{a = 'ok'}"),
+            ],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn test_intersection_assign_tableconst_conflict() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1636,7 +1948,8 @@ t.x = {}
             "#
         ));
 
-        assert!(ws.has_no_diagnostic_in_namespace(
+        // Test cases that should fail (type mismatch)
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -1649,7 +1962,6 @@ t.x = {}
             "#
         ));
 
-        // Test cases that should fail (type mismatch)
         assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
@@ -2405,7 +2717,7 @@ return t
     fn test_param_tbale() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@class ability
                 ---@field t abilityType
@@ -2454,7 +2766,7 @@ return t
         "#,
         );
         assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
+            DiagnosticCode::ParamTypeMismatch,
             r#"
             name({
                 toBe = 1,
@@ -2993,6 +3305,97 @@ return t
                 !ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
                 "{source}"
             );
+        }
+    }
+
+    /// Mixed guards on one member, read past the merge of earlier ones: what the path
+    /// collected applies to the memoized state in the order of the program.
+    #[test]
+    fn test_mixed_member_guards_apply_to_the_memoized_state() {
+        for (read, expected) in [("string|integer", 0), ("string", 1)] {
+            let source = format!(
+                r#"
+                ---@class MixedGuards
+                ---@field v string|integer|nil
+
+                ---@param o MixedGuards
+                local function f(o)
+                    if o.v then print(1) end
+                    if o.v == 'x' then print(2) end
+                    if type(o.v) == 'number' then print(3) end
+                    if o.v and o.v ~= 'y' then
+                        ---@type {read}
+                        local value = o.v
+                        return value
+                    end
+                end
+                return f
+                "#
+            );
+            assert_eq!(
+                count_by_code(&check_source(&source), DiagnosticCode::AssignTypeMismatch),
+                expected,
+                "{read}"
+            );
+        }
+    }
+
+    /// An undeclared member keeps following its writes, under a guard too.
+    #[test]
+    fn test_undeclared_member_write_target_ignores_guards() {
+        let diagnostics = check_source(
+            r#"
+            ---@param opts table<string, any>
+            local function f(opts)
+                if opts.w == nil then
+                    opts.w = function() return '' end
+                end
+                if opts.w == 'a' then
+                    opts.w = function() return '' end
+                end
+            end
+            return f
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:?}"
+        );
+    }
+
+    /// A guard narrows reads, not the contract of a write: inside `o.w == 'a'`, `o.w` may
+    /// still take anything its field declares, and nothing else.
+    #[test]
+    fn test_member_write_target_ignores_guards() {
+        for (write, expected) in [("function() return '' end", 0), ("1", 1)] {
+            for prefix in [
+                "",
+                "if flag then o.w = 'b' end",
+                "if flag then o.w = function() return '' end end",
+            ] {
+                let source = format!(
+                    r#"
+                    ---@class GuardedWrite
+                    ---@field w string|fun():string
+
+                    ---@param o GuardedWrite
+                    ---@param flag boolean
+                    local function f(o, flag)
+                        {prefix}
+                        if o.w == 'a' then
+                            o.w = {write}
+                        end
+                    end
+                    return f
+                    "#
+                );
+                assert_eq!(
+                    count_by_code(&check_source(&source), DiagnosticCode::AssignTypeMismatch),
+                    expected,
+                    "{prefix} / {write}"
+                );
+            }
         }
     }
 }

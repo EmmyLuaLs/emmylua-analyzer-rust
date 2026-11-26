@@ -9,15 +9,17 @@ use std::sync::Arc;
 
 use super::SemanticDatabase;
 use super::def::Decl;
+use super::def::TypeScope;
 use super::def::{
-    ChangedKeys, ConstructorAttribute, DeclKind, DependencyKey, DocGenericParam, ExportKey,
-    MemberRef, ModuleExport, ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, OwnerId,
-    SemanticId, TypeDef, TypeDefKind,
+    AccessPath, ChangedKeys, ConstructorAttribute, DeclKind, DependencyKey, DocGenericParam,
+    ExportKey, LuaMemberKey, MemberPathKey, MemberRef, MemberSource, MemberUse, ModuleExport,
+    ModuleInfo, ModuleNode, ModuleNodeId, ModuleVisibility, OwnerId, SemanticId, TypeDef,
+    TypeDefKind,
 };
 use super::exports::{
     FileExports, GlobalExport, MemberExport, module_export_owner_file, owner_id_from_semantic_id,
 };
-use super::facts::{FactsBuilder, FileFacts, implicit_self_receiver_prefix};
+use super::facts::{FactsBuilder, FileFacts};
 use super::inputs::WorkspaceRoot;
 use super::types::{
     LiteralShell, PrimitiveType, TableId, TypeCandidate, TypeShell, checked_integer_arithmetic,
@@ -31,35 +33,33 @@ use emmylua_parser::{
 };
 use rowan::{TextRange, TextSize};
 
+pub(crate) use super::index::members::{
+    WorkspaceMemberIndex, aggregate_member_bucket, build_member_aggregates,
+    build_workspace_member_index,
+};
+pub(crate) use super::index::references::{
+    FileReferences, WorkspaceReferenceIndex, build_file_references, build_workspace_reference_index,
+};
+pub(crate) use super::index::types::{
+    DeprecatedFileData, DeprecatedIndex, WorkspaceTypeIndex, build_deprecated_file,
+    build_global_type_aggregate, build_workspace_deprecated_index, build_workspace_type_index,
+};
+use crate::WorkspaceId;
+use smol_str::SmolStr;
+
 /// Per-file minimum fact arena (declarations + scopes + type definitions).
 ///
 /// Results are cached in the plain `SemanticDatabase` file cache and invalidated
 /// by file/config/workspace writes. It reads the same input fields so callers
 /// are correctly invalidated when the underlying text/config/roots change.
-pub(crate) fn build_file_facts(
-    db: &SemanticDatabase,
-    _file: FileId,
-    file_id: FileId,
-    text: &str,
-) -> FileFacts {
-    let workspace_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+pub(crate) fn build_file_facts(db: &SemanticDatabase, file_id: FileId, text: &str) -> FileFacts {
+    let workspace_id = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     let tree = db
         .vfs()
         .get_syntax_tree(&file_id)
         .expect("syntax tree must be built before read");
     let chunk = tree.get_chunk_node();
     FactsBuilder::new(file_id, workspace_id).build(&chunk, text)
-}
-
-pub(crate) fn syntax_tree(db: &SemanticDatabase, file: FileId) -> &LuaSyntaxTree {
-    db.vfs()
-        .get_syntax_tree(&file)
-        .expect("syntax tree must be built before read")
-}
-
-pub(crate) fn file_facts(db: &SemanticDatabase, file: FileId) -> &FileFacts {
-    db.file_facts_of(file)
-        .expect("file facts must be built before read")
 }
 
 /// Rebuild all write-time caches from the current inputs.
@@ -146,12 +146,20 @@ pub(crate) fn changed_keys(old: Option<&FileExports>, new: Option<&FileExports>)
     fn member_map(exports: &FileExports) -> HashMap<DependencyKey, Vec<&MemberExport>> {
         let mut map: HashMap<DependencyKey, Vec<&MemberExport>> = HashMap::new();
         for member in &exports.members {
-            let ExportKey::Member(owner_id, key) = member.export_key() else {
-                continue;
+            let key = match member.export_key() {
+                ExportKey::Member(owner_id, key) => DependencyKey::Member(owner_id, key),
+                ExportKey::RuntimeMember(key) => DependencyKey::RuntimeMember(key),
+                _ => continue,
             };
-            map.entry(DependencyKey::Member(owner_id, key))
+            map.entry(key).or_default().push(member);
+            if member.path_key.is_some() && member.is_direct {
+                map.entry(DependencyKey::Member(
+                    member.owner_id.clone(),
+                    member.key.clone(),
+                ))
                 .or_default()
                 .push(member);
+            }
         }
         map
     }
@@ -206,26 +214,6 @@ fn insert_type_changed_keys(changed: &mut ChangedKeys, scope: TypeScope, full_na
     }
 }
 
-/// Rebuild the reverse dependency map from all per-file references (full rebuild).
-// ──────────────────────────────────────────────
-// Plain workspace type index (scope + full_name → definitions)
-// ──────────────────────────────────────────────
-use super::def::TypeScope;
-
-pub(crate) use super::index::members::{
-    WorkspaceMemberIndex, aggregate_member_bucket, build_member_aggregates,
-    build_workspace_member_index,
-};
-pub(crate) use super::index::references::{
-    FileReferences, WorkspaceReferenceIndex, build_file_references, build_workspace_reference_index,
-};
-pub(crate) use super::index::types::{
-    DeprecatedFileData, DeprecatedIndex, WorkspaceTypeIndex, build_deprecated_file,
-    build_global_type_aggregate, build_workspace_deprecated_index, build_workspace_type_index,
-};
-use crate::WorkspaceId;
-use smol_str::SmolStr;
-
 pub(crate) fn workspace_type_index_for(
     db: &SemanticDatabase,
     ws_id: WorkspaceId,
@@ -246,33 +234,12 @@ pub(crate) fn workspace_deprecated_index_for(
         .expect("workspace deprecated index must be built before read")
 }
 
-/// Cached workspace ids (roots + `REMOTE`; `MAIN` when no roots are registered).
-///
-/// The list is refreshed only when workspace roots change, so hot query paths do
-/// not allocate a fresh `Vec` on every call.
-pub(crate) fn all_workspace_ids(db: &SemanticDatabase) -> &[WorkspaceId] {
-    db.all_workspace_ids()
-}
-
-/// Deterministic workspace priority used by cross-workspace lookups.
-///
-/// Main workspace wins over libraries, libraries over std; remote stays last.
-/// Library order keeps registration order (stable sort). Cached in the database.
-pub(crate) fn workspace_lookup_order(db: &SemanticDatabase) -> &[WorkspaceId] {
-    db.workspace_lookup_order()
-}
-
 pub(crate) fn file_matches_workspace_id(
     db: &SemanticDatabase,
     file_id: FileId,
     ws_id: WorkspaceId,
 ) -> bool {
-    let file_ws = file_workspace_id(db, file_id);
-    if ws_id == WorkspaceId::REMOTE {
-        file_ws.is_none()
-    } else {
-        file_ws == Some(ws_id)
-    }
+    file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main) == ws_id
 }
 
 fn find_global_types(db: &SemanticDatabase, full_name: &str) -> Arc<[TypeDef]> {
@@ -290,7 +257,7 @@ fn find_internal_types(db: &SemanticDatabase, ws: WorkspaceId, full_name: &str) 
 }
 
 fn find_file_types(db: &SemanticDatabase, file_id: FileId, full_name: &str) -> Arc<[TypeDef]> {
-    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
     workspace_type_index_for(db, ws).find_all(TypeScope::File(file_id), full_name)
 }
 
@@ -298,12 +265,13 @@ fn find_file_types(db: &SemanticDatabase, file_id: FileId, full_name: &str) -> A
 /// (mirrors `resolve_type_def` resolution order, but returns every same-name definition in the bucket; for duplicate-type checks).
 pub(crate) fn resolve_type_def_locations(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     bare_name: SmolStr,
 ) -> Arc<[TypeDef]> {
-    let file_id = file;
-    let facts = file_facts(db, file);
-    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::MAIN);
+    let facts = db
+        .file_facts_of(file_id)
+        .expect("file facts must be available");
+    let ws = file_workspace_id(db, file_id).unwrap_or(WorkspaceId::Main);
 
     if let Some(ns) = &facts.namespace {
         let full = SmolStr::new(format!("{}.{}", ns, bare_name));
@@ -380,24 +348,22 @@ fn constructor_attribute_of_decl(
         SemanticId::Decl(key) => key,
         _ => return None,
     };
-    let file = db.file_data_id(key.file_id)?;
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(key.file_id)?;
     let decl = facts.decl_by_id(&decl)?;
     let value_syntax = decl.value_expr_syntax?;
-    let tree = syntax_tree(db, file);
+    let tree = db.syntax_tree_of(key.file_id)?;
     let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
     let call = LuaCallExpr::cast(node)?;
     let prefix = call.get_prefix_expr()?;
     let LuaExpr::NameExpr(name_expr) = &prefix else {
         return None;
     };
-    let callee_decl = resolve_name(db, file, name_expr.get_position())?;
-    let callee_file = match &callee_decl {
+    let callee_decl = resolve_name(db, key.file_id, name_expr.get_position())?;
+    let callee_file_id = match &callee_decl {
         SemanticId::Decl(key) => key.file_id,
         _ => return None,
     };
-    let callee_input = db.file_data_id(callee_file)?;
-    let callee_facts = file_facts(db, callee_input);
+    let callee_facts = db.file_facts_of(callee_file_id)?;
     let callee = callee_facts.decl_by_id(&callee_decl)?;
     let callee_closure = callee.value_expr_syntax?;
     let signature = callee_facts.signature_by_closure(callee_closure)?;
@@ -406,8 +372,6 @@ fn constructor_attribute_of_decl(
         .first()
         .map(|(_, attribute)| attribute.clone())
 }
-
-// ──────────────────────────────────────────────
 
 /// Recompute the aggregate buckets for owners / names changed by a file update.
 pub(crate) fn workspace_member_index_for(
@@ -439,17 +403,122 @@ pub(crate) fn workspace_reference_index_for(
 pub(crate) fn resolve_member_id(
     db: &SemanticDatabase,
     facts: &FileFacts,
-    index_expr: &LuaIndexExpr,
+    member_use: &MemberUse,
 ) -> Option<SemanticId> {
-    let (owner, name) = member_ref_from_index_expr(facts, index_expr)?;
-    for resolved in resolve_owner_set(db, owner) {
-        for member in members_of_owner(db, resolved).iter().cloned() {
-            if member.name == name {
-                return Some(member.id);
+    let receiver = member_use.receiver.as_ref()?;
+    if let Some(member) = facts.member_for_use(member_use)
+        && (member.doc_type_syntax.is_some()
+            || !matches!(
+                canonical_owner_id(db, &receiver.root),
+                Some(OwnerId::Module(module)) if module != facts.file_id
+            ))
+    {
+        return Some(member.id.clone());
+    }
+    if let Some(member) = members_of_receiver_key(db, receiver, &member_use.key).first() {
+        return db
+            .file_facts_of(member.file_id)?
+            .member_definition(&member.id)
+            .map(|member| member.id.clone());
+    }
+    if !member_use.has_direct_owner() {
+        return None;
+    }
+    let owner = member_use.owner.as_ref()?;
+    if let Some(key_expr) = member_use.key_expr
+        && let Some(member) = facts.members_of_owner_computed_key(owner, key_expr).next()
+    {
+        return Some(member.id.clone());
+    }
+    for resolved in resolve_owner_set(db, owner.clone()) {
+        for member in members_of_owner(db, resolved).iter() {
+            let member_facts = if member.file_id == facts.file_id {
+                Some(facts)
+            } else {
+                db.file_facts_of(member.file_id)
+            };
+            if member_facts
+                .and_then(|facts| facts.member_by_id(&member.id))
+                .is_some_and(|member| {
+                    member.key == member_use.key
+                        && !matches!(member.source, MemberSource::Runtime { .. })
+                })
+            {
+                return Some(member.id.clone());
             }
         }
     }
     None
+}
+
+pub(crate) fn member_path_key(
+    db: &SemanticDatabase,
+    receiver: &AccessPath,
+    key: &LuaMemberKey,
+) -> Option<MemberPathKey> {
+    if !receiver.is_exact() || key.is_none() {
+        return None;
+    }
+    Some(MemberPathKey::new(
+        canonical_owner_id(db, &receiver.root)?,
+        &receiver.keys,
+        key.clone(),
+    ))
+}
+
+/// 返回接收者指定键的成员候选.
+pub(crate) fn members_of_receiver_key(
+    db: &SemanticDatabase,
+    receiver: &AccessPath,
+    key: &LuaMemberKey,
+) -> Arc<[MemberRef]> {
+    if !receiver.is_exact() || key.is_none() {
+        return Arc::default();
+    }
+    let mut result: Option<Arc<[MemberRef]>> = None;
+    let mut merged = Vec::new();
+    if db.config().is_some()
+        && let Some(root) = canonical_owner_id(db, &receiver.root)
+    {
+        for &workspace in db.workspace_lookup_order() {
+            let index = workspace_member_index_for(db, workspace);
+            if let Some(bucket) = index.members_of_receiver_key(&root, &receiver.keys, key) {
+                match &result {
+                    None => result = Some(bucket),
+                    Some(previous) => {
+                        if merged.is_empty() {
+                            merged.reserve(previous.len() + bucket.len());
+                            merged.extend_from_slice(previous);
+                        }
+                        merged.extend_from_slice(&bucket);
+                    }
+                }
+            }
+        }
+    }
+    if !merged.is_empty() {
+        result = Some(Arc::from(merged));
+    }
+    result.unwrap_or_else(|| {
+        let SemanticId::Decl(root) = &receiver.root else {
+            return Arc::default();
+        };
+        let Some(facts) = db.file_facts_of(root.file_id) else {
+            return Arc::default();
+        };
+        let members: Vec<_> = facts
+            .members_of_receiver_key(receiver, key)
+            .map(|member| MemberRef {
+                file_id: facts.file_id,
+                id: member.id.clone(),
+                name: match &member.key {
+                    LuaMemberKey::Name(name) => name.clone(),
+                    key => key.to_path().into(),
+                },
+            })
+            .collect();
+        Arc::from(members)
+    })
 }
 
 /// Canonical module owner for a raw file-local owner identity.
@@ -488,7 +557,7 @@ fn merge_canonical_members(
         return raw;
     };
     let mut extra: Vec<MemberRef> = Vec::new();
-    for &ws_id in all_workspace_ids(db) {
+    for &ws_id in db.all_workspace_ids.iter() {
         let index = workspace_member_index_for(db, ws_id);
         let members = match named {
             Some(name) => index.members_of_owner_id_named(&owner_id, name),
@@ -523,7 +592,7 @@ fn merge_canonical_members(
 /// falls back to the owner's `FileFacts` when the index has no contribution
 /// (e.g. an unconfigured database or a facts-only test setup).
 fn raw_owner_members(db: &SemanticDatabase, owner: &SemanticId) -> Arc<[MemberRef]> {
-    let from_index = if db.config_input().is_some() {
+    let from_index = if db.config().is_some() {
         members_from_workspaces(db, owner, None)
     } else {
         Arc::from(Vec::new())
@@ -536,10 +605,10 @@ fn raw_owner_members(db: &SemanticDatabase, owner: &SemanticId) -> Arc<[MemberRe
         SemanticId::Member(key) => Some(key.file_id),
         _ => None,
     };
-    if let Some(owner_file_id) = owner_file
-        && let Some(file_id) = db.file_data_id(owner_file_id)
-    {
-        let facts = file_facts(db, file_id);
+    if let Some(owner_file_id) = owner_file {
+        let facts = db
+            .file_facts_of(owner_file_id)
+            .expect("Failed to get file facts for owner file");
         return Arc::from(
             facts
                 .members_of_owner(owner)
@@ -559,7 +628,7 @@ fn raw_owner_members_named(
     owner: &SemanticId,
     name: &str,
 ) -> Arc<[MemberRef]> {
-    let from_index = if db.config_input().is_some() {
+    let from_index = if db.config().is_some() {
         members_from_workspaces(db, owner, Some(name))
     } else {
         Arc::from(Vec::new())
@@ -572,10 +641,10 @@ fn raw_owner_members_named(
         SemanticId::Member(key) => Some(key.file_id),
         _ => None,
     };
-    if let Some(owner_file_id) = owner_file
-        && let Some(file_id) = db.file_data_id(owner_file_id)
-    {
-        let facts = file_facts(db, file_id);
+    if let Some(owner_file_id) = owner_file {
+        let facts = db
+            .file_facts_of(owner_file_id)
+            .expect("Failed to get file facts for owner file");
         return Arc::from(
             facts
                 .members_of_owner_named(owner, name)
@@ -615,7 +684,7 @@ fn members_from_workspaces(
     // setups / owner without contributions): merge in workspace order.
     let mut single: Option<Arc<[MemberRef]>> = None;
     let mut extra: Vec<MemberRef> = Vec::new();
-    for &ws_id in all_workspace_ids(db) {
+    for &ws_id in db.all_workspace_ids() {
         let index = workspace_member_index_for(db, ws_id);
         let members = match named {
             Some(name) => index.members_of_owner_named(owner, name),
@@ -733,12 +802,6 @@ pub struct WorkspaceDeclIndex {
 }
 
 impl WorkspaceDeclIndex {
-    pub(crate) fn global_decl_named(&self, name: &SmolStr) -> Option<SemanticId> {
-        self.global_by_name
-            .get(name)
-            .and_then(|decls| decls.last().cloned())
-    }
-
     /// All global declarations with this name (cross-file overload candidates).
     pub(crate) fn global_decls_named(&self, name: &SmolStr) -> &[SemanticId] {
         self.global_by_name
@@ -872,14 +935,72 @@ pub(crate) fn workspace_decl_index_for(
 pub(crate) fn global_decl_by_name(db: &SemanticDatabase, name: SmolStr) -> Option<SemanticId> {
     let roots = db.workspace_roots();
     if roots.is_empty() {
-        return workspace_decl_index_for(db, WorkspaceId::MAIN).global_decl_named(&name);
+        let decls = workspace_decl_index_for(db, WorkspaceId::Main).global_decls_named(&name);
+        return first_version_visible_decl(db, decls);
     }
     for root in roots.iter() {
-        if let Some(decl) = workspace_decl_index_for(db, root.id).global_decl_named(&name) {
+        let decls = workspace_decl_index_for(db, root.id).global_decls_named(&name);
+        if let Some(decl) = first_version_visible_decl(db, decls) {
             return Some(decl);
         }
     }
     None
+}
+
+/// Pick the newest declaration whose `---@version` conditions match the
+/// configured runtime. Version-hidden declarations must not be used as a
+/// fallback: otherwise names removed in a newer Lua release (for example
+/// `loadstring` in Lua 5.2+) keep resolving to their old signatures.
+fn first_version_visible_decl(db: &SemanticDatabase, decls: &[SemanticId]) -> Option<SemanticId> {
+    // Prefer the newest visible declaration: this keeps the historical
+    // "last declaration wins" behavior for duplicate non-versioned globals,
+    // while still skipping every `---@version`-hidden candidate.
+    decls
+        .iter()
+        .rev()
+        .find(|decl| decl_version_visible(db, decl))
+        .cloned()
+}
+
+fn decl_version_visible(db: &SemanticDatabase, decl_id: &SemanticId) -> bool {
+    let Some(version) = db.lua_version() else {
+        return true;
+    };
+    let SemanticId::Decl(key) = decl_id else {
+        return true;
+    };
+    let Some(facts) = db.file_facts_of(key.file_id) else {
+        return true;
+    };
+    let Some(decl) = facts.decl_by_id(decl_id) else {
+        return true;
+    };
+    // Declarations carry `---@version` conditions directly. This also covers
+    // non-function declarations (table globals such as `bit = {}`) which have
+    // no closure signature.
+    if !decl.version_conds.is_empty() {
+        return decl
+            .version_conds
+            .iter()
+            .any(|condition| condition.check(&version));
+    }
+    let signature = decl
+        .value_expr_syntax
+        .and_then(|syntax| facts.signature_by_closure(syntax))
+        .or_else(|| {
+            decl.owner_syntax
+                .and_then(|syntax| facts.signature_by_closure(syntax))
+        });
+    let Some(signature) = signature else {
+        return true;
+    };
+    signature.docs.as_ref().is_none_or(|docs| {
+        docs.versions.is_empty()
+            || docs
+                .versions
+                .iter()
+                .any(|condition| condition.check(&version))
+    })
 }
 
 /// All global declarations with this name in one workspace.
@@ -914,7 +1035,7 @@ pub(crate) fn global_decls_named_for_file(
 
 /// First non-empty workspace in explicit priority order (main > library > std).
 pub(crate) fn global_decls_named_primary(db: &SemanticDatabase, name: &str) -> Vec<SemanticId> {
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let decls = global_decls_named_in_workspace(db, ws_id, name);
         if !decls.is_empty() {
             return decls;
@@ -922,10 +1043,6 @@ pub(crate) fn global_decls_named_primary(db: &SemanticDatabase, name: &str) -> V
     }
     Vec::new()
 }
-
-// ──────────────────────────────────────────────
-// require / module resolution (M0: path-derived module name + suffix matching)
-// ──────────────────────────────────────────────
 
 /// Per-file module information (equivalent to a semantic ModuleIndex entry).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -946,15 +1063,14 @@ pub(crate) struct ModuleEntry {
 pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Option<ModuleEntry> {
     let roots = db.workspace_roots();
     let fallback_root = db.module_fallback_root();
-    let file = db.file_data_id(file_id)?;
-    let path = db.file_path(file)?;
+    let path = db.file_path(file_id)?;
     let file_ws = file_workspace_id(db, file_id);
     let root_path = match &file_ws {
         Some(_) if !roots.is_empty() => find_workspace_root(&roots, &path).map(|(_, root)| root),
         _ if roots.is_empty() => fallback_root,
         _ => None,
     }?;
-    let config = db.config_input()?;
+    let config = db.config()?;
     let full_module_name = SmolStr::new(map_module_name(
         config,
         &module_name_from_path(&path, Some(&root_path))?,
@@ -977,7 +1093,7 @@ pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Opti
         }
     }
     aliases.sort();
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file_id)?;
     let name = SmolStr::new(
         full_module_name
             .rsplit('.')
@@ -991,7 +1107,7 @@ pub(crate) fn build_module_entry(db: &SemanticDatabase, file_id: FileId) -> Opti
         aliases,
         full_module_name,
         name,
-        workspace_id: file_ws.unwrap_or(WorkspaceId::REMOTE),
+        workspace_id: file_ws.unwrap_or(WorkspaceId::Main),
         visible: facts.module_visibility,
         is_meta: facts.is_meta,
         version_conds: facts.version_conds.clone(),
@@ -1042,7 +1158,7 @@ pub(crate) fn build_workspace_module_index(
         a.full_module_name
             .as_str()
             .cmp(b.full_module_name.as_str())
-            .then_with(|| a.workspace_id.id.cmp(&b.workspace_id.id))
+            .then_with(|| a.workspace_id.cmp(&b.workspace_id))
             .then_with(|| a.file_id.id.cmp(&b.file_id.id))
     });
     for file_ids in module_name_to_file_ids.values_mut() {
@@ -1194,7 +1310,7 @@ pub(crate) fn file_workspace_id_for_path(
 ) -> Option<WorkspaceId> {
     let path = path?;
     if roots.is_empty() {
-        return Some(WorkspaceId::MAIN);
+        return Some(WorkspaceId::Main);
     }
     find_workspace_id(roots, path)
 }
@@ -1257,7 +1373,7 @@ fn module_file_in_root(
         rewritten
     };
     let lookup = |find: &dyn Fn(&ModuleIndex) -> Option<FileId>| {
-        workspace_lookup_order(db)
+        db.workspace_lookup_order()
             .iter()
             .enumerate()
             .filter_map(|(order, &ws_id)| {
@@ -1363,7 +1479,7 @@ impl ModuleIndex {
             a.full_module_name
                 .as_str()
                 .cmp(b.full_module_name.as_str())
-                .then_with(|| a.workspace_id.id.cmp(&b.workspace_id.id))
+                .then_with(|| a.workspace_id.cmp(&b.workspace_id))
                 .then_with(|| a.file_id.id.cmp(&b.file_id.id))
         });
         self.entry_by_file_id = self
@@ -1732,7 +1848,7 @@ pub(crate) fn members_of_owner_id_named_all(
     name: &str,
 ) -> Vec<MemberRef> {
     let mut out: Vec<MemberRef> = Vec::new();
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let index = workspace_member_index_for(db, ws_id);
         let Some(members) = index.members_of_owner_id_named(owner_id, name) else {
             continue;
@@ -1765,7 +1881,7 @@ fn push_type_associated_owner_ids(
     type_id: &SemanticId,
     out: &mut Vec<OwnerId>,
 ) {
-    for &ws_id in workspace_lookup_order(db) {
+    for &ws_id in db.workspace_lookup_order() {
         let index = workspace_decl_index_for(db, ws_id);
         let locations = index.type_def_locations(type_id);
         if locations.is_empty() {
@@ -1842,7 +1958,7 @@ pub(crate) fn resolve_owner_ids(db: &SemanticDatabase, owner: &SemanticId) -> Ve
             }
             // Runtime declarations named like the type, plus their `owner_syntax`
             // associated classes (differently-named runtime tables).
-            for &ws_id in workspace_lookup_order(db) {
+            for &ws_id in db.workspace_lookup_order() {
                 for decl_id in workspace_decl_index_for(db, ws_id).runtime_decls_named(&name_str) {
                     if let Some(owner_id) = canonical_owner_id(db, decl_id) {
                         push_unique_owner_id(&mut out, owner_id);
@@ -1931,17 +2047,17 @@ fn push_unique(out: &mut Vec<SemanticId>, id: SemanticId) {
 /// Keyed by file so an initializer can still resolve cross-file members.
 pub(crate) fn decl_type(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     config: &Emmyrc,
     decl: SemanticId,
 ) -> TypeShell {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file_id).expect("Failed to get file facts");
     let Some(decl) = facts.decl_by_id(&decl) else {
         return TypeShell::unknown();
     };
 
     if let Some(type_syntax) = decl.doc_type_syntax {
-        let shell = lower_doc_type(db, file, type_syntax, &[]);
+        let shell = lower_doc_type(db, file_id, type_syntax, &[]);
         if !shell.is_unknown() {
             return shell;
         }
@@ -1949,7 +2065,7 @@ pub(crate) fn decl_type(
 
     // `---@module "name"`: project directly to a module reference.
     if let Some(module_path) = &decl.module_path
-        && let Some(module_file) = module_file_from(db, config, module_path.clone(), file)
+        && let Some(module_file) = module_file_from(db, config, module_path.clone(), file_id)
     {
         return TypeShell::from_module_ref(module_file);
     }
@@ -1961,7 +2077,7 @@ pub(crate) fn decl_type(
         && let Some((_, type_syntax)) = docs.param_types.iter().find(|(name, _)| name == &decl.name)
     {
         let generics = docs.generic_params.as_slice();
-        let mut shell = lower_doc_type(db, file, *type_syntax, generics);
+        let mut shell = lower_doc_type(db, file_id, *type_syntax, generics);
         if !shell.is_unknown() {
             // `---@param name? T`: the parameter type must include nil.
             if docs.nullable_params.iter().any(|n| n == &decl.name) {
@@ -1973,14 +2089,14 @@ pub(crate) fn decl_type(
 
     // `for k, v in pairs(x)`: take types from the iterator function's return slots (owner is ForRangeStat).
     if matches!(decl.kind, DeclKind::Local { is_iter: true, .. })
-        && let Some(shell) = iter_slot_type(db, &facts, file, config, &decl)
+        && let Some(shell) = iter_slot_type(db, &facts, file_id, config, &decl)
         && !shell.is_unknown()
     {
         return shell;
     }
 
     if let Some(value_expr_syntax) = decl.value_expr_syntax {
-        let shell = expr_type_of(db, file, config, value_expr_syntax);
+        let shell = expr_type_of(db, file_id, config, value_expr_syntax);
         if !shell.is_unknown() {
             // Globals cannot carry generic parameters not instantiated inside the function body (the `a` in `function f(x) a = x end` is unknown outside).
             if matches!(decl.kind, DeclKind::Global) {
@@ -2006,110 +2122,77 @@ pub(crate) fn decl_type(
     TypeShell::unknown()
 }
 
-/// Iterator slot types for `for k, v in pairs(x)`.
-///
-/// Only recognizes `pairs/ipairs/next(x)` where x is a named type / generic instance: reads the returned list from
-/// the `__pairs`/`__ipairs` function signature's `---@return fun(): K, V` and projects it by slot (preserving order,
-/// not lost through TypeShell's candidate set).
+/// Fall back to a declared iterator metamethod when typing a generic for loop.
 fn iter_slot_type(
     db: &SemanticDatabase,
     facts: &FileFacts,
-    file: FileId,
+    file_id: FileId,
     config: &Emmyrc,
     decl: &Decl,
 ) -> Option<TypeShell> {
-    let key = (file, decl.id.clone());
-    if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
+    // Inferring the table argument can ask for this loop variable again.
+    let guard_key = (file_id, decl.id.clone());
+    if ITER_SLOT_IN_PROGRESS.with(|stack| stack.borrow().contains(&guard_key)) {
         return None;
     }
-    let _guard = IterSlotGuard::enter(key);
+    let _guard = IterSlotGuard::enter(guard_key);
+
     let owner = decl.owner_syntax?;
-    let tree = syntax_tree(db, file);
+    let tree = db.syntax_tree_of(file_id)?;
     let node = owner.to_node_from_root(&tree.get_red_root())?;
-    let stat = emmylua_parser::LuaForRangeStat::cast(node)?;
-    let vars = stat.get_var_name_list().collect::<Vec<_>>();
-    let index = vars
-        .iter()
+    let loop_stat = emmylua_parser::LuaForRangeStat::cast(node)?;
+    let slot_index = loop_stat
+        .get_var_name_list()
         .position(|var| var.get_name_text() == decl.name.as_str())?;
-    let iter_expr = stat.get_expr_list().next()?;
-    let LuaExpr::CallExpr(call) = iter_expr else {
+
+    let LuaExpr::CallExpr(call) = loop_stat.get_expr_list().next()? else {
         return None;
     };
-    let member_name = match call.get_prefix_expr()? {
-        LuaExpr::NameExpr(name) => match name.get_name_text()?.as_str() {
-            "pairs" | "next" => "__pairs",
-            "ipairs" => "__ipairs",
-            _ => return None,
-        },
+    let LuaExpr::NameExpr(callee) = call.get_prefix_expr()? else {
+        return None;
+    };
+    let metamethod_name = match callee.get_name_text()?.as_str() {
+        "pairs" => "__pairs",
+        "ipairs" => "__ipairs",
         _ => return None,
     };
-    let arg = call.get_args_list()?.get_args().next()?;
-    let arg_shell = expr_type(db, facts, file, config, arg);
 
-    for candidate in &arg_shell.candidates {
-        let (def, generic_args) = match candidate {
-            TypeCandidate::Named(name) => {
-                let def = resolve_type_def(db, file, SmolStr::new(name.as_str()))?;
-                (def, Vec::new())
-            }
-            TypeCandidate::GenericInstance(ins) => {
-                let def = resolve_type_def(db, file, SmolStr::new(ins.name.as_str()))?;
-                (def, ins.args.clone())
-            }
+    // A local function can shadow `pairs` or `ipairs`. Leave its return type
+    // to normal call inference.
+    let SemanticId::Decl(callee_decl) = resolve_name(db, file_id, callee.get_position())? else {
+        return None;
+    };
+    if !db.is_std_file(callee_decl.file_id) {
+        return None;
+    }
+
+    let table_arg = call.get_args_list()?.get_args().next()?;
+    let table_type = expr_type(db, facts, file_id, config, table_arg);
+
+    // Use the declared type as a metatable hint for the class convention
+    // `setmetatable({}, Class)`. The actual metatable can be a different table.
+    for candidate in &table_type.candidates {
+        let (type_name, generic_args) = match candidate {
+            TypeCandidate::Named(name) => (name, &[][..]),
+            TypeCandidate::GenericInstance(instance) => (&instance.name, instance.args.as_slice()),
             _ => continue,
         };
-        let mut member_refs = members_of_owner(db, def.id.clone()).to_vec();
-        for resolved in resolve_owner_set(db, def.id.clone()) {
-            member_refs.extend(members_of_owner(db, resolved).iter().cloned());
-        }
-        for member_ref in member_refs
-            .iter()
-            .filter(|member| member.name == member_name)
-        {
-            let Some(member_file) = db.file_data_id(member_ref.file_id) else {
-                continue;
-            };
-            let member_facts = file_facts(db, member_file);
-            let Some(member) = member_facts.member_by_id(&member_ref.id) else {
-                continue;
-            };
-            let Some(closure_syntax) = member.value_syntax else {
-                continue;
-            };
-            let Some(signature) = member_facts.signature_by_closure(closure_syntax) else {
-                continue;
-            };
-            let Some(docs) = &signature.docs else {
-                continue;
-            };
-            // Generator signature: `---@return fun(): integer, T` (returns stores the fun type node).
-            let Some(return_syntax) = docs.returns.first() else {
-                continue;
-            };
-            let member_tree = syntax_tree(db, member_file);
-            let Some(return_node) = return_syntax.to_node_from_root(&member_tree.get_red_root())
-            else {
-                continue;
-            };
-            let Some(LuaDocType::Func(func)) = LuaDocType::cast(return_node) else {
-                continue;
-            };
-            let Some(return_list) = func.get_return_type_list() else {
-                continue;
-            };
-            let mut slots: Vec<TypeShell> = Vec::new();
-            for ret in return_list.get_return_type_list() {
-                if let (_, Some(ret_type)) = ret.get_name_and_type() {
-                    slots.push(lower_doc_type_node(
-                        db,
-                        member_file,
-                        &def.generic_params,
-                        &ret_type,
-                    ));
-                }
-            }
-            if let Some(slot) = slots.get(index) {
-                let substituted = substitute_generics(slot, &def.generic_params, &generic_args);
+        let def = resolve_type_def(db, file_id, type_name.clone())?;
+
+        // The metamethod may be declared on the type or its associated runtime value.
+        for owner in resolve_owner_set(db, def.id.clone()) {
+            let members = members_of_owner(db, owner);
+            for metamethod in members
+                .iter()
+                .filter(|member| member.name == metamethod_name)
+            {
+                let Some(slot) =
+                    lower_metamethod_iterator_slot(db, metamethod, &def.generic_params, slot_index)
+                else {
+                    continue;
+                };
+
+                let substituted = substitute_generics(&slot, &def.generic_params, generic_args);
                 if !substituted.is_unknown() {
                     return Some(substituted);
                 }
@@ -2119,15 +2202,45 @@ fn iter_slot_type(
     None
 }
 
+fn lower_metamethod_iterator_slot(
+    db: &SemanticDatabase,
+    metamethod: &MemberRef,
+    generics: &[DocGenericParam],
+    slot_index: usize,
+) -> Option<TypeShell> {
+    let file_id = metamethod.file_id;
+    let facts = db.file_facts_of(file_id)?;
+    let member = facts.member_by_id(&metamethod.id)?;
+    let signature = facts.signature_by_closure(member.value_syntax?)?;
+
+    // The metamethod's first result is the iterator function, for example
+    // `---@return fun(): integer, T`. The loop variable comes from that function's results.
+    let iterator_annotation = signature.docs.as_ref()?.returns.first()?;
+    let tree = db.syntax_tree_of(file_id)?;
+    let node = iterator_annotation.to_node_from_root(&tree.get_red_root())?;
+    let LuaDocType::Func(iterator) = LuaDocType::cast(node)? else {
+        return None;
+    };
+
+    let results = iterator.get_return_type_list()?;
+    let slot = results
+        .get_return_type_list()
+        .filter_map(|result| result.get_name_and_type().1)
+        .nth(slot_index)?;
+    Some(lower_doc_type_node(db, file_id, generics, &slot))
+}
+
 /// Lower a doc type node to `TypeShell`.
 /// `generics` = generic params in the current scope (`T` -> `Generic(T)`); named types resolve to TypeDef (cross-file).
 pub(crate) fn lower_doc_type(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     type_syntax: LuaSyntaxId,
     generics: &[DocGenericParam],
 ) -> TypeShell {
-    let tree = syntax_tree(db, file);
+    let Some(tree) = db.syntax_tree_of(file_id) else {
+        return TypeShell::unknown();
+    };
     let root = tree.get_red_root();
     let Some(node) = type_syntax.to_node_from_root(&root) else {
         return TypeShell::unknown();
@@ -2135,10 +2248,10 @@ pub(crate) fn lower_doc_type(
     let Some(doc_type) = LuaDocType::cast(node) else {
         return TypeShell::unknown();
     };
-    lower_doc_type_node(db, file, generics, &doc_type)
+    lower_doc_type_node(db, file_id, generics, &doc_type)
 }
 
-fn lower_doc_type_node(
+pub(crate) fn lower_doc_type_node(
     db: &SemanticDatabase,
     file: FileId,
     generics: &[DocGenericParam],
@@ -2182,7 +2295,11 @@ fn lower_doc_type_node(
             Some(LuaLiteralToken::Bool(bool_token)) => {
                 TypeShell::from_literal(LiteralShell::Boolean(bool_token.is_true()))
             }
-            Some(LuaLiteralToken::Nil(_)) => TypeShell::from_literal(LiteralShell::Nil),
+            // The parser emits a bare `?` literal only as the right operand of a binary type
+            // operator, i.e. LuaLS's optional spelling `T|?`, which means `T|nil`.
+            Some(LuaLiteralToken::Nil(_)) | Some(LuaLiteralToken::Question(_)) => {
+                TypeShell::from_literal(LiteralShell::Nil)
+            }
             _ => TypeShell::unknown(),
         },
         LuaDocType::Array(array) => array
@@ -2359,27 +2476,29 @@ pub(crate) fn primitive_from_name(name: &str) -> Option<TypeShell> {
     Some(TypeShell::from_primitive(primitive))
 }
 
-// ──────────────────────────────────────────────
-// L3 semantics: member types (with cycle convergence)
-// ──────────────────────────────────────────────
-
 /// Declared type of a member. Members can be mutually recursive (`T.foo = T.bar`), also converged by semantic's native fixed point.
 pub(crate) fn member_type(
     db: &SemanticDatabase,
-    file: FileId,
-    config: &Emmyrc,
+    file_id: FileId,
+    config: &Emmyrc, // TODO: remove this params
     member: SemanticId,
 ) -> TypeShell {
-    let facts = file_facts(db, file);
+    let facts = db
+        .file_facts_of(file_id)
+        .expect("Failed to get file facts for the given file id");
     let Some(member) = facts.member_by_id(&member) else {
         return TypeShell::unknown();
     };
 
     // `---@module "name"`: project directly to a module reference.
     if let Some(module_path) = &member.module_path
-        && let Some(module_file) = module_file_from(db, config, module_path.clone(), file)
+        && let Some(module_file) = module_file_from(db, config, module_path.clone(), file_id)
     {
         return TypeShell::from_module_ref(module_file);
+    }
+
+    if let Some(syntax) = member.doc_type_syntax {
+        return lower_doc_type(db, file_id, syntax, &[]);
     }
 
     // Value: owner is `TypeDef` (@field) -> doc type node; otherwise -> expression.
@@ -2390,13 +2509,16 @@ pub(crate) fn member_type(
                     .type_def_by_id(&member.owner)
                     .map(|def| def.generic_params.as_slice())
                     .unwrap_or(&[]);
-                let shell = lower_doc_type(db, file, value_syntax, generics);
+                let mut shell = lower_doc_type(db, file_id, value_syntax, generics);
                 if !shell.is_unknown() {
+                    if member.is_nullable {
+                        shell.merge(&TypeShell::from_primitive(PrimitiveType::Nil));
+                    }
                     return shell;
                 }
             }
             _ => {
-                let shell = expr_type_of(db, file, config, value_syntax);
+                let shell = expr_type_of(db, file_id, config, value_syntax);
                 if !shell.is_unknown() {
                     return shell;
                 }
@@ -2414,10 +2536,12 @@ pub(crate) fn member_type(
 /// Direct member names of a local declaration (completion candidates).
 pub(crate) fn member_keys_of_decl(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     decl: SemanticId,
 ) -> Vec<SmolStr> {
-    let facts = file_facts(db, file);
+    let facts = db
+        .file_facts_of(file_id)
+        .expect("Failed to get file facts for the given file id");
     let mut keys = facts
         .members_of_owner(&decl)
         .filter(|member| member.index_key_syntax.is_none())
@@ -2434,7 +2558,9 @@ pub(crate) fn member_keys_of_type(
     file: FileId,
     type_def: SemanticId,
 ) -> Vec<SmolStr> {
-    let facts = file_facts(db, file);
+    let facts = db
+        .file_facts_of(file)
+        .expect("Failed to get file facts for the given file id");
     let Some(def) = facts.type_def_by_id(&type_def) else {
         return Vec::new();
     };
@@ -2451,6 +2577,7 @@ pub(crate) fn type_member(
     db: &SemanticDatabase,
     facts: &FileFacts,
     file: FileId,
+    config: &Emmyrc,
     type_def: SemanticId,
     name: &str,
     visited: &mut Vec<SemanticId>,
@@ -2461,21 +2588,17 @@ pub(crate) fn type_member(
     visited.push(type_def.clone());
 
     if let Some(member) = facts.field_members_of_type(&type_def, name) {
-        if let Some(value_syntax) = member.value_syntax {
-            let generics = facts
-                .type_def_by_id(&type_def)
-                .map(|def| def.generic_params.as_slice())
-                .unwrap_or(&[]);
-            let shell = lower_doc_type(db, file, value_syntax, generics);
-            if !shell.is_unknown() {
-                return Some(shell);
-            }
+        let shell = member_type(db, file, config, member.id.clone());
+        if !shell.is_unknown() {
+            return Some(shell);
         }
     }
 
     let def = facts.type_def_by_id(&type_def)?;
     for super_def in local_base_type_defs(db, facts, def) {
-        if let Some(shell) = type_member(db, facts, file, super_def.id.clone(), name, visited) {
+        if let Some(shell) =
+            type_member(db, facts, file, config, super_def.id.clone(), name, visited)
+        {
             return Some(shell);
         }
     }
@@ -2512,7 +2635,10 @@ fn local_base_type_defs<'a>(
     facts: &'a FileFacts,
     def: &TypeDef,
 ) -> Vec<&'a TypeDef> {
-    let root = syntax_tree(db, def.file_id).get_red_root();
+    let root = db
+        .syntax_tree_of(def.file_id)
+        .expect("Failed to get syntax tree")
+        .get_red_root();
     let mut pending = def.base_types.iter().rev().copied().collect::<Vec<_>>();
     let mut defs = Vec::new();
     while let Some(syntax) = pending.pop() {
@@ -2547,17 +2673,13 @@ fn local_base_type_defs<'a>(
     defs
 }
 
-// ──────────────────────────────────────────────
-// L3 semantics: name resolution and references
-// ──────────────────────────────────────────────
-
 /// Name use site -> global id of declaration (scope-aware; falls back to a workspace global declaration when local lookup misses).
 pub(crate) fn resolve_name(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     offset: TextSize,
 ) -> Option<SemanticId> {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file_id)?;
     let name_use = facts.name_use_at_offset(offset)?;
     facts
         .find_visible_decl_before_offset(&name_use.name, offset)
@@ -2568,10 +2690,10 @@ pub(crate) fn resolve_name(
 /// All references to a declaration (name use sites or vararg literals).
 pub(crate) fn decl_references(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     decl: SemanticId,
 ) -> Vec<LuaSyntaxId> {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file_id).expect("Failed to get file facts");
     let Some(decl) = facts.decl_by_id(&decl) else {
         return Vec::new();
     };
@@ -2601,7 +2723,7 @@ pub(crate) fn signature_returns(
     config: &Emmyrc,
     closure_syntax: LuaSyntaxId,
 ) -> Vec<TypeShell> {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file).expect("Failed to get file facts");
     let Some(sig) = facts.signature_by_closure(closure_syntax) else {
         return Vec::new();
     };
@@ -2654,7 +2776,7 @@ pub(crate) fn signature_returns(
         }
     }
 
-    let tree = syntax_tree(db, file);
+    let tree = db.syntax_tree_of(file).expect("Failed to get syntax tree");
     let root = tree.get_red_root();
     let Some(node) = closure_syntax.to_node_from_root(&root) else {
         return Vec::new();
@@ -2704,7 +2826,34 @@ pub(crate) fn signature_returns(
             return expected;
         }
     }
+    // Reaching the end returns no values. Keep this row through forwarded calls;
+    // a single-value read then fills the missing result with nil.
+    if !facts.is_meta && closure_can_fall_through(db, file, &closure) {
+        rows.merge(&TypeShell {
+            candidates: vec![TypeCandidate::Multi(Vec::new())],
+        });
+    }
     vec![rows]
+}
+
+pub(crate) fn closure_can_fall_through(
+    db: &SemanticDatabase,
+    file: FileId,
+    closure: &LuaClosureExpr,
+) -> bool {
+    super::facts::closure_can_fall_through(closure, &|call| {
+        let Some(LuaExpr::NameExpr(name)) = call.get_prefix_expr() else {
+            return false;
+        };
+        let Some(SemanticId::Decl(key)) = resolve_name(db, file, name.get_position()) else {
+            return false;
+        };
+        db.is_std_file(key.file_id)
+            // A deferred call can observe a later global replacement.
+            && global_decls_named_for_file(db, file, "error").iter().all(|decl| {
+                matches!(decl, SemanticId::Decl(key) if db.workspace_id_of(key.file_id).is_none_or(|id| id.is_std()))
+            })
+    })
 }
 
 /// When a member implementation function (`function Test.e()`) has no `---@return`, use the return type
@@ -2794,7 +2943,7 @@ pub(crate) fn param_type(
     closure_syntax: LuaSyntaxId,
     param_index: usize,
 ) -> TypeShell {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file).expect("Failed to get file facts");
     let Some(sig) = facts.signature_by_closure(closure_syntax) else {
         return TypeShell::unknown();
     };
@@ -2821,10 +2970,25 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
             decl.value_expr_syntax
         }
         LuaExpr::IndexExpr(index_expr) => {
-            let (owner, name) = member_ref_from_index_expr(facts, &index_expr)?;
+            let member_use = facts.member_use(index_expr.get_syntax_id())?;
+            let receiver = member_use.receiver.as_ref()?;
             let member = facts
-                .members_of_owner(&owner)
-                .find(|m| m.key.name() == Some(name.as_str()))?;
+                .members_of_receiver_key(receiver, &member_use.key)
+                .next()
+                .or_else(|| {
+                    member_use.has_direct_owner().then_some(())?;
+                    if let Some(key_expr) = member_use.key_expr {
+                        return facts
+                            .members_of_owner_computed_key(member_use.owner.as_ref()?, key_expr)
+                            .next();
+                    }
+                    facts
+                        .members_of_owner(member_use.owner.as_ref()?)
+                        .find(|member| {
+                            member.key == member_use.key
+                                && !matches!(member.source, MemberSource::Runtime { .. })
+                        })
+                })?;
             member.value_syntax
         }
         LuaExpr::ClosureExpr(closure) => Some(closure.get_syntax_id()),
@@ -2839,14 +3003,14 @@ fn callee_closure_syntax(facts: &FileFacts, callee: LuaExpr) -> Option<LuaSyntax
 /// Value type exported by a module (type of `return M` / table literal, etc.).
 pub(crate) fn module_export_type(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     config: &Emmyrc,
 ) -> TypeShell {
-    let facts = file_facts(db, file);
+    let facts = db.file_facts_of(file_id).expect("Failed to get file facts");
     match &facts.module_export {
         // `return M`: declaration identity table (TableConst members reachable) + name identity (Named -> decl owner reachable).
         ModuleExport::Decl { decl, name } => {
-            let mut shell = decl_type(db, file, config, decl.clone());
+            let mut shell = decl_type(db, file_id, config, decl.clone());
             // A declaration annotated with `---@class Foo` (including nested
             // names such as `Foo.Bar`) already has the canonical named type.
             // Merging the runtime variable name (`Bar`) would produce an
@@ -2872,21 +3036,22 @@ pub(crate) fn module_export_type(
                 let SemanticId::Decl(decl_key) = &decl else {
                     return TypeShell::from_name(name.as_str());
                 };
-                if let Some(decl_file) = db.file_data_id(decl_key.file_id) {
-                    let shell = decl_type(db, decl_file, config, decl);
-                    if !shell.is_unknown() {
-                        return shell;
-                    }
+
+                let shell = decl_type(db, decl_key.file_id, config, decl);
+                if !shell.is_unknown() {
+                    return shell;
                 }
             }
             TypeShell::from_name(name.as_str())
         }
         ModuleExport::Expr { value_syntax } => {
-            let tree = syntax_tree(db, file);
+            let tree = db
+                .syntax_tree_of(file_id)
+                .expect("Failed to get syntax tree");
             let Some(expr) = find_expr_by_syntax_id(&tree, value_syntax) else {
                 return TypeShell::unknown();
             };
-            expr_type(db, &facts, file, config, expr)
+            expr_type(db, &facts, file_id, config, expr)
         }
         ModuleExport::None => TypeShell::unknown(),
     }
@@ -2906,6 +3071,7 @@ pub(crate) fn find_expr_by_syntax_id(
     LuaExpr::cast(node)
 }
 
+// TODO: remove future
 thread_local! {
     static EXPR_TYPE_IN_PROGRESS: RefCell<Vec<(FileId, LuaSyntaxId)>> =
         const { RefCell::new(Vec::new()) };
@@ -2921,7 +3087,7 @@ impl ExprTypeGuard {
         Self { key }
     }
 }
-
+// TODO: remove future
 thread_local! {
     static ITER_SLOT_IN_PROGRESS: RefCell<Vec<(FileId, SemanticId)>> =
         const { RefCell::new(Vec::new()) };
@@ -2967,21 +3133,23 @@ impl Drop for ExprTypeGuard {
 /// which matches the previous Semantic `cycle_initial` behavior.
 pub(crate) fn expr_type_of(
     db: &SemanticDatabase,
-    file: FileId,
+    file_id: FileId,
     config: &Emmyrc,
     expr_syntax: LuaSyntaxId,
 ) -> TypeShell {
-    let key = (file, expr_syntax);
+    let key = (file_id, expr_syntax);
     if EXPR_TYPE_IN_PROGRESS.with(|stack| stack.borrow().contains(&key)) {
         return TypeShell::unknown();
     }
     let _guard = ExprTypeGuard::enter(key);
-    let facts = file_facts(db, file);
-    let tree = syntax_tree(db, file);
+    let facts = db.file_facts_of(file_id).expect("Failed to get file facts");
+    let tree = db
+        .syntax_tree_of(file_id)
+        .expect("Failed to get syntax tree");
     let Some(expr) = find_expr_by_syntax_id(&tree, &expr_syntax) else {
         return TypeShell::unknown();
     };
-    expr_type(db, &facts, file, config, expr)
+    expr_type(db, &facts, file_id, config, expr)
 }
 
 fn expr_type(
@@ -3090,10 +3258,8 @@ fn expr_type_node(
             // Cross-file global fallback: global variable -> global type name.
             let global_name = SmolStr::new(name.as_str());
             if let Some(decl) = global_decl_by_name(db, global_name.clone()) {
-                if let SemanticId::Decl(key) = &decl
-                    && let Some(decl_file) = db.file_data_id(key.file_id)
-                {
-                    let shell = decl_type(db, decl_file, config, decl);
+                if let SemanticId::Decl(key) = &decl {
+                    let shell = decl_type(db, key.file_id, config, decl);
                     if !shell.is_unknown() {
                         return shell;
                     }
@@ -3126,6 +3292,21 @@ fn expr_type_node(
                 Some(BinaryOperator::OpOr) | Some(BinaryOperator::OpAnd) => {
                     if let Some((left, right)) = binary.get_exprs() {
                         let mut shell = expr_type(db, facts, file, config, left).first_result();
+                        if op == Some(BinaryOperator::OpOr) {
+                            // or 的左侧只保留真值, 右侧继续参与固定点合并.
+                            shell.candidates.retain_mut(|candidate| match candidate {
+                                TypeCandidate::Primitive(PrimitiveType::Nil)
+                                | TypeCandidate::Literal(
+                                    LiteralShell::Nil | LiteralShell::Boolean(false),
+                                ) => false,
+                                TypeCandidate::Primitive(PrimitiveType::Boolean) => {
+                                    *candidate =
+                                        TypeCandidate::Literal(LiteralShell::Boolean(true));
+                                    true
+                                }
+                                _ => true,
+                            });
+                        }
                         shell.merge(&expr_type(db, facts, file, config, right).first_result());
                         return shell;
                     }
@@ -3332,21 +3513,15 @@ fn expr_type_index(
     index_expr: LuaIndexExpr,
     prefix_shell: TypeShell,
 ) -> TypeShell {
-    let Some((owner, name)) = member_ref_from_index_expr(facts, &index_expr) else {
+    let Some(member_use) = facts.member_use(index_expr.get_syntax_id()) else {
         return TypeShell::unknown();
     };
-    // 1. In-file members (owner key).
-    if let Some(member) = facts
-        .members_of_owner(&owner)
-        .find(|m| m.key.name() == Some(name.as_str()))
+    if let Some(member_id) = resolve_member_id(db, facts, member_use)
+        && let SemanticId::Member(location) = &member_id
     {
-        return member_type(db, file, config, member.id.clone());
+        return member_type(db, location.file_id, config, member_id);
     }
-    // 2/3. Phase 2: cross-file merged lookup + type-member fallback (requires workspace).
-    // 2. Cross-file members by owner key + resolved concrete id key.
-    if let Some(shell) = member_type_via_owner(db, config, &owner, &name) {
-        return shell;
-    }
+    let name = member_use.key.to_path();
     // 3. If the prefix type is a named class/export name -> cross-file owner members (@field + runtime), then inherited @fields.
     for candidate in &prefix_shell.candidates {
         // Generic instantiation `Box<number>`: member types contain `Generic(T)`, substitute with actual args.
@@ -3401,7 +3576,7 @@ fn expr_type_index(
             if let Some(def) = def {
                 let mut visited = Vec::new();
                 if let Some(shell) =
-                    type_member(db, facts, file, def.id.clone(), &name, &mut visited)
+                    type_member(db, facts, file, config, def.id.clone(), &name, &mut visited)
                 {
                     return shell;
                 }
@@ -3423,10 +3598,9 @@ fn expr_type_call(
     // require special case: module name -> module file -> module export type.
     if call_expr.is_require()
         && let Some(module_name) = require_module_name(&call_expr)
-        && let Some(module_file) = module_file_from(db, config, SmolStr::new(&module_name), file)
-        && let Some(module_input) = db.file_data_id(module_file)
+        && let Some(module_file_id) = module_file_from(db, config, SmolStr::new(&module_name), file)
     {
-        let shell = module_export_type(db, module_input, config);
+        let shell = module_export_type(db, module_file_id, config);
         if !shell.is_unknown() {
             return shell;
         }
@@ -3476,10 +3650,7 @@ fn member_type_via_owner(
             if member.name != name {
                 continue;
             }
-            let Some(member_file_data_id) = db.file_data_id(member.file_id) else {
-                continue;
-            };
-            let shell = member_type(db, member_file_data_id, config, member.id);
+            let shell = member_type(db, member.file_id, config, member.id);
             if !shell.is_unknown() {
                 return Some(shell);
             }
@@ -3501,17 +3672,14 @@ fn member_type_via_owner_method(
             if member.name != name {
                 continue;
             }
-            let Some(member_file_data_id) = db.file_data_id(member.file_id) else {
-                continue;
-            };
-            let member_facts = file_facts(db, member_file_data_id);
+            let member_facts = db.file_facts_of(member.file_id)?;
             let Some(member_def) = member_facts.member_by_id(&member.id) else {
                 continue;
             };
             if !member_def.is_method {
                 continue;
             }
-            let shell = member_type(db, member_file_data_id, config, member.id);
+            let shell = member_type(db, member.file_id, config, member.id);
             if !shell.is_unknown() {
                 return Some(shell);
             }
@@ -3637,69 +3805,4 @@ fn require_module_name(call_expr: &LuaCallExpr) -> Option<String> {
         },
         _ => None,
     }
-}
-
-/// file_id → (file input, config input).
-pub(crate) fn file_and_config(db: &SemanticDatabase, file_id: FileId) -> Option<(FileId, &Emmyrc)> {
-    Some((db.file_data_id(file_id)?, db.config_input()?))
-}
-
-/// Index expression -> `(owner, name)` (member reference resolution).
-pub(crate) fn member_ref_from_index_expr(
-    facts: &FileFacts,
-    index_expr: &LuaIndexExpr,
-) -> Option<(SemanticId, SmolStr)> {
-    let name = SmolStr::new(index_expr.get_index_key()?.get_path_part());
-    let prefix = index_expr.get_prefix_expr()?;
-    let mut segments = Vec::new();
-    let owner = resolve_expr_root(facts, prefix, &mut segments)?;
-    Some((owner, name))
-}
-
-fn resolve_expr_root(
-    facts: &FileFacts,
-    expr: LuaExpr,
-    segments: &mut Vec<SmolStr>,
-) -> Option<SemanticId> {
-    // Deep member chains: expand IndexExpr with an explicit task stack to avoid native stack recursion.
-    let mut current = expr;
-    let owner = loop {
-        match current {
-            LuaExpr::ParenExpr(paren) => {
-                current = paren.get_expr()?;
-            }
-            LuaExpr::IndexExpr(parent) => {
-                segments.push(SmolStr::new(parent.get_index_key()?.get_path_part()));
-                current = parent.get_prefix_expr()?;
-            }
-            LuaExpr::NameExpr(name_expr) => {
-                let name = name_expr.get_name_text()?;
-                if name == "_ENV" || name == "_G" {
-                    break SemanticId::name(SmolStr::new(name));
-                }
-                let offset = name_expr.get_position();
-                if let Some(decl) = facts.find_visible_decl_before_offset(&name, offset)
-                    && !matches!(decl.kind, DeclKind::Global)
-                {
-                    if decl.is_implicit_self {
-                        return implicit_self_receiver_prefix(decl, &name_expr)
-                            .and_then(|receiver| resolve_expr_root(facts, receiver, segments))
-                            .or_else(|| Some(decl.id.clone()));
-                    }
-                    break decl.id.clone();
-                }
-                break SemanticId::name(SmolStr::new(name));
-            }
-            _ => return None,
-        }
-    };
-    if let SemanticId::Name(root) = &owner {
-        let mut path = root.as_str().to_string();
-        for s in segments.iter().rev() {
-            path.push('.');
-            path.push_str(s);
-        }
-        return Some(SemanticId::name(SmolStr::new(path)));
-    }
-    Some(owner)
 }

@@ -7,7 +7,7 @@
 use crate::check::checker::redefined_local::scope_metrics;
 use crate::semantic_model::flow::flow_metrics;
 use crate::semantic_model::member::query_metrics;
-use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, VirtualWorkspace};
+use crate::{LuaMemberKey, LuaType, LuaTypeDeclId, MemberCollectMode, VirtualWorkspace};
 
 fn named(key: &str) -> LuaMemberKey {
     LuaMemberKey::Name(key.into())
@@ -59,7 +59,7 @@ fn p4_5_keyed_member_lookup_keeps_overloads() {
     let ty = LuaType::Ref(LuaTypeDeclId::global("M"));
 
     query_metrics::reset();
-    let all = model.member_infos_with_key_all(&ty, &named("f"));
+    let all = model.member_infos_with_key_mode(&ty, &named("f"), MemberCollectMode::AllDefinitions);
     assert_eq!(all.len(), 2, "all overloads: {all:?}");
     let first = model.member_infos_with_key(&ty, &named("f"));
     assert_eq!(first.len(), 1, "deduped keyed view: {first:?}");

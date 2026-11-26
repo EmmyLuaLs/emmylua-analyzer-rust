@@ -1,6 +1,53 @@
 #[cfg(test)]
 mod test {
+    use crate::LuaType;
     use crate::{DiagnosticCode, VirtualWorkspace};
+
+    #[test]
+    fn test_callback_overload_checks_missing_returns() {
+        for (returns, body, accepts_missing_return) in [
+            ("Handle?", "", true),
+            ("Handle", "", false),
+            (
+                "string?",
+                "if options.enabled then return 'hello' end",
+                true,
+            ),
+            (
+                "string",
+                "if options.enabled then return 'hello' end",
+                false,
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new_with_init_std_lib();
+            let source = format!(
+                r#"
+                ---@class Handle
+                ---@field close fun()
+                ---@alias Callback fun(...: any): {returns}
+                local M = {{}}
+                ---@generic R
+                ---@return R...
+                local function generic(...) end
+                ---@overload fun(argc: integer, callback: Callback, ...: any): any ...
+                function M.await(...) return generic(...) end
+                ---@param options table
+                ---@param callback fun(text?: string)
+                local function input(options, callback)
+                    callback('hello')
+                    {body}
+                end
+                local response ---@type string?
+                response = M.await(2, input, {{}})
+            "#
+            );
+            assert_eq!(
+                ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &source),
+                accepts_missing_return,
+                "{source}",
+            );
+        }
+    }
 
     #[test]
     fn test_issue_586() {
@@ -59,12 +106,16 @@ mod test {
             --- @param c table
             local function foo(a, b, c) end
 
+            ---@param b string
+            ---@param c table
+            function expected(b, c) end
+
             bar = curry(foo, 'a')
             "#,
         );
 
         let bar_ty = ws.expr_ty("bar");
-        let expected = ws.ty("fun(b:string, c:table)");
+        let expected = ws.expr_ty("expected");
         assert_eq!(bar_ty, expected);
     }
 
@@ -1957,6 +2008,75 @@ mod test {
         assert_eq!(ws.expr_ty("A"), ws.ty("string"));
     }
 
+    /// The std lib `std.NotNull`/`std.Nullable` aliases must use syntax the type
+    /// projector understands. They previously used LuaLS `T -?` / `T +?`, which the
+    /// current projector does not evaluate, so both aliases degraded to `unknown`.
+    #[test]
+    fn test_std_not_null_alias_removes_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param value T
+                ---@return std.NotNull<T>
+                function notNull(value) end
+
+                ---@type string|nil
+                local nullable_string
+                A = notNull(nullable_string)
+
+                ---@type string|number|nil
+                local nullable_union
+                B = notNull(nullable_union)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("string|number"));
+    }
+
+    #[test]
+    fn test_std_nullable_alias_adds_nil() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param value T
+                ---@return std.Nullable<T>
+                function nullable(value) end
+
+                A = nullable("x")
+
+                ---@type string|nil
+                local nullable_string
+                B = nullable(nullable_string)
+
+                ---@type string|number|nil
+                local nullable_union
+                C = nullable(nullable_union)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("string|nil"));
+        assert_eq!(ws.expr_ty("C"), ws.ty("string|number|nil"));
+    }
+
+    #[test]
+    fn test_std_not_null_alias_on_assert() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@type string|nil
+                local value
+
+                A = assert(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+    }
+
     #[test]
     fn test_distributed_never_remains_never() {
         let mut ws = VirtualWorkspace::new();
@@ -1999,8 +2119,8 @@ mod test {
             "#,
         );
 
-        assert_eq!(ws.expr_ty("A"), crate::LuaType::Never);
-        assert_eq!(ws.expr_ty("B"), crate::LuaType::Nil);
+        assert_eq!(ws.expr_ty("A"), LuaType::Never);
+        assert_eq!(ws.expr_ty("B"), LuaType::Nil);
     }
 
     #[test]
@@ -2023,8 +2143,8 @@ mod test {
             "#,
         );
 
-        assert_eq!(ws.expr_ty("A"), crate::LuaType::Never);
-        assert_eq!(ws.expr_ty("B"), crate::LuaType::Nil);
+        assert_eq!(ws.expr_ty("A"), LuaType::Never);
+        assert_eq!(ws.expr_ty("B"), LuaType::Nil);
     }
 
     #[test]

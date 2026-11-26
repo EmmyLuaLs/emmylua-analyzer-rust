@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod test {
+    use crate::check;
     use crate::{DiagnosticCode, VirtualWorkspace};
     use lsp_types::NumberOrString;
     use tokio_util::sync::CancellationToken;
 
     #[test]
     fn test_vararg_first_function_is_callable() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check::test::check_source(
             r#"
             ---@param ... fun(value: integer): integer
             local function apply(...)
@@ -20,7 +21,7 @@ mod test {
 
     #[test]
     fn test_vararg_first_function_checks_arguments() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check::test::check_source(
             r#"
             ---@param ... fun(value: integer): integer
             local function apply(...)
@@ -30,18 +31,18 @@ mod test {
         "#,
         );
         assert_eq!(
-            crate::check::test::count_by_code(&diagnostics, DiagnosticCode::ParamTypeMismatch),
+            check::test::count_by_code(&diagnostics, DiagnosticCode::ParamTypeMismatch),
             1
         );
         assert_eq!(
-            crate::check::test::count_by_code(&diagnostics, DiagnosticCode::CallNonCallable),
+            check::test::count_by_code(&diagnostics, DiagnosticCode::CallNonCallable),
             0
         );
     }
 
     #[test]
     fn test_vararg_first_number_is_not_callable() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check::test::check_source(
             r#"
             ---@param ... integer
             local function apply(...)
@@ -51,7 +52,7 @@ mod test {
         "#,
         );
         assert_eq!(
-            crate::check::test::count_by_code(&diagnostics, DiagnosticCode::CallNonCallable),
+            check::test::count_by_code(&diagnostics, DiagnosticCode::CallNonCallable),
             1
         );
     }

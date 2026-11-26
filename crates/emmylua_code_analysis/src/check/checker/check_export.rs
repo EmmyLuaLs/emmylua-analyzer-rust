@@ -2,15 +2,13 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaSyntaxKind, LuaVarExpr,
-    NumberResult,
+    LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaVarExpr, NumberResult,
 };
 
 use crate::DiagnosticCode;
 use crate::semantic_db::def::ModuleExport;
-use crate::semantic_db::facts::FileFacts;
 use crate::semantic_model::SemanticModel;
-use crate::{FileId, InFiled, LuaMemberKey, LuaType};
+use crate::{FileId, LuaMemberKey, LuaType};
 
 use super::{CheckContext, Checker};
 use crate::semantic_model::render::humanize_type;
@@ -73,10 +71,16 @@ fn check_index_expr(
     let Some(module_file) = import_module_file(semantic_model, &prefix) else {
         return;
     };
-    let Some(module_facts) = semantic_model.file_facts_of(module_file) else {
+    let module_model = semantic_model.model_for(module_file);
+    let Some(module_facts) = module_model.file_facts() else {
         return;
     };
-    let Some(export_ty) = export_table_type(module_file, module_facts) else {
+    let export_ty = match &module_facts.module_export {
+        ModuleExport::Decl { decl, .. } => module_model.type_of_decl(decl),
+        ModuleExport::Expr { value_syntax } => Some(module_model.type_of_expr(*value_syntax)),
+        ModuleExport::Global { .. } | ModuleExport::None => None,
+    };
+    let Some(export_ty @ LuaType::TableConst(_)) = export_ty else {
         return;
     };
     let Some(index_key) = index_expr.get_index_key() else {
@@ -123,30 +127,6 @@ fn check_index_expr(
         }
         _ => {}
     }
-}
-
-/// Table type of a module export surface (`return { ... }` / `local M = {}; return M`).
-/// Non-table exports (functions / named types) return `None` and are left to undefined_field and other checkers.
-fn export_table_type(module_file: FileId, facts: &FileFacts) -> Option<LuaType> {
-    let syntax = match &facts.module_export {
-        ModuleExport::Expr { value_syntax } => Some(*value_syntax),
-        ModuleExport::Decl { decl, .. } => facts
-            .decl_by_id(decl)
-            .and_then(|decl| decl.value_expr_syntax),
-        ModuleExport::Global { .. } | ModuleExport::None => None,
-    }?;
-    if !matches!(
-        syntax.get_kind(),
-        LuaSyntaxKind::TableArrayExpr
-            | LuaSyntaxKind::TableObjectExpr
-            | LuaSyntaxKind::TableEmptyExpr
-    ) {
-        return None;
-    }
-    Some(LuaType::TableConst(InFiled::new(
-        module_file,
-        syntax.get_range(),
-    )))
 }
 
 /// Prefix is a require import:

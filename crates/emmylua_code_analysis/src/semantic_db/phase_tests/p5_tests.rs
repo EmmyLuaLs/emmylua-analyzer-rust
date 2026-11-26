@@ -3,6 +3,7 @@
 //! The P0 cross-file module mutation test is enabled by this phase; these tests
 //! additionally cover alias propagation and the canonical contribution identity.
 
+use crate::semantic_db;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -41,7 +42,7 @@ fn p5_require_alias_contribution_maps_to_module_owner() {
 
     let model = ws.analysis.semantic_model(extra_id);
     let mod_file = model.module_file_of("mod").expect("mod module file");
-    let exports = ws.analysis.db.file_exports_of(extra_id);
+    let exports = ws.analysis.db.file_exports_of(extra_id).expect("exports");
 
     assert_eq!(exports.aliases.len(), 1, "aliases: {:?}", exports.aliases);
     assert_eq!(exports.aliases[0].module_file, mod_file);
@@ -82,7 +83,7 @@ fn p5_require_alias_chain_attaches_mutation_to_module_owner() {
 
     let model = ws.analysis.semantic_model(extra_file);
     let mod_file = model.module_file_of("mod").expect("mod module file");
-    let exports = ws.analysis.db.file_exports_of(extra_file);
+    let exports = ws.analysis.db.file_exports_of(extra_file).expect("exports");
     let extra = exports
         .members
         .iter()
@@ -121,9 +122,21 @@ fn p5_require_alias_contribution_survives_batch_rebuild() {
     let alias_file = ids
         .iter()
         .copied()
-        .find(|file_id| !ws.analysis.db.file_exports_of(*file_id).aliases.is_empty())
+        .find(|file_id| {
+            !ws.analysis
+                .db
+                .file_exports_of(*file_id)
+                .expect("exports")
+                .aliases
+                .is_empty()
+        })
         .expect("extra file alias contribution");
-    let aliases = &ws.analysis.db.file_exports_of(alias_file).aliases;
+    let aliases = &ws
+        .analysis
+        .db
+        .file_exports_of(alias_file)
+        .expect("exports")
+        .aliases;
     assert_eq!(aliases.len(), 1, "aliases: {aliases:?}");
 
     let model = ws.analysis.semantic_model(alias_file);
@@ -133,6 +146,7 @@ fn p5_require_alias_contribution_survives_batch_rebuild() {
         .analysis
         .db
         .file_exports_of(alias_file)
+        .expect("exports")
         .members
         .iter()
         .find(|member| member.key.name() == Some("extra"))
@@ -156,7 +170,7 @@ fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
 /// `best_workspace_root` classifies files with `Path::strip_prefix` against the
 /// registered roots — so a relative root stops containing the test files there.
 fn test_root() -> PathBuf {
-    crate::semantic_db::tests::portable_test_root()
+    semantic_db::tests::portable_test_root()
 }
 
 /// Path for a file under [`test_root`], e.g. `test_file("c.lua")`.

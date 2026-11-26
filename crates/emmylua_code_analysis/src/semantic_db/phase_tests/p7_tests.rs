@@ -74,7 +74,12 @@ fn p7_value_only_member_edit_has_no_changed_keys() {
         return M
         "#,
     );
-    let before = ws.analysis.db.file_exports_of(mod_file).clone();
+    let before = ws
+        .analysis
+        .db
+        .file_exports_of(mod_file)
+        .expect("exports")
+        .clone();
 
     ws.def_file(
         "mod.lua",
@@ -84,7 +89,12 @@ fn p7_value_only_member_edit_has_no_changed_keys() {
         return M
         "#,
     );
-    let after = ws.analysis.db.file_exports_of(mod_file).clone();
+    let after = ws
+        .analysis
+        .db
+        .file_exports_of(mod_file)
+        .expect("exports")
+        .clone();
 
     let changed = changed_keys(Some(&before), Some(&after));
     assert!(

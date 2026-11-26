@@ -1,6 +1,5 @@
 mod client_config;
 mod locale;
-mod std_i18n;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -10,9 +9,7 @@ use crate::{
         AnalysisState, DiagnosticService, LspFeatures, ProgressTask, ServerContextSnapshot,
         StatusBar, get_client_id, load_emmy_config,
     },
-    handlers::{
-        initialized::std_i18n::try_generate_translated_std, text_document::register_files_watch,
-    },
+    handlers::text_document::register_files_watch,
     logger::init_logger,
 };
 pub use client_config::{ClientConfig, get_client_config};
@@ -208,7 +205,6 @@ pub async fn init_std_lib(analysis: &AnalysisState, cmd_args: &CmdArgs, emmyrc: 
         cmd_args.resources_path
     );
     if cmd_args.load_stdlib.0 {
-        try_generate_translated_std();
         analysis
             .update(|analysis| {
                 // double update config
