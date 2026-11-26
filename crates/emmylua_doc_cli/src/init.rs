@@ -62,6 +62,14 @@ pub fn setup_logger(verbose: bool) {
     }
 }
 
+/// Loads an analysis as the CLI does.
+///
+/// - `main_path`: the main workspace. Without `config_paths`, its `.luarc.json`, `.emmyrc.json`
+///   and `.emmyrc.lua` are the configuration.
+/// - `cmd_workspace_folders`: the folders to analyse (the CLI's `WORKSPACE` arguments).
+/// - `config_paths`: configuration files to use instead.
+/// - `exclude_pattern`, `include_pattern`: globs of files to leave out or to analyse, as
+///   `--exclude` and `--include`.
 pub fn load_workspace(
     main_path: PathBuf,
     cmd_workspace_folders: Vec<PathBuf>,

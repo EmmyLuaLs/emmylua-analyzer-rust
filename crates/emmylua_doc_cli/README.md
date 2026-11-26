@@ -65,6 +65,16 @@ Exclude certain directories or files from the documentation:
 emmylua_doc_cli . -o ./docs --ignore "third_party/**,test/**"
 ```
 
+### Library Use
+
+To get the JSON export in-process instead of from a file, depend on `emmylua_doc_cli` and call:
+```rust
+let analysis = emmylua_doc_cli::load_workspace(root.clone(), vec![root], None, None, None)
+    .ok_or("failed to load workspace")?;
+let doc = emmylua_doc_cli::export_json(&analysis)?;
+```
+`export_json` returns the same structure as `-f json`, as a `serde_json::Value`.
+
 ---
 
 ## 🛠️ CI/CD Integration
