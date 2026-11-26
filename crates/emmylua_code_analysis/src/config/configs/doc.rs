@@ -28,6 +28,21 @@ pub struct EmmyrcDoc {
     pub rst_default_role: Option<String>,
 }
 
+impl EmmyrcDoc {
+    /// Whether `name` matches a `private_name` pattern (`m_*`, `*_private` or an exact name).
+    pub fn is_private_name(&self, name: &str) -> bool {
+        self.private_name.iter().any(|pattern| {
+            if let Some(prefix) = pattern.strip_suffix('*') {
+                name.starts_with(prefix)
+            } else if let Some(suffix) = pattern.strip_prefix('*') {
+                name.ends_with(suffix)
+            } else {
+                name == pattern
+            }
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
