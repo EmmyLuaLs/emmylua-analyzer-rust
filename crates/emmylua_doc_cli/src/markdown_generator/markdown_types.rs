@@ -23,6 +23,9 @@ pub struct Doc {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct MemberDoc {
     pub name: String,
+    /// Stable in-page anchor id used by intra-doc links.
+    #[serde(default)]
+    pub anchor: String,
     pub display: String,
     pub property: Property,
     /// Parameters of a function member, with their rendered types and descriptions.

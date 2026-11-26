@@ -88,11 +88,21 @@ pub fn json_member_names_sorted(value: &serde_json::Value) -> Vec<String> {
 }
 
 fn generate_fixture_with_format(fixture_name: &str, source: &str, format: Format) -> PathBuf {
+    generate_fixture_files_with_format(fixture_name, &[("mod.lua", source)], format)
+}
+
+pub fn generate_fixture_files_with_format(
+    fixture_name: &str,
+    files: &[(&str, &str)],
+    format: Format,
+) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(fixture_name);
     // The fixture directory does not exist on the first run.
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create fixture dir");
-    std::fs::write(dir.join("mod.lua"), source).expect("write fixture");
+    for (name, source) in files {
+        std::fs::write(dir.join(name), source).expect("write fixture");
+    }
 
     let out = dir.join("out");
     let args = CmdArgs {

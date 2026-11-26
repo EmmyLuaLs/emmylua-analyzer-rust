@@ -10,6 +10,8 @@
 {% if doc.fields %}
 {% for field in doc.fields -%}
 
+<a id="{{ field.anchor }}"></a>
+
 ### {{ field.name }}
 
 ```lua

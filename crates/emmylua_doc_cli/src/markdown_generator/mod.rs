@@ -7,6 +7,7 @@ mod render;
 use std::path::PathBuf;
 
 use crate::OutputDestination;
+use crate::doc_links::DocLinkIndex;
 use crate::doc_model::DocModel;
 use emmylua_code_analysis::EmmyLuaAnalysis;
 use generator::{
@@ -63,16 +64,38 @@ pub fn generate_markdown(
     }
 
     let model = DocModel::build(analysis);
+    let doc_links = DocLinkIndex::build(&model);
     for doc_type in &model.types {
-        generate_type_markdown(&model, &tl, doc_type, &types_out, &mut mkdocs_index);
+        generate_type_markdown(
+            &model,
+            &tl,
+            doc_type,
+            &types_out,
+            &mut mkdocs_index,
+            &doc_links,
+        );
     }
 
     for module in &model.modules {
-        generate_module_markdown(&model, &tl, module, &module_out, &mut mkdocs_index);
+        generate_module_markdown(
+            &model,
+            &tl,
+            module,
+            &module_out,
+            &mut mkdocs_index,
+            &doc_links,
+        );
     }
 
     for global in &model.globals {
-        generate_global_markdown(&model, &tl, global, &global_out, &mut mkdocs_index);
+        generate_global_markdown(
+            &model,
+            &tl,
+            global,
+            &global_out,
+            &mut mkdocs_index,
+            &doc_links,
+        );
     }
 
     generate_index(&tl, &mut mkdocs_index, &output);

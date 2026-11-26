@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::doc_links::{DocLinkIndex, DocPageRef, LinkContext};
 use crate::doc_model::{DocGlobal, DocModel};
 use crate::markdown_generator::{
     escape_type_name,
@@ -10,7 +11,7 @@ use crate::markdown_generator::{
 use emmylua_code_analysis::{LuaType, RenderLevel};
 use tera::Tera;
 
-use super::collect_property;
+use super::collect_property_with_links;
 
 pub fn generate_global_markdown(
     model: &DocModel,
@@ -18,6 +19,7 @@ pub fn generate_global_markdown(
     global: &DocGlobal,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
+    doc_links: &DocLinkIndex,
 ) -> Option<()> {
     // Runtime class values (`local Animal = {}`) are not output as global doc pages.
     if matches!(global.ty, LuaType::Ref(_) | LuaType::Def(_)) {
@@ -25,16 +27,18 @@ pub fn generate_global_markdown(
     }
 
     let mut context = tera::Context::new();
+    let links = LinkContext::new(doc_links, DocPageRef::for_global(&global.name), "");
     let mut doc = Doc {
         name: global.name.clone(),
-        property: collect_property(&global.property),
+        property: collect_property_with_links(&global.property, Some(&links)),
         ..Default::default()
     };
     let mut template_name = "lua_global_template.tl";
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
             let members = model.members_for_global(global);
-            let (methods, fields) = collect_owner_members(model, &members, &global.name);
+            let (methods, fields) =
+                collect_owner_members(model, &members, &global.name, Some(&links));
             doc.methods = if methods.is_empty() {
                 None
             } else {
@@ -48,7 +52,7 @@ pub fn generate_global_markdown(
         }
         _ => {
             template_name = "lua_global_template_simple.tl";
-            generate_simple_global(model, &mut doc, global);
+            generate_simple_global(model, &mut doc, global, &links);
         }
     }
     context.insert("doc", &doc);
@@ -73,8 +77,13 @@ pub fn generate_global_markdown(
     Some(())
 }
 
-fn generate_simple_global(model: &DocModel, doc: &mut Doc, global: &DocGlobal) {
-    doc.property = collect_property(&global.property);
+fn generate_simple_global(
+    model: &DocModel,
+    doc: &mut Doc,
+    global: &DocGlobal,
+    links: &LinkContext,
+) {
+    doc.property = collect_property_with_links(&global.property, Some(links));
     let name = &global.name;
     if model
         .function_info(&global.ty, global.signature.as_ref())
@@ -88,7 +97,8 @@ fn generate_simple_global(model: &DocModel, doc: &mut Doc, global: &DocGlobal) {
             false,
         ));
         let (params, returns) =
-            function_details_md(model, &global.ty, global.signature.as_ref()).unwrap_or_default();
+            function_details_md(model, &global.ty, global.signature.as_ref(), Some(links))
+                .unwrap_or_default();
         doc.params = params;
         doc.returns = returns;
         doc.overloads = function_overloads_md(model, global.signature.as_ref(), name);

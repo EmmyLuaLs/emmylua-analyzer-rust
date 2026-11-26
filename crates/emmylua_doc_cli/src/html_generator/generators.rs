@@ -1,5 +1,6 @@
 use emmylua_code_analysis::LuaType;
 
+use crate::doc_links::{DocLinkIndex, DocPageRef, LinkContext};
 use crate::doc_model::{DocGlobal, DocMember, DocModel, DocModule, DocType, DocTypeKind};
 use crate::html_generator::html_type::{self, TypeLinker};
 use crate::html_generator::types::{HtmlDoc, HtmlMember, HtmlParam};
@@ -14,7 +15,11 @@ pub struct GenContext<'a> {
     /// Maps a type declaration id to a page href (prefixed relative to the
     /// page being generated).
     pub linker: &'a TypeLinker<'a>,
+    /// Symbol index used to resolve intra-doc links in descriptions.
+    pub links: &'a DocLinkIndex,
 }
+
+const ROOT_PREFIX: &str = "../";
 
 pub fn build_type_doc(ctx: &GenContext, doc_type: &DocType) -> Option<HtmlDoc> {
     let typ_name = doc_type.full_name.clone();
@@ -22,23 +27,24 @@ pub fn build_type_doc(ctx: &GenContext, doc_type: &DocType) -> Option<HtmlDoc> {
         name: typ_name,
         ..Default::default()
     };
+    let links = LinkContext::new(ctx.links, DocPageRef::for_type(doc_type), ROOT_PREFIX);
 
     match doc_type.kind {
-        DocTypeKind::Class => build_class_doc(ctx, doc_type, &mut doc),
-        DocTypeKind::Enum => build_enum_doc(ctx, doc_type, &mut doc),
-        DocTypeKind::Alias => build_alias_doc(ctx, doc_type, &mut doc),
+        DocTypeKind::Class => build_class_doc(ctx, doc_type, &mut doc, &links),
+        DocTypeKind::Enum => build_enum_doc(ctx, doc_type, &mut doc, &links),
+        DocTypeKind::Alias => build_alias_doc(ctx, doc_type, &mut doc, &links),
     }
     Some(doc)
 }
 
-fn build_class_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
+fn build_class_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc, links: &LinkContext) {
     let model = ctx.model;
     doc.kind = "class".to_string();
     doc.title = format!("class {}", doc.name);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.set_namespace(&doc_type.full_name[..index]);
     }
-    doc.set_property(collect_property(&doc_type.property));
+    doc.set_property(collect_property(&doc_type.property), Some(links));
 
     if !doc_type.bases.is_empty() {
         let super_texts: Vec<String> = doc_type
@@ -49,31 +55,31 @@ fn build_class_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
         doc.set_supers(super_texts.join(", "));
     }
 
-    let (methods, fields) = collect_members(ctx, &doc_type.members, &doc_type.name);
+    let (methods, fields) = collect_members(ctx, &doc_type.members, &doc_type.name, links);
     doc.methods = methods;
     doc.fields = fields;
 }
 
-fn build_enum_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
+fn build_enum_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc, links: &LinkContext) {
     doc.kind = "enum".to_string();
     doc.title = format!("enum {}", doc.name);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.set_namespace(&doc_type.full_name[..index]);
     }
-    doc.set_property(collect_property(&doc_type.property));
+    doc.set_property(collect_property(&doc_type.property), Some(links));
 
-    let (_, fields) = collect_members(ctx, &doc_type.members, &doc_type.name);
+    let (_, fields) = collect_members(ctx, &doc_type.members, &doc_type.name, links);
     doc.fields = fields;
 }
 
-fn build_alias_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc) {
+fn build_alias_doc(ctx: &GenContext, doc_type: &DocType, doc: &mut HtmlDoc, links: &LinkContext) {
     let model = ctx.model;
     doc.kind = "alias".to_string();
     doc.title = format!("alias {}", doc.name);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.set_namespace(&doc_type.full_name[..index]);
     }
-    doc.set_property(collect_property(&doc_type.property));
+    doc.set_property(collect_property(&doc_type.property), Some(links));
 
     if let Some(origin_typ) = &doc_type.alias_type {
         let is_union = matches!(origin_typ, LuaType::Union(_) | LuaType::MultiLineUnion(_));
@@ -100,10 +106,11 @@ pub fn build_module_doc(ctx: &GenContext, module: &DocModule) -> Option<HtmlDoc>
         title: format!("module {}", module.name),
         ..Default::default()
     };
-    doc.set_property(collect_property(&module.property));
+    let links = LinkContext::new(ctx.links, DocPageRef::for_module(&module.name), ROOT_PREFIX);
+    doc.set_property(collect_property(&module.property), Some(&links));
 
     let members = ctx.model.members_for_module(module);
-    let (methods, fields) = collect_members(ctx, &members, &module.name);
+    let (methods, fields) = collect_members(ctx, &members, &module.name, &links);
     doc.methods = methods;
     doc.fields = fields;
     Some(doc)
@@ -117,12 +124,13 @@ pub fn build_global_doc(ctx: &GenContext, global: &DocGlobal) -> Option<HtmlDoc>
         title: format!("global {}", name),
         ..Default::default()
     };
-    doc.set_property(collect_property(&global.property));
+    let links = LinkContext::new(ctx.links, DocPageRef::for_global(&name), ROOT_PREFIX);
+    doc.set_property(collect_property(&global.property), Some(&links));
 
     match &global.ty {
         LuaType::TableConst(_) | LuaType::Instance(_) => {
             let members = ctx.model.members_for_global(global);
-            let (methods, fields) = collect_members(ctx, &members, &name);
+            let (methods, fields) = collect_members(ctx, &members, &name, &links);
             doc.methods = methods;
             doc.fields = fields;
         }
@@ -176,6 +184,7 @@ pub fn collect_members(
     ctx: &GenContext,
     members: &[DocMember],
     owner_name: &str,
+    links: &LinkContext,
 ) -> (Vec<HtmlMember>, Vec<HtmlMember>) {
     let model = ctx.model;
     let mut methods = Vec::new();
@@ -206,6 +215,7 @@ pub fn collect_members(
                 member.name.clone(),
                 display,
                 property,
+                Some(links),
             );
             html_member.params = func
                 .params
@@ -251,6 +261,7 @@ pub fn collect_members(
                 member.name.clone(),
                 display,
                 property,
+                Some(links),
             ));
         } else {
             let typ_display = render_type_html(model, &member.ty, ctx.linker);
@@ -264,6 +275,7 @@ pub fn collect_members(
                 member.name.clone(),
                 display,
                 property,
+                Some(links),
             ));
         }
     }

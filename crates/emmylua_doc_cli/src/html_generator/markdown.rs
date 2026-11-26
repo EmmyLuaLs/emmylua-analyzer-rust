@@ -1,7 +1,9 @@
 use super::render::html_escape;
+use crate::doc_links::LinkContext;
 use emmylua_parser::{LexerState, Reader, SourceRange};
 use emmylua_parser_desc::{
-    CodeBlockHighlightKind, CodeBlockLang, DescItem, DescItemKind, ResultContainer, process_code,
+    CodeBlockHighlightKind, CodeBlockLang, DescItem, DescItemKind, ResultContainer,
+    parse_intra_doc_link, process_code,
 };
 
 /// Collects `DescItem`s from a standalone code block for syntax highlighting.
@@ -79,7 +81,14 @@ pub fn highlight_code(lang: &str, code: &str) -> String {
 ///
 /// This operates on the plain description strings produced by the doc index, so
 /// it is self-contained and does not require re-parsing source files.
+#[cfg(test)]
 pub fn render_markdown(text: &str) -> String {
+    render_markdown_with_links(text, None)
+}
+
+/// Like [`render_markdown`], but resolves Rust-like intra-doc links
+/// (``[`Widget`]``) through the page's [`LinkContext`].
+pub fn render_markdown_with_links(text: &str, links: Option<&LinkContext>) -> String {
     let mut html = String::new();
     let mut in_code = false;
     let mut code_lang = String::new();
@@ -127,7 +136,10 @@ pub fn render_markdown(text: &str) -> String {
         // Heading.
         if let Some((level, content)) = parse_heading(trimmed) {
             close_block(&mut html, &mut in_para, &mut list_tag);
-            html.push_str(&format!("<h{level}>{}</h{level}>", render_inline(content)));
+            html.push_str(&format!(
+                "<h{level}>{}</h{level}>",
+                render_inline(content, links)
+            ));
             i += 1;
             continue;
         }
@@ -145,7 +157,7 @@ pub fn render_markdown(text: &str) -> String {
             close_block(&mut html, &mut in_para, &mut list_tag);
             html.push_str(&format!(
                 "<blockquote>{}</blockquote>",
-                render_inline(content.trim())
+                render_inline(content.trim(), links)
             ));
             i += 1;
             continue;
@@ -159,13 +171,13 @@ pub fn render_markdown(text: &str) -> String {
                 list_tag = Some(tag);
             }
             close_para(&mut html, &mut in_para);
-            html.push_str(&format!("<li>{}</li>", render_inline(content)));
+            html.push_str(&format!("<li>{}</li>", render_inline(content, links)));
             i += 1;
             continue;
         }
 
         // Table.
-        if let Some((table, next)) = try_parse_table(&lines, i) {
+        if let Some((table, next)) = try_parse_table(&lines, i, links) {
             close_block(&mut html, &mut in_para, &mut list_tag);
             html.push_str(&table);
             i = next;
@@ -179,7 +191,7 @@ pub fn render_markdown(text: &str) -> String {
         } else {
             html.push(' ');
         }
-        html.push_str(&render_inline(trimmed));
+        html.push_str(&render_inline(trimmed, links));
         i += 1;
     }
 
@@ -270,7 +282,11 @@ impl TableAlign {
 /// cells cannot span lines, and HTML blocks / indented code blocks are not
 /// recognized as table-body terminators (only headings, rules, lists,
 /// blockquotes and fenced code are).
-fn try_parse_table(lines: &[&str], start: usize) -> Option<(String, usize)> {
+fn try_parse_table(
+    lines: &[&str],
+    start: usize,
+    links: Option<&LinkContext>,
+) -> Option<(String, usize)> {
     let header = split_table_row(lines.get(start)?)?;
     let delimiter = split_table_row(lines.get(start + 1)?)?;
     if header.is_empty() || header.len() != delimiter.len() {
@@ -295,7 +311,7 @@ fn try_parse_table(lines: &[&str], start: usize) -> Option<(String, usize)> {
         i += 1;
     }
 
-    Some((render_table(&header, &aligns, &rows), i))
+    Some((render_table(&header, &aligns, &rows, links), i))
 }
 
 /// A block-level construct that ends a table body.
@@ -378,10 +394,15 @@ fn split_table_row(line: &str) -> Option<Vec<String>> {
     Some(cells.into_iter().map(|c| c.trim().to_string()).collect())
 }
 
-fn render_table(header: &[String], aligns: &[TableAlign], rows: &[Vec<String>]) -> String {
+fn render_table(
+    header: &[String],
+    aligns: &[TableAlign],
+    rows: &[Vec<String>],
+    links: Option<&LinkContext>,
+) -> String {
     let mut html = String::from("<div class=\"doc-table\"><table>\n<thead>\n<tr>");
     for (idx, cell) in header.iter().enumerate() {
-        push_cell(&mut html, "th", aligns.get(idx).copied(), cell);
+        push_cell(&mut html, "th", aligns.get(idx).copied(), cell, links);
     }
     html.push_str("</tr>\n</thead>\n");
 
@@ -391,7 +412,7 @@ fn render_table(header: &[String], aligns: &[TableAlign], rows: &[Vec<String>]) 
             html.push_str("<tr>");
             for idx in 0..header.len() {
                 let cell = row.get(idx).map(String::as_str).unwrap_or("");
-                push_cell(&mut html, "td", aligns.get(idx).copied(), cell);
+                push_cell(&mut html, "td", aligns.get(idx).copied(), cell, links);
             }
             html.push_str("</tr>\n");
         }
@@ -402,7 +423,13 @@ fn render_table(header: &[String], aligns: &[TableAlign], rows: &[Vec<String>]) 
     html
 }
 
-fn push_cell(html: &mut String, tag: &str, align: Option<TableAlign>, content: &str) {
+fn push_cell(
+    html: &mut String,
+    tag: &str,
+    align: Option<TableAlign>,
+    content: &str,
+    links: Option<&LinkContext>,
+) {
     html.push('<');
     html.push_str(tag);
     if let Some(class) = align.and_then(TableAlign::class) {
@@ -411,7 +438,7 @@ fn push_cell(html: &mut String, tag: &str, align: Option<TableAlign>, content: &
         html.push('"');
     }
     html.push('>');
-    html.push_str(&render_inline(content));
+    html.push_str(&render_inline(content, links));
     html.push_str("</");
     html.push_str(tag);
     html.push('>');
@@ -435,8 +462,9 @@ fn close_list(html: &mut String, list_tag: &mut Option<&str>) {
     }
 }
 
-/// Renders inline markdown: `**bold**`, `*italic*`, `` `code` ``, `[text](url)`.
-fn render_inline(text: &str) -> String {
+/// Renders inline markdown: `**bold**`, `*italic*`, `` `code` ``,
+/// `[text](url)` and Rust-like intra-doc links (``[`Widget`]``).
+fn render_inline(text: &str, links: Option<&LinkContext>) -> String {
     let mut out = String::new();
     let mut plain = String::new();
     let chars: Vec<char> = text.chars().collect();
@@ -446,8 +474,8 @@ fn render_inline(text: &str) -> String {
         let c = chars[i];
         let special = match c {
             '`' => try_inline_code(&chars, i),
-            '[' => try_link(&chars, i),
-            '*' | '_' => try_emph(&chars, i),
+            '[' => try_link(&chars, i, links),
+            '*' | '_' => try_emph(&chars, i, links),
             '\\' => try_escape(&chars, i),
             _ => None,
         };
@@ -479,26 +507,36 @@ fn try_inline_code(chars: &[char], i: usize) -> Option<(String, usize)> {
     Some((format!("<code>{}</code>", html_escape(&code)), end + 1))
 }
 
-fn try_link(chars: &[char], i: usize) -> Option<(String, usize)> {
+fn try_link(chars: &[char], i: usize, links: Option<&LinkContext>) -> Option<(String, usize)> {
     let close_bracket = chars[i + 1..].iter().position(|&c| c == ']')?;
     let close_bracket = i + 1 + close_bracket;
-    if chars.get(close_bracket + 1) != Some(&'(') {
-        return None;
-    }
-    let open_paren = close_bracket + 1;
-    let close_paren = chars[open_paren + 1..].iter().position(|&c| c == ')')?;
-    let close_paren = open_paren + 1 + close_paren;
     let label: String = chars[i + 1..close_bracket].iter().collect();
-    let href: String = chars[open_paren + 1..close_paren].iter().collect();
-    let html = format!(
-        "<a href=\"{}\">{}</a>",
-        html_escape(&href),
-        html_escape(&label)
-    );
-    Some((html, close_paren + 1))
+
+    if chars.get(close_bracket + 1) == Some(&'(') {
+        let open_paren = close_bracket + 1;
+        let close_paren = chars[open_paren + 1..].iter().position(|&c| c == ')')?;
+        let close_paren = open_paren + 1 + close_paren;
+        let href: String = chars[open_paren + 1..close_paren].iter().collect();
+        let html = format!(
+            "<a href=\"{}\">{}</a>",
+            html_escape(&href),
+            render_inline(&label, links)
+        );
+        return Some((html, close_paren + 1));
+    }
+
+    let link = parse_intra_doc_link(&label)?;
+    let rendered_label = render_inline(&label, links);
+    Some(match links.and_then(|links| links.html_href(link.target)) {
+        Some(href) => (
+            format!("<a href=\"{}\">{}</a>", html_escape(&href), rendered_label),
+            close_bracket + 1,
+        ),
+        None => (rendered_label, close_bracket + 1),
+    })
 }
 
-fn try_emph(chars: &[char], i: usize) -> Option<(String, usize)> {
+fn try_emph(chars: &[char], i: usize, links: Option<&LinkContext>) -> Option<(String, usize)> {
     let marker = chars[i];
     let double = chars.get(i + 1) == Some(&marker);
     let marker_len = if double { 2 } else { 1 };
@@ -508,12 +546,12 @@ fn try_emph(chars: &[char], i: usize) -> Option<(String, usize)> {
             let inner: String = chars[i + marker_len..j].iter().collect();
             if double {
                 return Some((
-                    format!("<strong>{}</strong>", render_inline(&inner)),
+                    format!("<strong>{}</strong>", render_inline(&inner, links)),
                     j + marker_len,
                 ));
             }
             return Some((
-                format!("<em>{}</em>", render_inline(&inner)),
+                format!("<em>{}</em>", render_inline(&inner, links)),
                 j + marker_len,
             ));
         }

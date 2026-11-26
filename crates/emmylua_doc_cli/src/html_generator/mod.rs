@@ -11,6 +11,7 @@ use emmylua_code_analysis::LuaType;
 use tera::Tera;
 
 use crate::OutputDestination;
+use crate::doc_links::DocLinkIndex;
 use crate::doc_model::{DocGlobal, DocModel, DocTypeKey};
 use crate::markdown_generator::escape_type_name;
 use types::{HtmlDoc, NavGroup, NavItem, NavModel, NavTreeNode};
@@ -48,6 +49,7 @@ pub fn generate_html(
     // Build a map of documented type full-names -> root-relative page hrefs so
     // signatures can link to them.
     let link_map = build_link_map(&model);
+    let doc_links = DocLinkIndex::build(&model);
 
     // Item pages live one level below the root, so links inside signatures use
     // the "../" prefix.
@@ -56,6 +58,7 @@ pub fn generate_html(
     let ctx = GenContext {
         model: &model,
         linker: &sub_linker,
+        links: &doc_links,
     };
 
     let mut pages: Vec<(String, HtmlDoc)> = Vec::new();

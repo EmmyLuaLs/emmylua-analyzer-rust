@@ -16,7 +16,8 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAstNode, LuaCommentOwner, LuaDocDescription, LuaDocDescriptionOwner, LuaDocTagField,
-    LuaDocTagParam, LuaDocTagReturn, LuaExpr, LuaStat, LuaSyntaxId, LuaTableField, VisibilityKind,
+    LuaDocTagParam, LuaDocTagReturn, LuaExpr, LuaStat, LuaSyntaxId, LuaTableExpr, LuaTableField,
+    VisibilityKind,
 };
 use rowan::TextRange;
 
@@ -409,6 +410,12 @@ impl DocModel {
                             .cloned(),
                     );
                 }
+                if matches!(def.kind, TypeDefKind::Enum)
+                    && let Some(owner) = enum_table_member_owner(&model, def)
+                    && !member_owners.contains(&owner)
+                {
+                    member_owners.push(owner);
+                }
             }
             // Global runtime tables (`string.gsub`, `table.insert`, ...) are
             // owned by `SemanticId::Name`; expose them on the type page too.
@@ -766,6 +773,18 @@ fn type_visibility(visibility: TypeVisibility) -> Option<VisibilityKind> {
         TypeVisibility::Internal => VisibilityKind::Internal,
         TypeVisibility::Private => VisibilityKind::Private,
     })
+}
+
+/// Owner of the runtime table bound to an `---@enum`.
+///
+/// Enum values are table fields, so their members live on the table literal
+/// rather than on the `TypeDef`. The semantic model exposes the same identity
+/// for enum member constants.
+fn enum_table_member_owner(model: &SemanticModel<'_>, def: &TypeDef) -> Option<SemanticId> {
+    let tree = model.syntax_tree_of(def.file_id)?;
+    let owner = def.owner_syntax?.to_node_from_root(&tree.get_red_root())?;
+    let table = owner.children().find_map(LuaTableExpr::cast)?;
+    Some(SemanticId::member(def.file_id, table.get_range()))
 }
 
 fn make_loc(
