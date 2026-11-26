@@ -757,9 +757,17 @@ impl<'db> SemanticModel<'db> {
         let LuaType::Union(union) = &prefix_ty else {
             return false;
         };
+        let components = union.into_vec();
+        // An `any`/`unknown` component reads any member as itself: `any|string` (the value slot
+        // of `pcall(require, mod)`) has no missing member.
+        if components
+            .iter()
+            .any(|component| component.is_any() || component.is_unknown())
+        {
+            return false;
+        }
         let key = LuaMemberKey::Name(SmolStr::new(index_key.get_path_part()));
-        union
-            .into_vec()
+        components
             .iter()
             .any(|component| self.member_type(component, &key).is_none())
     }
