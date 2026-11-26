@@ -169,7 +169,13 @@ fn index_expr_callable_candidates(
     };
 
     if let Some(prefix) = index_expr.get_prefix_expr() {
-        let prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
+        let mut prefix_ty = semantic_model.type_of_expr(prefix.get_syntax_id());
+        if let LuaExpr::NameExpr(name) = &prefix
+            && let Some(decl) = semantic_model.resolve_name(name.get_position())
+            && let Some(own) = semantic_model.own_class_self_receiver(&decl, &prefix_ty)
+        {
+            prefix_ty = own;
+        }
         let key = resolved.key.clone();
         let candidates = match &resolved.member_id {
             Some(member_id) => CallableCandidateSet::from_prefix_type_for_member(

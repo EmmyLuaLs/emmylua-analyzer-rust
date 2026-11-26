@@ -369,24 +369,137 @@ pub fn expand_mapped(model: &SemanticModel, mapped: &LuaMappedType) -> Option<Lu
     ))))
 }
 
-/// Build a mapping from class generic names to arguments (`T -> string`) from a receiver generic instance (`Box<string>`).
-pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<HashMap<String, LuaType>> {
-    let LuaType::Generic(generic) = ty else {
-        return None;
+/// Find the class definition represented by a receiver type.
+pub fn class_generic_definition(model: &SemanticModel, ty: &LuaType) -> Option<TypeDef> {
+    let base = match ty {
+        LuaType::Generic(generic) => generic.get_base_type_id(),
+        LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
+        _ => return None,
     };
-    let def = model.type_def_of(&generic.get_base_type_id())?;
-    let params = generic.get_params();
+    model.type_def_of(&base)
+}
+
+/// Build bindings from a class definition's scoped parameters to receiver arguments.
+///
+/// A bare reference to a generic class (`Box`, typically from `---@return Box`) and an
+/// instance with missing trailing arguments use the declared defaults
+/// (`---@class Box<T = string>`); parameters without a default become `any`, the same
+/// semantics as a bare `---@type Box` declaration.
+pub fn class_generic_map(model: &SemanticModel, ty: &LuaType) -> Option<unify::TplBindings> {
+    let (base, provided): (_, &[LuaType]) = match ty {
+        LuaType::Generic(generic) => (generic.get_base_type_id(), generic.get_params()),
+        LuaType::Ref(id) | LuaType::Def(id) => (id.clone(), &[]),
+        _ => return None,
+    };
+    let def = model.type_def_of(&base)?;
+    if def.generic_params.is_empty() {
+        return None;
+    }
+    let args = class_generic_args_with_defaults(model, &def, provided);
     Some(
-        def.generic_params
-            .iter()
+        args.into_iter()
             .enumerate()
-            .filter_map(|(index, param)| {
-                params
-                    .get(index)
-                    .map(|value| (param.name.to_string(), value.clone()))
-            })
+            .map(|(index, value)| (def.generic_tpl_id(index), value))
             .collect(),
     )
+}
+
+/// Re-key class generic references written as names (`T`) with this definition's identity.
+/// Function generics are represented by `TplRef` and keep their own scope.
+pub fn bind_class_generic_names(ty: &LuaType, def: &TypeDef) -> LuaType {
+    map_type(ty, &mut |ty| match ty {
+        LuaType::Ref(id) | LuaType::Def(id) => {
+            let index = def
+                .generic_params
+                .iter()
+                .position(|param| param.name == id.get_name())?;
+            let param = &def.generic_params[index];
+            Some(LuaType::TplRef(Rc::new(GenericTpl::new(
+                def.generic_tpl_id(index),
+                param.name.clone(),
+                None,
+                None,
+                param.is_const,
+                None,
+            ))))
+        }
+        _ => None,
+    })
+}
+
+/// Re-key template refs projected from a type-definition doc scope.
+pub fn bind_class_doc_tpls(ty: &LuaType, def: &TypeDef) -> LuaType {
+    map_type(ty, &mut |ty| match ty {
+        LuaType::TplRef(tpl) => {
+            let GenericTplId::Type(index) = tpl.get_tpl_id() else {
+                return None;
+            };
+            let index = index as usize;
+            let param = def.generic_params.get(index)?;
+            let old = tpl.get_param();
+            Some(LuaType::TplRef(Rc::new(GenericTpl::new(
+                def.generic_tpl_id(index),
+                param.name.clone(),
+                old.constraint.clone(),
+                old.default.clone(),
+                old.is_const,
+                old.attributes.clone(),
+            ))))
+        }
+        _ => None,
+    })
+}
+
+/// Bind class parameters in an identity-level method signature without name-based substitution.
+pub(super) fn substitute_class_generics_in_function(
+    fun: &LuaFunctionType,
+    def: &TypeDef,
+    bindings: &unify::TplBindings,
+) -> LuaFunctionType {
+    let substitute = |ty: &LuaType| {
+        let scoped = bind_class_generic_names(ty, def);
+        unify::substitute(&scoped, bindings)
+    };
+    LuaFunctionType::new(
+        fun.get_async_state(),
+        fun.is_colon_define(),
+        fun.is_variadic(),
+        fun.get_params()
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.as_ref().map(&substitute)))
+            .collect(),
+        substitute(fun.get_ret()),
+        Some(fun.get_generic_params().to_vec()),
+    )
+}
+
+/// Apply positional class arguments, then fill missing trailing parameters from their
+/// defaults (which may reference earlier parameters) or `any`. Generic arguments cannot
+/// skip an earlier defaulted parameter to provide a later variadic argument.
+fn class_generic_args_with_defaults(
+    model: &SemanticModel,
+    def: &TypeDef,
+    provided: &[LuaType],
+) -> Vec<LuaType> {
+    let mut resolved: Vec<LuaType> = Vec::with_capacity(def.generic_params.len());
+    for (index, param) in def.generic_params.iter().enumerate() {
+        if let Some(value) = provided.get(index) {
+            resolved.push(value.clone());
+            continue;
+        }
+        let Some(syntax) = param.default else {
+            resolved.push(LuaType::Any);
+            continue;
+        };
+        let default = model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+        let default = bind_class_doc_tpls(&default, def);
+        let mut bindings = unify::TplBindings::new();
+        for (earlier, value) in resolved.iter().enumerate() {
+            bindings.insert(def.generic_tpl_id(earlier), value.clone());
+        }
+        resolved.push(unify::substitute(&default, &bindings));
+    }
+    resolved
 }
 
 /// Substitute class generics referenced by name without traversing replacements.

@@ -5,8 +5,11 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
 use crate::semantic_model::infer::unify::{self, TplBindings};
-use crate::semantic_model::type_eval::{substitute_named_refs, with_expanded_alias};
-use crate::{FileId, GenericTplId, InFiled, LuaMemberKey, LuaObjectType, LuaType};
+use crate::semantic_model::type_eval::{
+    bind_class_doc_tpls, bind_class_generic_names, class_generic_definition, class_generic_map,
+    substitute_named_refs, with_expanded_alias,
+};
+use crate::{FileId, InFiled, LuaMemberKey, LuaObjectType, LuaType, LuaTypeDeclId};
 use crate::{Member, semantic_db::facts::FileFacts};
 use smol_str::SmolStr;
 
@@ -152,7 +155,7 @@ fn find_type_def_member(
         return Some(info);
     }
 
-    for super_type in inherited_base_types(model, def, bindings, name_bindings) {
+    for super_type in inherited_base_types(model, def, bindings) {
         let mut infos = Vec::new();
         collect_members(
             model,
@@ -189,27 +192,14 @@ pub(super) fn inherited_base_types(
     model: &SemanticModel,
     def: &TypeDef,
     bindings: Option<&TplBindings>,
-    name_bindings: Option<&HashMap<String, LuaType>>,
 ) -> Vec<LuaType> {
-    let mut bindings = bindings.cloned().unwrap_or_default();
-    if let Some(name_bindings) = name_bindings {
-        for (index, param) in def.generic_params.iter().enumerate() {
-            if let Some(value) = name_bindings.get(param.name.as_str()) {
-                bindings
-                    .entry(GenericTplId::Type(index as u32))
-                    .or_insert_with(|| value.clone());
-            }
-        }
-    }
+    let bindings = bindings.cloned().unwrap_or_default();
     model
         .base_types(&def.type_decl_id())
         .into_iter()
         .map(|ty| {
-            if bindings.is_empty() {
-                ty
-            } else {
-                unify::substitute(&ty, &bindings)
-            }
+            let ty = bind_class_doc_tpls(&ty, def);
+            unify::substitute(&ty, &bindings)
         })
         .collect()
 }
@@ -231,34 +221,26 @@ pub(super) fn direct_member_info(
             let mut visited = Vec::new();
             // Bare generic type (`Box`) uses its declared defaults/constraints for member lookup.
             let mut bindings = TplBindings::new();
-            let mut name_bindings = HashMap::new();
-            let mut all_bound = true;
             for (index, param) in def.generic_params.iter().enumerate() {
                 let ty = param
                     .default
-                    .map(|syntax| model.doc_type_lua_in(def.file_id, syntax, &def.generic_params))
+                    .map(|syntax| {
+                        let ty = model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+                        bind_class_doc_tpls(&ty, &def)
+                    })
                     .or_else(|| {
                         param.constraint.map(|syntax| {
-                            model.doc_type_lua_in(def.file_id, syntax, &def.generic_params)
+                            let ty =
+                                model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+                            bind_class_doc_tpls(&ty, &def)
                         })
-                    });
-                if let Some(ty) = ty {
-                    bindings.insert(GenericTplId::Type(index as u32), ty.clone());
-                    name_bindings.insert(param.name.to_string(), ty);
-                } else {
-                    all_bound = false;
-                    break;
-                }
+                    })
+                    .unwrap_or(LuaType::Any);
+                let ty = unify::substitute(&ty, &bindings);
+                bindings.insert(def.generic_tpl_id(index), ty);
             }
-            if all_bound && !bindings.is_empty() {
-                find_type_def_member(
-                    model,
-                    &def,
-                    key,
-                    Some(&bindings),
-                    Some(&name_bindings),
-                    &mut visited,
-                )
+            if !bindings.is_empty() {
+                find_type_def_member(model, &def, key, Some(&bindings), None, &mut visited)
             } else {
                 find_type_def_member(model, &def, key, None, None, &mut visited)
             }
@@ -275,28 +257,10 @@ pub(super) fn direct_member_info(
                 .get_params()
                 .iter()
                 .enumerate()
-                .map(|(index, ty)| (GenericTplId::Type(index as u32), ty.clone()))
-                .collect();
-            let name_map: HashMap<String, LuaType> = def
-                .generic_params
-                .iter()
-                .enumerate()
-                .filter_map(|(index, param)| {
-                    generic
-                        .get_params()
-                        .get(index)
-                        .map(|value| (param.name.to_string(), value.clone()))
-                })
+                .map(|(index, ty)| (def.generic_tpl_id(index), ty.clone()))
                 .collect();
             let mut visited = Vec::new();
-            find_type_def_member(
-                model,
-                &def,
-                key,
-                Some(&bindings),
-                Some(&name_map),
-                &mut visited,
-            )
+            find_type_def_member(model, &def, key, Some(&bindings), None, &mut visited)
         }
         LuaType::TableConst(table) => {
             let owner = SemanticId::member(table.file_id, table.value);
@@ -640,33 +604,20 @@ fn collect_members(
                 // so inherited fields from `Box<T = string>`'s `Parent<T>` resolve to `string`.
                 if bindings.is_none() && !def.generic_params.is_empty() {
                     let mut default_bindings = TplBindings::new();
-                    let mut all_defaults = true;
                     for (index, param) in def.generic_params.iter().enumerate() {
-                        if let Some(default_syntax) = param.default {
-                            let ty = model.doc_type_lua_in(
-                                def.file_id,
-                                default_syntax,
-                                &def.generic_params,
-                            );
-                            if matches!(ty, LuaType::Unknown) {
-                                all_defaults = false;
-                                break;
-                            }
-                            default_bindings.insert(GenericTplId::Type(index as u32), ty);
-                        } else if let Some(constraint) = param.constraint {
-                            let ty =
-                                model.doc_type_lua_in(def.file_id, constraint, &def.generic_params);
-                            if matches!(ty, LuaType::Unknown) {
-                                all_defaults = false;
-                                break;
-                            }
-                            default_bindings.insert(GenericTplId::Type(index as u32), ty);
-                        } else {
-                            all_defaults = false;
-                            break;
-                        }
+                        let ty = param
+                            .default
+                            .or(param.constraint)
+                            .map(|syntax| {
+                                let ty =
+                                    model.doc_type_lua_in(def.file_id, syntax, &def.generic_params);
+                                bind_class_doc_tpls(&ty, &def)
+                            })
+                            .unwrap_or(LuaType::Any);
+                        let ty = unify::substitute(&ty, &default_bindings);
+                        default_bindings.insert(def.generic_tpl_id(index), ty);
                     }
-                    if all_defaults && !default_bindings.is_empty() {
+                    if !default_bindings.is_empty() {
                         collect_type_def_members(
                             model,
                             &def,
@@ -702,32 +653,20 @@ fn collect_members(
                 });
                 return;
             }
-            let def = model.type_def_of(&generic.get_base_type_id());
+            let Some(def) = model.type_def_of(&generic.get_base_type_id()) else {
+                return;
+            };
             let params = generic.get_params().to_vec();
             let bindings: TplBindings = params
                 .iter()
                 .enumerate()
-                .map(|(index, ty)| (GenericTplId::Type(index as u32), ty.clone()))
-                .collect();
-            let generic_name_bindings: HashMap<String, LuaType> = def
-                .iter()
-                .flat_map(|def| {
-                    def.generic_params
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, param)| {
-                            params
-                                .get(index)
-                                .map(|value| (param.name.to_string(), value.clone()))
-                        })
-                        .collect::<Vec<_>>()
-                })
+                .map(|(index, ty)| (def.generic_tpl_id(index), ty.clone()))
                 .collect();
             collect_members(
                 model,
                 &LuaType::Ref(generic.get_base_type_id()),
                 Some(&bindings),
-                Some(&generic_name_bindings),
+                None,
                 visited,
                 out,
                 filter,
@@ -950,7 +889,7 @@ fn collect_type_def_members(
     push_member_layer(out, &mut shadowed, layer, mode);
 
     // 2. Parent types
-    for super_type in inherited_base_types(model, def, bindings, name_bindings) {
+    for super_type in inherited_base_types(model, def, bindings) {
         let mut layer = Vec::new();
         collect_members(
             model,
@@ -1108,6 +1047,74 @@ fn member_info_of(
     })
 }
 
+fn member_generic_definition(
+    model: &SemanticModel,
+    file_id: FileId,
+    member: &Member,
+) -> Option<TypeDef> {
+    let facts = model.file_facts_of(file_id)?;
+    match &member.owner {
+        SemanticId::TypeDef(_) => facts.type_def_by_id(&member.owner).cloned(),
+        SemanticId::Decl(_) => facts
+            .decl_by_id(&member.owner)
+            .and_then(|decl| decl.owner_syntax)
+            .and_then(|syntax| facts.type_def_by_owner_syntax(syntax))
+            .cloned(),
+        SemanticId::Name(name) => model.type_def_of(&LuaTypeDeclId::global(name.as_str())),
+        _ => None,
+    }
+}
+
+/// Resolve the generic scope and arguments for the declaring class of a member candidate.
+/// This follows instantiated parents so `Child<number> : Parent<string>` binds Parent's
+/// method parameters to `string`, while keeping each class's same-named parameters distinct.
+pub(crate) fn class_generic_context_for_member(
+    model: &SemanticModel,
+    receiver: &LuaType,
+    info: &MemberInfo,
+) -> Option<(TypeDef, TplBindings)> {
+    let member_id = info.id.as_ref()?;
+    class_generic_context_for_member_id(model, receiver, member_id)
+}
+
+pub(crate) fn class_generic_context_for_member_id(
+    model: &SemanticModel,
+    receiver: &LuaType,
+    member_id: &SemanticId,
+) -> Option<(TypeDef, TplBindings)> {
+    let SemanticId::Member(key) = member_id else {
+        return None;
+    };
+    let member = model.file_facts_of(key.file_id)?.member_by_id(member_id)?;
+    let target = member_generic_definition(model, key.file_id, member)?;
+    find_class_generic_context(model, receiver, &target, &mut Vec::new())
+}
+
+fn find_class_generic_context(
+    model: &SemanticModel,
+    ty: &LuaType,
+    target: &TypeDef,
+    visited: &mut Vec<SemanticId>,
+) -> Option<(TypeDef, TplBindings)> {
+    let def = class_generic_definition(model, ty)?;
+    if visited.contains(&def.id) {
+        return None;
+    }
+    let bindings = class_generic_map(model, ty).unwrap_or_default();
+    if def.id == target.id {
+        return Some((def, bindings));
+    }
+    visited.push(def.id.clone());
+    for parent in inherited_base_types(model, &def, Some(&bindings)) {
+        if let Some(context) = find_class_generic_context(model, &parent, target, visited) {
+            visited.pop();
+            return Some(context);
+        }
+    }
+    visited.pop();
+    None
+}
+
 pub(super) fn projected_member_type(
     model: &SemanticModel,
     member_ref: &MemberRef,
@@ -1116,6 +1123,7 @@ pub(super) fn projected_member_type(
     name_bindings: Option<&HashMap<String, LuaType>>,
 ) -> Option<LuaType> {
     let mut typ = model.type_of_member(&member_ref.id)?;
+    let generic_def = member_generic_definition(model, member_ref.file_id, member);
     // Cross-file projection of runtime function members: `type_of_member` often returns a wide Function,
     // so look up the real signature in the member's declaring file to let `require(...).module.fn()` keep inferring.
     // Standard library members keep the wide Function behavior to avoid disturbing parameter checks / math library overloads.
@@ -1156,10 +1164,16 @@ pub(super) fn projected_member_type(
     {
         typ = LuaType::from_vec(vec![typ, LuaType::Nil]);
     }
+    if let Some(def) = &generic_def {
+        typ = bind_class_doc_tpls(&typ, def);
+        typ = bind_class_generic_names(&typ, def);
+    }
     if let Some(bindings) = bindings {
         typ = unify::substitute(&typ, bindings);
     }
-    if let Some(name_bindings) = name_bindings {
+    if generic_def.is_none()
+        && let Some(name_bindings) = name_bindings
+    {
         typ = substitute_named_refs(&typ, name_bindings);
     }
 
