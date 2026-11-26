@@ -1,5 +1,6 @@
 //! Type-check tests (LuaType + semantic context).
 
+use crate::VirtualWorkspace;
 use smol_str::SmolStr;
 use std::{rc::Rc, sync::Arc};
 
@@ -156,7 +157,7 @@ fn test_ref_inheritance() {
 
 #[test]
 fn test_named_arrays_keep_inherited_index_types() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def(
         r#"
         ---@class ArrayBase: table
@@ -279,7 +280,7 @@ fn test_detail_reason() {
 
 #[test]
 fn object_assignments_check_each_required_field() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def("");
     for (source, target, accepted) in [
         ("{label: string}", "{label: string}", true),
@@ -310,7 +311,7 @@ fn object_assignments_check_each_required_field() {
 
 #[test]
 fn intersection_components_can_supply_different_record_fields() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def("");
     for (source, target, accepted) in [
         (
@@ -367,7 +368,7 @@ fn intersection_components_can_supply_different_record_fields() {
 
 #[test]
 fn intersection_optional_fields_check_present_values() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def(
         r#"
         ---@alias Counts {count: integer}
@@ -414,7 +415,7 @@ fn intersection_optional_fields_check_present_values() {
 
 #[test]
 fn intersection_sequence_fields_keep_tuple_positions() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def("---@alias Single<T> [T]");
     for (source, accepted) in [
         ("[string] & {[1]: string | integer}", true),
@@ -446,7 +447,7 @@ fn intersection_sequence_fields_keep_tuple_positions() {
 
 #[test]
 fn intersection_fields_accept_unrelated_alias_alternatives() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let mut definitions = String::new();
     for index in 0..80 {
         definitions.push_str(&format!(
@@ -473,7 +474,7 @@ fn intersection_fields_accept_unrelated_alias_alternatives() {
 
 #[test]
 fn recursive_object_assignments_keep_observed_arguments() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def(
         r#"
         ---@alias Plain {label: string, child?: Plain}
@@ -498,7 +499,7 @@ fn recursive_object_assignments_keep_observed_arguments() {
 
 #[test]
 fn intersection_fields_accept_known_recursive_union_branches() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def(
         r#"
         ---@alias Text string | Text
@@ -522,7 +523,7 @@ fn intersection_fields_accept_known_recursive_union_branches() {
 
 #[test]
 fn intersection_fields_check_known_values_with_recursive_aliases() {
-    let mut ws = crate::VirtualWorkspace::new();
+    let mut ws = VirtualWorkspace::new();
     let file = ws.def(
         r#"
         ---@alias Other {other: string} | Other

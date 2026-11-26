@@ -1,4 +1,5 @@
 use super::*;
+use crate::semantic_model;
 use crate::semantic_model::type_check::check_type;
 use crate::{LuaTypeDeclId, VirtualWorkspace};
 
@@ -93,7 +94,7 @@ fn unresolved_conditional_comparisons_stay_deferred() {
         assert_eq!(eval_conditionals(&model, &unresolved), unresolved);
     }
     assert_eq!(
-        crate::semantic_model::type_check::check_type_subtype(&model, &deferred_field, &target),
+        semantic_model::type_check::check_type_subtype(&model, &deferred_field, &target),
         Err(TypeCheckFailReason::Unresolved)
     );
     assert_eq!(eval_conditionals(&model, &accepted), LuaType::Boolean);
@@ -390,7 +391,7 @@ fn recursive_json_aliases_keep_finite_nested_values() {
             let source_type = ws.ty(source);
             let model = ws.analysis.semantic_model(file);
             let result =
-                crate::semantic_model::type_check::check_type_detail(&model, &source_type, &target);
+                semantic_model::type_check::check_type_detail(&model, &source_type, &target);
             if matches!(source, "fun()" | "thread") {
                 assert!(
                     result.is_err_and(|err| err.is_type_not_match()),
@@ -422,7 +423,7 @@ fn recursive_matches_ignore_unused_union_alternatives() {
         let target = ws.ty(target);
         let model = ws.analysis.semantic_model(file);
         assert_eq!(
-            crate::semantic_model::type_check::check_type_detail(&model, &source, &target),
+            semantic_model::type_check::check_type_detail(&model, &source, &target),
             Ok(()),
             "{target:?}"
         );
@@ -437,7 +438,7 @@ fn finite_comparisons_have_no_depth_cutoff() {
     for (leaf, accepted) in [("string", true), ("(fun())", false)] {
         let source = ws.ty(&format!("{leaf}{}", "[]".repeat(256)));
         let model = ws.analysis.semantic_model(file);
-        let result = crate::semantic_model::type_check::check_type_detail(&model, &source, &target);
+        let result = semantic_model::type_check::check_type_detail(&model, &source, &target);
         assert_eq!(result.is_ok(), accepted, "{leaf}");
         if !accepted {
             assert!(result.is_err_and(|err| err.is_type_not_match()));
@@ -472,12 +473,8 @@ fn function_parameters_keep_independent_alias_paths() {
             expected
         );
         assert_eq!(
-            crate::semantic_model::type_check::check_type_detail(
-                &model,
-                &source_type,
-                &target_type
-            )
-            .is_ok(),
+            semantic_model::type_check::check_type_detail(&model, &source_type, &target_type)
+                .is_ok(),
             expected
         );
     }
@@ -509,8 +506,7 @@ fn recursive_alias_comparisons_check_fields_before_accepting_cycles() {
         let target = ws.ty(target);
         let model = ws.analysis.semantic_model(file);
         for _ in 0..2 {
-            let result =
-                crate::semantic_model::type_check::check_type_subtype(&model, &source, &target);
+            let result = semantic_model::type_check::check_type_subtype(&model, &source, &target);
             assert_eq!(result.is_ok(), accepted, "{target:?}");
             if !accepted {
                 assert!(result.is_err_and(|err| err.is_type_not_match()));
@@ -556,8 +552,7 @@ fn lazy_computed_fields_keep_precise_subtype_checks() {
             (&computed, &rejected, false),
             (&rejected, &computed, false),
         ] {
-            let result =
-                crate::semantic_model::type_check::check_type_subtype(&model, source, target);
+            let result = semantic_model::type_check::check_type_subtype(&model, source, target);
             assert_eq!(
                 result.is_ok(),
                 accepted,
@@ -1101,7 +1096,7 @@ fn recursive_alias_comparisons_do_not_ignore_used_growing_arguments() {
     let target = ws.ty("Right<string>");
     let model = ws.analysis.semantic_model(file);
     assert!(matches!(
-        crate::semantic_model::type_check::check_type_subtype(&model, &source, &target),
+        semantic_model::type_check::check_type_subtype(&model, &source, &target),
         Err(TypeCheckFailReason::TooComplex)
     ));
 }

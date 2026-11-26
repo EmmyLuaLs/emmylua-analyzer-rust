@@ -11,3 +11,4 @@ openspec
 .trellis
 AGENTS.md
 .scratch
+lint/__pycache__

@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod test {
+    use crate::CheckConfig;
+    use crate::check;
     use std::{ops::Deref, sync::Arc};
 
     use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaIndexExpr};
@@ -1173,10 +1175,8 @@ mod test {
                             "---@param first number\n---@param second number\n---@overload fun(...: string)\n{definition}\nlocal alias = accept\nlocal mod = {{accept = accept}}\n{call}\nreturn alias, mod"
                         ));
                         let model = ws.analysis.semantic_model(file_id);
-                        let diagnostics = crate::check::check_file(
-                            &model,
-                            Arc::new(crate::CheckConfig::new(&ws.get_emmyrc())),
-                        );
+                        let diagnostics =
+                            check::check_file(&model, Arc::new(CheckConfig::new(&ws.get_emmyrc())));
                         assert_eq!(
                             diagnostics.is_empty(),
                             valid,

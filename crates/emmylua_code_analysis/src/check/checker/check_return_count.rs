@@ -8,6 +8,7 @@
 //! `MissingReturn` uses control-flow analysis consistent with the old implementation: truthy/falsy/never
 //! condition judgment, break/infinite-loop paths in while/repeat loops, and if-branch merging.
 
+use crate::semantic_db;
 use std::rc::Rc;
 
 use emmylua_parser::{
@@ -675,7 +676,7 @@ fn condition_state(condition: Option<&LuaExpr>, model: &SemanticModel<'_>) -> Co
     let Some(condition) = condition else {
         return ConditionState::Dynamic;
     };
-    if let Some(truthy) = crate::semantic_db::facts::static_truthiness(condition) {
+    if let Some(truthy) = semantic_db::facts::static_truthiness(condition) {
         return if truthy {
             ConditionState::Truthy
         } else {

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaAstNode, LuaExpr, LuaTableExpr, LuaTableField};
 use hashbrown::{HashMap, HashSet};
 
 use crate::semantic_db::def::{DeclKind, MemberRef, SemanticId, TypeDef, TypeDefKind};
@@ -214,7 +214,7 @@ pub(super) fn inherited_base_types(
         .collect()
 }
 
-fn direct_member_info(
+pub(super) fn direct_member_info(
     model: &SemanticModel,
     prefix_type: &LuaType,
     key: &LuaMemberKey,
@@ -453,17 +453,22 @@ pub fn member_type(
     member_info(model, prefix_type, key).map(|info| info.typ)
 }
 
-/// Returns the second argument type of `setmetatable(t, mt)` for the given `t` table identity.
-/// Supports a table literal as the first argument, and also a local name indirection (`local t = {...}; setmetatable(t, mt)`).
-pub(crate) fn table_metatable_type(
+/// Use the reaching attachments when the read site is available. Type-only
+/// callers can still look up a metatable by the identity of its table literal.
+pub(crate) fn metatable_type(
     model: &SemanticModel,
-    table: &InFiled<rowan::TextRange>,
+    expr: Option<&LuaExpr>,
+    table: Option<&InFiled<rowan::TextRange>>,
 ) -> Option<LuaType> {
+    if let Some(metatable) = expr.and_then(|expr| super::flow::metatable_type_at(model, expr)) {
+        return Some(metatable);
+    }
+    let table = table?;
     // Cross-file: a diagnostic/consumer model's `type_of_expr` may return Unknown for expressions in the defining file,
     // so delegate to the model for the file containing the table.
     if model.file_id() != table.file_id {
         let foreign = model.model_for(table.file_id);
-        return table_metatable_type(&foreign, table);
+        return metatable_type(&foreign, None, Some(table));
     }
     let facts = model.file_facts_of(table.file_id)?;
     for &(first_range, first_syntax, metatable_syntax) in facts.setmetatable_calls() {
@@ -499,7 +504,7 @@ pub(crate) fn table_metatable_index_info(
     model: &SemanticModel,
     table: &InFiled<rowan::TextRange>,
 ) -> Option<MemberInfo> {
-    let metatable_ty = table_metatable_type(model, table)?;
+    let metatable_ty = metatable_type(model, None, Some(table))?;
     let key = LuaMemberKey::Name(SmolStr::new("__index"));
     member_info(model, &metatable_ty, &key)
 }

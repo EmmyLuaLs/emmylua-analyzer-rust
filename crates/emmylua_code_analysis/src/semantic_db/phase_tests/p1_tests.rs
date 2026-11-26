@@ -8,6 +8,7 @@
 //! - the contribution carries `value_syntax` / `is_method` / `visibility`;
 //! - the file cache stores the contribution as `Arc<FileExportContribution>`.
 
+use crate::semantic_db;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -30,7 +31,7 @@ fn setup() -> SemanticDatabase {
 /// registered roots, a relative root stops containing the test files there and
 /// workspace lookups return `None`, so these tests only passed on Windows.
 fn test_root() -> PathBuf {
-    crate::semantic_db::tests::portable_test_root()
+    semantic_db::tests::portable_test_root()
 }
 
 /// Path for a file under [`test_root`], e.g. `&test_file("a.lua")`.

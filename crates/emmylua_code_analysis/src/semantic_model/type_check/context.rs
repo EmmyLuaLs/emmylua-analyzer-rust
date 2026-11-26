@@ -4,6 +4,7 @@
 //! 类型定义, 直接父类型和成员均通过语义模型查询.
 //! Parts still missing from semantic (alias origin types, enum field unions, call operators) fall back to nominal checks.
 
+use crate::InFiled;
 use crate::LuaType;
 use crate::LuaTypeDeclId;
 use crate::semantic_db::def::{TypeDef, TypeDefKind};
@@ -21,7 +22,7 @@ pub struct TypeCheckContext<'db> {
     /// Constructor entries must prove literal key and value types.
     pub(super) strict_literals: bool,
     /// Constructors inside the checked expression exclude later writes.
-    pub(super) source_range: Option<crate::InFiled<rowan::TextRange>>,
+    pub(super) source_range: Option<InFiled<rowan::TextRange>>,
     pub(super) comparisons: std::rc::Rc<std::cell::RefCell<super::comparison::Comparisons>>,
 }
 

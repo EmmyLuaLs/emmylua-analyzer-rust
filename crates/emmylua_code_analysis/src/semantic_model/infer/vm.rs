@@ -7,6 +7,8 @@
 //! Values = `LuaType` + optional owner (for member lookup). Cross-file member/declaration
 //! resolution is delegated to semantic queries.
 
+use crate::semantic_db;
+use crate::semantic_model;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -26,7 +28,7 @@ use crate::semantic_db::types::PrimitiveType;
 use crate::semantic_model::doc_types::DocTypeScope;
 use crate::semantic_model::flow::{ExprCastMode, type_of_expr_with_cast};
 use crate::semantic_model::member::{
-    MemberInfo, table_const_class_type, table_metatable_index_info, table_metatable_type,
+    MemberInfo, metatable_type, table_const_class_type, table_metatable_index_info,
 };
 use crate::semantic_model::type_eval::{
     class_generic_map, eval_conditionals, expand_alias_generic, expand_alias_head,
@@ -2190,7 +2192,7 @@ impl<'a> InferVm<'a> {
             }
         }
         if self.model.file_facts().is_some_and(|facts| !facts.is_meta)
-            && crate::semantic_db::query::closure_can_fall_through(
+            && semantic_db::query::closure_can_fall_through(
                 self.model.db(),
                 self.model.file_id(),
                 &closure,
@@ -2530,7 +2532,7 @@ impl<'a> InferVm<'a> {
         model: &SemanticModel,
         table: &InFiled<rowan::TextRange>,
     ) -> Option<LuaFunctionType> {
-        let metatable_ty = table_metatable_type(model, table)?;
+        let metatable_ty = metatable_type(model, None, Some(table))?;
         let call_info =
             model.member_info(&metatable_ty, &LuaMemberKey::Name(SmolStr::new("__call")))?;
         let call_file = call_info.file_id?;
@@ -4541,8 +4543,7 @@ pub(crate) fn binary_type(
             if let (Some(left_i), Some(right_i)) =
                 (integer_const_value(left), integer_const_value(&right))
             {
-                let value =
-                    crate::semantic_db::types::checked_integer_arithmetic(op, left_i, right_i);
+                let value = semantic_db::types::checked_integer_arithmetic(op, left_i, right_i);
                 return value.map(LuaType::IntegerConst).unwrap_or(LuaType::Number);
             }
             // Addition like `integer + 1` (one side is the integer base type, the other is an
@@ -4562,7 +4563,7 @@ pub(crate) fn binary_type(
                 && right != 0
             {
                 // Lua `/` converts both operands to floating-point before division.
-                crate::semantic_db::types::checked_integer_arithmetic(op, left, right)
+                semantic_db::types::checked_integer_arithmetic(op, left, right)
                     .map(LuaType::IntegerConst)
                     .unwrap_or(LuaType::Number)
             } else if matches!(op, OpIDiv | OpMod)
@@ -4919,7 +4920,7 @@ fn unary_type(
 /// Resolve only the outer operand shape. Expanding array elements or restarting
 /// the recursive alias evaluator here can lose flow bounds or grow aliases forever.
 fn length_type(model: &SemanticModel, operand: &LuaType) -> Option<LuaType> {
-    let operand = crate::semantic_model::type_eval::expand_alias_branches(model, operand)?;
+    let operand = semantic_model::type_eval::expand_alias_branches(model, operand)?;
     let mut pending = vec![operand];
     let mut results = Vec::new();
     while let Some(ty) = pending.pop() {

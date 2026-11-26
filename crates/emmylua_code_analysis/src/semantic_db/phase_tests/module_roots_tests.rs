@@ -1,10 +1,11 @@
 //! Caller-root and alias regressions ported from the retired LuaModuleIndex tests.
+use crate::semantic_db;
 use crate::semantic_db::SemanticDatabase;
 use crate::{Emmyrc, EmmyrcWorkspaceModuleMap, FileId, WorkspaceFolder};
 use std::{path::PathBuf, sync::Arc};
 
 fn root() -> PathBuf {
-    crate::semantic_db::tests::portable_test_root()
+    semantic_db::tests::portable_test_root()
 }
 fn setup(roots: &[&str], mapping: Option<(&str, &str)>) -> SemanticDatabase {
     let mut db = SemanticDatabase::new();

@@ -4,6 +4,7 @@
 //! All consumers (renderer / type_check / member access / pcall) should reuse this module as much as possible,
 //! instead of duplicating the same evaluation logic in the display or call layers.
 
+use crate::semantic_model;
 use std::rc::Rc;
 
 use hashbrown::HashMap;
@@ -442,8 +443,7 @@ pub(super) fn map_type(
 /// Normalize existing structures and resolve computations to their outer shape.
 /// Fields produced by an alias stay lazy until a consumer reads them.
 pub fn expand_alias_generic(model: &SemanticModel, ty: &LuaType) -> LuaType {
-    let Some(evaluation) = crate::semantic_model::cache::TypeEvaluationScope::new(&model.cache)
-    else {
+    let Some(evaluation) = semantic_model::cache::TypeEvaluationScope::new(&model.cache) else {
         return ty.clone();
     };
     let result = map_type(ty, &mut |current| {
@@ -613,8 +613,7 @@ fn eval_conditional_alias(
 
 /// Evaluate conditional types (internal `infer` pattern matching). Recursively handle conditional types in structures.
 pub fn eval_conditionals(model: &SemanticModel, ty: &LuaType) -> LuaType {
-    let Some(evaluation) = crate::semantic_model::cache::TypeEvaluationScope::new(&model.cache)
-    else {
+    let Some(evaluation) = semantic_model::cache::TypeEvaluationScope::new(&model.cache) else {
         return ty.clone();
     };
     if !evaluation.visit(ty) {

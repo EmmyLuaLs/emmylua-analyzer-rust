@@ -3,6 +3,7 @@
 //! A structural cycle can provisionally match. Retry its dependents whenever
 //! a result changes, and settle the dependencies that support the final result.
 
+use crate::semantic_model;
 use hashbrown::hash_map::EntryRef;
 use hashbrown::{HashMap, HashSet};
 use std::{collections::VecDeque, rc::Rc};
@@ -218,8 +219,7 @@ pub(super) fn check_target(
     if comparisons.borrow().current.is_some() {
         return comparisons.borrow_mut().read(&key);
     }
-    let Some(evaluation) =
-        crate::semantic_model::cache::TypeEvaluationScope::new(&context.model.cache)
+    let Some(evaluation) = semantic_model::cache::TypeEvaluationScope::new(&context.model.cache)
     else {
         return Err(TypeCheckFailReason::TooComplex);
     };
