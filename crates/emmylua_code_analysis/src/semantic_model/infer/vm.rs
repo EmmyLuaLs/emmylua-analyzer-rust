@@ -4902,10 +4902,7 @@ fn unary_type(
 ) -> LuaType {
     use emmylua_parser::UnaryOperator::*;
     if op == OpLen {
-        // Some member has no `len` answer (`any`, `unknown`), or alias expansion gave up: keep
-        // the operand's own type, minus its nil (see `length_type`).
-        return length_type(model, operand)
-            .unwrap_or_else(|| remove_nil_from_type(operand.clone()));
+        return length_type(model, operand).unwrap_or_else(|| raised_on_nil(operand));
     }
     if op == OpUnm {
         if let Some(ty) = model.operator_type("unm", operand) {
@@ -4919,14 +4916,23 @@ fn unary_type(
                     .unwrap_or(LuaType::Number);
             }
             LuaType::FloatConst(value) => return LuaType::FloatConst(-value),
-            // `-nil` raises, so a negation that yields a value is never nil.
-            LuaType::Union(_) if operand.is_nullable() => {
-                return remove_nil_from_type(operand.clone());
-            }
             _ => {}
         }
+        return raised_on_nil(operand);
     }
     operand.clone()
+}
+
+/// The operand of `#` or `-` where the result is not resolved further. Both raise on nil, so a
+/// result is never nil (`need-check-nil` reports the operand, undefined-field a missing member):
+/// a nullable union loses its nil, a bare nil leaves nothing known.
+fn raised_on_nil(operand: &LuaType) -> LuaType {
+    match operand {
+        LuaType::Union(_) | LuaType::Nil if operand.is_nullable() => {
+            remove_nil_from_type(operand.clone())
+        }
+        _ => operand.clone(),
+    }
 }
 
 /// Resolve only the outer operand shape. Expanding array elements or restarting

@@ -1326,6 +1326,10 @@ mod test {
             ("return x * x", 2),
             ("return x / 2, x // 2, x % 2, x ^ 2", 4),
             ("return -x", 1),
+            // `#y` raises on nil, but a length is never nil: only `y` is reported.
+            ("return #y + 1", 1),
+            // A missing member is undefined-field's to report, its length too.
+            ("return #b.missing + 1", 0),
             // Guarded, defaulted, or not nil at all.
             ("return x and x - 1", 0),
             ("if x then return x - 1 end", 0),
@@ -1345,10 +1349,15 @@ mod test {
                 ---@return NcnInfo
                 local function tb() return {{}} end
 
+                ---@class NcnBox
+                local NcnBox = {{}}
+
                 ---@param x integer?
                 ---@param a any
                 ---@param t integer[]
-                local function f(x, a, t)
+                ---@param y any?
+                ---@param b NcnBox
+                local function f(x, a, t, y, b)
                     {body}
                 end
                 return f
@@ -1412,31 +1421,5 @@ mod test {
             return f
         "#;
         assert_eq!(nil_messages(source), vec!["w may be nil".to_string()]);
-    }
-
-    /// The length of an operand with no `len` answer (`any`, `unknown`) is not nil either: `#t[1]`
-    /// on an `any[]` or a `{ ... }` element is never reported, only the element itself may be.
-    #[test]
-    fn test_arithmetic_on_length_of_any_is_not_nil() {
-        for source in [
-            r#"
-            ---@param t any[]
-            local function f(t) return 1 + #t[1] end
-            return f
-            "#,
-            r#"
-            local function f(...)
-              local args = { ... }
-              return 1 + #args[1]
-            end
-            return f
-            "#,
-        ] {
-            let messages = nil_messages(source);
-            assert!(
-                !messages.iter().any(|m| m.starts_with('#')),
-                "{messages:?} in {source}"
-            );
-        }
     }
 }
