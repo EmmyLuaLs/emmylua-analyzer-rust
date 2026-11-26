@@ -4,6 +4,260 @@ mod tests {
     use crate::{DiagnosticCode, Emmyrc, LuaMemberKey, LuaType, VirtualWorkspace};
     use tokio_util::sync::CancellationToken;
 
+    #[test]
+    fn test_field_reads_follow_writes_and_rebinding() {
+        let source = r#"
+            ---@type {text?: string}
+            local value = {}
+            value.text = 'hello'
+            ---@type 'hello'
+            local _first = value.text
+            value.text = 'updated'
+            ---@type 'updated'
+            local _second = value.text
+
+            value = (value)
+            ---@type 'updated'
+            local _same_table = value.text
+
+            value = value or {}
+            ---@type 'updated'
+            local _same_truthy_table = value.text
+
+            value = true and value or {}
+            ---@type 'updated'
+            local _same_selected_table = value.text
+
+            value = {}
+            ---@type string
+            local _stale = value.text -- Error: the new table can have no text field.
+
+            value.text = 'new'
+            ---@type 'new'
+            local _after_write = value.text
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("value.text -- Error").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_field_reads_use_known_fields_from_the_replacement() {
+        let source = r#"
+            ---@class Replacement
+            ---@field text? string
+
+            ---@param flag boolean
+            local function read(flag)
+                ---@type Replacement
+                local value = {}
+                value.text = 'old'
+
+                value = {text = 'new'}
+                ---@type 'new'
+                local _present = value.text
+
+                local holder = {item = {text = 'old'}, text = 'old'}
+                holder.item = {text = 'current'}
+                holder.text = 'copied'
+                value = holder.item
+                ---@type 'current'
+                local _from_field = value.text
+
+                value = {text = holder.text}
+                ---@type 'copied'
+                local _from_initializer = value.text
+
+                value = flag and {text = 'maybe'} or {}
+                ---@type string
+                local _missing = value.text -- Error: one replacement has no text.
+            end
+            return read
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("value.text -- Error").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parallel_field_write_can_change_the_replacement_value() {
+        let source = r#"
+            ---@type {text?: string}
+            local value = {}
+            value.text = 'old'
+            local replacement = {text = 'new'}
+            value, replacement.text = replacement, 'written'
+            ---@type 'written'
+            local _current = value.text
+            ---@type 'new'
+            local _invalid = value.text -- Error: the same assignment overwrites the field.
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("value.text -- Error").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_field_reads_ignore_rebinding_on_an_unreachable_branch() {
+        let diagnostics = check_source(
+            r#"
+            ---@param flag boolean
+            local function read(flag)
+                ---@type {text?: string}
+                local value = {}
+                value.text = 'set'
+                local _counter = 0
+                if false then
+                    if flag then _counter = 1 else _counter = 2 end
+                    value = {}
+                end
+                ---@type 'set'
+                local _actual = value.text
+            end
+            return read
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn test_replacement_from_multiple_reaching_field_writes_keeps_both_types() {
+        let source = r#"
+            ---@param flag boolean
+            local function read(flag)
+                local holder = {item = {text = 'initial'}}
+                if flag then
+                    holder.item = {text = 'first'}
+                else
+                    holder.item = {text = 'second'}
+                end
+
+                ---@type {text?: string}
+                local value = {}
+                value.text = 'previous'
+                value = holder.item
+                ---@type 'first'|'second'
+                local _actual = value.text
+                ---@type 'first'
+                local _too_narrow = value.text -- Error: the other branch writes 'second'.
+            end
+            return read
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("value.text -- Error").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parallel_field_assignment_uses_the_correct_result_slot() {
+        let diagnostics = check_source(
+            r#"
+            ---@return integer, string
+            local function values()
+                return 3, 'after'
+            end
+
+            local value = {a = 1, b = 'before'}
+            value.a, value.b = values()
+            ---@type string
+            local _after_call = value.b
+
+            value.a, value.b = value.a
+            ---@type nil
+            local _missing_value = value.b
+            "#,
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn test_field_copy_preserves_the_stored_value_cast_rules() {
+        let diagnostics = check_source(
+            r#"
+            ---@type {a: number, b?: number|string}
+            local value = {a = 1}
+            value.a = 3
+            value.b = value.a --[[@cast +string]]
+            ---@type number
+            local _actual = value.b
+            "#,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn test_assignment_rhs_reads_fields_before_any_target_is_written() {
+        let source = r#"
+            local value = {a = 1, b = 0}
+            value.a, value.b = 2, value.a
+            ---@type 1
+            local _before = value.b
+            ---@type 2
+            local _after = value.a
+
+            value.a = 3
+            value.a, value.b = 4, value.a
+            ---@type 3
+            local _previous = value.b
+            ---@type 4
+            local _current = value.a
+            ---@type 4
+            local _wrong = value.b -- Error: the RHS reads a before it becomes 4.
+
+            value.a = 5
+            value.a, value.b = 6, (value.a)
+            ---@type 5
+            local _parenthesized = value.b
+
+            value.a = 7
+            value.a, value.b = 10, value.a + 1
+            ---@type 8
+            local _compound = value.b
+
+            ---@return 2, string
+            local function offset()
+                return 2, 'second'
+            end
+            value.a, value.b = 11, value.a + offset()
+            ---@type 12
+            local _one_result = value.b
+
+            ---@type 12
+            local _grouped = (value.a + 1)
+            "#;
+        let diagnostics = check_source(source);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(
+            usize::from(diagnostics[0].range.start()),
+            source.find("value.b -- Error").unwrap()
+        );
+    }
+
     // 闭包整体的行内 cast 不影响闭包内部的操作数和后续变量读取.
     #[test]
     fn test_inline_cast_does_not_enter_closure_body() {

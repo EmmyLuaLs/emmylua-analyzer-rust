@@ -22,6 +22,8 @@ pub enum FlowEffect {
         key: LuaMemberKey,
         member: SemanticId,
         value_syntax: emmylua_parser::LuaSyntaxId,
+        /// Extra targets take successive slots from the last RHS expression.
+        result_slot: usize,
     },
     /// Condition guard: the true/false branch for cond.
     Guard {

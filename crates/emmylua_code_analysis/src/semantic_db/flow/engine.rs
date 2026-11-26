@@ -1017,6 +1017,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                                 key: key.clone(),
                                 member: member.clone(),
                                 value_syntax: value.get_syntax_id(),
+                                result_slot: i.saturating_sub(values.len() - 1),
                             },
                         );
                     }
