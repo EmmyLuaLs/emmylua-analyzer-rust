@@ -1,5 +1,6 @@
 //! Keys and values supplied by a table constructor, before later assignments.
 
+use crate::semantic_db;
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexKey, LuaTableExpr, NumberResult};
 use hashbrown::{HashMap, HashSet};
 
@@ -186,7 +187,7 @@ pub(crate) fn normalize_key_type(key: LuaType) -> LuaType {
         LuaType::DocStringConst(value) => LuaType::StringConst(value),
         LuaType::DocIntegerConst(value) => LuaType::IntegerConst(value),
         LuaType::FloatConst(value) => {
-            crate::semantic_db::types::exact_integer(value).map_or(key, LuaType::IntegerConst)
+            semantic_db::types::exact_integer(value).map_or(key, LuaType::IntegerConst)
         }
         key => key,
     }

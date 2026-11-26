@@ -1,3 +1,4 @@
+use crate::ModuleInfo;
 use std::cell::LazyCell;
 
 use super::prelude::*;
@@ -206,7 +207,7 @@ impl<'db> SemanticModel<'db> {
     pub fn module_names_of(&self, file_id: FileId) -> Vec<String> {
         self.db().module_names_of(file_id)
     }
-    pub fn module_info_of(&self, file_id: FileId) -> Option<crate::ModuleInfo> {
+    pub fn module_info_of(&self, file_id: FileId) -> Option<ModuleInfo> {
         self.db().module_info_of(file_id)
     }
     pub fn workspace_id_of(&self, file_id: FileId) -> Option<WorkspaceId> {

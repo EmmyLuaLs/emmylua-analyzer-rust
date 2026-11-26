@@ -1,3 +1,5 @@
+use crate::InFiled;
+use crate::semantic_model;
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaDocType, LuaTableExpr, LuaVarExpr};
 
 use crate::DiagnosticCode;
@@ -179,16 +181,14 @@ fn check_table_head(
             return;
         }
         LuaType::Union(union) => {
-            let source = LuaType::TableConst(crate::InFiled::new(
-                semantic_model.file_id(),
-                table.get_range(),
-            ));
+            let source =
+                LuaType::TableConst(InFiled::new(semantic_model.file_id(), table.get_range()));
             let mut best: Option<Vec<Mismatch>> = None;
             for component in union.iter() {
                 // An unresolved alias must not restart expansion of this branch.
                 if target_def(semantic_model, component)
                     .is_some_and(|def| def.kind == TypeDefKind::Alias)
-                    || crate::semantic_model::type_check::check_type_at(
+                    || semantic_model::type_check::check_type_at(
                         semantic_model,
                         &source,
                         component,

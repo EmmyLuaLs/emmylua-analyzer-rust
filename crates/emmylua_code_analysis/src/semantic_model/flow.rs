@@ -12,10 +12,15 @@
 //! - `---@cast x +string` adds string to x's path type;
 //! - Flow type for member assignment `t.x = v` / `self.x = v` (FlowEffect::AssignMember).
 
+use crate::DeclKind;
+use crate::semantic_db;
 mod array;
 #[cfg(test)]
 mod callable_tests;
 mod guards;
+mod metatable;
+
+pub(crate) use metatable::metatable_type_at;
 
 use std::collections::HashSet;
 use std::ops::ControlFlow;
@@ -367,7 +372,7 @@ fn unchanged_local_call_return_type(
     }
     let facts = model.file_facts()?;
     let decl = facts.decl_by_id(&owner)?;
-    if !matches!(decl.kind, crate::DeclKind::Local { .. }) {
+    if !matches!(decl.kind, DeclKind::Local { .. }) {
         return None;
     }
     let original = decl.value_expr_syntax?;
@@ -1970,7 +1975,7 @@ fn local_alias_path(
         }
         if !matches!(
             info.kind,
-            crate::DeclKind::Local { is_iter: false, .. } | crate::DeclKind::Param
+            DeclKind::Local { is_iter: false, .. } | DeclKind::Param
         ) || flow.latest_decl_assignment(&decl, context.at).is_some()
             || (all_writes && flow.has_decl_assignment(&decl))
             || info.multi_return_index.is_some_and(|index| index > 0)
@@ -2334,7 +2339,52 @@ fn trace_decl_uncached(
     let root_mode = mode;
     let mut current = flow_id;
     let mut frames = Vec::new();
+    // Set when the walk skipped a merge whose branches leave `decl` alone (below), and
+    // consumed on the very next iteration, where the walk lands on the merge's predecessor.
+    let mut just_skipped_merge = false;
     let result = 'trace: loop {
+        // A value read that lands here after skipping a merge, or that reaches a write of
+        // `decl`, uses and fills the memo, as `trace_decl` does at its start: the memo holds
+        // the state for an empty incoming path, and the guards collected so far narrow it.
+        // Without this, each read of a long chain of such merges or writes walks back
+        // through all of them. At a write, the memo frame sits under the write's own frame,
+        // so it saves the state after the write.
+        let landed = std::mem::take(&mut just_skipped_merge);
+        if matches!(purpose, DeclTracePurpose::ReadValue)
+            && (landed
+                || tree.get_flow_effects(current).iter().any(
+                    |effect| matches!(effect, FlowEffect::AssignDecl { decl: d, .. } if d == decl),
+                ))
+            && mode == root_mode
+            && current != flow_id
+            && !tree.is_in_cycle(current)
+            && !path
+                .narrowings
+                .iter()
+                .any(|narrowing| matches!(narrowing, Narrowing::Correlated { .. }))
+        {
+            let key = decl_trace_key(model, decl, current, purpose, mode, path);
+            // An entry still in progress belongs to an outer query: walk on, and leave it alone.
+            let (memo, absent) = {
+                let cache = model.cache.borrow();
+                match cache.trace_state.get(&key) {
+                    None => (None, true),
+                    Some(cache::CacheEntry::InProgress) => (None, false),
+                    Some(entry) => (entry.get(&cache).cloned(), false),
+                }
+            };
+            if let Some(state) = memo {
+                break 'trace state.map(|state| finalize(model, state, path));
+            }
+            // Only an empty path may fill it: entries hold the empty-path state, as in
+            // `trace_decl`, and `finalize` applies the path's guards and casts on lookup.
+            if absent && path.narrowings.is_empty() && path.casts.is_empty() {
+                frames.push(DeclTraceFrame::Memo {
+                    key,
+                    revision: model.cache.borrow().revision(),
+                });
+            }
+        }
         // trace_decl owns the starting node's cache entry. Save intermediate
         // nodes here; casts use separate frames even when caching is disabled.
         if matches!(purpose, DeclTracePurpose::OriginalSignatures(_))
@@ -2597,6 +2647,7 @@ fn trace_decl_uncached(
                         decl_branch_is_pure(model, tree, decl, purpose, *branch, common)
                     }) {
                         current = common;
+                        just_skipped_merge = true;
                         continue;
                     }
                     if matches!(purpose, DeclTracePurpose::OriginalSignatures(_))
@@ -3588,7 +3639,7 @@ fn correlated_narrowing_for_condition(
                 .file_facts()
                 .and_then(|facts| facts.decl_by_value_range(writer.get_range()))
                 .is_some_and(|writer| {
-                    matches!(writer.kind, crate::DeclKind::Local { .. })
+                    matches!(writer.kind, DeclKind::Local { .. })
                         && model.decl_references(&writer.id).is_empty()
                 })
             {
@@ -6308,7 +6359,7 @@ impl PathState {
         self.narrowings.push(narrowing);
     }
 
-    fn for_origin(&self, reference: Option<&crate::semantic_db::flow::DeclMultiReturnRef>) -> Self {
+    fn for_origin(&self, reference: Option<&semantic_db::flow::DeclMultiReturnRef>) -> Self {
         let mut path = self.clone();
         path.narrowings.retain_mut(|narrowing| {
             if let Narrowing::Correlated(constraints) = narrowing {

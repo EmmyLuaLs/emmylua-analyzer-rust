@@ -3,6 +3,7 @@
 //! The P0 cross-file module mutation test is enabled by this phase; these tests
 //! additionally cover alias propagation and the canonical contribution identity.
 
+use crate::semantic_db;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -169,7 +170,7 @@ fn local_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
 /// `best_workspace_root` classifies files with `Path::strip_prefix` against the
 /// registered roots — so a relative root stops containing the test files there.
 fn test_root() -> PathBuf {
-    crate::semantic_db::tests::portable_test_root()
+    semantic_db::tests::portable_test_root()
 }
 
 /// Path for a file under [`test_root`], e.g. `test_file("c.lua")`.

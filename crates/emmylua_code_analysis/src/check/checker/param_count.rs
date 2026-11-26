@@ -4,6 +4,7 @@
 //! if any candidate count is compatible, don't report; otherwise pick the smallest mismatch candidate and report Missing/Redundant (on equal
 //! mismatch, Missing wins). Exact variadic expansion and multi-return expansion are left for later.
 
+use crate::semantic_model;
 use emmylua_parser::{
     LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaExpr, LuaIndexExpr,
     LuaIndexKey, LuaSyntaxId, LuaTableExpr, LuaTableField, LuaTypeBinaryOperator,
@@ -848,7 +849,7 @@ pub(crate) fn callable_functions(
             // forwards to the constructor method, exactly as VM call inference does.
             if out.is_empty()
                 && let Some(candidate) =
-                    crate::semantic_model::infer::vm::constructor_call_candidate(semantic_model, ty)
+                    semantic_model::infer::vm::constructor_call_candidate(semantic_model, ty)
             {
                 out.push(candidate);
             }

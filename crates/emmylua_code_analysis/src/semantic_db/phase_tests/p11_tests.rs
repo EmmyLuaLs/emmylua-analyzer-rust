@@ -21,6 +21,7 @@
 //! `test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain` in
 //! `emmylua_ls` finishes in well under a second.
 
+use crate::FileId;
 use crate::semantic_model::flow::flow_metrics;
 use crate::{LuaType, VirtualWorkspace};
 use emmylua_parser::{LuaAstNode, LuaIndexExpr};
@@ -41,7 +42,7 @@ fn repeated_prefix_guard_chain(n: usize) -> String {
 
 /// Read every resolvable member of the file, the way the semantic-token builder
 /// does for every name token it renders.
-fn read_every_member(fid: crate::FileId, ws: &VirtualWorkspace) {
+fn read_every_member(fid: FileId, ws: &VirtualWorkspace) {
     let model = ws.analysis.semantic_model(fid);
     for index_expr in model.chunk().expect("chunk").descendants::<LuaIndexExpr>() {
         let Some(resolved) = model.resolve_member(&index_expr) else {

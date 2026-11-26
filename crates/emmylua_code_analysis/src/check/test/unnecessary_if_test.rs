@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod test {
+    use crate::check;
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
     fn test_vararg_unknown_and_boolean_conditions_are_not_constant() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check::test::check_source(
             r#"
             local function unknown(...)
                 if ... then print('present') end
@@ -24,7 +25,7 @@ mod test {
 
     #[test]
     fn test_vararg_false_conditions_still_report_impossible_branches() {
-        let diagnostics = crate::check::test::check_source(
+        let diagnostics = check::test::check_source(
             r#"
             ---@param ... false
             local function always_false(...)
