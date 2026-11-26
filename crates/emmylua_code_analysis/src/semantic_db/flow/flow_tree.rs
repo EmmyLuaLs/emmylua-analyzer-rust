@@ -16,6 +16,8 @@ pub struct FlowTree {
     node_effects: HashMap<FlowId, Vec<FlowEffect>>,
     has_tag_cast: bool,
     multiple_antecedents: Vec<Vec<FlowId>>,
+    /// Loop paths used to detect writes that value inference may omit.
+    loop_antecedents: HashMap<FlowId, Vec<FlowId>>,
     // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
     bindings: HashMap<LuaSyntaxId, FlowId>,
     /// Sorted binding ranges; used as a fallback for offsets that are not exactly
@@ -55,12 +57,60 @@ pub struct FlowTree {
 }
 
 impl FlowTree {
+    /// Remove paths from labels that had no reachable entry after goto binding.
+    pub(super) fn prune_disconnected_antecedents(
+        start: FlowId,
+        flow_nodes: &mut [FlowNode],
+        multiple_antecedents: &mut [Vec<FlowId>],
+        loop_antecedents: &mut HashMap<FlowId, Vec<FlowId>>,
+    ) {
+        let mut successors = Self::successors(flow_nodes, multiple_antecedents);
+        for (node, antecedents) in loop_antecedents.iter() {
+            for antecedent in antecedents {
+                successors[antecedent.0 as usize].push(node.0);
+            }
+        }
+        let mut reachable = vec![false; flow_nodes.len()];
+        let mut pending = vec![start.0];
+        while let Some(node) = pending.pop() {
+            let index = node as usize;
+            if !std::mem::replace(&mut reachable[index], true) {
+                pending.extend_from_slice(&successors[index]);
+            }
+        }
+
+        let is_reachable = |flow: &FlowId| reachable[flow.0 as usize];
+        for antecedents in multiple_antecedents.iter_mut() {
+            antecedents.retain(is_reachable);
+        }
+        for node in flow_nodes {
+            match node.antecedent {
+                Some(FlowAntecedent::Single(prev)) if !is_reachable(&prev) => {
+                    node.antecedent = None;
+                }
+                Some(FlowAntecedent::Multiple(index)) => {
+                    match multiple_antecedents[index as usize].as_slice() {
+                        [] => node.antecedent = None,
+                        [prev] => node.antecedent = Some(FlowAntecedent::Single(*prev)),
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        loop_antecedents.retain(|node, antecedents| {
+            antecedents.retain(is_reachable);
+            is_reachable(node) && !antecedents.is_empty()
+        });
+    }
+
     pub fn new(
         decl_bind_expr_ref: HashMap<SemanticId, LuaAstPtr<LuaExpr>>,
         decl_multi_return_ref: HashMap<SemanticId, Vec<DeclMultiReturnRefAt>>,
         flow_nodes: Vec<FlowNode>,
         node_effects: HashMap<FlowId, Vec<FlowEffect>>,
         multiple_antecedents: Vec<Vec<FlowId>>,
+        loop_antecedents: HashMap<FlowId, Vec<FlowId>>,
         // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
         bindings: HashMap<LuaSyntaxId, FlowId>,
     ) -> Self {
@@ -165,6 +215,7 @@ impl FlowTree {
             node_effects,
             has_tag_cast,
             multiple_antecedents,
+            loop_antecedents,
             bindings,
             binding_ranges,
             binding_starts,
@@ -706,16 +757,46 @@ impl FlowTree {
         }
     }
 
+    /// Test writes on paths from an initializer to a read, including loop paths.
+    pub(crate) fn has_reaching_write(
+        &self,
+        read: FlowId,
+        initializer: FlowId,
+        is_write: impl FnMut(FlowId) -> bool,
+    ) -> bool {
+        self.any_antecedent(read, Some(initializer), is_write)
+    }
+
     fn collect_antecedents(&self, flow_id: FlowId) -> Vec<FlowId> {
         let mut antecedents = Vec::new();
+        self.any_antecedent(flow_id, None, |flow_id| {
+            antecedents.push(flow_id);
+            false
+        });
+        antecedents
+    }
+
+    /// A write query also visits loop paths and stops at its initializer.
+    fn any_antecedent(
+        &self,
+        flow_id: FlowId,
+        initializer: Option<FlowId>,
+        mut predicate: impl FnMut(FlowId) -> bool,
+    ) -> bool {
         let mut pending = VecDeque::from([flow_id]);
         let mut visited = HashSet::new();
         while let Some(flow_id) = pending.pop_front() {
-            if !visited.insert(flow_id) {
+            if Some(flow_id) == initializer || !visited.insert(flow_id) {
                 continue;
             }
-
-            antecedents.push(flow_id);
+            if predicate(flow_id) {
+                return true;
+            }
+            if initializer.is_some()
+                && let Some(antecedents) = self.loop_antecedents.get(&flow_id)
+            {
+                pending.extend(antecedents.iter().copied());
+            }
             let Some(flow_node) = self.get_flow_node(flow_id) else {
                 continue;
             };
@@ -732,7 +813,7 @@ impl FlowTree {
             }
         }
 
-        antecedents
+        false
     }
 }
 
