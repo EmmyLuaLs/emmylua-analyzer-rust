@@ -1,6 +1,7 @@
 //! Tests for the param_type_check / return_type_mismatch checkers.
 
-use crate::DiagnosticCode;
+use crate::{DiagnosticCode, VirtualWorkspace};
+use tokio_util::sync::CancellationToken;
 
 use super::{check_source, count_by_code};
 
@@ -209,4 +210,78 @@ fn test_alias_recursive_no_crash() {
     );
     // Recursive alias cannot be decided: just ensure no crash (diagnostic count is not important).
     let _ = diagnostics;
+}
+
+// `parse` reads as a union with a repeated member. That used to compare unequal to itself, so
+// expanding it as an arg to a generic class param never settled and overflowed the stack.
+#[test]
+fn test_union_arg_with_repeated_member_no_crash() {
+    let mut ws = VirtualWorkspace::new_with_init_std_lib();
+    let file_id = ws.def(
+        r#"
+        ---@class Holder<T>
+        local Tree = {}
+        ---@generic T
+        ---@param f Holder<T>
+        local function take(f, ...)
+        end
+        function Tree:start(range)
+          ---@type fun(): table<integer, TSTree>, boolean
+          local parse = coroutine.wrap(self._parse)
+          local function step()
+            if type(source) == 'number' then
+              if buf.changedtick ~= ct then
+                parse = coroutine.wrap(self._parse)
+              end
+            end
+            take(parse, self, range)
+          end
+        end
+        function Tree:_parse(range)
+        end
+        "#,
+    );
+    ws.analysis
+        .diagnose_file(file_id, CancellationToken::new())
+        .unwrap();
+}
+
+// `layout` returns `table|X|X` (two casts to the undeclared `X`), a union with a repeated member.
+// Checking the second file compares that return against the closure's signature; the union
+// compared unequal to itself, so each read interned a fresh comparison and the check never ended.
+#[test]
+#[ntest::timeout(5000)]
+fn test_return_union_with_repeated_member_no_hang() {
+    let mut ws = VirtualWorkspace::new();
+    let file_ids = ws.def_files(vec![
+        (
+            "a.lua",
+            r#"
+            ---@class G
+            ---@field cfg Cfg
+            ---@class Cfg
+            local M = {}
+            function M.layout(opts)
+              local layout = M.resolve(opts)
+              ---@cast layout X
+              if not layout.layout then
+                ---@cast layout X|{preview: boolean}
+                if layout.preview == false then
+                end
+              end
+              return layout
+            end
+            ---@generic T
+            ---@return T
+            function M.resolve(v)
+            end
+            "#,
+        ),
+        ("b.lua", "local layout = G.cfg.layout()"),
+    ]);
+    for file_id in file_ids {
+        ws.analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+    }
 }
