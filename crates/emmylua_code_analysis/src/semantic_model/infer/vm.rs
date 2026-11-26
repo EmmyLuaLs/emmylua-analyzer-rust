@@ -4872,9 +4872,14 @@ fn integer_const_value(ty: &LuaType) -> Option<i64> {
     }
 }
 
+/// Whether an arithmetic operand yields an integer. A nil member does not count: arithmetic on nil
+/// raises, so `integer? - 1` that yields a value yields an integer (`need-check-nil` reports the nil).
 fn integer_operand(ty: &LuaType) -> bool {
     match ty {
-        LuaType::Union(union) => union.iter().all(LuaType::is_integer),
+        LuaType::Union(union) => {
+            let mut values = union.iter().filter(|ty| !ty.is_nil()).peekable();
+            values.peek().is_some() && values.all(LuaType::is_integer)
+        }
         _ => ty.is_integer(),
     }
 }
@@ -4911,6 +4916,10 @@ fn unary_type(
                     .unwrap_or(LuaType::Number);
             }
             LuaType::FloatConst(value) => return LuaType::FloatConst(-value),
+            // `-nil` raises, so a negation that yields a value is never nil.
+            LuaType::Union(_) if operand.is_nullable() => {
+                return remove_nil_from_type(operand.clone());
+            }
             _ => {}
         }
     }

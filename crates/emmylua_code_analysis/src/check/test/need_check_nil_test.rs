@@ -1314,4 +1314,50 @@ mod test {
         "#,
         ));
     }
+
+    /// Arithmetic on nil raises, as indexing nil does. Each operand that may be nil is reported once.
+    #[test]
+    fn test_arithmetic_on_nullable_operand() {
+        use crate::check::test::{check_source, count_by_code};
+        for (body, expected) in [
+            ("return x - 1", 1),
+            ("return 1 + x", 1),
+            ("return x * x", 2),
+            ("return x / 2, x // 2, x % 2, x ^ 2", 4),
+            ("return -x", 1),
+            // Guarded, defaulted, or not nil at all.
+            ("return x and x - 1", 0),
+            ("if x then return x - 1 end", 0),
+            ("return (x or 0) - 1", 0),
+            ("return a + 1, -a", 0),
+            ("local s = 0 for i = 1, #t do s = s + t[i] end return s", 0),
+            // Neither concatenation nor bitwise operators are arithmetic here (0.25.1 did not check them).
+            ("return x .. '', x & 1", 0),
+            // An operand typed bare `nil` is an inference gap (a field of a `table` call result),
+            // not a value that may be nil: left alone.
+            ("return tb().x + 1", 0),
+        ] {
+            let source = format!(
+                r#"
+                ---@alias NcnInfo table
+
+                ---@return NcnInfo
+                local function tb() return {{}} end
+
+                ---@param x integer?
+                ---@param a any
+                ---@param t integer[]
+                local function f(x, a, t)
+                    {body}
+                end
+                return f
+                "#
+            );
+            assert_eq!(
+                count_by_code(&check_source(&source), DiagnosticCode::NeedCheckNil),
+                expected,
+                "{body}"
+            );
+        }
+    }
 }
