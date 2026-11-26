@@ -25,8 +25,17 @@ pub struct MemberRef {
     pub name: SmolStr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum MemberAccess {
+    #[default]
+    ReadWrite,
+    Read,
+    Write,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Member {
+    pub access: MemberAccess,
     /// Globally unique identity = declaration location (file + member-key token range).
     pub id: SemanticId,
     /// File-independent lookup key: `Name("Field")` / `Integer(1)`.
@@ -65,6 +74,7 @@ impl Member {
         source: MemberSource,
     ) -> Self {
         Member {
+            access: MemberAccess::ReadWrite,
             id: SemanticId::member(file_id, key_range),
             key,
             owner,

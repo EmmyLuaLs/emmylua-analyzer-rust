@@ -6,7 +6,9 @@
 
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{FileId, SemanticDatabase, SemanticId, SemanticModel, TypeDef};
+use emmylua_code_analysis::{
+    FileId, MemberAccess, SemanticDatabase, SemanticId, SemanticModel, TypeDef,
+};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaIndexExpr, LuaLiteralToken, LuaSyntaxToken,
 };
@@ -35,12 +37,14 @@ pub fn search_references(
     }
 
     // 2. Semantic declaration references (decl / member / typedef).
-    if let Some(decl) = model.find_decl(token.into()) {
+    if let Some(decl) = model.find_decl(token.clone().into()) {
         let ranges = match &decl {
             SemanticId::Decl(_) => {
                 decl_reference_ranges_with_aliases(db, &decl, include_declaration)
             }
-            SemanticId::Member(_) => member_reference_ranges(db, &decl, include_declaration),
+            SemanticId::Member(_) => {
+                property_reference_ranges(model, db, &decl, &token, include_declaration)
+            }
             SemanticId::TypeDef(_) => match resolve_type_def_of_id(model, &decl) {
                 Some(def) => type_def_reference_ranges(db, &def, include_declaration),
                 None => Vec::new(),
@@ -57,6 +61,50 @@ pub fn search_references(
 
     // 3. String reference index and fuzzy search retired with the old reference index (no Semantic equivalent).
     Some(Vec::new())
+}
+
+/// Keep indexed runtime uses and include both accessors of a directional property.
+fn property_reference_ranges(
+    model: &SemanticModel,
+    db: &SemanticDatabase,
+    target: &SemanticId,
+    token: &LuaSyntaxToken,
+    include_declaration: bool,
+) -> Vec<(FileId, rowan::TextRange)> {
+    let mut ranges = member_reference_ranges(db, target, include_declaration);
+    let getter = crate::handlers::common::directional_index_at(model, token)
+        .and_then(|(read, _, _)| read.id);
+    let property = getter.as_ref().unwrap_or(target);
+    let SemanticId::Member(id) = property else {
+        return ranges;
+    };
+    let Some(facts) = model.file_facts_of(id.file_id) else {
+        return ranges;
+    };
+    let Some(field) = facts
+        .member_by_id(property)
+        .filter(|field| field.access != MemberAccess::ReadWrite)
+    else {
+        return ranges;
+    };
+    let mut declarations = HashSet::new();
+    for accessor in facts
+        .members_of_owner(&field.owner)
+        .filter(|member| member.key == field.key && member.access != MemberAccess::ReadWrite)
+    {
+        ranges.extend(db.member_reference_ranges(&accessor.id));
+        if let Some(range) = accessor.id.member_key_range() {
+            declarations.insert((id.file_id, range));
+        }
+    }
+    if include_declaration {
+        ranges.extend(declarations);
+    } else {
+        ranges.retain(|range| !declarations.contains(range));
+    }
+    let mut seen = HashSet::new();
+    ranges.retain(|range| seen.insert(*range));
+    ranges
 }
 
 /// Type definition identity → TypeDef (after `find_decl` returns `SemanticId::TypeDef`, fetch the definition details).

@@ -257,6 +257,11 @@ impl<'a> CompletionBuilder<'a> {
         let emmylua_parser::LuaVarExpr::IndexExpr(index_expr) = var else {
             return None;
         };
+        if self.semantic_model.directional_index(index_expr).is_some() {
+            // Directional targets use the write-aware providers, which also keep
+            // literal alternatives when a setter accepts both functions and values.
+            return None;
+        }
         let key_text = index_expr.get_index_key()?.get_path_part();
 
         // 1. Normal member resolution.
