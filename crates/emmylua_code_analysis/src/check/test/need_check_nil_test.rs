@@ -1320,7 +1320,6 @@ mod test {
     /// Arithmetic on nil raises, as indexing nil does. Each operand that may be nil is reported once.
     #[test]
     fn test_arithmetic_on_nullable_operand() {
-        use crate::check::test::{check_source, count_by_code};
         for (body, expected) in [
             ("return x - 1", 1),
             ("return 1 + x", 1),
@@ -1396,20 +1395,48 @@ mod test {
         ));
     }
 
+    fn nil_messages(source: &str) -> Vec<String> {
+        check_source(source)
+            .into_iter()
+            .filter(|d| d.code == DiagnosticCode::NeedCheckNil)
+            .map(|d| d.message)
+            .collect()
+    }
+
     /// A length is never nil, so arithmetic on it adds nothing: `#w - 1` reports `w`, not `#w`.
     #[test]
     fn test_arithmetic_on_length_reports_the_operand_once() {
-        use crate::check::test::check_source;
         let source = r#"
             ---@param w string?
             local function f(w) return #w - 1 end
             return f
         "#;
-        let messages: Vec<String> = check_source(source)
-            .into_iter()
-            .filter(|d| d.code == DiagnosticCode::NeedCheckNil)
-            .map(|d| d.message)
-            .collect();
-        assert_eq!(messages, vec!["w may be nil".to_string()]);
+        assert_eq!(nil_messages(source), vec!["w may be nil".to_string()]);
+    }
+
+    /// The length of an operand with no `len` answer (`any`, `unknown`) is not nil either: `#t[1]`
+    /// on an `any[]` or a `{ ... }` element is never reported, only the element itself may be.
+    #[test]
+    fn test_arithmetic_on_length_of_any_is_not_nil() {
+        for source in [
+            r#"
+            ---@param t any[]
+            local function f(t) return 1 + #t[1] end
+            return f
+            "#,
+            r#"
+            local function f(...)
+              local args = { ... }
+              return 1 + #args[1]
+            end
+            return f
+            "#,
+        ] {
+            let messages = nil_messages(source);
+            assert!(
+                !messages.iter().any(|m| m.starts_with('#')),
+                "{messages:?} in {source}"
+            );
+        }
     }
 }

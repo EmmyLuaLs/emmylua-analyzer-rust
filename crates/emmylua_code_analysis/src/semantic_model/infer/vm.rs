@@ -4902,7 +4902,10 @@ fn unary_type(
 ) -> LuaType {
     use emmylua_parser::UnaryOperator::*;
     if op == OpLen {
-        return length_type(model, operand).unwrap_or_else(|| operand.clone());
+        // Some member has no `len` answer (`any`, `unknown`), or alias expansion gave up: keep
+        // the operand's own type, minus its nil (see `length_type`).
+        return length_type(model, operand)
+            .unwrap_or_else(|| remove_nil_from_type(operand.clone()));
     }
     if op == OpUnm {
         if let Some(ty) = model.operator_type("unm", operand) {
