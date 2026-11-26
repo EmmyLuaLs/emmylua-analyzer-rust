@@ -22,8 +22,25 @@ pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
             // <type>?
             LuaTokenKind::TkDocQuestion => {
                 let m = cm.precede(p, LuaSyntaxKind::TypeNullable);
+                let question_end = p.current_token_range().end_offset();
                 p.bump();
                 cm = m.complete(p);
+                // `?` ends a type. `T?|U`, `T?&U` and `T?[]` are reported, but still parsed as
+                // written, so the rest isn't silently read as a description. A `[` after a
+                // space starts a description (`string? [default 1]`).
+                let continues = matches!(
+                    p.current_token(),
+                    LuaTokenKind::TkDocOr | LuaTokenKind::TkDocAnd
+                ) || (p.current_token() == LuaTokenKind::TkLeftBracket
+                    && p.current_token_range().start_offset == question_end);
+                if continues {
+                    p.push_error(LuaParseError::doc_error_from(
+                        &t!("a type can't continue after `?`"),
+                        p.current_token_range(),
+                    ));
+                    cm = parse_suffixed_type(p, cm)?;
+                    parse_binary_operator(p, &mut cm, 0)?;
+                }
             }
             // <type> extends <type> and <true type> or <false type>
             LuaTokenKind::TkDocExtends => {
