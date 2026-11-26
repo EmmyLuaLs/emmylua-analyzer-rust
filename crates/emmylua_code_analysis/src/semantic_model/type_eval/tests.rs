@@ -4,6 +4,21 @@ use crate::semantic_model::type_check::check_type;
 use crate::{LuaTypeDeclId, VirtualWorkspace};
 
 #[test]
+fn variadic_class_generic_substitution_replaces_the_whole_result_slot() {
+    let slots = LuaType::Variadic(Rc::new(VariadicType::Multi(vec![
+        LuaType::Integer,
+        LuaType::String,
+    ])));
+    let mut bindings = HashMap::new();
+    bindings.insert("T".to_string(), slots.clone());
+    let template = LuaType::Variadic(Rc::new(VariadicType::Base(LuaType::Ref(
+        LuaTypeDeclId::global("T"),
+    ))));
+
+    assert_eq!(substitute_named_refs(&template, &bindings), slots);
+}
+
+#[test]
 fn recursive_mapped_members_do_not_depend_on_query_order() {
     let mut ws = VirtualWorkspace::new();
     let file = ws.def(

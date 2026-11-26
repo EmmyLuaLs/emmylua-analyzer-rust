@@ -9,7 +9,7 @@ use emmylua_parser::{LuaAstNode, LuaIndexKey};
 
 use crate::semantic_model::table_constructor::{ConstructorValue, key_type};
 use crate::semantic_model::table_value::TableValue;
-use crate::{LuaMemberKey, LuaObjectType, LuaType, LuaTypeDeclId};
+use crate::{GenericTplId, LuaMemberKey, LuaObjectType, LuaType, LuaTypeDeclId};
 
 use super::context::TypeCheckContext;
 use super::sub_type::{base_type_name, get_base_type_id, is_sub_type_of};
@@ -224,7 +224,11 @@ pub fn check_simple_type_compact(
                 return Ok(());
             }
         }
-        LuaType::TplRef(_) => return Ok(()),
+        LuaType::TplRef(tpl) => {
+            if !matches!(tpl.get_tpl_id(), GenericTplId::ClassType { .. }) {
+                return Ok(());
+            }
+        }
         LuaType::Variadic(_) => {
             return check_variadic_type_compact(context, source, compact_type);
         }

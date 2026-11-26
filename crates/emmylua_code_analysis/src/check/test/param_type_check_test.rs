@@ -4644,6 +4644,66 @@ mod test {
     }
 
     #[test]
+    fn test_generic_class_method_param_substitutes_class_args() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Ch<T>
+                local Ch = {}
+
+                ---@param v T
+                function Ch:send(v) end
+
+                ---@param values T[]
+                function Ch:send_all(values) end
+
+                ---@class Ch2<T>
+                local Ch2 = {}
+
+                ---@param self Ch2<T>
+                ---@param v T
+                function Ch2.send(self, v) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch<integer>
+            local ch
+            ch:send(1)
+            ch:send_all({1})
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch<integer>
+            local ch
+            ch:send("x")
+            ch:send_all({"x"})
+            "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch2<integer>
+            local ch2
+            ch2:send(1)
+            ch2.send(ch2, 1)
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Ch2<integer>
+            local ch2
+            ch2:send("x")
+            ch2.send(ch2, "x")
+            "#
+        ));
+    }
+
+    #[test]
     fn test_generic_pack_before_callback_accepts_fixed_parameters() {
         let source = r#"
             ---@generic T, R
@@ -4734,5 +4794,86 @@ mod test {
             &source[u32::from(range.start()) as usize..u32::from(range.end()) as usize],
             "delay"
         );
+    }
+
+    #[test]
+    fn test_inherited_method_binds_the_declaring_class_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Parent<T>
+                local Parent = {}
+
+                ---@param value T
+                function Parent:set(value) end
+
+                ---@class Child<T>: Parent<string>
+                local Child = {}
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Child<integer>
+            local child
+            child:set("parent uses string")
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Child<integer>
+            local child
+            child:set(1)
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_bare_generic_receiver_method_param_uses_defaults() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Ch<T>
+                local Ch = {}
+
+                ---@param v T
+                function Ch:send(v) end
+
+                ---@return Ch
+                function make_ch() end
+
+                ---@class SCh<T = string>
+                local SCh = {}
+
+                ---@param v T
+                function SCh:send(v) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            local ch = make_ch()
+            ch:send(1)
+            ch:send("x")
+            "#
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type SCh
+            local sch
+            sch:send(1)
+            "#
+        ));
+        // Inside the class body `T` is still the class parameter.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            function Ch:send_one()
+                self:send(1)
+            end
+            "#
+        ));
     }
 }
