@@ -1036,6 +1036,38 @@ impl<'a> InferVm<'a> {
         Value::plain(self.table_missing_index_type(table))
     }
 
+    /// Whether a key missing from `ty`'s members is known to be missing (a read is `nil`, not
+    /// `unknown`): a declared class or enum, an object, a table literal with members. A name
+    /// with no declaration knows nothing about its members, and an alias resolves to its
+    /// target.
+    fn missing_member_is_known(
+        model: &SemanticModel<'_>,
+        ty: &LuaType,
+        visited: &mut Vec<LuaTypeDeclId>,
+    ) -> bool {
+        match ty {
+            LuaType::TableConst(_) => Self::table_literal_has_members(model, ty),
+            LuaType::Object(_) => true,
+            LuaType::Ref(id) | LuaType::Def(id) => {
+                let defs = model.type_defs_of(id);
+                let Some(def) = defs.as_slice().first() else {
+                    return false;
+                };
+                if def.kind != TypeDefKind::Alias {
+                    return true;
+                }
+                if visited.contains(id) {
+                    return false;
+                }
+                visited.push(id.clone());
+                model
+                    .alias_target(def)
+                    .is_some_and(|target| Self::missing_member_is_known(model, &target, visited))
+            }
+            _ => false,
+        }
+    }
+
     /// Whether an anonymous table literal already has a known member shape.
     /// An empty `{}` with no fields/runtime members is treated as "unknown shape"; missing
     /// keys return Unknown instead of a definite Nil so not-yet-initialized members are not
@@ -1392,18 +1424,9 @@ impl<'a> InferVm<'a> {
                 receiver: receiver_ty,
             };
         }
-        // Named table literals / declared class instances return nil for missing keys (Lua
-        // member-index semantics), not Unknown; `t.missing` / `other.extra` should not
-        // degrade to "cannot infer". For empty table literals with no known member shape,
-        // still return Unknown because whether such fields are missing cannot be decided
-        // from the type side, and nil would treat not-yet-initialized members as definitely
-        // missing (issue 600).
-        let missing_is_known = match &owner.ty {
-            LuaType::TableConst(_) => Self::table_literal_has_members(self.model, &owner.ty),
-            LuaType::Ref(_) | LuaType::Def(_) | LuaType::Object(_) => true,
-            _ => false,
-        };
-        if missing_is_known {
+        // A key missing from a known member set reads `nil` (Lua member-index semantics), so
+        // `t.missing` / `other.extra` do not degrade to "cannot infer"; otherwise `unknown`.
+        if Self::missing_member_is_known(self.model, &owner.ty, &mut Vec::new()) {
             return Value::plain(LuaType::Nil);
         }
         Value::plain(LuaType::Unknown)

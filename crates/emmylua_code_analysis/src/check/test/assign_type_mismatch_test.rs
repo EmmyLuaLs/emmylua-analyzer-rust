@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::check::test::{check_source, check_source_with_emmyrc, count_by_code};
+    use crate::check::test::{
+        check_source, check_source_with_emmyrc, count_by_code, texts_by_code,
+    };
     use crate::{DiagnosticCode, Emmyrc, LuaMemberKey, LuaType, VirtualWorkspace};
     use tokio_util::sync::CancellationToken;
 
@@ -3335,5 +3337,55 @@ return t
                 );
             }
         }
+    }
+
+    /// A member read through a name that resolves to no declaration is `unknown`, not `nil`:
+    /// nothing is known about such a type's members. The missing name is `type-not-found`'s and
+    /// the read `undefined-field`'s; the sink does not report it again. An alias reads like its
+    /// target. A declared class's or an object alias's missing member stays `nil`.
+    #[test]
+    fn test_member_of_an_unresolved_type_is_unknown_not_nil() {
+        let source = r#"
+            ---@param m Missing
+            local function h(m)
+                ---@type boolean
+                local z = m.kind
+                return z
+            end
+
+            ---@alias AliasOfMissing Missing
+            ---@type AliasOfMissing
+            local a
+            ---@type boolean
+            local w = a.kind
+
+            -- An alias of a union holding an unresolved name reads like the inline union.
+            ---@alias ItemOfMissing Missing|{ text?: string }
+            ---@type ItemOfMissing
+            local it
+            ---@type boolean
+            local v = it.kind
+
+            ---@class DeclaredClass
+            ---@param d DeclaredClass
+            local function k(d)
+                ---@type boolean
+                local y = d.kind
+                return y
+            end
+
+            ---@alias ObjectShape { text?: string }
+            ---@type ObjectShape
+            local s
+            ---@type boolean
+            local x = s.kind
+            return h, k, w, v, x
+        "#;
+        let diags = check_source(source);
+        let assign = texts_by_code(source, &diags, DiagnosticCode::AssignTypeMismatch);
+        assert_eq!(assign, vec!["d.kind", "s.kind"], "{diags:#?}");
+        let undefined = texts_by_code(source, &diags, DiagnosticCode::UndefinedField);
+        // One per read (the range is the key): m, a, it, d, s.
+        assert_eq!(undefined, vec!["kind"; 5], "{diags:#?}");
     }
 }
