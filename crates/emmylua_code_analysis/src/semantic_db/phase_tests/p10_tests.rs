@@ -517,3 +517,51 @@ fn p10_cross_file_class_member_reference_resolution() {
         "workspace definition index must contain the A.BBB definition"
     );
 }
+
+/// `resolve_member_id` reads the by-name bucket for a name key on the claim that it is the full
+/// member list filtered by that name, in the same order. Pinned here for a module owner (whose
+/// canonical bucket `merge_canonical_members` merges in), with repeated names, an `@field`
+/// beside a runtime member of one name, and a member another file adds through `require`.
+#[test]
+fn p10_named_members_are_the_full_list_filtered_by_name() {
+    let mut db = setup();
+    let fid = set_test_file(
+        &mut db,
+        1,
+        &p10_main_file("m.lua"),
+        "---@class C\n---@field x integer\nlocal C = {}\nfunction C:f() end\nfunction C:f(a) end\nC.x = 1\nC[1] = true\nreturn C\n",
+    );
+    set_test_file(
+        &mut db,
+        2,
+        &p10_main_file("n.lua"),
+        "local C = require('m')\nfunction C:g() end\nfunction C:f(b) end\n",
+    );
+    let owner = db
+        .file_facts_of(fid)
+        .and_then(|facts| facts.decl_named("C"))
+        .map(|decl| decl.id.clone())
+        .expect("local C");
+    let all = query::members_of_owner(&db, owner.clone());
+    assert!(
+        all.iter().any(|member| member.file_id == FileId::new(2)),
+        "n.lua's members reach the owner through the canonical module bucket: {all:?}"
+    );
+    for name in ["f", "g", "x"] {
+        let filtered: Vec<_> = all
+            .iter()
+            .filter(|member| member.name == name)
+            .map(|member| (member.file_id, member.id.clone()))
+            .collect();
+        let named: Vec<_> = query::members_of_owner_named(&db, owner.clone(), SmolStr::new(name))
+            .iter()
+            .map(|member| (member.file_id, member.id.clone()))
+            .collect();
+        assert_eq!(named, filtered, "members named {name}");
+    }
+    let f = query::members_of_owner_named(&db, owner.clone(), SmolStr::new("f"));
+    assert!(
+        f.len() >= 2,
+        "repeated `f` declarations are all listed: {f:?}"
+    );
+}
