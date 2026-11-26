@@ -3336,4 +3336,53 @@ return t
             }
         }
     }
+
+    // A literal with several mismatching entries is reported once, at the entry with the lowest
+    // key: `[1]` for the tuple-like target, `x` for the class. That is line 10 of `source` (the
+    // `format!` string starts with a newline), the first `a`. The fields used to be walked in
+    // hash order, which is seeded per map, so the reported line moved between runs of the same
+    // binary. The main check is `[10]`; the 16 fresh databases per target are the stability half:
+    // with the order leaking, each run picked one of the three lines.
+    #[test]
+    fn test_record_mismatch_reports_the_same_entry_every_run() {
+        for (target, keys) in [
+            (
+                "---@type { [1]: integer, [2]: integer, [3]: integer }",
+                ["", "", ""],
+            ),
+            ("---@type P", ["x = ", "y = ", "z = "]),
+        ] {
+            let source = format!(
+                r#"
+                ---@class P
+                ---@field x integer
+                ---@field y integer
+                ---@field z integer
+
+                ---@param a number
+                local function f(a)
+                    {target}
+                    local t = {{
+                        {}a,
+                        {}a,
+                        {}a,
+                    }}
+                    return t
+                end
+                return f
+                "#,
+                keys[0], keys[1], keys[2]
+            );
+            let lines: std::collections::BTreeSet<usize> = (0..16)
+                .flat_map(|_| {
+                    check_source(&source)
+                        .into_iter()
+                        .filter(|d| d.code == DiagnosticCode::AssignTypeMismatch)
+                        .map(|d| source[..usize::from(d.range.start())].matches('\n').count())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            assert_eq!(lines, [10].into(), "{target}");
+        }
+    }
 }
