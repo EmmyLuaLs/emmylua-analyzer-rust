@@ -79,40 +79,8 @@ fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
 }
 
 fn load_resource_from_file_system(resources_dir: &Path) -> Option<Vec<LuaFileInfo>> {
-    if check_need_dump_to_file_system() {
-        log::info!("Creating resources dir: {:?}", resources_dir);
-        let files = load_resource_from_include_dir();
-        for file in &files {
-            let path = resources_dir.join(&file.path);
-            let parent = path.parent()?;
-            if !parent.exists() {
-                match std::fs::create_dir_all(parent) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!("Failed to create dir: {:?}, {:?}", parent, e);
-                        return None;
-                    }
-                }
-            }
-
-            match std::fs::write(&path, &file.content) {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("Failed to write file: {:?}, {:?}", path, e);
-                    return None;
-                }
-            }
-        }
-
-        let version_path = resources_dir.join("version");
-        let content = VERSION.to_string();
-        match std::fs::write(&version_path, content) {
-            Ok(_) => {}
-            Err(e) => {
-                log::error!("Failed to write file: {:?}, {:?}", version_path, e);
-                return None;
-            }
-        }
+    if cfg!(debug_assertions) || !stamp_is_current(resources_dir) {
+        dump_resources(resources_dir)?;
     }
 
     let std_dir = get_std_dir(&resources_dir);
@@ -129,23 +97,79 @@ fn load_resource_from_file_system(resources_dir: &Path) -> Option<Vec<LuaFileInf
     Some(files)
 }
 
-fn check_need_dump_to_file_system() -> bool {
-    if cfg!(debug_assertions) {
-        return true;
+/// What the `version` file of an unpacked resources dir holds: the crate version plus a hash of the embedded
+/// files. The version alone stays the same across builds (every build between two releases), so a std fix
+/// would never reach an unpacked copy.
+fn resources_stamp() -> String {
+    // FNV-1a over each embedded file's path and contents, in include_dir's (compile-time) order.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for file in load_resource_from_include_dir() {
+        for byte in file
+            .path
+            .bytes()
+            .chain([0])
+            .chain(file.content.bytes())
+            .chain([0])
+        {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    format!("{VERSION}+{hash:016x}")
+}
+
+/// Whether `resources_dir` holds exactly the embedded resources: its own `version` file has `resources_stamp`.
+fn stamp_is_current(resources_dir: &Path) -> bool {
+    std::fs::read_to_string(resources_dir.join("version"))
+        .is_ok_and(|content| content.trim() == resources_stamp())
+}
+
+/// Unpacks the embedded resources into `resources_dir`, first removing the top-level trees it unpacks
+/// (`std`, `std-zh_CN`, …) so a file the build no longer has does not linger, then writes the stamp.
+fn dump_resources(resources_dir: &Path) -> Option<()> {
+    log::info!("Creating resources dir: {:?}", resources_dir);
+    for entry in RESOURCE_DIR.entries() {
+        if let DirEntry::Dir(dir) = entry {
+            let old = resources_dir.join(dir.path());
+            if let Err(e) = std::fs::remove_dir_all(&old)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                log::error!("Failed to remove dir: {:?}, {:?}", old, e);
+                return None;
+            }
+        }
+    }
+    let files = load_resource_from_include_dir();
+    for file in &files {
+        let path = resources_dir.join(&file.path);
+        let parent = path.parent()?;
+        if !parent.exists() {
+            match std::fs::create_dir_all(parent) {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("Failed to create dir: {:?}, {:?}", parent, e);
+                    return None;
+                }
+            }
+        }
+
+        match std::fs::write(&path, &file.content) {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Failed to write file: {:?}, {:?}", path, e);
+                return None;
+            }
+        }
     }
 
-    let resoucres_dir = get_best_resources_dir();
-    let version_path = resoucres_dir.join("version");
-
-    if !version_path.exists() {
-        return true;
+    let version_path = resources_dir.join("version");
+    match std::fs::write(&version_path, resources_stamp()) {
+        Ok(_) => {}
+        Err(e) => {
+            log::error!("Failed to write file: {:?}, {:?}", version_path, e);
+            return None;
+        }
     }
-
-    let Ok(content) = std::fs::read_to_string(&version_path) else {
-        return true;
-    };
-    let version = content.trim();
-    version != VERSION
+    Some(())
 }
 
 pub fn load_resource_from_include_dir() -> Vec<LuaFileInfo> {
@@ -183,4 +207,51 @@ fn get_std_dir(resources_dir: &Path) -> PathBuf {
         }
     }
     resources_dir.join("std")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh scratch dir under the system temp dir, removed first if a previous run left it.
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("emmylua-resources-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    // A dir unpacked by another build of the same crate version is stale: every build between two releases
+    // says the same version, so a std fix never reached the copy emmylua_ls reads (fork #93).
+    #[test]
+    fn test_a_copy_stamped_with_the_bare_version_is_not_current() {
+        let dir = scratch("bare");
+        std::fs::write(dir.join("version"), VERSION).unwrap();
+        assert!(!stamp_is_current(&dir));
+        assert!(resources_stamp().starts_with(&format!("{VERSION}+")));
+    }
+
+    #[test]
+    fn test_unpacking_replaces_stale_files_removes_gone_ones_and_stamps() {
+        let dir = scratch("dump");
+        std::fs::create_dir_all(dir.join("std")).unwrap();
+        std::fs::write(dir.join("std/io.lua"), "-- stale").unwrap();
+        std::fs::write(dir.join("std/gone.lua"), "-- not in this build").unwrap();
+        std::fs::write(dir.join("version"), VERSION).unwrap();
+
+        dump_resources(&dir).unwrap();
+
+        let io = load_resource_from_include_dir()
+            .into_iter()
+            .find(|f| f.path == "std/io.lua")
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("std/io.lua")).unwrap(),
+            io.content
+        );
+        assert!(!dir.join("std/gone.lua").exists());
+        assert!(stamp_is_current(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
