@@ -6,6 +6,7 @@ use crate::html_generator::types::{HtmlDoc, HtmlMember, HtmlParam};
 use crate::markdown_generator::generator::collect_property;
 
 use super::html_type::{render_const_type_html, render_function_signature_html, render_type_html};
+use super::markdown::render_markdown;
 use super::render::{html_escape, signature_pre};
 
 /// Rendering context shared by page generators.
@@ -137,7 +138,12 @@ fn build_simple_global(ctx: &GenContext, global: &DocGlobal, doc: &mut HtmlDoc) 
     let ty = &global.ty;
     if model.function_info(ty, global.signature.as_ref()).is_some() {
         doc.display = Some(signature_pre(render_function_signature_html(
-            model, ty, name, false, ctx.linker,
+            model,
+            ty,
+            global.signature.as_ref(),
+            name,
+            false,
+            ctx.linker,
         )));
     } else if ty.is_const() {
         let typ_display = render_const_type_html(model, ty, ctx.linker);
@@ -197,6 +203,7 @@ pub fn collect_members(
             let display = signature_pre(render_function_signature_html(
                 model,
                 &member.ty,
+                member.signature.as_ref(),
                 &title_name,
                 false,
                 ctx.linker,
@@ -207,28 +214,34 @@ pub fn collect_members(
                 display,
                 property,
             );
-            html_member.params = func
-                .params
-                .iter()
-                .map(|param| HtmlParam {
-                    name: param.name.clone(),
-                    type_html: param
-                        .ty
-                        .as_ref()
-                        .map(|ty| render_type_html(model, ty, ctx.linker))
-                        .unwrap_or_default(),
-                    description: None,
-                })
-                .collect();
-            html_member.returns = func
-                .returns
-                .iter()
-                .map(|ty| HtmlParam {
-                    name: String::new(),
-                    type_html: render_type_html(model, ty, ctx.linker),
-                    description: None,
-                })
-                .collect();
+            if let Some(details) = model.function_details(&member.ty, member.signature.as_ref()) {
+                html_member.params = details
+                    .params
+                    .iter()
+                    .map(|param| HtmlParam {
+                        name: param.name.clone(),
+                        type_html: param
+                            .ty
+                            .as_ref()
+                            .map(|ty| render_type_html(model, ty, ctx.linker))
+                            .unwrap_or_default(),
+                        description: param.description.as_deref().map(render_markdown),
+                    })
+                    .collect();
+                html_member.returns = details
+                    .returns
+                    .iter()
+                    .map(|ret| HtmlParam {
+                        name: ret.name.clone(),
+                        type_html: ret
+                            .ty
+                            .as_ref()
+                            .map(|ty| render_type_html(model, ty, ctx.linker))
+                            .unwrap_or_default(),
+                        description: ret.description.as_deref().map(render_markdown),
+                    })
+                    .collect();
+            }
             html_member.overloads = html_type::signature_overloads_html(
                 model,
                 &func.overloads,

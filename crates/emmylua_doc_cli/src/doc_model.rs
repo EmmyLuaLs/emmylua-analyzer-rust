@@ -130,6 +130,23 @@ pub struct DocSignature {
     pub returns: Vec<DocSignatureReturn>,
 }
 
+/// A parameter or return-value row for a function's detail table.
+#[derive(Debug, Clone)]
+pub struct DocDetailParam {
+    /// Parameter name, or the documented return name. Empty for unnamed
+    /// returns (including the single inferred return of a `DocFunction`).
+    pub name: String,
+    pub ty: Option<LuaType>,
+    pub description: Option<String>,
+}
+
+/// Parameter and return-value rows for a documented function.
+#[derive(Debug, Clone, Default)]
+pub struct DocFunctionDetails {
+    pub params: Vec<DocDetailParam>,
+    pub returns: Vec<DocDetailParam>,
+}
+
 /// Directly renderable function view (prefers the type's own `DocFunction`, then fills in signature details).
 #[derive(Debug, Clone)]
 pub struct DocFunctionInfo {
@@ -667,7 +684,30 @@ impl DocModel {
         dedupe_members(members)
     }
 
+    /// Projects a documented signature into the shape used by
+    /// [`DocFunctionInfo`]: parameter names/types in declaration order and the
+    /// explicit return types. Descriptions are projected by
+    /// [`Self::function_details`].
+    fn signature_function_parts(signature: &DocSignature) -> (Vec<DocFnParam>, Vec<LuaType>) {
+        let params = signature
+            .params
+            .iter()
+            .map(|param| DocFnParam {
+                name: param.name.clone(),
+                ty: param.ty.clone(),
+            })
+            .collect();
+        let returns = signature.returns.iter().map(|ret| ret.ty.clone()).collect();
+        (params, returns)
+    }
+
     /// Function view: uses the type's own params/returns, and signature facts fill overload/async/method/nodiscard.
+    ///
+    /// A bare `LuaType::Function` (a function declared outside a table or
+    /// annotated only with `---@param` / `---@return`) carries no parameter
+    /// list, so its documented signature is used as a fallback via
+    /// [`Self::signature_function_parts`]. [`Self::function_details`] exposes
+    /// the same signature data together with descriptions.
     pub fn function_info(
         &self,
         ty: &LuaType,
@@ -694,16 +734,10 @@ impl DocModel {
                 func.is_colon_define(),
             ),
             LuaType::Function => {
-                return Some(DocFunctionInfo {
-                    params: Vec::new(),
-                    returns: Vec::new(),
-                    overloads: Vec::new(),
-                    generics: Vec::new(),
-                    is_async: false,
-                    is_method: false,
-                    is_nodiscard: false,
-                    nodiscard_message: None,
-                });
+                let (params, returns) = signature
+                    .map(Self::signature_function_parts)
+                    .unwrap_or_default();
+                (params, returns, Vec::new(), false, false)
             }
             _ => return None,
         };
@@ -720,6 +754,73 @@ impl DocModel {
             is_nodiscard: signature.is_some_and(|sig| sig.nodiscard.is_some()),
             nodiscard_message: signature.and_then(|sig| sig.nodiscard.clone()),
         })
+    }
+
+    /// Rows for the `Parameters` / `Returns` detail tables.
+    ///
+    /// Signature-backed functions use their explicit `---@param` /
+    /// `---@return` annotations, so documented types and descriptions stay
+    /// visible while inferred returns do not leak in. This is the same
+    /// signature projection as [`Self::function_info`], plus descriptions.
+    /// `DocFunction` members (for example
+    /// `---@field add fun(a: number): number`) fall back to the function type
+    /// itself; their single return row may carry `unknown`.
+    ///
+    /// Returns `None` when no row carries a type or description, so empty
+    /// tables are never rendered.
+    pub fn function_details(
+        &self,
+        ty: &LuaType,
+        signature: Option<&DocSignature>,
+    ) -> Option<DocFunctionDetails> {
+        let (params, returns) = if let Some(signature) = signature {
+            (
+                signature
+                    .params
+                    .iter()
+                    .map(|param| DocDetailParam {
+                        name: param.name.clone(),
+                        ty: param.ty.clone(),
+                        description: param.description.clone(),
+                    })
+                    .collect::<Vec<_>>(),
+                signature
+                    .returns
+                    .iter()
+                    .map(|ret| DocDetailParam {
+                        name: ret.name.clone().unwrap_or_default(),
+                        ty: Some(ret.ty.clone()),
+                        description: ret.description.clone(),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else if let LuaType::DocFunction(func) = ty {
+            (
+                func.get_params()
+                    .iter()
+                    .map(|(name, ty)| DocDetailParam {
+                        name: name.clone(),
+                        ty: ty.clone(),
+                        description: None,
+                    })
+                    .collect::<Vec<_>>(),
+                vec![DocDetailParam {
+                    name: String::new(),
+                    ty: Some(func.get_ret().clone()),
+                    description: None,
+                }],
+            )
+        } else {
+            return None;
+        };
+
+        let has_details = params
+            .iter()
+            .any(|param| param.ty.is_some() || param.description.is_some())
+            || returns
+                .iter()
+                .any(|ret| ret.ty.is_some() || ret.description.is_some());
+        has_details.then_some(DocFunctionDetails { params, returns })
     }
 
     pub fn render_type(&self, ty: &LuaType, level: RenderLevel) -> String {
