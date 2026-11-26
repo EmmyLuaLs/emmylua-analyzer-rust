@@ -57,6 +57,8 @@ fn check_call(
             .unwrap_or_else(|| semantic_model.type_of_expr(prefix_expr.get_syntax_id())),
         _ => semantic_model.type_of_expr(prefix_expr.get_syntax_id()),
     };
+    // `f()()` calls the first value `f` returns.
+    let callee_ty = callee_ty.get_result_slot_type(0).unwrap_or(LuaType::Nil);
     if is_callable(semantic_model, &callee_ty) {
         return;
     }
