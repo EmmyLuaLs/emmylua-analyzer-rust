@@ -1,7 +1,7 @@
 //! # need_check_nil - direct call / member access on a possibly nil prefix
 //!
-//! M0: if the call callee type is nullable, the index prefix is nullable, or an arithmetic
-//! operand is nullable, report NeedCheckNil; safe navigation (`?.`/`?:`) skips.
+//! M0: if the call callee type is nullable, the index prefix is nullable, or the operand of `#`
+//! or of arithmetic is nullable, report NeedCheckNil; safe navigation (`?.`/`?:`) skips.
 
 use std::rc::Rc;
 
@@ -33,9 +33,7 @@ impl Checker for NeedCheckNilChecker {
                 LuaExpr::BinaryExpr(binary_expr) => {
                     check_arithmetic(context, semantic_model, &binary_expr);
                 }
-                LuaExpr::UnaryExpr(unary_expr) => {
-                    check_negation(context, semantic_model, &unary_expr)
-                }
+                LuaExpr::UnaryExpr(unary_expr) => check_unary(context, semantic_model, &unary_expr),
                 _ => {}
             }
         }
@@ -122,18 +120,27 @@ fn check_arithmetic(
     }
 }
 
-/// `-x` raises on a nil `x` like `x - 1`.
-fn check_negation(
+/// `#x` raises on a nil `x` just as `x.y` does, and `-x` like `x - 1`.
+fn check_unary(
     context: &mut CheckContext<'_>,
     semantic_model: &SemanticModel<'_>,
     unary_expr: &LuaUnaryExpr,
 ) {
-    if unary_expr
-        .get_op_token()
-        .is_some_and(|op| op.get_op() == UnaryOperator::OpUnm)
-        && let Some(operand) = unary_expr.get_expr()
-    {
-        check_arithmetic_operand(context, semantic_model, &operand);
+    let Some(op) = unary_expr.get_op_token().map(|op| op.get_op()) else {
+        return;
+    };
+    let Some(operand) = unary_expr.get_expr() else {
+        return;
+    };
+    match op {
+        UnaryOperator::OpLen => {
+            let ty = prefix_type(semantic_model, &operand);
+            if ty.is_nullable() && !ty.is_nil() {
+                report_may_be_nil(context, &operand);
+            }
+        }
+        UnaryOperator::OpUnm => check_arithmetic_operand(context, semantic_model, &operand),
+        _ => {}
     }
 }
 
@@ -147,12 +154,16 @@ fn check_arithmetic_operand(
     // nil arithmetic (a field of a `table` call result, `select` over unknown values), and its
     // result type is unchanged, so nothing is hidden by skipping it.
     if ty.is_nullable() && !ty.is_nil() {
-        context.add_diagnostic(
-            DiagnosticCode::NeedCheckNil,
-            operand.get_range(),
-            t!("%{name} may be nil", name = operand.syntax().text()),
-        );
+        report_may_be_nil(context, operand);
     }
+}
+
+fn report_may_be_nil(context: &mut CheckContext<'_>, operand: &LuaExpr) {
+    context.add_diagnostic(
+        DiagnosticCode::NeedCheckNil,
+        operand.get_range(),
+        t!("%{name} may be nil", name = operand.syntax().text()),
+    );
 }
 
 /// Only accept RHS asserts in the same assignment statement to avoid incorrectly suppressing nil diagnostics across statements.

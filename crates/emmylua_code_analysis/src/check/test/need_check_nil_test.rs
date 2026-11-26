@@ -1177,6 +1177,8 @@ mod test {
         ---@type false|fun(...)[]?
         local calls
 
+        -- `#calls` itself may raise; the body read is what this pins.
+        ---@diagnostic disable-next-line: need-check-nil
         for i = 1, #calls do
             calls[i](...)
         end
@@ -1359,5 +1361,55 @@ mod test {
                 "{body}"
             );
         }
+    }
+
+    #[test]
+    fn test_length_of_nullable_operand() {
+        let mut ws = VirtualWorkspace::new();
+        // `#nil` raises, as `nil.x` does.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@param w string?
+            local function f(w) return #w end
+            return f
+        "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@param w string?
+            local function f(w) return w and #w end
+            return f
+        "#
+        ));
+        // Where it yields a value, the length is an integer, not the operand's `string?`.
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param n integer
+            local function take(n) end
+            ---@param w string?
+            local function f(w) take(#w) take(1 + #w - 1) end
+            return f
+        "#
+        ));
+    }
+
+    /// A length is never nil, so arithmetic on it adds nothing: `#w - 1` reports `w`, not `#w`.
+    #[test]
+    fn test_arithmetic_on_length_reports_the_operand_once() {
+        use crate::check::test::check_source;
+        let source = r#"
+            ---@param w string?
+            local function f(w) return #w - 1 end
+            return f
+        "#;
+        let messages: Vec<String> = check_source(source)
+            .into_iter()
+            .filter(|d| d.code == DiagnosticCode::NeedCheckNil)
+            .map(|d| d.message)
+            .collect();
+        assert_eq!(messages, vec!["w may be nil".to_string()]);
     }
 }

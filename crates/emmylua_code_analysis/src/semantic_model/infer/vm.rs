@@ -4935,6 +4935,8 @@ fn length_type(model: &SemanticModel, operand: &LuaType) -> Option<LuaType> {
     while let Some(ty) = pending.pop() {
         if let LuaType::Union(union) = ty {
             pending.extend(union.into_vec());
+        } else if ty.is_nil() {
+            // `#nil` raises: a nullable operand's length is the length of the rest (need-check-nil reports it).
         } else if ty.is_table() || ty.is_object() || ty.is_string() {
             results.push(LuaType::Integer);
         } else {

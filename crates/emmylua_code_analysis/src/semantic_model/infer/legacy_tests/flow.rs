@@ -1663,6 +1663,8 @@ print(a.field)
         ---@type false|fun(...)[]?
         local calls
 
+        -- `#calls` itself may raise; the body read is what this pins.
+        ---@diagnostic disable-next-line: need-check-nil
         for i = 1, #calls do
             calls[i](...)
         end
