@@ -1104,6 +1104,17 @@ impl<'db> SemanticModel<'db> {
                         !self.members_of_owner_key(owner, &member_use.key).is_empty()
                     }));
             if !prefer_typed && let Some(member) = same_file_member {
+                // Across files too: a write here is held to a global member's `---@type` elsewhere.
+                if member.doc_type_syntax.is_none()
+                    && let Some(typed) = self.typed_member_of_owner_key(&owner, &member_use.key)
+                {
+                    return Some(self.resolved_member(
+                        Some(typed.id),
+                        Some(typed.file_id),
+                        owner,
+                        member_use,
+                    ));
+                }
                 return Some(self.resolved_member(
                     Some(member.id.clone()),
                     Some(self.view.file_id()),
@@ -1392,6 +1403,21 @@ impl<'db> SemanticModel<'db> {
         }
 
         Some(self.resolved_member(None, None, owner, member_use))
+    }
+    /// The owner's member with this key that carries a `---@type`, in any file.
+    fn typed_member_of_owner_key(
+        &self,
+        owner: &SemanticId,
+        key: &LuaMemberKey,
+    ) -> Option<MemberRef> {
+        self.members_of_owner_key(owner, key)
+            .iter()
+            .find(|member| {
+                self.file_facts_of(member.file_id)
+                    .and_then(|facts| facts.member_by_id(&member.id))
+                    .is_some_and(|member| member.doc_type_syntax.is_some())
+            })
+            .cloned()
     }
     /// `local M = require("mod")` / `require("mod")` -> module export declaration owner.
     ///
