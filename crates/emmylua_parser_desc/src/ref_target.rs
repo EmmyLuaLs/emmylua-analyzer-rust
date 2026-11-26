@@ -9,6 +9,46 @@ pub enum LuaDescRefPathItem {
     Type(String),
 }
 
+/// A Rust-like intra-doc link label, e.g. ``[`Widget`]``.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct IntraDocLink<'a> {
+    /// Symbol path without the surrounding backticks.
+    pub target: &'a str,
+    /// Byte offset of `target` inside the original label.
+    pub target_start: usize,
+}
+
+/// Parses a Rust-like intra-doc link label.
+///
+/// Only the code-span form is supported: the label must be a single inline code
+/// span (``[`Widget`]``, not `[Widget]`) whose content is a Lua symbol path.
+/// This keeps ordinary Markdown shortcut/reference links untouched.
+pub fn parse_intra_doc_link(label: &str) -> Option<IntraDocLink<'_>> {
+    let target = label.strip_prefix('`')?.strip_suffix('`')?;
+    if target.is_empty() || target.contains('`') || !is_doc_path(target) {
+        return None;
+    }
+
+    Some(IntraDocLink {
+        target,
+        target_start: 1,
+    })
+}
+
+fn is_doc_path(text: &str) -> bool {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphanumeric() || first == '_') {
+        return false;
+    }
+
+    text.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        && !text.contains("..")
+}
+
 impl LuaDescRefPathItem {
     pub fn is_name(&self) -> bool {
         matches!(self, LuaDescRefPathItem::Name(_))
@@ -375,5 +415,48 @@ mod tests {
                 ),
             ])
         )
+    }
+}
+
+#[cfg(test)]
+mod intra_doc_link_tests {
+    use super::parse_intra_doc_link;
+
+    #[test]
+    fn accepts_code_span_paths() {
+        for (label, target) in [
+            ("`Widget`", "Widget"),
+            ("`Widget.name`", "Widget.name"),
+            ("`ns.Widget.name`", "ns.Widget.name"),
+            ("`Widget.`", "Widget."),
+            ("`_private.value`", "_private.value"),
+        ] {
+            let link = parse_intra_doc_link(label)
+                .unwrap_or_else(|| panic!("expected {label} to be a link"));
+            assert_eq!(link.target, target);
+            assert_eq!(link.target_start, 1);
+        }
+    }
+
+    #[test]
+    fn rejects_non_link_forms() {
+        for label in [
+            "Widget",
+            "[`Widget`]",
+            "`Widget.name()`",
+            "`Widget name`",
+            "``",
+            "`Widget..name`",
+            "`Widget-name`",
+            "`Widget/name`",
+            "`Widget` extra",
+            "`Widget`.`name`",
+            "`.Widget`",
+        ] {
+            assert!(
+                parse_intra_doc_link(label).is_none(),
+                "expected {label} not to be a link"
+            );
+        }
     }
 }

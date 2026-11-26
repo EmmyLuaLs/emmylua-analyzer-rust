@@ -2,6 +2,7 @@ mod test;
 
 use crate::lang::{CodeBlockLang, process_code};
 use crate::markdown_rst::{eat_rst_flag_body, process_inline_code};
+use crate::ref_target::parse_intra_doc_link;
 use crate::util::{
     BacktrackPoint, ResultContainer, desc_to_lines, is_blank, is_code_directive, is_lua_role,
     is_punct, is_ws,
@@ -1128,14 +1129,20 @@ impl MarkdownParser {
                     }
 
                     let title_range = reader.current_range();
+                    let title_text = reader.current_text().to_string();
                     reader.reset_buff();
 
-                    if reader.current_char() == '(' && !Self::eat_link_url(reader) {
-                        bt.rollback(self, reader);
-                        reader.bump();
-                        // guard.backtrack(reader);
-                        continue;
-                    }
+                    let has_url = if reader.current_char() == '(' {
+                        if !Self::eat_link_url(reader) {
+                            bt.rollback(self, reader);
+                            reader.bump();
+                            // guard.backtrack(reader);
+                            continue;
+                        }
+                        true
+                    } else {
+                        false
+                    };
 
                     let url_range = reader.current_range();
                     reader.reset_buff();
@@ -1144,6 +1151,25 @@ impl MarkdownParser {
 
                     self.emit_range(title_range, DescItemKind::Link);
                     self.emit_range(url_range, DescItemKind::Link);
+
+                    if !has_url {
+                        let label_start = title_range.start_offset + 1;
+                        let label = title_text
+                            .strip_prefix('[')
+                            .and_then(|text| text.strip_suffix(']'))
+                            .unwrap_or_default();
+                        if !label.is_empty()
+                            && let Some(link) = parse_intra_doc_link(label)
+                        {
+                            self.emit_range(
+                                SourceRange::new(
+                                    label_start + link.target_start,
+                                    link.target.len(),
+                                ),
+                                DescItemKind::Ref,
+                            );
+                        }
+                    }
 
                     bt.commit(self, reader);
                 }

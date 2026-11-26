@@ -463,6 +463,96 @@ mod tests {
     }
 
     #[gtest]
+    fn test_intra_doc_links() -> Result<()> {
+        let code = r#"
+--- See [`Widget`] and [`Widget.name`].
+--- Plain [Widget] and [text](url) stay links.
+--- Inline `Widget` is just code.
+"#;
+
+        let expected = r#"
+--- See <Link>[`<Ref>Widget</Ref>`]</Link> and <Link>[`<Ref>Widget.name</Ref>`]</Link>.
+--- Plain <Link>[Widget]</Link> and <Link>[text](url)</Link> stay links.
+--- Inline <Markup>`</Markup><Code>Widget</Code><Markup>`</Markup> is just code.
+"#;
+
+        test(&code, Box::new(MarkdownParser::new(None)), &expected).or_fail()?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_intra_doc_link_contexts() -> Result<()> {
+        let code = r#"
+--- Explicit [`Widget`](https://example.com) stays a link.
+--- Plain [Widget] stays a link.
+--- [`Widget`] and [`Widget.name`].
+"#;
+
+        let expected = r#"
+--- Explicit <Link>[`Widget`](https://example.com)</Link> stays a link.
+--- Plain <Link>[Widget]</Link> stays a link.
+--- <Link>[`<Ref>Widget</Ref>`]</Link> and <Link>[`<Ref>Widget.name</Ref>`]</Link>.
+"#;
+
+        test(&code, Box::new(MarkdownParser::new(None)), &expected).or_fail()?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_intra_doc_links_skip_code() -> Result<()> {
+        let code = r#"
+--- ```txt
+--- See [`Widget`].
+--- ```
+---
+--- Inline `[`Widget`]` stays code.
+"#;
+
+        let expected = r#"
+--- <Scope><Markup>```</Markup><CodeBlock>txt</CodeBlock>
+--- <CodeBlock>See [`Widget`].</CodeBlock>
+--- <Markup>```</Markup></Scope>
+---
+--- Inline <Markup>`</Markup><Code>[</Code><Markup>`</Markup>Widget<Markup>`</Markup><Code>]</Code><Markup>`</Markup> stays code.
+"#;
+
+        test(&code, Box::new(MarkdownParser::new(None)), &expected).or_fail()?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_intra_doc_link_in_param_description() -> Result<()> {
+        let code = r#"
+---@param value string See [`Widget`].
+local function f(value) end
+"#;
+
+        let expected = r#"
+---@param value string See <Link>[`<Ref>Widget</Ref>`]</Link>.
+local function f(value) end
+"#;
+
+        test(&code, Box::new(MarkdownParser::new(None)), &expected).or_fail()?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_intra_doc_link_in_return_description() -> Result<()> {
+        let code = r#"
+---@return string See [`Widget.name`].
+local function f() end
+"#;
+
+        let expected = r#"
+---@return string See <Link>[`<Ref>Widget.name</Ref>`]</Link>.
+local function f() end
+"#;
+
+        test(&code, Box::new(MarkdownParser::new(None)), &expected).or_fail()?;
+        Ok(())
+    }
+
+    #[gtest]
     fn test_md_no_indent() -> Result<()> {
         let code = r#"
 ---```lua
