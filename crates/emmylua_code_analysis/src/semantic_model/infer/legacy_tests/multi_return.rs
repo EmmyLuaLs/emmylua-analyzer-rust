@@ -227,4 +227,24 @@ mod test {
         assert_eq!(ws.expr_ty("PAST_TUPLE"), ws.ty("any"));
         assert_eq!(ws.expr_ty("FORWARDED"), ws.ty("number"));
     }
+
+    /// An unknown value inside a result list stays unknown: only a target past a single value's
+    /// only slot is `any`. As `any` it merged with the same call's direct return into
+    /// `(unknown|any)?` (mini.icons' recursive `get`).
+    #[test]
+    fn test_unknown_value_in_result_list_stays_unknown() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        local function first() return Undeclared[1], 2 end
+        local function second() return 1, Undeclared[1] end
+        local x = first()
+        local _, y = second()
+        X, Y = x, y
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("X"), ws.ty("unknown"));
+        assert_eq!(ws.expr_ty("Y"), ws.ty("unknown"));
+    }
 }

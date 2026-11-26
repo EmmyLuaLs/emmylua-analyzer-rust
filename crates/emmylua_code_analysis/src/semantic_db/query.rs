@@ -2102,7 +2102,7 @@ pub(crate) fn decl_type(
         // VM types it.
         if let Some(index) = decl.multi_return_index {
             let slot = shell.result_slot(index);
-            shell = if slot.is_unknown() && !shell.is_unknown() {
+            shell = if slot.is_unknown() && !shell.is_unknown() && !shell.is_value_list() {
                 TypeShell::from_name("any")
             } else {
                 slot

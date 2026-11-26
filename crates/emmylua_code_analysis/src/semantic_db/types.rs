@@ -274,6 +274,16 @@ impl TypeShell {
         out
     }
 
+    /// Whether some candidate is a list of values (a variadic or multi-return), not one value.
+    pub(crate) fn is_value_list(&self) -> bool {
+        self.candidates.iter().any(|candidate| {
+            matches!(
+                candidate,
+                TypeCandidate::Variadic(_) | TypeCandidate::Repeat(_) | TypeCandidate::Multi(_)
+            )
+        })
+    }
+
     /// The `index`th value of a result list (0-based): the `b` in `local a, b = f()` is
     /// `f()`'s `result_slot(1)`. A plain value has only slot 0; past a finite list's end is nil.
     pub(crate) fn result_slot(&self, index: usize) -> Self {
@@ -308,15 +318,7 @@ impl TypeShell {
                         continue;
                     }
                     let tail = &slots[last];
-                    let expands = tail.candidates.iter().any(|candidate| {
-                        matches!(
-                            candidate,
-                            TypeCandidate::Variadic(_)
-                                | TypeCandidate::Repeat(_)
-                                | TypeCandidate::Multi(_)
-                        )
-                    });
-                    if expands {
+                    if tail.is_value_list() {
                         out.merge(&tail.result_slot(index - last));
                     } else if index == last {
                         out.merge(tail);
