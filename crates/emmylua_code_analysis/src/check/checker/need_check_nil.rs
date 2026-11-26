@@ -230,7 +230,7 @@ fn expr_access_path(expr: &LuaExpr) -> Option<String> {
 }
 
 /// The flow-aware type of `expr` read as one value: a call's result list gives its first slot, as
-/// the VM reads an operand, so a call that may return nothing (`string|()`) may be nil here. Only
+/// the VM reads an operand or a prefix, so a call that may return nothing (`string|()`) may be nil here. Only
 /// a call is projected: another expression's type is already a value, and projecting a flow type
 /// built from a result list (`string.find(..) or n`) brings back a nil the flow had removed.
 fn value_type_at(semantic_model: &SemanticModel<'_>, expr: &LuaExpr) -> LuaType {
@@ -249,7 +249,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
     {
         return semantic_model.type_of_decl_at(&decl, name_expr.get_position());
     }
-    let ty = semantic_model.type_of_expr_at(prefix.get_syntax_id(), prefix.get_range().start());
+    let ty = value_type_at(semantic_model, prefix);
     if !matches!(ty, LuaType::Unknown) {
         return ty;
     }
