@@ -149,7 +149,7 @@ fn check_arithmetic_operand(
     semantic_model: &SemanticModel<'_>,
     operand: &LuaExpr,
 ) {
-    let ty = semantic_model.type_of_expr_at(operand.get_syntax_id(), operand.get_range().start());
+    let ty = value_type_at(semantic_model, operand);
     // Only a value that may be nil: a bare `nil` operand is an inference gap far more often than
     // nil arithmetic (a field of a `table` call result, `select` over unknown values), and its
     // result type is unchanged, so nothing is hidden by skipping it.
@@ -230,6 +230,18 @@ fn expr_access_path(expr: &LuaExpr) -> Option<String> {
         LuaExpr::ParenExpr(paren_expr) => expr_access_path(&paren_expr.get_expr()?),
         _ => None,
     }
+}
+
+/// The flow-aware type of `expr` read as one value: a call's result list gives its first slot, as
+/// the VM reads an operand, so a call that may return nothing (`string|()`) may be nil here. Only
+/// a call is projected: another expression's type is already a value, and projecting a flow type
+/// built from a result list (`string.find(..) or n`) brings back a nil the flow had removed.
+fn value_type_at(semantic_model: &SemanticModel<'_>, expr: &LuaExpr) -> LuaType {
+    let ty = semantic_model.type_of_expr_at(expr.get_syntax_id(), expr.get_range().start());
+    if !matches!(expr, LuaExpr::CallExpr(_)) || !ty.contain_multi_return() {
+        return ty;
+    }
+    ty.get_result_slot_type(0).unwrap_or(ty)
 }
 
 /// Prefix type: name expressions use flow-sensitive type (after conditional narrowing); others use flow-aware expression type (including inline casts).

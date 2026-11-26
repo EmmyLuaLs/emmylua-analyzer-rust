@@ -1422,4 +1422,54 @@ mod test {
         "#;
         assert_eq!(nil_messages(source), vec!["w may be nil".to_string()]);
     }
+
+    /// A call that may return nothing is a nilable arithmetic operand: its first result slot
+    /// decides, as in the VM's operands. Read raw, `(integer?,integer?,string?...)` hid its nil
+    /// (`s:find(..) + 1`), while the parenthesized `(s:find(..)) + 1` was reported.
+    #[test]
+    fn test_call_that_may_return_nothing_may_be_nil_as_an_operand() {
+        let mut ws = VirtualWorkspace::new();
+        let maybe = r#"
+            local function g(x)
+              if x then
+                return 1
+              end
+            end
+        "#;
+        for use_ in ["print(g(1) + 1)", "print(-g(1))"] {
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, &format!("{maybe}\n{use_}")),
+                "{use_}"
+            );
+        }
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local function h()
+              return 1
+            end
+            print(h() + 1, -h())
+            "#
+        ));
+        // A name keeps its flow type: a local from a result list, guarded, is not nil again
+        // (blink.cmp `docs.lua`, reduced; projecting names reported both operands here).
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            --- @param lines string[]
+            --- @return number?, number?
+            function docs.get_code_block_range(lines, row)
+            end
+            function docs.extract_detail_from_doc(detail, documentation)
+              local doc_lines = docs.split_lines(documentation)
+              local code_block_start, code_block_end = docs.get_code_block_range(doc_lines, detail_line)
+              if code_block_start ~= nil and code_block_end ~= nil then
+                detail_lines = vim.list_slice(doc_lines, code_block_start + 1, code_block_end - 1)
+              end
+            end
+            function docs.split_lines(text)
+            end
+            "#
+        ));
+    }
 }
