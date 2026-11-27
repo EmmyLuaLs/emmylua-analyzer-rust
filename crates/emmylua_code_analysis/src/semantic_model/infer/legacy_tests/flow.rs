@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{DiagnosticCode, EmmyrcLuaVersion, FileId, LuaType, VirtualWorkspace};
-    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName, LuaNameExpr};
+    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaLocalName, LuaNameExpr};
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
@@ -9,6 +9,34 @@ mod test {
     const ISSUE_1100_HIGHLIGHT_GROUPS: usize = 2048;
     const REPEATED_SELF_ASSIGNMENT_STEPS: usize = 512;
     const REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS: usize = 128;
+
+    #[test]
+    fn test_field_reads_follow_long_chains_of_parallel_assignments() {
+        for (assignment, expected) in [
+            ("value.a, value.b = value.b, value.a\n", 1),
+            ("value.a, value.b = value.a + 1, value.b + 1\n", 515),
+        ] {
+            let mut source = String::from("local value = {a = 1, b = 2}\n");
+            source.push_str(&assignment.repeat(513));
+            source.push_str("return value.b\n");
+
+            let mut ws = VirtualWorkspace::new();
+            let file = ws.def(&source);
+            let model = ws.analysis.semantic_model(file);
+            let chunk = model.chunk().expect("chunk");
+            let read = chunk
+                .descendants::<LuaIndexExpr>()
+                .last()
+                .expect("field read");
+
+            // Ask for the last read first, as hover does without a preceding check.
+            assert_eq!(
+                model.type_of_expr_at(read.get_syntax_id(), read.get_position()),
+                LuaType::IntegerConst(expected),
+                "{assignment}"
+            );
+        }
+    }
 
     #[test]
     fn test_inline_as_does_not_apply_named_cast_to_initializers() {

@@ -1,3 +1,4 @@
+use super::flow::DeferredMemberRead;
 use super::prelude::*;
 use crate::LuaTypeIdentifier;
 use crate::semantic_db::TypeDefList;
@@ -1478,19 +1479,8 @@ impl<'db> SemanticModel<'db> {
         expr_syntax: LuaSyntaxId,
         offset: TextSize,
     ) -> LuaType {
-        // Flow reads must not turn a long binary/member chain into native
-        // recursion. Evaluate each prefix/operand before its parent, as the VM does.
-        enum Task {
-            Enter(LuaExpr, TextSize),
-            Finish(LuaExpr, TextSize, u64),
-        }
-        let file_id = self.view.file_id();
-        let root_key = (file_id, expr_syntax, offset);
-        {
-            let cache = self.cache.borrow();
-            if let Some(entry) = cache.expr_type_at.get(&root_key) {
-                return entry.get(&cache).cloned().unwrap_or(LuaType::Unknown);
-            }
+        if let Some(ty) = self.cached_flow_expr(expr_syntax, offset, flow::ExprCastMode::All) {
+            return ty;
         }
         let Some(expr) = self
             .syntax_tree()
@@ -1499,12 +1489,55 @@ impl<'db> SemanticModel<'db> {
         else {
             return self.type_of_expr(expr_syntax);
         };
+        self.evaluate_flow_expr(expr, offset, flow::ExprCastMode::All)
+    }
+
+    pub(super) fn type_of_member_rhs(&self, expr: LuaExpr) -> LuaType {
+        let offset = expr.get_position();
+        self.evaluate_flow_expr(expr, offset, flow::ExprCastMode::AsOnly)
+    }
+
+    pub(super) fn cached_member_rhs_type(&self, syntax: LuaSyntaxId) -> Option<LuaType> {
+        self.cached_flow_expr(
+            syntax,
+            syntax.get_range().start(),
+            flow::ExprCastMode::AsOnly,
+        )
+    }
+
+    fn cached_flow_expr(
+        &self,
+        syntax: LuaSyntaxId,
+        offset: TextSize,
+        casts: flow::ExprCastMode,
+    ) -> Option<LuaType> {
+        let cache = self.cache.borrow();
+        let entry = cache
+            .expr_type_at
+            .get(&(self.view.file_id(), syntax, offset, casts))?;
+        Some(entry.get(&cache).cloned().unwrap_or(LuaType::Unknown))
+    }
+
+    fn evaluate_flow_expr(
+        &self,
+        expr: LuaExpr,
+        offset: TextSize,
+        casts: flow::ExprCastMode,
+    ) -> LuaType {
+        // Evaluate prefixes, operands and reaching field values on the work stack.
+        // A chain of field copies can otherwise add a native frame per assignment.
+        enum Task {
+            Enter(LuaExpr, TextSize, flow::ExprCastMode),
+            Finish(LuaExpr, TextSize, flow::ExprCastMode, u64),
+        }
+        let file_id = self.view.file_id();
+        let root_syntax = expr.get_syntax_id();
         let _query = cache::QueryCacheScope::new(&self.cache);
-        let mut pending = vec![Task::Enter(expr, offset)];
+        let mut pending = vec![Task::Enter(expr, offset, casts)];
         while let Some(task) = pending.pop() {
             match task {
-                Task::Enter(expr, at) => {
-                    let key = (file_id, expr.get_syntax_id(), at);
+                Task::Enter(expr, at, casts) => {
+                    let key = (file_id, expr.get_syntax_id(), at, casts);
                     if self.cache.borrow().expr_type_at.contains_key(&key) {
                         continue;
                     }
@@ -1515,6 +1548,7 @@ impl<'db> SemanticModel<'db> {
                     pending.push(Task::Finish(
                         expr.clone(),
                         at,
+                        casts,
                         self.cache.borrow().revision(),
                     ));
                     match expr {
@@ -1522,22 +1556,42 @@ impl<'db> SemanticModel<'db> {
                             if let Some((left, right)) = binary.get_exprs() {
                                 let right_pos = right.get_position();
                                 let left_pos = left.get_position();
-                                pending.push(Task::Enter(right, right_pos));
-                                pending.push(Task::Enter(left, left_pos));
+                                pending.push(Task::Enter(right, right_pos, casts));
+                                pending.push(Task::Enter(left, left_pos, casts));
                             }
                         }
                         LuaExpr::IndexExpr(index) => {
                             if let Some(prefix) = index.get_prefix_expr() {
-                                pending.push(Task::Enter(prefix, at));
+                                pending.push(Task::Enter(prefix, at, flow::ExprCastMode::All));
+                            }
+                        }
+                        LuaExpr::ParenExpr(paren) => {
+                            if let Some(inner) = paren.get_expr() {
+                                let inner_pos = inner.get_position();
+                                pending.push(Task::Enter(inner, inner_pos, casts));
+                            }
+                        }
+                        LuaExpr::UnaryExpr(unary) if casts == flow::ExprCastMode::AsOnly => {
+                            if let Some(inner) = unary.get_expr() {
+                                let inner_pos = inner.get_position();
+                                pending.push(Task::Enter(inner, inner_pos, casts));
                             }
                         }
                         _ => {}
                     }
                 }
-                Task::Finish(expr, at, revision) => {
+                Task::Finish(expr, at, casts, revision) => {
                     let syntax = expr.get_syntax_id();
                     let is_index = matches!(expr, LuaExpr::IndexExpr(_));
-                    let ty = flow::type_of_expr_at_node(self, expr, at);
+                    let ty = match flow::type_of_expr_at_node(self, &expr, at, casts) {
+                        Ok(ty) => ty,
+                        Err(DeferredMemberRead(rhs)) => {
+                            let rhs_pos = rhs.get_position();
+                            pending.push(Task::Finish(expr, at, casts, revision));
+                            pending.push(Task::Enter(rhs, rhs_pos, flow::ExprCastMode::AsOnly));
+                            continue;
+                        }
+                    };
                     let ty = if is_index {
                         let ty = type_eval::expand_alias_generic(self, &ty);
                         type_eval::eval_conditionals(self, &ty)
@@ -1546,16 +1600,13 @@ impl<'db> SemanticModel<'db> {
                     };
                     let mut cache = self.cache.borrow_mut();
                     let entry = cache::CacheEntry::finish(ty, cache.is_complete(revision));
-                    cache.expr_type_at.insert((file_id, syntax, at), entry);
+                    cache
+                        .expr_type_at
+                        .insert((file_id, syntax, at, casts), entry);
                 }
             }
         }
-        let cache = self.cache.borrow();
-        cache
-            .expr_type_at
-            .get(&root_key)
-            .and_then(|entry| entry.get(&cache))
-            .cloned()
+        self.cached_flow_expr(root_syntax, offset, casts)
             .unwrap_or(LuaType::Unknown)
     }
     /// Operator-overload return type: when operand is a named type with `---@operator`, look up the return type by operator name.

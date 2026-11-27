@@ -4861,7 +4861,7 @@ fn is_enum_like_dynamic_key(model: &SemanticModel, ty: &LuaType) -> bool {
 }
 
 /// Unary operation (including operator overloads unm/len).
-fn unary_type(
+pub(crate) fn unary_type(
     model: &SemanticModel,
     op: emmylua_parser::UnaryOperator,
     operand: &LuaType,

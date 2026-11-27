@@ -282,7 +282,8 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) decl_type: HashMap<(FileId, SemanticId), CacheEntry<Option<LuaType>>>,
     pub(crate) member_type: HashMap<(FileId, SemanticId), CacheEntry<Option<LuaType>>>,
     pub(crate) resolve_member: HashMap<(FileId, LuaSyntaxId), Option<ResolvedMember>>,
-    pub(crate) expr_type_at: HashMap<(FileId, LuaSyntaxId, TextSize), CacheEntry<LuaType>>,
+    pub(crate) expr_type_at:
+        HashMap<(FileId, LuaSyntaxId, TextSize, super::flow::ExprCastMode), CacheEntry<LuaType>>,
     /// Cast-bearing flow bindings on the node and its ancestors, nearest first.
     pub(crate) expr_cast_flows: HashMap<(FileId, LuaSyntaxId), Rc<Vec<FlowId>>>,
     pub(crate) resolve_name: HashMap<(FileId, TextSize), Option<SemanticId>>,
@@ -294,6 +295,10 @@ pub(crate) struct SemanticLocalCache {
     pub(crate) resolve_owner_set: HashMap<SemanticId, Vec<SemanticId>>,
     pub(crate) member_type_at: HashMap<(FileId, SemanticId, TextSize), LuaType>,
     pub(crate) flow_decl: HashMap<(FileId, SemanticId, FlowId), LuaType>,
+    pub(super) assignment_reachable: HashMap<(FileId, FlowId), CacheEntry<bool>>,
+    /// The replacement type when it can be used to project fields.
+    pub(super) receiver_replacement:
+        HashMap<(FileId, FlowId, SemanticId), CacheEntry<Option<LuaType>>>,
     /// Whole-function, syntax-only check for the local-table last-element proof.
     pub(crate) array_length_stable: HashMap<(FileId, SemanticId), bool>,
     /// Memoized declaration/member-trace states for flow nodes outside a cycle. See
@@ -340,6 +345,10 @@ impl SemanticLocalCache {
         self.index_infos.retain(|_, entry| entry.is_ready());
         self.member_type.retain(|_, entry| entry.is_ready());
         self.expr_type_at.retain(|_, entry| entry.is_ready());
+        self.assignment_reachable
+            .retain(|_, entry| entry.is_ready());
+        self.receiver_replacement
+            .retain(|_, entry| entry.is_ready());
         self.trace_state.retain(|_, entry| entry.is_ready());
         self.return_overload_rows
             .retain(|_, entry| entry.is_ready());
