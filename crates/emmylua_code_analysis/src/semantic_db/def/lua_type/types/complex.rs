@@ -1179,6 +1179,12 @@ impl LuaInstanceType {
 pub enum GenericTplId {
     Type(u32),
     Func(u32),
+    /// Parameter of a named class/type definition, scoped by its declaration location.
+    ClassType {
+        file_id: u32,
+        start: u32,
+        index: u32,
+    },
     /// Syntax position keeps nested mapped keys distinct from other generics.
     Mapped(u32),
     ConditionalInfer(u32),
@@ -1189,6 +1195,7 @@ impl GenericTplId {
         match self {
             GenericTplId::Type(idx) => *idx as usize,
             GenericTplId::Func(idx) => *idx as usize,
+            GenericTplId::ClassType { index, .. } => *index as usize,
             GenericTplId::Mapped(idx) => *idx as usize,
             GenericTplId::ConditionalInfer(idx) => *idx as usize,
         }
@@ -1199,7 +1206,7 @@ impl GenericTplId {
     }
 
     pub fn is_type(&self) -> bool {
-        matches!(self, GenericTplId::Type(_))
+        matches!(self, GenericTplId::Type(_) | GenericTplId::ClassType { .. })
     }
 
     pub fn is_conditional_infer(&self) -> bool {
@@ -1210,6 +1217,13 @@ impl GenericTplId {
         match self {
             GenericTplId::Type(_) => GenericTplId::Type(idx),
             GenericTplId::Func(_) => GenericTplId::Func(idx),
+            GenericTplId::ClassType {
+                file_id, start, ..
+            } => GenericTplId::ClassType {
+                file_id: *file_id,
+                start: *start,
+                index: idx,
+            },
             GenericTplId::Mapped(_) => GenericTplId::Mapped(idx),
             GenericTplId::ConditionalInfer(_) => GenericTplId::ConditionalInfer(idx),
         }

@@ -3,9 +3,11 @@
 use super::vm::{InferVm, expand_callable_types_in_model};
 use crate::semantic_model::infer::overload;
 use crate::semantic_model::infer::unify::TplBindings;
+use crate::semantic_model::type_eval::{
+    class_generic_map, substitute_named_refs, substitute_named_refs_in_function,
+};
 use crate::semantic_model::{SemanticModel, member};
 use crate::{DeclKind, FileId, LuaFunctionType, LuaMemberKey, LuaType, SemanticId};
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CallableCandidateSet {
     candidates: Vec<LuaFunctionType>,
@@ -88,6 +90,16 @@ impl CallableCandidateSet {
                 continue;
             }
             Self::push_member_info(model, &info, &mut candidates);
+        }
+        // Identity-level signatures are declared against the class (`---@param v T`
+        // on `Box<T>`); bind the class generics from the receiver (`Box<integer>`).
+        if let Some(class_map) = class_generic_map(model, prefix_type)
+            && !class_map.is_empty()
+        {
+            candidates = candidates
+                .iter()
+                .map(|candidate| substitute_named_refs_in_function(candidate, &class_map))
+                .collect();
         }
         Self::new(candidates)
     }
