@@ -201,12 +201,20 @@ impl FileFacts {
     }
 
     /// Finds the member whose key range contains `offset`.
+    ///
+    /// Positional table fields (`{ value }`) have no key token, so their key range falls back
+    /// to the whole field (see `field_key_range`). They are skipped here: otherwise every token
+    /// inside the value (e.g. `print` in `{ function() print() end }`) would resolve to the
+    /// field itself instead of its own declaration.
     pub fn member_at_offset(&self, offset: TextSize) -> Option<&Member> {
         let idx = self
             .member_by_range_start
             .partition_point(|(start, _)| *start <= offset);
         for (_, index) in self.member_by_range_start[..idx].iter().rev() {
             let member = &self.members[*index];
+            if member.is_positional_table_field() {
+                continue;
+            }
             if member
                 .id
                 .member_key_range()

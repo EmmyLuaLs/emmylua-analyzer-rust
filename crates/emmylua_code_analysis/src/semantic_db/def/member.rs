@@ -57,6 +57,12 @@ pub struct Member {
 }
 
 impl Member {
+    /// Positional table field (`{ value }`): there is no key expression, so its key range
+    /// falls back to the whole field. Real keys (`x = v`, `[k] = v`) always have a key expr.
+    pub fn is_positional_table_field(&self) -> bool {
+        matches!(self.source, MemberSource::TableField { key_expr: None })
+    }
+
     pub fn new(
         file_id: FileId,
         key_range: TextRange,

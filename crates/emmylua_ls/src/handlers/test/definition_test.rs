@@ -27,6 +27,22 @@ mod tests {
     }
 
     #[gtest]
+    fn test_definition_inside_positional_table_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_definition(
+            r#"
+                local value = 1
+                local t = { { run = function () return <??>value end } }
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 1
+            }]
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_basic_definition() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_definition(
