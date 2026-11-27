@@ -96,6 +96,12 @@ pub struct HtmlMember {
     /// Full name including the owner prefix (e.g. `buffer.put`); used as the
     /// in-page anchor id so deep links stay unique.
     pub name: String,
+    /// DOM id for this member. The HTML template and the search index both use
+    /// it, so anchor links cannot drift apart.
+    ///
+    /// TODO: sanitize / percent-encode anchors for non-name keys (e.g.
+    /// `["a#b"]`); currently they mirror `name` verbatim.
+    pub anchor: String,
     /// Bare member name (e.g. `put`); shown in the TOC, rustdoc-style.
     pub short_name: String,
     /// Rendered `<pre>` code block.
@@ -183,6 +189,7 @@ impl HtmlMember {
             }
         });
         HtmlMember {
+            anchor: name.clone(),
             name,
             short_name,
             display,

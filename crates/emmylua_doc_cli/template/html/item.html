@@ -48,7 +48,7 @@
     {% if doc.methods %}
     <li><a href="#methods">Methods</a></li>
     {% for m in doc.methods %}
-    <li class="toc-sub"><a href="#{{ m.name }}">{{ m.short_name }}</a></li>
+    <li class="toc-sub"><a href="#{{ m.anchor }}">{{ m.short_name }}</a></li>
     {% endfor %}
     {% endif %}
     {% if doc.fields %}

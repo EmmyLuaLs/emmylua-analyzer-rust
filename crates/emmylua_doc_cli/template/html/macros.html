@@ -1,5 +1,5 @@
 {% macro member(m) %}
-<div class="member{% if m.deprecated %} is-deprecated{% endif %}" id="{{ m.name }}">
+<div class="member{% if m.deprecated %} is-deprecated{% endif %}" id="{{ m.anchor }}">
     <div class="member-head">
     <span class="member-signature">{{ m.display | safe }}</span>
     {% if m.deprecated %}<span class="deprecated-badge">Deprecated</span>{% endif %}
