@@ -4643,6 +4643,45 @@ mod test {
         ));
     }
 
+    /// A member missing from one union component reads as `nil`, which a parameter that accepts
+    /// `nil` takes as is. After `opts = opts or {}`, `opts` is `Opts|table` and `{}` lacks `title`.
+    #[test]
+    fn test_union_missing_member_accepted_by_nullable_param() {
+        for (field, param, expected) in [
+            ("string|nil", "string?", vec![]),
+            ("string|nil", "any", vec![]),
+            ("string", "string?", vec![]),
+            ("string", "string|number|nil", vec![]),
+            ("string", "string", vec![DiagnosticCode::ParamTypeMismatch]),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@class Opts
+                ---@field title {field}
+
+                ---@param a {param}
+                local function take(a) return a end
+
+                ---@param opts Opts|nil
+                local function ask(opts)
+                    opts = opts or {{}}
+                    take(opts.title)
+                end
+                return ask
+                "#,
+            ));
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| d.code)
+                    .filter(|code| *code == DiagnosticCode::ParamTypeMismatch)
+                    .collect::<Vec<_>>(),
+                expected,
+                "{field} -> {param}: {diagnostics:?}"
+            );
+        }
+    }
+
     #[test]
     fn test_generic_pack_before_callback_accepts_fixed_parameters() {
         let source = r#"

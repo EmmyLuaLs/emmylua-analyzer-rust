@@ -762,6 +762,8 @@ fn check_arg_pairs(
         // should report ParamTypeMismatch even if the type face happens to be string (missing members count as nil).
         if let LuaExpr::IndexExpr(index_expr) = arg
             && semantic_model.member_missing_in_union(index_expr)
+            // `nil` (the missing member, as source) does not fit the param (target)
+            && !is_compatible(semantic_model, &LuaType::Nil, &param_ty)
         {
             out.push(Mismatch {
                 code: DiagnosticCode::ParamTypeMismatch,
