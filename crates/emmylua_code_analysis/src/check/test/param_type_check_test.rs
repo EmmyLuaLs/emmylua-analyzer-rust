@@ -4735,4 +4735,62 @@ mod test {
             "delay"
         );
     }
+
+    /// An `any` component reads every member as itself: `y.ns` of an `any|string` is `any`, not
+    /// a member missing from the `string` component.
+    #[test]
+    fn test_member_of_union_with_any_is_not_missing() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param n integer
+            local function need(n) end
+
+            ---@param y any|string
+            local function f(y)
+                need(y.ns)
+                if type(y) == 'table' then need(y.ns) end
+            end
+            "#
+        ));
+    }
+
+    /// An `unknown` component knows nothing about its members either: `y.k` of an
+    /// `unknown|string` is no missing member, guarded or not.
+    #[test]
+    fn test_member_of_union_with_unknown_is_not_missing() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param n integer
+            local function need(n) end
+
+            ---@param y unknown|string
+            local function f(y)
+                need(y.glyph)
+                if type(y) == 'table' then need(y.glyph) end
+            end
+            "#
+        ));
+    }
+
+    /// The guard: a union whose components are all known still reports a member one lacks.
+    #[test]
+    fn test_member_missing_from_known_union_still_reported() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param n integer
+            local function need(n) end
+
+            ---@param y string|{ glyph: integer }
+            local function f(y)
+                need(y.glyph)
+            end
+            "#
+        ));
+    }
 }
