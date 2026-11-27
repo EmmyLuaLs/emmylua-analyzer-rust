@@ -3,7 +3,7 @@ use std::rc::Rc;
 use emmylua_code_analysis::{
     Decl, DeclKind, GenericTplId, LuaFunctionType, LuaMemberKey, LuaType, LuaTypeDeclId, Member,
     MemberCollectMode, MemberInfo, SemanticDatabase, SemanticId, SemanticModel, TypeDef,
-    TypeDefKind, VariadicType,
+    TypeDefKind, VariadicType, attribute_params_accept_arg_count,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallExpr, LuaDocAttributeUse, LuaDocDescriptionOwner, LuaDocType,
@@ -2128,21 +2128,6 @@ fn attribute_overload_for_type(
         }
     }
     count_fallback.or(fallback)
-}
-
-fn attribute_params_accept_arg_count(
-    def_params: &[(String, Option<LuaType>)],
-    arg_count: usize,
-) -> bool {
-    let required_count = def_params
-        .iter()
-        .take_while(|(name, typ)| name != "..." && !typ.as_ref().is_some_and(LuaType::is_variadic))
-        .filter(|(_, typ)| !typ.as_ref().is_some_and(LuaType::is_optional))
-        .count();
-    let allows_more = def_params
-        .last()
-        .is_some_and(|(name, typ)| name == "..." || typ.as_ref().is_some_and(LuaType::is_variadic));
-    arg_count >= required_count && (allows_more || arg_count <= def_params.len())
 }
 
 fn attribute_callable_accepts_types(

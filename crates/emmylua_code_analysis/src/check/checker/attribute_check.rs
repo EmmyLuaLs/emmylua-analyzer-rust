@@ -138,15 +138,23 @@ fn select_attribute_overload(
     count_fallback.or(fallback)
 }
 
-fn attribute_params_accept_arg_count(
+/// Whether `arg_count` arguments fit an attribute signature's params: the attribute checker's
+/// overload pick, and hover's. Arguments are positional, so the minimum is the last required
+/// param's position + 1: `(a?, x)` needs two. An untyped param counts as
+/// required, as `check_param_count` reports it.
+pub fn attribute_params_accept_arg_count(
     def_params: &[(String, Option<LuaType>)],
     arg_count: usize,
 ) -> bool {
-    let required_count = def_params
+    let fixed = def_params
         .iter()
         .take_while(|(name, typ)| name != "..." && !typ.as_ref().is_some_and(LuaType::is_variadic))
-        .filter(|(_, typ)| !typ.as_ref().is_some_and(LuaType::is_optional))
         .count();
+    let required_count = def_params
+        .iter()
+        .take(fixed)
+        .rposition(|(_, typ)| !typ.as_ref().is_some_and(LuaType::is_optional))
+        .map_or(0, |last| last + 1);
     let allows_more = def_params
         .last()
         .is_some_and(|(name, typ)| name == "..." || typ.as_ref().is_some_and(LuaType::is_variadic));

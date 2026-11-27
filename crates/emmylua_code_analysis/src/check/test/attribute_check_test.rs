@@ -69,6 +69,36 @@ local value
     );
 }
 
+/// An optional param before a required one still needs an argument, so `(a?, x)` does not fit
+/// one argument and `(a)` is picked: no missing parameter, whichever overload comes first
+/// (0.25.1 and main both report `x` missing).
+#[test]
+fn test_attribute_overload_count_takes_the_last_required_position() {
+    let diags = check_source(&format!(
+        r#"{ATTRIBUTE_HEADER}
+---@class pick_attr: Attribute
+---@overload fun(a?: string, x: integer)
+---@overload fun(a: string)
+
+---@class pick_req: Attribute
+---@overload fun(a: string, x: integer)
+---@overload fun(a: string)
+
+---@[pick_attr("hi")]
+local v1
+
+---@[pick_req("hi")]
+local v2
+"#
+    ));
+    assert_eq!(
+        count_by_code(&diags, DiagnosticCode::AttributeMissingParameter),
+        0,
+        "diagnostics: {:?}",
+        diags
+    );
+}
+
 /// Redundant parameter → AttributeRedundantParameter.
 #[test]
 fn test_attribute_redundant_parameter() {
