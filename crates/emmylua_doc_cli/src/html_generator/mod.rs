@@ -5,9 +5,11 @@ mod markdown;
 mod render;
 mod types;
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use emmylua_code_analysis::LuaType;
+use serde::Serialize;
 use tera::Tera;
 
 use crate::OutputDestination;
@@ -115,6 +117,9 @@ pub fn generate_html(
     sort_nav(&mut nav);
     fill_kind_letters(&mut nav);
 
+    // Build the search index before rendering mutates the page documents.
+    let search_entries = build_search_entries(&nav, &pages);
+
     // Render item pages (in subdirectories -> "../" prefix).
     for (filename, doc) in &mut pages {
         doc.kind_letter = doc
@@ -144,7 +149,7 @@ pub fn generate_html(
     let index_html = render_page(&tl, "index.html", &index_doc)?;
     std::fs::write(output.join("index.html"), index_html)?;
 
-    write_search_index(&output, &index_doc.nav, &pages)?;
+    write_search_index(&output, &search_entries)?;
 
     eprintln!("Documentation html exported to {:?}", output);
     Ok(())
@@ -475,48 +480,83 @@ fn render_page(
     tl.render(template, &context).map_err(Into::into)
 }
 
-fn write_search_index(
-    output: &Path,
-    nav: &NavModel,
-    pages: &[(String, HtmlDoc)],
-) -> Result<(), Box<dyn std::error::Error>> {
+/// One entry in `static/search-index.js`.
+#[derive(Debug, Serialize)]
+struct SearchEntry {
+    name: String,
+    href: String,
+    kind: &'static str,
+}
+
+/// Builds search entries for pages and their members.
+///
+/// Members are documented on their owner's page; the anchor id comes from
+/// `HtmlMember::anchor`, the same field the HTML template renders. Identical
+/// `(name, href)` pairs are deduplicated while preserving insertion order.
+fn build_search_entries(nav: &NavModel, pages: &[(String, HtmlDoc)]) -> Vec<SearchEntry> {
     let mut entries = Vec::new();
+    let mut seen = HashSet::new();
+
     for item in &nav.types {
-        entries.push(serde_json::json!({
-            "name": item.name,
-            "href": item.href,
-            "kind": type_kind(&item.name),
-        }));
+        push_search_entry(
+            &mut entries,
+            &mut seen,
+            item.name.clone(),
+            item.href.clone(),
+            type_kind(&item.name),
+        );
     }
     for item in &nav.modules {
-        entries.push(serde_json::json!({
-            "name": item.name,
-            "href": item.href,
-            "kind": "module",
-        }));
+        push_search_entry(
+            &mut entries,
+            &mut seen,
+            item.name.clone(),
+            item.href.clone(),
+            "module",
+        );
     }
     for item in &nav.globals {
-        entries.push(serde_json::json!({
-            "name": item.name,
-            "href": item.href,
-            "kind": "global",
-        }));
+        push_search_entry(
+            &mut entries,
+            &mut seen,
+            item.name.clone(),
+            item.href.clone(),
+            "global",
+        );
     }
-    // Members are documented on their owner's page; index the existing member
-    // anchor (the qualified name) so searches reach the member, not just the
-    // page. `main.js` matches substrings, so searching `new` finds `swim.new`.
     for (href, doc) in pages {
         let methods = doc.methods.iter().map(|member| (member, "method"));
         let fields = doc.fields.iter().map(|member| (member, "field"));
         for (member, kind) in methods.chain(fields) {
-            entries.push(serde_json::json!({
-                "name": member.name,
-                "href": format!("{href}#{}", member.name),
-                "kind": kind,
-            }));
+            push_search_entry(
+                &mut entries,
+                &mut seen,
+                member.name.clone(),
+                format!("{href}#{}", member.anchor),
+                kind,
+            );
         }
     }
-    let json = serde_json::to_string(&entries)?;
+    entries
+}
+
+fn push_search_entry(
+    entries: &mut Vec<SearchEntry>,
+    seen: &mut HashSet<(String, String)>,
+    name: String,
+    href: String,
+    kind: &'static str,
+) {
+    if seen.insert((name.clone(), href.clone())) {
+        entries.push(SearchEntry { name, href, kind });
+    }
+}
+
+fn write_search_index(
+    output: &Path,
+    entries: &[SearchEntry],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let json = serde_json::to_string(entries)?;
     std::fs::write(
         output.join("static").join("search-index.js"),
         format!("window.SEARCH_INDEX = {json};"),
@@ -524,12 +564,65 @@ fn write_search_index(
     Ok(())
 }
 
-fn type_kind(name: &str) -> &str {
+fn type_kind(name: &str) -> &'static str {
     if name.starts_with("enum ") {
         "enum"
     } else if name.starts_with("alias ") {
         "alias"
     } else {
         "class"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use types::HtmlMember;
+
+    fn member(name: &str) -> HtmlMember {
+        HtmlMember {
+            name: name.to_string(),
+            anchor: name.to_string(),
+            short_name: name.rsplit('.').next().unwrap_or(name).to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn search_entries_dedupe_identical_members() {
+        let mut doc = HtmlDoc::default();
+        doc.methods.push(member("Mod.foo"));
+        doc.fields.push(member("Mod.foo"));
+        let pages = vec![("module/Mod.html".to_string(), doc)];
+
+        let entries = build_search_entries(&NavModel::default(), &pages);
+
+        assert_eq!(entries.len(), 1, "duplicate member entries: {entries:?}");
+        assert_eq!(entries[0].name, "Mod.foo");
+        assert_eq!(entries[0].href, "module/Mod.html#Mod.foo");
+        assert_eq!(entries[0].kind, "method");
+    }
+
+    #[test]
+    fn search_entries_use_member_anchor_for_href() {
+        let mut doc = HtmlDoc::default();
+        doc.methods.push(HtmlMember {
+            name: "Mod.foo bar".to_string(),
+            anchor: "Mod.foo%20bar".to_string(),
+            ..Default::default()
+        });
+        let pages = vec![("module/Mod.html".to_string(), doc)];
+
+        let entries = build_search_entries(&NavModel::default(), &pages);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Mod.foo bar");
+        assert_eq!(entries[0].href, "module/Mod.html#Mod.foo%20bar");
+    }
+
+    #[test]
+    fn search_entries_empty_without_docs() {
+        let entries = build_search_entries(&NavModel::default(), &[]);
+        assert!(entries.is_empty(), "unexpected entries: {entries:?}");
     }
 }
