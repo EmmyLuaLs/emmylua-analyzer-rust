@@ -3595,6 +3595,17 @@ fn call_signature_return(
     )
 }
 
+/// An unreferenced local function cannot perform its captured writes.
+fn is_unreferenced_local_function(model: &SemanticModel, closure: LuaClosureId) -> bool {
+    model
+        .file_facts()
+        .and_then(|facts| facts.decl_by_value_range(closure.get_range()))
+        .is_some_and(|decl| {
+            matches!(decl.kind, DeclKind::Local { .. })
+                && model.decl_references(&decl.id).is_empty()
+        })
+}
+
 /// Correlated return_overload narrowing: the condition references a discriminant variable from the same multi-return call source.
 fn correlated_narrowing_for_condition(
     model: &SemanticModel,
@@ -3631,18 +3642,7 @@ fn correlated_narrowing_for_condition(
                 return true;
             };
             let writer = LuaClosureId::from_node(&node);
-            if writer == closure {
-                return false;
-            }
-            // An unreferenced local function cannot perform its captured writes.
-            if model
-                .file_facts()
-                .and_then(|facts| facts.decl_by_value_range(writer.get_range()))
-                .is_some_and(|writer| {
-                    matches!(writer.kind, DeclKind::Local { .. })
-                        && model.decl_references(&writer.id).is_empty()
-                })
-            {
+            if writer == closure || is_unreferenced_local_function(model, writer) {
                 return false;
             }
             tree.get_flow_effects(flow).iter().any(|effect| {
@@ -3782,7 +3782,9 @@ fn discriminant_from_condition(
     {
         return Some(result);
     }
-    type_alias_discriminant_from_condition(model, tree, target_decl, cond, is_true_branch)
+    saved_type_result_comparison(model, tree, cond, is_true_branch, |tested| {
+        tested != target_decl && tree.has_shared_multi_return_refs(tested, target_decl)
+    })
 }
 
 /// Find in a condition expression the discriminant variable that shares a multi-return source with the target.
@@ -3819,6 +3821,9 @@ fn find_discriminant_decl(
                 }
                 None
             }
+            LuaExpr::ParenExpr(paren) => paren
+                .get_expr()
+                .and_then(|inner| check_expr(model, tree, target_decl, &inner)),
             _ => None,
         }
     }
@@ -3874,42 +3879,6 @@ fn collect_condition_name_decls(model: &SemanticModel, expr: &LuaExpr, out: &mut
         }
         _ => {}
     }
-}
-
-/// Find a literal like `"string" == kind` in a condition, and return the corresponding primitive type name and operator.
-fn find_string_literal_for_alias(
-    model: &SemanticModel,
-    cond: &LuaExpr,
-    alias_decl: &SemanticId,
-) -> Option<(String, BinaryOperator)> {
-    let LuaExpr::BinaryExpr(binary) = cond else {
-        return None;
-    };
-    let op = binary.get_op_token()?.get_op();
-    let (left, right) = binary.get_exprs()?;
-    let is_alias = |expr: &LuaExpr| -> bool {
-        matches!(expr, LuaExpr::NameExpr(name) if model.resolve_name(name.get_position()).as_ref() == Some(alias_decl))
-    };
-    let lit = if is_alias(&left) {
-        if let LuaExpr::LiteralExpr(lit) = &right {
-            Some(lit)
-        } else {
-            None
-        }
-    } else if is_alias(&right) {
-        if let LuaExpr::LiteralExpr(lit) = &left {
-            Some(lit)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-    let lit = lit?;
-    let LuaLiteralToken::String(str) = lit.get_literal()? else {
-        return None;
-    };
-    Some((str.get_value().to_string(), op))
 }
 
 /// Boolean alias like `local failed = ok == false`: `if failed` is equivalent to narrowing `ok` in its true/false branch.
@@ -3981,72 +3950,6 @@ fn boolean_alias_discriminant_from_condition(
         Narrowing::Falsy
     };
     Some((disc_decl, narrowing))
-}
-
-/// Alias `local kind = type(tag)`: `"string" == kind` is equivalent to `type(tag) == "string"`.
-fn type_alias_discriminant_from_condition(
-    model: &SemanticModel,
-    tree: &FlowTree,
-    target_decl: &SemanticId,
-    cond: &LuaExpr,
-    is_true_branch: bool,
-) -> Option<(SemanticId, Narrowing)> {
-    let mut alias_decls = Vec::new();
-    collect_condition_name_decls(model, cond, &mut alias_decls);
-    let facts = model.file_facts()?;
-    let syntax_tree = model.syntax_tree()?;
-
-    for alias_decl in alias_decls {
-        if alias_decl == *target_decl || tree.has_shared_multi_return_refs(&alias_decl, target_decl)
-        {
-            continue;
-        }
-        let Some(decl_info) = facts.decl_by_id(&alias_decl) else {
-            continue;
-        };
-        let Some(value_syntax) = decl_info.value_expr_syntax else {
-            continue;
-        };
-        let Some(node) = value_syntax.to_node_from_root(&syntax_tree.get_red_root()) else {
-            continue;
-        };
-        let Some(call) = emmylua_parser::LuaCallExpr::cast(node) else {
-            continue;
-        };
-        let Some(LuaExpr::NameExpr(callee)) = call.get_prefix_expr() else {
-            continue;
-        };
-        if callee.get_name_text().as_deref() != Some("type") {
-            continue;
-        }
-        let Some(arg) = call.get_args_list().and_then(|list| list.get_args().next()) else {
-            continue;
-        };
-        let LuaExpr::NameExpr(arg_name) = arg else {
-            continue;
-        };
-        let Some(real_decl) = model.resolve_name(arg_name.get_position()) else {
-            continue;
-        };
-        if !tree.has_shared_multi_return_refs(&real_decl, target_decl) {
-            continue;
-        }
-        let Some((type_name, op)) = find_string_literal_for_alias(model, cond, &alias_decl) else {
-            continue;
-        };
-        let Some(primitive) = primitive_type_from_name(&type_name) else {
-            continue;
-        };
-        let narrowing = match (is_true_branch, op) {
-            (true, BinaryOperator::OpEq) => Narrowing::Replace(primitive),
-            (true, BinaryOperator::OpNe) => Narrowing::Remove(primitive),
-            (false, BinaryOperator::OpEq) => Narrowing::Remove(primitive),
-            (false, BinaryOperator::OpNe) => Narrowing::Replace(primitive),
-            _ => continue,
-        };
-        return Some((real_decl, narrowing));
-    }
-    None
 }
 
 /// Widen RHS literal constants to their base type only when the target variable already has a "primitive union" type.
@@ -4407,7 +4310,7 @@ fn array_len_condition(
 fn local_initializer_expr(
     model: &SemanticModel,
     name_expr: &emmylua_parser::LuaNameExpr,
-) -> Option<LuaExpr> {
+) -> Option<(SemanticId, LuaExpr)> {
     let cond_decl = model.resolve_name(name_expr.get_position())?;
     let SemanticId::Decl(decl_key) = &cond_decl else {
         return None;
@@ -4417,7 +4320,158 @@ fn local_initializer_expr(
     let value_syntax = info.value_expr_syntax?;
     let tree = model.syntax_tree_of(decl_key.file_id)?;
     let node = value_syntax.to_node_from_root(&tree.get_red_root())?;
-    LuaExpr::cast(node)
+    Some((cond_decl, LuaExpr::cast(node)?))
+}
+
+fn type_name_comparison(
+    left: &LuaExpr,
+    right: &LuaExpr,
+    op: BinaryOperator,
+    branch_is_true: bool,
+) -> Option<(LuaExpr, Narrowing)> {
+    if !matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe) {
+        return None;
+    }
+    let (value, literal, _) = literal_comparison(
+        unparenthesized(left.clone())?,
+        unparenthesized(right.clone())?,
+        op,
+    )?;
+    let LuaType::StringConst(name) = literal else {
+        return None;
+    };
+    let primitive = primitive_type_from_name(name.as_str())?;
+    let keep_matching = branch_is_true == (op == BinaryOperator::OpEq);
+    Some((
+        value,
+        Narrowing::FilterPrimitive {
+            primitive,
+            keep_matching,
+        },
+    ))
+}
+
+fn builtin_type_test_decl(model: &SemanticModel, expr: LuaExpr) -> Option<SemanticId> {
+    let LuaExpr::CallExpr(call) = unparenthesized(expr)? else {
+        return None;
+    };
+    let LuaExpr::NameExpr(argument) = unparenthesized(call.get_args_list()?.get_args().next()?)?
+    else {
+        return None;
+    };
+    model.resolves_to_builtin(call.get_prefix_expr()?, "type")?;
+    model.resolve_name(argument.get_position())
+}
+
+fn direct_type_comparison(
+    model: &SemanticModel,
+    left: &LuaExpr,
+    right: &LuaExpr,
+    op: BinaryOperator,
+    branch_is_true: bool,
+) -> Option<(SemanticId, Narrowing)> {
+    let (call, narrowing) = type_name_comparison(left, right, op, branch_is_true)?;
+    Some((builtin_type_test_decl(model, call)?, narrowing))
+}
+
+/// Match comparisons of a saved type result, including correlated return guards.
+fn saved_type_result_comparison(
+    model: &SemanticModel,
+    tree: &FlowTree,
+    condition: &LuaExpr,
+    branch_is_true: bool,
+    can_narrow: impl FnOnce(&SemanticId) -> bool,
+) -> Option<(SemanticId, Narrowing)> {
+    let LuaExpr::BinaryExpr(binary) = condition else {
+        return None;
+    };
+    let (left, right) = binary.get_exprs()?;
+    let op = binary.get_op_token()?.get_op();
+    let (LuaExpr::NameExpr(kind), narrowing) =
+        type_name_comparison(&left, &right, op, branch_is_true)?
+    else {
+        return None;
+    };
+    let (saved, initializer) = local_initializer_expr(model, &kind)?;
+    let tested = builtin_type_test_decl(model, initializer.clone())?;
+    if !can_narrow(&tested) {
+        return None;
+    }
+    check_saved_guard(model, tree, &saved, &tested, &initializer, condition, &kind)?;
+    Some((tested, narrowing))
+}
+
+/// The saved result must still describe the value tested by its initializer.
+fn check_saved_guard(
+    model: &SemanticModel,
+    tree: &FlowTree,
+    saved: &SemanticId,
+    tested: &SemanticId,
+    initializer: &LuaExpr,
+    condition: &LuaExpr,
+    read: &emmylua_parser::LuaNameExpr,
+) -> Option<()> {
+    let facts = model.file_facts()?;
+    let saved_info = facts.decl_by_id(saved)?;
+    if !saved_info.kind.is_local() || saved_info.multi_return_index.unwrap_or(0) != 0 {
+        return None;
+    }
+    let global = matches!(facts.decl_by_id(tested)?.kind, DeclKind::Global);
+    if !global && !tree.has_decl_assignment(saved) && !tree.has_decl_assignment(tested) {
+        return Some(());
+    }
+
+    let owner = saved_info.owner_syntax?;
+    let initialization = tree.decl_position_flow(owner.get_range().start())?;
+    let condition_flow = tree.get_flow_id_at(read.get_position())?;
+    let root = model.syntax_tree()?.get_red_root();
+    if global {
+        // The graph can miss environment writes and loop bodies. For a global,
+        // prove that the snapshot is the last RHS and the next statement tests it.
+        let stat = emmylua_parser::LuaLocalStat::cast(owner.to_node_from_root(&root)?)?;
+        let last_value = stat.get_value_exprs().last()?;
+        let next = stat
+            .syntax()
+            .siblings(rowan::Direction::Next)
+            .skip(1)
+            .find_map(emmylua_parser::LuaStat::cast)?;
+        let emmylua_parser::LuaStat::IfStat(next_if) = next else {
+            return None;
+        };
+        return (condition_flow == initialization
+            && last_value.get_syntax_id() == initializer.get_syntax_id()
+            && next_if.get_condition_expr()?.get_syntax_id() == condition.get_syntax_id())
+        .then_some(());
+    }
+
+    let closure = LuaClosureId::from_node(read.syntax());
+    if LuaClosureId::from_node(initializer.syntax()) != closure {
+        return None;
+    }
+
+    let mut writes = HashSet::new();
+    for flow in [saved, tested]
+        .into_iter()
+        .flat_map(|decl| tree.decl_assignment_flows(decl))
+    {
+        let write = tree.get_flow_node(flow)?.kind.assignment_syntax()?;
+        let node = write.to_node_from_root(&root)?;
+        let writer = LuaClosureId::from_node(&node);
+        if writer == closure {
+            writes.insert(flow);
+        } else if !is_unreferenced_local_function(model, writer) {
+            // Calls can perform captured writes outside their source order.
+            return None;
+        }
+    }
+
+    // Stop at the declaration that computes the snapshot. Earlier writes,
+    // including writes from prior iterations, are part of the saved result.
+    (writes.is_empty()
+        || !tree.has_reaching_write(condition_flow, initialization, |flow| {
+            writes.contains(&flow)
+        }))
+    .then_some(())
 }
 
 /// One-level inheritance for boolean local variable guards: after `local h = type(ret) == 'string'`,
@@ -4426,68 +4480,35 @@ fn local_initializer_expr(
 /// Does not recurse through alias chains.
 fn alias_condition_narrowing(
     model: &SemanticModel,
+    tree: &FlowTree,
     decl: &SemanticId,
     cond: &LuaExpr,
     branch_is_true: bool,
     has_prior_narrowing: bool,
 ) -> Option<Narrowing> {
-    // `e == 'string'`, where e's initial value is `type(ret)`.
-    if let LuaExpr::BinaryExpr(binary) = cond {
-        let op = binary.get_op_token()?.get_op();
-        if matches!(op, BinaryOperator::OpEq | BinaryOperator::OpNe) {
-            let (left, right) = binary.get_exprs()?;
-            let (name_expr, lit_expr) = match (left, right) {
-                (LuaExpr::NameExpr(name), lit @ LuaExpr::LiteralExpr(_)) => (Some(name), lit),
-                (lit @ LuaExpr::LiteralExpr(_), LuaExpr::NameExpr(name)) => (Some(name), lit),
-                _ => return None,
-            };
-            if let Some(name_expr) = name_expr
-                && let Some(expr) = local_initializer_expr(model, &name_expr)
-            {
-                if let LuaExpr::CallExpr(call) = &expr
-                    && let Some(LuaExpr::NameExpr(callee_name)) = call.get_prefix_expr()
-                    && callee_name.get_name_text().as_deref() == Some("type")
-                    && let Some(arg) = call.get_args_list()?.get_args().next()
-                {
-                    let LuaExpr::NameExpr(arg_name) = arg else {
-                        return None;
-                    };
-                    if model.resolve_name(arg_name.get_position()).as_ref() == Some(decl) {
-                        let LuaExpr::LiteralExpr(lit) = lit_expr else {
-                            return None;
-                        };
-                        let Some(LuaLiteralToken::String(str)) = lit.get_literal() else {
-                            return None;
-                        };
-                        let primitive = primitive_type_from_name(&str.get_value())?;
-                        let keep_matching = if op == BinaryOperator::OpEq {
-                            branch_is_true
-                        } else {
-                            !branch_is_true
-                        };
-                        return Some(Narrowing::FilterPrimitive {
-                            primitive,
-                            keep_matching,
-                        });
-                    }
-                }
-            }
-        }
+    if let Some((_, narrowing)) =
+        saved_type_result_comparison(model, tree, cond, branch_is_true, |tested| tested == decl)
+    {
+        return Some(narrowing);
     }
 
     let LuaExpr::NameExpr(name_expr) = cond else {
         return None;
     };
-    let expr = local_initializer_expr(model, name_expr)?;
+    let (saved, expr) = local_initializer_expr(model, name_expr)?;
     // One level is enough: alias chains like `ok = h` are not inherited, preventing infinite recursion/over-narrowing.
     if matches!(expr, LuaExpr::NameExpr(_)) {
         return None;
     }
-    if branch_is_true {
+    let narrowing = if branch_is_true {
         direct_narrow_condition(model, decl, &expr, has_prior_narrowing)
     } else {
         direct_narrow_condition_false(model, decl, &expr, has_prior_narrowing)
+    }?;
+    if matches!(narrowing, Narrowing::FilterPrimitive { .. }) {
+        check_saved_guard(model, tree, &saved, decl, &expr, cond, name_expr)?;
     }
+    Some(narrowing)
 }
 
 /// True-branch narrowing: `type(x) == 'string'` → string; `x == nil` → nil;
@@ -4509,7 +4530,7 @@ fn narrow_condition(
         return Some(narrowing);
     }
     if let Some(narrowing) =
-        alias_condition_narrowing(model, decl, &cond, true, has_prior_narrowing)
+        alias_condition_narrowing(model, tree, decl, &cond, true, has_prior_narrowing)
     {
         return Some(narrowing);
     }
@@ -4570,7 +4591,7 @@ fn alias_member_condition_narrowing(
     let LuaExpr::NameExpr(name_expr) = cond else {
         return None;
     };
-    let expr = local_initializer_expr(model, name_expr)?;
+    let (_, expr) = local_initializer_expr(model, name_expr)?;
     if matches!(expr, LuaExpr::NameExpr(_)) {
         return None;
     }
@@ -5159,21 +5180,11 @@ fn direct_narrow_condition(
             {
                 return Some(Narrowing::Replace(guard_ty));
             }
-            // `type(x) == 'name'`: type guard.
-            if let LuaExpr::CallExpr(call) = &left
-                && let Some(LuaExpr::NameExpr(callee)) = call.get_prefix_expr()
-                && callee.get_name_text().as_deref() == Some("type")
-                && let Some(arg) = call.get_args_list()?.get_args().next()
-                && let LuaExpr::NameExpr(arg_name) = arg
-                && model.resolve_name(arg_name.get_position()).as_ref() == Some(decl)
-                && let LuaExpr::LiteralExpr(lit) = &right
-                && let Some(LuaLiteralToken::String(str)) = lit.get_literal()
+            if let Some((tested, narrowing)) =
+                direct_type_comparison(model, &left, &right, op, true)
+                && &tested == decl
             {
-                let primitive_ty = primitive_type_from_name(&str.get_value())?;
-                return Some(Narrowing::FilterPrimitive {
-                    primitive: primitive_ty,
-                    keep_matching: op == BinaryOperator::OpEq,
-                });
+                return Some(narrowing);
             }
             // `x == nil` → nil; `x ~= nil` → truthy (remove nil).
             if let LuaExpr::NameExpr(name_expr) = &left
@@ -5359,7 +5370,7 @@ fn narrow_condition_false(
         return Some(narrowing);
     }
     if let Some(narrowing) =
-        alias_condition_narrowing(model, decl, &cond, false, has_prior_narrowing)
+        alias_condition_narrowing(model, tree, decl, &cond, false, has_prior_narrowing)
     {
         return Some(narrowing);
     }
@@ -5409,22 +5420,11 @@ fn direct_narrow_condition_false(
             {
                 return Some(Narrowing::Replace(guard_ty));
             }
-            // `type(x) == 'name'` false → keep components incompatible with the primitive;
-            // `type(x) ~= 'name'` false → keep components compatible with the primitive.
-            if let LuaExpr::CallExpr(call) = &left
-                && let Some(LuaExpr::NameExpr(callee)) = call.get_prefix_expr()
-                && callee.get_name_text().as_deref() == Some("type")
-                && let Some(arg) = call.get_args_list()?.get_args().next()
-                && let LuaExpr::NameExpr(arg_name) = arg
-                && model.resolve_name(arg_name.get_position()).as_ref() == Some(decl)
-                && let LuaExpr::LiteralExpr(lit) = &right
-                && let Some(LuaLiteralToken::String(str)) = lit.get_literal()
+            if let Some((tested, narrowing)) =
+                direct_type_comparison(model, &left, &right, op, false)
+                && &tested == decl
             {
-                let primitive_ty = primitive_type_from_name(&str.get_value())?;
-                return Some(Narrowing::FilterPrimitive {
-                    primitive: primitive_ty,
-                    keep_matching: op != BinaryOperator::OpEq,
-                });
+                return Some(narrowing);
             }
             if let LuaExpr::NameExpr(name_expr) = &left
                 && model.resolve_name(name_expr.get_position()).as_ref() == Some(decl)

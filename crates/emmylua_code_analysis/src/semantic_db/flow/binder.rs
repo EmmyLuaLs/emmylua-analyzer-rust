@@ -1,8 +1,10 @@
 use hashbrown::HashMap;
 
-use emmylua_parser::{LuaAstPtr, LuaExpr, LuaNameToken, LuaSyntaxId};
+use emmylua_parser::{
+    LuaAstNode, LuaAstPtr, LuaBlock, LuaExpr, LuaGotoStat, LuaNameToken, LuaSyntaxId,
+};
 use internment::ArcIntern;
-use rowan::TextSize;
+use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
 use super::{
@@ -28,7 +30,8 @@ pub struct FlowBinder<'a> {
     flow_nodes: Vec<FlowNode>,
     node_effects: HashMap<FlowId, Vec<FlowEffect>>,
     multiple_antecedents: Vec<Vec<FlowId>>,
-    labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
+    loop_antecedents: HashMap<FlowId, Vec<FlowId>>,
+    labels: HashMap<TextRange, HashMap<SmolStr, FlowId>>,
     goto_stats: Vec<GotoCache>,
     bindings: HashMap<LuaSyntaxId, FlowId>,
 }
@@ -41,6 +44,7 @@ impl<'a> FlowBinder<'a> {
             flow_nodes: Vec::new(),
             node_effects: HashMap::new(),
             multiple_antecedents: Vec::new(),
+            loop_antecedents: HashMap::new(),
             decl_bind_expr_ref: HashMap::new(),
             decl_multi_return_ref: HashMap::new(),
             labels: HashMap::new(),
@@ -83,22 +87,31 @@ impl<'a> FlowBinder<'a> {
         self.create_node(FlowNodeKind::LoopLabel)
     }
 
-    pub fn create_name_label(&mut self, name: &str, closure_id: LuaClosureId) -> FlowId {
+    /// Give loop reads an entry that stays in the graph as back edges are added.
+    pub(super) fn create_loop_entry(&mut self, incoming: FlowId, loop_label: FlowId) -> FlowId {
+        if incoming == self.unreachable {
+            return incoming;
+        }
+        let entry = self.create_branch_label();
+        self.add_antecedent(entry, incoming);
+        self.add_loop_antecedent(entry, loop_label);
+        entry
+    }
+
+    pub fn create_name_label(&mut self, name: &str, block: TextRange) -> FlowId {
         let label_id = self.create_node(FlowNodeKind::NamedLabel(ArcIntern::from(SmolStr::new(
             name,
         ))));
         self.labels
-            .entry(closure_id)
+            .entry(block)
             .or_default()
             .insert(SmolStr::new(name), label_id);
 
         label_id
     }
 
-    pub fn get_label(&self, closure_id: LuaClosureId, name: &str) -> Option<FlowId> {
-        self.labels
-            .get(&closure_id)
-            .and_then(|labels| labels.get(name).copied())
+    fn get_label(&self, block: TextRange, name: &str) -> Option<FlowId> {
+        self.labels.get(&block)?.get(name).copied()
     }
 
     pub fn create_start(&mut self) -> FlowId {
@@ -164,21 +177,37 @@ impl<'a> FlowBinder<'a> {
         self.bindings.insert(syntax_id, flow_id);
     }
 
+    /// Record a loop path for write reachability while preserving value inference.
+    pub(super) fn add_loop_antecedent(&mut self, node: FlowId, antecedent: FlowId) {
+        if node != self.unreachable && antecedent != self.unreachable {
+            self.loop_antecedents
+                .entry(node)
+                .or_default()
+                .push(antecedent);
+        }
+    }
+
     pub fn get_bind_flow(&self, syntax_id: LuaSyntaxId) -> Option<FlowId> {
         self.bindings.get(&syntax_id).copied()
     }
 
     pub fn cache_goto_flow(
         &mut self,
-        closure_id: LuaClosureId,
+        stat: &LuaGotoStat,
         label_token: LuaNameToken,
-        label: &str,
         flow_id: FlowId,
     ) {
+        let closure = LuaClosureId::from_node(stat.syntax()).get_range();
+        let blocks = stat
+            .ancestors::<LuaBlock>()
+            .map(|block| block.get_range())
+            .take_while(|range| closure.contains_range(*range))
+            .collect();
+        let label = label_token.get_name_text().into();
         self.goto_stats.push(GotoCache {
-            closure_id,
+            blocks,
             label_token,
-            label: SmolStr::new(label),
+            label,
             flow_id,
         });
     }
@@ -197,14 +226,35 @@ impl<'a> FlowBinder<'a> {
     }
 
     pub fn finish(mut self) -> FlowTree {
+        // Binding resumes at labels before all jumps are known. Some of those
+        // labels may turn out to have no path from the start of the file.
+        let has_disconnected_labels =
+            self.labels
+                .values()
+                .flat_map(|labels| labels.values())
+                .any(|label| {
+                    self.get_flow(*label)
+                        .is_some_and(|node| node.antecedent.is_none())
+                });
         // Post-process goto edges: the flow recorded for `goto label` becomes the
-        // antecedent of the NamedLabel node, so type backtracking after the label
-        // includes the goto source path (FlowTree no longer needs to store labels).
+        // antecedent of the nearest visible label, including forward targets.
         let goto_stats = std::mem::take(&mut self.goto_stats);
         for goto in goto_stats {
-            if let Some(label_id) = self.get_label(goto.closure_id, goto.label.as_str()) {
+            if let Some(label_id) = goto
+                .blocks
+                .into_iter()
+                .find_map(|block| self.get_label(block, goto.label.as_str()))
+            {
                 self.add_antecedent(label_id, goto.flow_id);
             }
+        }
+        if has_disconnected_labels {
+            FlowTree::prune_disconnected_antecedents(
+                self.start,
+                &mut self.flow_nodes,
+                &mut self.multiple_antecedents,
+                &mut self.loop_antecedents,
+            );
         }
         FlowTree::new(
             self.decl_bind_expr_ref,
@@ -212,6 +262,7 @@ impl<'a> FlowBinder<'a> {
             self.flow_nodes,
             self.node_effects,
             self.multiple_antecedents,
+            self.loop_antecedents,
             // self.labels,
             self.bindings,
         )
@@ -220,7 +271,7 @@ impl<'a> FlowBinder<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GotoCache {
-    pub closure_id: LuaClosureId,
+    blocks: Vec<TextRange>,
     pub label_token: LuaNameToken,
     pub label: SmolStr,
     pub flow_id: FlowId,

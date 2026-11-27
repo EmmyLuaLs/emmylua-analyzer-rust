@@ -15,7 +15,7 @@ use emmylua_parser::{
 };
 
 use super::comment::bind_comment;
-use super::{FlowEffect, FlowId, FlowNodeKind, LuaClosureId, binder::FlowBinder};
+use super::{FlowEffect, FlowId, FlowNodeKind, binder::FlowBinder};
 use super::{
     exprs::is_binary_logical,
     finish_flow_label,
@@ -112,8 +112,8 @@ enum Continuation {
     },
     /// local function statement completed
     LocalFuncDone { current: FlowId },
-    /// while loop: post-process after the loop body completes
-    WhileDone {
+    /// while and for loops: post-process after the loop body completes
+    LoopDone {
         after_label: FlowId,
         loop_enters: bool,
         has_block: bool,
@@ -124,21 +124,6 @@ enum Continuation {
     /// repeat loop: post-process after the loop completes
     RepeatDone {
         post_label: FlowId,
-        old_loop_label: FlowId,
-        old_break_target_label: FlowId,
-    },
-    /// for loop: post-process after the loop body completes
-    ForDone {
-        post_label: FlowId,
-        loop_enters: bool,
-        has_block: bool,
-        current: FlowId,
-        old_loop_label: FlowId,
-        old_break_target_label: FlowId,
-    },
-    /// for range: post-process after completion
-    ForRangeDone {
-        current: FlowId,
         old_loop_label: FlowId,
         old_break_target_label: FlowId,
     },
@@ -170,7 +155,6 @@ enum Continuation {
         children: Vec<LuaAst>,
         idx: usize,
         current: FlowId,
-        can_change_flow: bool,
     },
 }
 
@@ -247,7 +231,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                         children,
                         idx: 0,
                         current,
-                        can_change_flow: true,
                     });
                     Step::Task(Task::Node(first, current))
                 }
@@ -493,9 +476,11 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 let Some(label_name_token) = label_stat.get_label_name_token() else {
                     return Step::Done(current);
                 };
+                let Some(block) = label_stat.ancestors::<LuaBlock>().next() else {
+                    return Step::Done(current);
+                };
                 let label_name = label_name_token.get_name_text();
-                let closure_id = LuaClosureId::from_node(label_stat.syntax());
-                let name_label = self.binder.create_name_label(label_name, closure_id);
+                let name_label = self.binder.create_name_label(label_name, block.get_range());
                 self.binder.add_antecedent(name_label, current);
                 Step::Done(name_label)
             }
@@ -524,18 +509,12 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 Step::Done(continue_flow_id)
             }
             LuaAst::LuaGotoStat(goto_stat) => {
-                let closure_id = LuaClosureId::from_node(goto_stat.syntax());
                 let Some(label_token) = goto_stat.get_label_name_token() else {
                     return Step::Done(current);
                 };
-                let label_name = label_token.get_name_text();
                 let return_flow_id = self.binder.create_return();
-                self.binder.cache_goto_flow(
-                    closure_id,
-                    label_token.clone(),
-                    label_name,
-                    return_flow_id,
-                );
+                self.binder
+                    .cache_goto_flow(&goto_stat, label_token, return_flow_id);
                 self.binder.add_antecedent(return_flow_id, current);
                 Step::Done(return_flow_id)
             }
@@ -657,56 +636,47 @@ impl<'a, 'b> BindEngine<'a, 'b> {
         let Some(condition_expr) = while_stat.get_condition_expr() else {
             return Step::Done(current);
         };
+        let truthiness = static_literal_truthiness(&condition_expr);
+        if truthiness == Some(false) {
+            return Step::Done(current);
+        }
+
+        let entry = self.binder.create_loop_entry(current, pre_while_label);
 
         let old_loop_label = self.binder.loop_label;
         let old_break_target_label = self.binder.break_target_label;
         self.binder.loop_label = pre_while_label;
         self.binder.break_target_label = after_while_label;
 
-        let has_block = while_stat.get_block().is_some();
-        match static_literal_truthiness(&condition_expr) {
-            Some(false) => {
-                self.binder.loop_label = old_loop_label;
-                self.binder.break_target_label = old_break_target_label;
-                Step::Done(current)
+        let block = while_stat.get_block();
+        let loop_enters = truthiness == Some(true);
+        self.stack.push(Continuation::LoopDone {
+            after_label: after_while_label,
+            loop_enters,
+            has_block: block.is_some(),
+            current,
+            old_loop_label,
+            old_break_target_label,
+        });
+        if loop_enters {
+            match block {
+                Some(block) => Step::Task(Task::Block(block, entry)),
+                None => Step::Task(Task::Pass(entry)),
             }
-            Some(true) => {
-                self.stack.push(Continuation::WhileDone {
-                    after_label: after_while_label,
-                    loop_enters: true,
-                    has_block,
-                    current,
-                    old_loop_label,
-                    old_break_target_label,
-                });
-                match while_stat.get_block() {
-                    Some(block) => Step::Task(Task::Block(block, current)),
-                    None => Step::Task(Task::Pass(current)),
-                }
+        } else {
+            if let Some(block) = block {
+                self.stack.push(Continuation::ThenBlock { block });
             }
-            None => {
-                self.stack.push(Continuation::WhileDone {
-                    after_label: after_while_label,
-                    loop_enters: false,
-                    has_block,
-                    current,
-                    old_loop_label,
-                    old_break_target_label,
-                });
-                if let Some(block) = while_stat.get_block() {
-                    self.stack.push(Continuation::ThenBlock { block });
-                }
-                self.stack.push(Continuation::ThenFinish {
-                    label: pre_block_label,
-                    default: None,
-                });
-                Step::Task(Task::Cond(
-                    condition_expr,
-                    current,
-                    pre_block_label,
-                    after_while_label,
-                ))
-            }
+            self.stack.push(Continuation::ThenFinish {
+                label: pre_block_label,
+                default: None,
+            });
+            Step::Task(Task::Cond(
+                condition_expr,
+                entry,
+                pre_block_label,
+                after_while_label,
+            ))
         }
     }
 
@@ -735,7 +705,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
         if let Some(block) = repeat_stat.get_block() {
             self.stack.push(Continuation::ThenBlock { block });
         }
-        Step::Task(Task::Finish(pre_repeat_label, current))
+        Step::Done(self.binder.create_loop_entry(current, pre_repeat_label))
     }
 
     fn evaluate_if_stat(&mut self, if_stat: LuaIfStat, current: FlowId) -> Step {
@@ -804,8 +774,8 @@ impl<'a, 'b> BindEngine<'a, 'b> {
 
         let block = for_stat.get_block();
         let stop_expr = iter_exprs.get(1).cloned();
-        self.stack.push(Continuation::ForDone {
-            post_label: post_for_label,
+        self.stack.push(Continuation::LoopDone {
+            after_label: post_for_label,
             loop_enters,
             has_block: block.is_some(),
             current,
@@ -836,12 +806,16 @@ impl<'a, 'b> BindEngine<'a, 'b> {
         self.binder.break_target_label = post_for_range_label;
 
         let exprs = for_range_stat.get_expr_list().collect::<Vec<_>>();
-        self.stack.push(Continuation::ForRangeDone {
+        let block = for_range_stat.get_block();
+        self.stack.push(Continuation::LoopDone {
+            after_label: post_for_range_label,
+            loop_enters: false,
+            has_block: block.is_some(),
             current,
             old_loop_label,
             old_break_target_label,
         });
-        if let Some(block) = for_range_stat.get_block() {
+        if let Some(block) = block {
             self.stack.push(Continuation::ThenBlock { block });
         }
         self.stack.push(Continuation::ThenForRangeDecl {
@@ -1074,7 +1048,7 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 _ => Step::Done(current),
             },
             Continuation::LocalFuncDone { current } => Step::Done(current),
-            Continuation::WhileDone {
+            Continuation::LoopDone {
                 after_label,
                 loop_enters,
                 has_block,
@@ -1082,16 +1056,30 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 old_loop_label,
                 old_break_target_label,
             } => {
+                let loop_label = self.binder.loop_label;
                 self.binder.loop_label = old_loop_label;
                 self.binder.break_target_label = old_break_target_label;
-                if loop_enters && has_block {
+                if !has_block {
+                    return Step::Done(current);
+                }
+
+                self.binder.add_loop_antecedent(loop_label, value);
+                if loop_enters {
                     Step::Done(finish_entered_loop_post_flow(
                         self.binder,
                         after_label,
                         value,
                     ))
-                } else {
+                } else if current == self.binder.unreachable {
                     Step::Done(current)
+                } else {
+                    // Keep the incoming type after a loop that may not run.
+                    // For write checks, also visit completed iterations and breaks.
+                    let exit = self.binder.create_branch_label();
+                    self.binder.add_antecedent(exit, current);
+                    self.binder.add_loop_antecedent(exit, loop_label);
+                    self.binder.add_loop_antecedent(exit, after_label);
+                    Step::Done(exit)
                 }
             }
             Continuation::RepeatDone {
@@ -1102,35 +1090,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 self.binder.loop_label = old_loop_label;
                 self.binder.break_target_label = old_break_target_label;
                 Step::Done(finish_flow_label(self.binder, post_label, value))
-            }
-            Continuation::ForDone {
-                post_label,
-                loop_enters,
-                has_block,
-                current,
-                old_loop_label,
-                old_break_target_label,
-            } => {
-                self.binder.loop_label = old_loop_label;
-                self.binder.break_target_label = old_break_target_label;
-                if loop_enters && has_block {
-                    Step::Done(finish_entered_loop_post_flow(
-                        self.binder,
-                        post_label,
-                        value,
-                    ))
-                } else {
-                    Step::Done(current)
-                }
-            }
-            Continuation::ForRangeDone {
-                current,
-                old_loop_label,
-                old_break_target_label,
-            } => {
-                self.binder.loop_label = old_loop_label;
-                self.binder.break_target_label = old_break_target_label;
-                Step::Done(current)
             }
             Continuation::ThenForNode {
                 for_stat,
@@ -1173,7 +1132,8 @@ impl<'a, 'b> BindEngine<'a, 'b> {
             } => {
                 let decl_flow = self.binder.create_decl(for_range_stat.get_position());
                 self.binder.add_antecedent(decl_flow, pre_label);
-                Step::Task(Task::Finish(pre_label, value))
+                let incoming = finish_flow_label(self.binder, pre_label, value);
+                Step::Done(self.binder.create_loop_entry(incoming, pre_label))
             }
             Continuation::IfBranchDone {
                 clauses,
@@ -1240,19 +1200,21 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                 children,
                 mut idx,
                 mut current,
-                mut can_change_flow,
             } => {
-                if can_change_flow {
+                // A jump can enter at a label even when the previous statement
+                // in this block has no fallthrough path.
+                if current != self.binder.unreachable
+                    || matches!(children[idx], LuaAst::LuaLabelStat(_))
+                {
                     current = value;
                 }
-                if let Some(flow_node) = self.binder.get_flow(current) {
-                    match &flow_node.kind {
-                        FlowNodeKind::Return | FlowNodeKind::Break | FlowNodeKind::Continue => {
-                            current = self.binder.unreachable;
-                            can_change_flow = false;
-                        }
-                        _ => {}
-                    }
+                if self.binder.get_flow(current).is_some_and(|node| {
+                    matches!(
+                        node.kind,
+                        FlowNodeKind::Return | FlowNodeKind::Break | FlowNodeKind::Continue
+                    )
+                }) {
+                    current = self.binder.unreachable;
                 }
                 idx += 1;
                 if idx < children.len() {
@@ -1261,7 +1223,6 @@ impl<'a, 'b> BindEngine<'a, 'b> {
                         children,
                         idx,
                         current,
-                        can_change_flow,
                     });
                     Step::Task(Task::Node(next, current))
                 } else {
