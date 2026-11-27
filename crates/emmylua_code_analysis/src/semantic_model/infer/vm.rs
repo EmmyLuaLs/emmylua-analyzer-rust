@@ -413,6 +413,58 @@ pub struct InferVm<'a> {
     callback_call_depth: usize,
 }
 
+/// Merged value type at integer keys for any type with an applicable integer
+/// index signature.
+///
+/// `T[]` is shorthand for `{integer: T?}`, so array reads are nullable. An explicit
+/// `{[integer]: T}` index signature describes non-nil values at integer keys and lets
+/// `table.unpack` infer `T...`. Every applicable signature contributes its value type,
+/// matching how `obj[1]` reads index signatures.
+fn integer_index_value(model: &SemanticModel, ty: &LuaType) -> Option<LuaType> {
+    match ty {
+        LuaType::Union(union) => {
+            let values: Vec<LuaType> = union
+                .iter()
+                .filter_map(|component| integer_index_value(model, component))
+                .collect();
+            (!values.is_empty()).then(|| LuaType::from_vec(values))
+        }
+        LuaType::Array(array) => Some(LuaType::from_vec(vec![
+            array.get_base().clone(),
+            LuaType::Nil,
+        ])),
+        _ => {
+            let infos = model.applicable_index_infos(ty, &LuaType::Integer).ok()?;
+            let values: Vec<LuaType> = infos.into_iter().map(|info| info.value_type).collect();
+            (!values.is_empty()).then(|| LuaType::from_vec(values))
+        }
+    }
+}
+
+/// Concrete integer-keyed fields of an object, in key order.
+///
+/// Returns `None` when the object has no concrete integer fields, so callers can
+/// fall back to an integer index signature. Integer keys are normally stored as
+/// `LuaMemberKey::Integer`; the `"[N]"` name form is kept for compatibility with
+/// objects built from doc types.
+fn object_integer_fields(object: &LuaObjectType) -> Option<Vec<LuaType>> {
+    let mut indexed: Vec<(i64, LuaType)> = object
+        .get_fields()
+        .iter()
+        .filter_map(|(key, ty)| match key {
+            LuaMemberKey::Integer(i) => Some((*i, ty.clone())),
+            LuaMemberKey::Name(name) => {
+                let s = name.as_str();
+                let inner = s.strip_prefix('[')?.strip_suffix(']')?;
+                inner.parse::<i64>().ok().map(|i| (i, ty.clone()))
+            }
+            LuaMemberKey::None => None,
+        })
+        .collect();
+    indexed.sort_by_key(|(i, _)| *i);
+    (!indexed.is_empty()).then(|| indexed.into_iter().map(|(_, ty)| ty).collect())
+}
+
 impl<'a> InferVm<'a> {
     pub fn new(model: &'a SemanticModel<'a>, code: &'a [Instr]) -> Self {
         Self {
@@ -1610,18 +1662,40 @@ impl<'a> InferVm<'a> {
                             types,
                         ))));
                     }
-                    // `table.unpack(number[])`: array elements can contain nil, so return
-                    // unbounded `number?`; the global `unpack` (Lua 5.1) treats the table as
-                    // a dense array in table constructors and does not add extra nil.
+                    // `table.unpack(integer[])`: `T[]` is `{integer: T?}`, so array
+                    // reads are nullable and unpack must preserve that nil. The global
+                    // `unpack` (Lua 5.1) keeps its historical dense element type when no
+                    // explicit range is given; an explicit start/end range can address
+                    // out-of-bounds indices, so it stays nullable too.
                     if let LuaType::Array(array) = &arg.ty {
                         let base = array.get_base().clone();
-                        let element = if matches!(callee.owner, Some(SemanticId::Member(_))) {
-                            LuaType::from_vec(vec![base, LuaType::Nil])
-                        } else {
+                        let is_global = !matches!(callee.owner, Some(SemanticId::Member(_)));
+                        let has_explicit_range = args
+                            .iter()
+                            .skip(1)
+                            .any(|arg| !matches!(arg.ty, LuaType::Nil));
+                        let element = if is_global && !has_explicit_range {
                             base
+                        } else {
+                            LuaType::from_vec(vec![base, LuaType::Nil])
                         };
                         return Value::plain(LuaType::Variadic(Rc::new(VariadicType::Repeat(
                             element,
+                        ))));
+                    }
+                    // `table.unpack({[integer]: T})`: an explicit integer index
+                    // signature describes the value type at every integer key, so
+                    // unpack yields `T...` without adding nil.
+                    if let LuaType::Object(object) = &arg.ty
+                        && let Some(slots) = object_integer_fields(object)
+                    {
+                        return Value::plain(LuaType::Variadic(Rc::new(VariadicType::Multi(
+                            slots,
+                        ))));
+                    }
+                    if let Some(value) = integer_index_value(self.model, &arg.ty) {
+                        return Value::plain(LuaType::Variadic(Rc::new(VariadicType::Repeat(
+                            value,
                         ))));
                     }
                     return Value::plain(LuaType::Unknown);
@@ -2278,32 +2352,31 @@ impl<'a> InferVm<'a> {
                 )))
             }
             LuaType::Array(array) => {
-                let element = LuaType::from_vec(vec![array.get_base().clone(), LuaType::Nil]);
-                LuaType::Variadic(Rc::new(VariadicType::Repeat(element)))
+                // `T[]` models nullable integer-key reads (`{integer: T?}`), so
+                // unpacking an array keeps the nil alternative.
+                LuaType::Variadic(Rc::new(VariadicType::Repeat(LuaType::from_vec(vec![
+                    array.get_base().clone(),
+                    LuaType::Nil,
+                ]))))
             }
             LuaType::Tuple(tuple) => {
                 LuaType::Variadic(Rc::new(VariadicType::Multi(tuple.get_types().to_vec())))
             }
             LuaType::Object(object) => {
-                let mut indexed: Vec<(i64, LuaType)> = Vec::new();
-                for (key, ty) in object.get_fields() {
-                    let LuaMemberKey::Name(name) = key else {
-                        continue;
-                    };
-                    let s = name.as_str();
-                    if s.starts_with('[')
-                        && s.ends_with(']')
-                        && let Ok(i) = s[1..s.len() - 1].parse::<i64>()
-                    {
-                        indexed.push((i, ty.clone()));
-                    }
+                if let Some(slots) = object_integer_fields(object) {
+                    return LuaType::Variadic(Rc::new(VariadicType::Multi(slots)));
                 }
-                indexed.sort_by_key(|(i, _)| *i);
-                LuaType::Variadic(Rc::new(VariadicType::Multi(
-                    indexed.into_iter().map(|(_, v)| v).collect(),
-                )))
+                if let Some(value) = integer_index_value(self.model, operand) {
+                    return LuaType::Variadic(Rc::new(VariadicType::Repeat(value)));
+                }
+                LuaType::Variadic(Rc::new(VariadicType::Multi(Vec::new())))
             }
-            _ => ty,
+            _ => {
+                if let Some(value) = integer_index_value(self.model, operand) {
+                    return LuaType::Variadic(Rc::new(VariadicType::Repeat(value)));
+                }
+                ty
+            }
         }
     }
 

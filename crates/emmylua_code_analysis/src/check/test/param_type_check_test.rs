@@ -4735,4 +4735,61 @@ mod test {
             "delay"
         );
     }
+
+    #[test]
+    fn test_issue_1273_unpack_into_typed_varargs() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        // `table.unpack()` of a table built from `string.unpack()` forwards the
+        // first result in the typed `...` slot; `any` must be accepted.
+        assert!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::ParamTypeMismatch,
+                r#"
+                local values = { string.unpack("i4", "") }
+                string.pack("i4", table.unpack(values))
+                string.pack("i4", "a", 2, table.unpack(values))
+                "#,
+            ),
+            "table.unpack of a string.unpack constructor must not mismatch"
+        );
+
+        // `T[]` is `{integer: T?}`: unpacking an array keeps the nullable element,
+        // so the typed vararg rejects it by design. `"a", 2` fill the v1/v2 slots
+        // so the `table.unpack` result lands in the typed `...` slot.
+        assert!(
+            !ws.has_no_diagnostic(
+                DiagnosticCode::ParamTypeMismatch,
+                r#"
+                ---@param t integer[]
+                local function f(t)
+                    string.pack("i4", table.unpack(t))
+                    string.pack("i4", "a", 2, table.unpack(t))
+                end
+                f({})
+                "#,
+            ),
+            "table.unpack of integer[] must keep the nullable element"
+        );
+    }
+
+    #[test]
+    fn test_issue_1273_integer_index_signature_into_typed_varargs() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        // An explicit integer index signature describes the value type at integer
+        // keys; without a nil alternative it is non-nil, unlike the `{integer: T?}`
+        // shorthand behind `T[]`.
+        assert!(
+            ws.has_no_diagnostic(
+                DiagnosticCode::ParamTypeMismatch,
+                r#"
+                ---@type {[integer]: integer}
+                local values = { 1, 2 }
+                string.pack("i4", "a", 2, table.unpack(values))
+                "#,
+            ),
+            "table.unpack of {{[integer]: integer}} must produce non-nil slots"
+        );
+    }
 }
