@@ -453,6 +453,48 @@ pub fn member_type(
     member_info(model, prefix_type, key).map(|info| info.typ)
 }
 
+/// Value type of the first index signature whose key domain accepts `key_type`:
+/// `table<K, V>`, `{ [K]: V }` and `---@field [K] V` (`t.x` / `t[k]` with no named member).
+/// Arrays and table literals keep their own read rules (`T[]` reads `T?`).
+pub(crate) fn index_signature_type(
+    model: &SemanticModel,
+    prefix_type: &LuaType,
+    key_type: &LuaType,
+) -> Option<LuaType> {
+    if matches!(prefix_type, LuaType::TableConst(_) | LuaType::Array(_))
+        || names_undeclared_type(model, prefix_type)
+    {
+        return None;
+    }
+    model
+        .applicable_index_infos(prefix_type, key_type)
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|info| info.value_type)
+}
+
+/// Whether the index-signature collection would reach an undeclared name in `typ` (the type itself, a union or
+/// intersection component, a generic's base). Collecting one marks the query incomplete, so the lookup ends in `Err`
+/// (no signature) and sweeps the query caches. Asking first gives the same `None` without the sweep, which costs a
+/// lot when every read of a missing member of an undeclared type pays it (`vim.Range` under an empty config).
+fn names_undeclared_type(model: &SemanticModel, typ: &LuaType) -> bool {
+    match typ {
+        LuaType::Ref(id) | LuaType::Def(id) => model.type_def_of(id).is_none(),
+        LuaType::Generic(generic) => {
+            let id = generic.get_base_type_id();
+            id.get_name() != "table" && model.type_def_of(&id).is_none()
+        }
+        LuaType::Union(union) => union.iter().any(|t| names_undeclared_type(model, t)),
+        LuaType::Intersection(intersection) => intersection
+            .get_types()
+            .iter()
+            .any(|t| names_undeclared_type(model, t)),
+        LuaType::Instance(instance) => names_undeclared_type(model, instance.get_base()),
+        _ => false,
+    }
+}
+
 /// Use the reaching attachments when the read site is available. Type-only
 /// callers can still look up a metatable by the identity of its table literal.
 pub(crate) fn metatable_type(
