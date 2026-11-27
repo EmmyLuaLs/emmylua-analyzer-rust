@@ -105,6 +105,71 @@ mod test {
     }
 
     #[test]
+    fn test_async_callback_member_alias_from_required_module() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "async.lua",
+            r#"
+            local M = {}
+            ---@async
+            function M.yield() end
+            return M
+            "#,
+        );
+        ws.def_file(
+            "luastd_test.lua",
+            r#"
+            ---@class luastd_test.OrderedExecution
+            local OrderedExecution = {}
+            local M = {}
+            ---@overload fun(body: async fun(t: luastd_test.OrderedExecution, scope: any)): fun()
+            ---@param options table
+            ---@param body async fun(t: luastd_test.OrderedExecution, scope: any)
+            ---@return fun()
+            function M.runtest(options, body)
+                return function() end
+            end
+            return M
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AwaitInSync,
+            r#"
+            local async = require("async")
+            local luastd_test = require("luastd_test")
+            local wrapped = luastd_test.runtest(function ()
+                async.yield()
+            end)
+            "#,
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AwaitInSync,
+            r#"
+            local async = require("async")
+            local luastd_test = require("luastd_test")
+            local runtest = luastd_test.runtest
+            local wrapped = runtest(function ()
+                async.yield()
+            end)
+            "#,
+        ));
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AwaitInSync,
+            r#"
+            local async = require("async")
+            local luastd_test = require("luastd_test")
+            local runtest = luastd_test.runtest
+            ---@param body fun()
+            runtest = function(body) return function() end end
+            runtest(function ()
+                async.yield()
+            end)
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_issue_99() {
         let mut ws = VirtualWorkspace::new();
 
