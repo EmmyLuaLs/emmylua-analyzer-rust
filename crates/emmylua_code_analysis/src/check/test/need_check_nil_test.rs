@@ -1177,6 +1177,8 @@ mod test {
         ---@type false|fun(...)[]?
         local calls
 
+        -- `#calls` itself may raise; the body read is what this pins.
+        ---@diagnostic disable-next-line: need-check-nil
         for i = 1, #calls do
             calls[i](...)
         end
@@ -1312,6 +1314,162 @@ mod test {
         local res
         res[1][1] = assert(res[2])[2]
         "#,
+        ));
+    }
+
+    /// Arithmetic on nil raises, as indexing nil does. Each operand that may be nil is reported once.
+    #[test]
+    fn test_arithmetic_on_nullable_operand() {
+        for (body, expected) in [
+            ("return x - 1", 1),
+            ("return 1 + x", 1),
+            ("return x * x", 2),
+            ("return x / 2, x // 2, x % 2, x ^ 2", 4),
+            ("return -x", 1),
+            // `#y` raises on nil, but a length is never nil: only `y` is reported.
+            ("return #y + 1", 1),
+            // A missing member is undefined-field's to report, its length too.
+            ("return #b.missing + 1", 0),
+            // Guarded, defaulted, or not nil at all.
+            ("return x and x - 1", 0),
+            ("if x then return x - 1 end", 0),
+            ("return (x or 0) - 1", 0),
+            ("return a + 1, -a", 0),
+            ("local s = 0 for i = 1, #t do s = s + t[i] end return s", 0),
+            // Neither concatenation nor bitwise operators are arithmetic here (0.25.1 did not check them).
+            ("return x .. '', x & 1", 0),
+            // An operand typed bare `nil` is an inference gap (a field of a `table` call result),
+            // not a value that may be nil: left alone.
+            ("return tb().x + 1", 0),
+        ] {
+            let source = format!(
+                r#"
+                ---@alias NcnInfo table
+
+                ---@return NcnInfo
+                local function tb() return {{}} end
+
+                ---@class NcnBox
+                local NcnBox = {{}}
+
+                ---@param x integer?
+                ---@param a any
+                ---@param t integer[]
+                ---@param y any?
+                ---@param b NcnBox
+                local function f(x, a, t, y, b)
+                    {body}
+                end
+                return f
+                "#
+            );
+            assert_eq!(
+                count_by_code(&check_source(&source), DiagnosticCode::NeedCheckNil),
+                expected,
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_length_of_nullable_operand() {
+        let mut ws = VirtualWorkspace::new();
+        // `#nil` raises, as `nil.x` does.
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@param w string?
+            local function f(w) return #w end
+            return f
+        "#
+        ));
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@param w string?
+            local function f(w) return w and #w end
+            return f
+        "#
+        ));
+        // Where it yields a value, the length is an integer, not the operand's `string?`.
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param n integer
+            local function take(n) end
+            ---@param w string?
+            local function f(w) take(#w) take(1 + #w - 1) end
+            return f
+        "#
+        ));
+    }
+
+    fn nil_messages(source: &str) -> Vec<String> {
+        check_source(source)
+            .into_iter()
+            .filter(|d| d.code == DiagnosticCode::NeedCheckNil)
+            .map(|d| d.message)
+            .collect()
+    }
+
+    /// A length is never nil, so arithmetic on it adds nothing: `#w - 1` reports `w`, not `#w`.
+    #[test]
+    fn test_arithmetic_on_length_reports_the_operand_once() {
+        let source = r#"
+            ---@param w string?
+            local function f(w) return #w - 1 end
+            return f
+        "#;
+        assert_eq!(nil_messages(source), vec!["w may be nil".to_string()]);
+    }
+
+    /// A call that may return nothing is a nilable arithmetic operand: its first result slot
+    /// decides, as in the VM's operands. Read raw, `(integer?,integer?,string?...)` hid its nil
+    /// (`s:find(..) + 1`), while the parenthesized `(s:find(..)) + 1` was reported.
+    #[test]
+    fn test_call_that_may_return_nothing_may_be_nil_as_an_operand() {
+        let mut ws = VirtualWorkspace::new();
+        let maybe = r#"
+            local function g(x)
+              if x then
+                return 1
+              end
+            end
+        "#;
+        for use_ in ["print(g(1) + 1)", "print(-g(1))"] {
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, &format!("{maybe}\n{use_}")),
+                "{use_}"
+            );
+        }
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local function h()
+              return 1
+            end
+            print(h() + 1, -h())
+            "#
+        ));
+        // A name keeps its flow type: a local from a result list, guarded, is not nil again
+        // (blink.cmp `docs.lua`, reduced; projecting names reported both operands here).
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            --- @param lines string[]
+            --- @return number?, number?
+            function docs.get_code_block_range(lines, row)
+            end
+            function docs.extract_detail_from_doc(detail, documentation)
+              local doc_lines = docs.split_lines(documentation)
+              local code_block_start, code_block_end = docs.get_code_block_range(doc_lines, detail_line)
+              if code_block_start ~= nil and code_block_end ~= nil then
+                detail_lines = vim.list_slice(doc_lines, code_block_start + 1, code_block_end - 1)
+              end
+            end
+            function docs.split_lines(text)
+            end
+            "#
         ));
     }
 }

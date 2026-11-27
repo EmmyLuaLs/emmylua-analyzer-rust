@@ -4858,9 +4858,14 @@ fn integer_const_value(ty: &LuaType) -> Option<i64> {
     }
 }
 
+/// Whether an arithmetic operand yields an integer. A nil member does not count: arithmetic on nil
+/// raises, so `integer? - 1` that yields a value yields an integer (`need-check-nil` reports the nil).
 fn integer_operand(ty: &LuaType) -> bool {
     match ty {
-        LuaType::Union(union) => union.iter().all(LuaType::is_integer),
+        LuaType::Union(union) => {
+            let mut values = union.iter().filter(|ty| !ty.is_nil()).peekable();
+            values.peek().is_some() && values.all(LuaType::is_integer)
+        }
         _ => ty.is_integer(),
     }
 }
@@ -4883,7 +4888,7 @@ fn unary_type(
 ) -> LuaType {
     use emmylua_parser::UnaryOperator::*;
     if op == OpLen {
-        return length_type(model, operand).unwrap_or_else(|| operand.clone());
+        return length_type(model, operand).unwrap_or_else(|| raised_on_nil(operand));
     }
     if op == OpUnm {
         if let Some(ty) = model.operator_type("unm", operand) {
@@ -4899,8 +4904,21 @@ fn unary_type(
             LuaType::FloatConst(value) => return LuaType::FloatConst(-value),
             _ => {}
         }
+        return raised_on_nil(operand);
     }
     operand.clone()
+}
+
+/// The operand of `#` or `-` where the result is not resolved further. Both raise on nil, so a
+/// result is never nil (`need-check-nil` reports the operand, undefined-field a missing member):
+/// a nullable union loses its nil, a bare nil leaves nothing known.
+fn raised_on_nil(operand: &LuaType) -> LuaType {
+    match operand {
+        LuaType::Union(_) | LuaType::Nil if operand.is_nullable() => {
+            remove_nil_from_type(operand.clone())
+        }
+        _ => operand.clone(),
+    }
 }
 
 /// Resolve only the outer operand shape. Expanding array elements or restarting
@@ -4912,6 +4930,8 @@ fn length_type(model: &SemanticModel, operand: &LuaType) -> Option<LuaType> {
     while let Some(ty) = pending.pop() {
         if let LuaType::Union(union) = ty {
             pending.extend(union.into_vec());
+        } else if ty.is_nil() {
+            // `#nil` raises: a nullable operand's length is the length of the rest (need-check-nil reports it).
         } else if ty.is_table() || ty.is_object() || ty.is_string() {
             results.push(LuaType::Integer);
         } else {

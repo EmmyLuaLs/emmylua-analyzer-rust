@@ -77,8 +77,15 @@ mod tests {
             return add
             "#,
         );
+        // The unchecked read stays nullable: `value + 1` reports need-check-nil on `value` (as
+        // 0.25.1 does). Its result is an integer, so neither line is an assign mismatch.
         assert_eq!(
             count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+            0,
+            "{diagnostics:#?}"
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
             1,
             "{diagnostics:#?}"
         );
@@ -3334,6 +3341,41 @@ return t
                     "{prefix} / {write}"
                 );
             }
+        }
+    }
+
+    /// `integer? - 1` is `integer`: a nil operand raises, so a result is always an integer.
+    /// The nil is `need-check-nil`'s to report.
+    #[test]
+    fn test_arithmetic_on_optional_integer_is_integer() {
+        for (value, mismatches, nil_checks) in [
+            ("x - 1", 0, 1),
+            ("-x", 0, 1),
+            ("x // 2", 0, 1),
+            // The controls: a float or a non-number component still makes `number`.
+            ("(x or 1.5) - 1", 1, 0),
+            ("(x or '') - 1", 1, 0),
+        ] {
+            let source = format!(
+                r#"
+                ---@return integer?
+                local function g() end
+
+                local x = g()
+                ---@type integer
+                local y = {value}
+                return y
+                "#
+            );
+            let diagnostics = check_source(&source);
+            assert_eq!(
+                (
+                    count_by_code(&diagnostics, DiagnosticCode::AssignTypeMismatch),
+                    count_by_code(&diagnostics, DiagnosticCode::NeedCheckNil),
+                ),
+                (mismatches, nil_checks),
+                "{value}"
+            );
         }
     }
 }
