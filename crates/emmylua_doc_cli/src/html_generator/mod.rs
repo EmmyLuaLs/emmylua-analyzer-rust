@@ -116,7 +116,7 @@ pub fn generate_html(
     fill_kind_letters(&mut nav);
 
     // Render item pages (in subdirectories -> "../" prefix).
-    for (filename, mut doc) in pages {
+    for (filename, doc) in &mut pages {
         doc.kind_letter = doc
             .kind
             .chars()
@@ -128,7 +128,7 @@ pub fn generate_html(
         mark_active(&mut sub_nav, &doc.kind, &doc.name);
         finalize_nav(&mut sub_nav);
         doc.nav = sub_nav;
-        let html = render_page(&tl, "item.html", &doc)?;
+        let html = render_page(&tl, "item.html", doc)?;
         std::fs::write(output.join(&filename), html)?;
     }
 
@@ -144,7 +144,7 @@ pub fn generate_html(
     let index_html = render_page(&tl, "index.html", &index_doc)?;
     std::fs::write(output.join("index.html"), index_html)?;
 
-    write_search_index(&output, &index_doc.nav)?;
+    write_search_index(&output, &index_doc.nav, &pages)?;
 
     eprintln!("Documentation html exported to {:?}", output);
     Ok(())
@@ -475,7 +475,11 @@ fn render_page(
     tl.render(template, &context).map_err(Into::into)
 }
 
-fn write_search_index(output: &Path, nav: &NavModel) -> Result<(), Box<dyn std::error::Error>> {
+fn write_search_index(
+    output: &Path,
+    nav: &NavModel,
+    pages: &[(String, HtmlDoc)],
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut entries = Vec::new();
     for item in &nav.types {
         entries.push(serde_json::json!({
@@ -497,6 +501,20 @@ fn write_search_index(output: &Path, nav: &NavModel) -> Result<(), Box<dyn std::
             "href": item.href,
             "kind": "global",
         }));
+    }
+    // Members are documented on their owner's page; index the existing member
+    // anchor (the qualified name) so searches reach the member, not just the
+    // page. `main.js` matches substrings, so searching `new` finds `swim.new`.
+    for (href, doc) in pages {
+        let methods = doc.methods.iter().map(|member| (member, "method"));
+        let fields = doc.fields.iter().map(|member| (member, "field"));
+        for (member, kind) in methods.chain(fields) {
+            entries.push(serde_json::json!({
+                "name": member.name,
+                "href": format!("{href}#{}", member.name),
+                "kind": kind,
+            }));
+        }
     }
     let json = serde_json::to_string(&entries)?;
     std::fs::write(

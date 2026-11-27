@@ -35,6 +35,19 @@ pub fn generate_html_fixture(fixture_name: &str, source: &str) -> PathBuf {
     generate_fixture_with_format(fixture_name, source, Format::Html)
 }
 
+/// Reads the generated HTML search index as a list of JSON entries.
+pub fn read_search_index(out: &Path) -> Vec<serde_json::Value> {
+    let path = out.join("static").join("search-index.js");
+    let js = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("read search index {}: {err}", path.display()));
+    let json = js
+        .strip_prefix("window.SEARCH_INDEX = ")
+        .and_then(|rest| rest.strip_suffix(';'))
+        .unwrap_or_else(|| panic!("unexpected search index format: {js}"));
+    serde_json::from_str(json)
+        .unwrap_or_else(|err| panic!("parse search index {}: {err}", path.display()))
+}
+
 /// Generates a JSON fixture and returns the generated `doc.json` contents.
 pub fn generate_json_fixture(fixture_name: &str, source: &str) -> serde_json::Value {
     let out = generate_fixture_with_format(fixture_name, source, Format::Json);
