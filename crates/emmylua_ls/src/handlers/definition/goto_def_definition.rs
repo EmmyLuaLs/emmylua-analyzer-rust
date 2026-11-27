@@ -11,13 +11,16 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocAttributeUse, LuaDocDescription, LuaDocFieldKey,
-    LuaDocTag, LuaExpr, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr,
+    LuaDocTag, LuaExpr, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken, LuaLocalStat,
     LuaSyntaxToken, LuaTableExpr, LuaTableField, LuaTokenKind,
 };
 use lsp_types::{GotoDefinitionResponse, Location};
 use rowan::TextSize;
 
-use crate::handlers::common::resolve_alias_origin;
+use crate::handlers::common::{
+    comment_scope_types, location_of, resolve_alias_origin, resolve_doc_path_locations,
+    see_path_names,
+};
 use crate::util::parse_desc;
 
 pub fn goto_def_definition(
@@ -435,19 +438,6 @@ fn string_literal_arg(arg: &LuaLiteralExpr) -> Option<String> {
     Some(token.get_value().to_string())
 }
 
-fn location_of(
-    db: &SemanticDatabase,
-    file_id: emmylua_code_analysis::FileId,
-    range: rowan::TextRange,
-) -> Option<Location> {
-    let document = db.document(file_id)?;
-    let uri = document.get_uri()?;
-    Some(Location {
-        uri,
-        range: document.to_lsp_range(range)?,
-    })
-}
-
 /// Goto definition for doc description references (`:lua:obj:` / `{lua:obj}` / `--- @see`).
 pub(super) fn goto_doc_definition(
     model: &SemanticModel<'_>,
@@ -479,16 +469,7 @@ pub(super) fn goto_doc_definition(
         .unwrap_or_default();
 
     let (names, cursor_index) = if token.kind() == LuaTokenKind::TkDocSeeContent.into() {
-        let text = token.text().trim().to_string();
-        if text.is_empty() {
-            return None;
-        }
-        let names = text
-            .split('.')
-            .map(|part| part.to_string())
-            .collect::<Vec<_>>();
-        let cursor_index = names.len().saturating_sub(1);
-        (names, cursor_index)
+        see_path_names(token.text())?
     } else {
         let document = db.document(model.file_id())?;
         let workspace_id = db
@@ -524,141 +505,12 @@ pub(super) fn goto_doc_definition(
         (names, cursor_index)
     };
 
-    resolve_doc_path(model, db, &names, cursor_index, &scope_types)
-}
-
-fn resolve_doc_path(
-    model: &SemanticModel<'_>,
-    db: &SemanticDatabase,
-    names: &[String],
-    cursor_index: usize,
-    scope_types: &[emmylua_code_analysis::LuaType],
-) -> Option<GotoDefinitionResponse> {
-    let full_name = names.join(".");
-    if let Some(def) = model.resolve_type_def(&full_name) {
-        return Some(GotoDefinitionResponse::Scalar(location_of(
-            db,
-            def.file_id,
-            def.name_range,
-        )?));
-    }
-
-    if cursor_index > 0 {
-        let prefix = names[..cursor_index].join(".");
-        if let Some(def) = model.resolve_type_def(&prefix) {
-            let ty = model.type_def_ref(&def);
-            if let Some(response) =
-                member_definition_response(model, db, &[(&ty, &names[cursor_index])])
-            {
-                return Some(response);
-            }
-        }
-        if model.module_file_of(&prefix).is_some() {
-            let module_ty = model.require_module_type(&prefix);
-            let infos = model.member_infos_with_key_mode(
-                &module_ty,
-                &LuaMemberKey::Name(names[cursor_index].clone().into()),
-                MemberCollectMode::AllDefinitions,
-            );
-            if let Some(response) = infos_to_locations(db, &infos) {
-                return Some(response);
-            }
-        }
-    }
-
-    let name = names.get(cursor_index)?;
-    if cursor_index == 0 {
-        if let Some(def) = model.resolve_type_def(name) {
-            return Some(GotoDefinitionResponse::Scalar(location_of(
-                db,
-                def.file_id,
-                def.name_range,
-            )?));
-        }
-        let pairs = scope_types
-            .iter()
-            .map(|ty| (ty, name.as_str()))
-            .collect::<Vec<_>>();
-        if let Some(response) = member_definition_response(model, db, &pairs) {
-            return Some(response);
-        }
-        // Bare names in doc references also often point to fields on the current file's types (`@class Z` + `c`).
-        if let Some(facts) = model.file_facts()
-            && let Some(response) = facts.type_defs.iter().find_map(|def| {
-                let ty = model.type_def_ref(def);
-                member_definition_response(model, db, &[(&ty, name.as_str())])
-            })
-        {
-            return Some(response);
-        }
-    }
-    None
-}
-
-fn member_definition_response(
-    model: &SemanticModel<'_>,
-    db: &SemanticDatabase,
-    pairs: &[(&emmylua_code_analysis::LuaType, &str)],
-) -> Option<GotoDefinitionResponse> {
-    let mut infos = Vec::new();
-    for (ty, name) in pairs {
-        let key = LuaMemberKey::Name((*name).to_string().into());
-        for info in model.member_infos_with_key_mode(ty, &key, MemberCollectMode::AllDefinitions) {
-            if !infos.iter().any(|existing: &MemberInfo| {
-                existing.id == info.id && existing.file_id == info.file_id
-            }) {
-                infos.push(info);
-            }
-        }
-    }
-    infos_to_locations(db, &infos)
-}
-
-/// Usable types involved in the comment's owner (mirrors the scoped member source used by desc completion).
-fn comment_scope_types(
-    model: &SemanticModel<'_>,
-    comment: &LuaComment,
-) -> Vec<emmylua_code_analysis::LuaType> {
-    let Some(owner) = comment.get_owner() else {
-        return Vec::new();
-    };
-    let mut types = Vec::new();
-    for name in owner.syntax().descendants().filter_map(LuaNameExpr::cast) {
-        let ty = model
-            .resolve_name(name.get_position())
-            .and_then(|decl| model.type_of_decl(&decl))
-            .or_else(|| {
-                let ty = model.type_of_expr(name.get_syntax_id());
-                (!matches!(ty, emmylua_code_analysis::LuaType::Unknown)).then_some(ty)
-            });
-        if let Some(ty) = ty {
-            types.push(ty);
-        }
-        if let Some(name_text) = name.get_name_text()
-            && let Some(def) = model.resolve_type_def(&name_text)
-        {
-            types.push(model.type_def_ref(&def));
-        }
-    }
-    types
-}
-
-fn infos_to_locations(
-    db: &SemanticDatabase,
-    infos: &[MemberInfo],
-) -> Option<GotoDefinitionResponse> {
-    let mut locations = Vec::new();
-    for info in infos {
-        if let Some(id) = &info.id
-            && let Some(range) = id.member_key_range()
-            && let Some(file_id) = info.file_id
-            && let Some(location) = location_of(db, file_id, range)
-            && !locations.contains(&location)
-        {
-            locations.push(location);
-        }
-    }
-    (!locations.is_empty()).then_some(GotoDefinitionResponse::Array(locations))
+    let locations = resolve_doc_path_locations(model, db, &names, cursor_index, &scope_types)?;
+    Some(if locations.len() == 1 {
+        GotoDefinitionResponse::Scalar(locations.into_iter().next()?)
+    } else {
+        GotoDefinitionResponse::Array(locations)
+    })
 }
 
 #[cfg(test)]

@@ -24,7 +24,13 @@ pub async fn on_document_link_handler(
         let document = analysis.db.document(file_id)?;
         let emmyrc = analysis.get_emmyrc();
 
-        build_links(&analysis.db, root.syntax().clone(), &document, &emmyrc)
+        build_links(
+            &analysis.db,
+            &semantic_model,
+            root.syntax(),
+            &document,
+            &emmyrc,
+        )
     })
     .await
 }

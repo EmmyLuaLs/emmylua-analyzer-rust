@@ -28,6 +28,8 @@
 ## methods
 ---
 {% for method in doc.methods %}
+<a id="{{ method.anchor }}"></a>
+
 ### {{ method.name }}
 ---
 {{ method.display }}
@@ -55,6 +57,8 @@
 ## fields
 ---
 {% for field in doc.fields %}
+<a id="{{ field.anchor }}"></a>
+
 ### {{ field.name }}
 ---
 {{ field.display }}

@@ -3170,4 +3170,98 @@ items.<??>
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_intra_doc_link_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "widget.lua",
+            "---@class Widget
+---@field name string",
+        );
+        check!(ws.check_completion(
+            r#"
+                --- See [`Wid<??>`].
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Widget".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "widget".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    ..Default::default()
+                },
+            ],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_intra_doc_link_member_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "types.lua",
+            "---@class Widget
+---@field name string",
+        );
+        ws.def_file(
+            "fio.lua",
+            r#"
+local fio = {}
+function fio.open() end
+return fio
+"#,
+        );
+        ws.def_file(
+            "globals.lua",
+            r#"
+g_config = {}
+function g_config.get() end
+"#,
+        );
+
+        for (block, expected) in [
+            (
+                r#"
+                    --- See [`Widget.n<??>`].
+                "#,
+                vec![VirtualCompletionItem {
+                    label: "name".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    ..Default::default()
+                }],
+            ),
+            (
+                r#"
+                    --- See [`fio.<??>`].
+                "#,
+                vec![VirtualCompletionItem {
+                    label: "open".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("()".to_string()),
+                }],
+            ),
+            (
+                r#"
+                    --- See [`g_config.<??>`].
+                "#,
+                vec![VirtualCompletionItem {
+                    label: "get".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("()".to_string()),
+                }],
+            ),
+        ] {
+            check!(ws.check_completion(block, expected), "block: {block}");
+        }
+        Ok(())
+    }
 }

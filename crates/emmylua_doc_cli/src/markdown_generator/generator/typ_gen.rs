@@ -1,7 +1,8 @@
+use crate::doc_links::{DocLinkIndex, DocPageRef, LinkContext};
 use crate::doc_model::{DocMember, DocModel, DocType, DocTypeKind};
 use crate::markdown_generator::{
     escape_type_name,
-    generator::collect_property,
+    generator::collect_property_with_links,
     markdown_types::{Doc, IndexStruct, MemberDoc, MkdocsIndex},
     render::{function_details_md, function_overloads_md, render_const_type, render_function_type},
 };
@@ -15,6 +16,7 @@ pub fn generate_type_markdown(
     doc_type: &DocType,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
+    doc_links: &DocLinkIndex,
 ) -> Option<()> {
     let mut context = Context::new();
     let typ_name = simple_type_name(doc_type);
@@ -22,6 +24,7 @@ pub fn generate_type_markdown(
         name: typ_name,
         ..Default::default()
     };
+    let links = LinkContext::new(doc_links, DocPageRef::for_type(doc_type), "");
 
     match doc_type.kind {
         DocTypeKind::Class => {
@@ -33,6 +36,7 @@ pub fn generate_type_markdown(
                 &mut context,
                 output,
                 mkdocs_index,
+                &links,
             );
         }
         DocTypeKind::Enum => {
@@ -44,6 +48,7 @@ pub fn generate_type_markdown(
                 &mut context,
                 output,
                 mkdocs_index,
+                &links,
             );
         }
         DocTypeKind::Alias => {
@@ -55,6 +60,7 @@ pub fn generate_type_markdown(
                 &mut context,
                 output,
                 mkdocs_index,
+                &links,
             );
         }
     }
@@ -69,12 +75,13 @@ fn generate_class_type_markdown(
     context: &mut Context,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
+    links: &LinkContext,
 ) -> Option<()> {
     let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
-    doc.property = collect_property(&doc_type.property);
+    doc.property = collect_property_with_links(&doc_type.property, Some(links));
 
     if !doc_type.bases.is_empty() {
         let super_type_texts: Vec<String> = doc_type
@@ -85,7 +92,7 @@ fn generate_class_type_markdown(
         doc.supers = Some(super_type_texts.join(", "));
     }
 
-    let (methods, fields) = collect_owner_members(model, &doc_type.members, &typ_name);
+    let (methods, fields) = collect_owner_members(model, &doc_type.members, &typ_name, Some(links));
     if !methods.is_empty() {
         doc.methods = Some(methods);
     }
@@ -122,20 +129,22 @@ fn generate_enum_type_markdown(
     context: &mut Context,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
+    links: &LinkContext,
 ) -> Option<()> {
     let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
-    doc.property = collect_property(&doc_type.property);
+    doc.property = collect_property_with_links(&doc_type.property, Some(links));
 
     let field_members: Vec<MemberDoc> = doc_type
         .members
         .iter()
         .map(|member| MemberDoc {
             name: member.name.clone(),
+            anchor: member.qualified_name(&typ_name),
             display: model.render_type(&member.ty, RenderLevel::Simple),
-            property: collect_property(&member.property),
+            property: collect_property_with_links(&member.property, Some(links)),
             ..Default::default()
         })
         .collect();
@@ -172,12 +181,13 @@ fn generate_alias_type_markdown(
     context: &mut Context,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
+    links: &LinkContext,
 ) -> Option<()> {
     let typ_name = simple_type_name(doc_type);
     if let Some(index) = doc_type.full_name.rfind('.') {
         doc.namespace = Some(doc_type.full_name[..index].to_string());
     }
-    doc.property = collect_property(&doc_type.property);
+    doc.property = collect_property_with_links(&doc_type.property, Some(links));
 
     if let Some(origin_typ) = &doc_type.alias_type {
         let origin_type_display = model.render_type(origin_typ, RenderLevel::Documentation);
@@ -223,6 +233,7 @@ pub(crate) fn collect_owner_members(
     model: &DocModel,
     members: &[DocMember],
     owner_name: &str,
+    links: Option<&LinkContext>,
 ) -> (Vec<MemberDoc>, Vec<MemberDoc>) {
     let mut method_members: Vec<MemberDoc> = Vec::new();
     let mut field_members: Vec<MemberDoc> = Vec::new();
@@ -237,7 +248,7 @@ pub(crate) fn collect_owner_members(
         }
 
         let title_name = member.qualified_name(owner_name);
-        let property = collect_property(&member.property);
+        let property = collect_property_with_links(&member.property, links);
         if model
             .function_info(&member.ty, member.signature.as_ref())
             .is_some()
@@ -250,10 +261,11 @@ pub(crate) fn collect_owner_members(
                 false,
             );
             let (params, returns) =
-                function_details_md(model, &member.ty, member.signature.as_ref())
+                function_details_md(model, &member.ty, member.signature.as_ref(), links)
                     .unwrap_or_default();
             let overloads = function_overloads_md(model, member.signature.as_ref(), &title_name);
             method_members.push(MemberDoc {
+                anchor: title_name.clone(),
                 name: title_name,
                 display,
                 property,
@@ -264,6 +276,7 @@ pub(crate) fn collect_owner_members(
         } else if member.ty.is_const() {
             let display = render_const_type(model, &member.ty);
             field_members.push(MemberDoc {
+                anchor: title_name.clone(),
                 name: title_name.clone(),
                 display: format!("```lua\n{title_name}: {display}\n```\n"),
                 property,
@@ -272,6 +285,7 @@ pub(crate) fn collect_owner_members(
         } else {
             let typ_display = model.render_type(&member.ty, RenderLevel::Detailed);
             field_members.push(MemberDoc {
+                anchor: title_name.clone(),
                 name: title_name.clone(),
                 display: format!("```lua\n{title_name} : {typ_display}\n```\n"),
                 property,

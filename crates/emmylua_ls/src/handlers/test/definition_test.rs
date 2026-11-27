@@ -973,4 +973,171 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_goto_intra_doc_link_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "widget.lua",
+            r#"
+                ---@class Widget
+                ---@field name string
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                --- See [`Wid<??>get`].
+                local x = 1
+            "#,
+            vec![Expected {
+                file: "widget.lua".to_string(),
+                line: 1,
+            }],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_goto_intra_doc_link_member() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "widget.lua",
+            r#"
+                ---@class Widget
+                ---@field name string
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                --- See [`Widget.na<??>me`].
+                local x = 1
+            "#,
+            vec![Expected {
+                file: "widget.lua".to_string(),
+                line: 2,
+            }],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_goto_intra_doc_link_object_kinds() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "types.lua",
+            r#"
+---@class Widget
+---@field name string
+
+---@class ns.Shape
+---@field area number
+
+---@enum Color
+local Color = {
+    Red = 1,
+}
+
+---@alias Handler fun(value: string): boolean
+"#,
+        );
+        ws.def_file(
+            "fio.lua",
+            r#"
+local fio = {}
+function fio.open() end
+return fio
+"#,
+        );
+        ws.def_file(
+            "globals.lua",
+            r#"
+g_config = {}
+function g_config.get() end
+"#,
+        );
+
+        for (link, file, line) in [
+            ("[`ns.Sh<??>ape`]", "types.lua", 4),
+            ("[`Col<??>or`]", "types.lua", 7),
+            ("[`Color.R<??>ed`]", "types.lua", 9),
+            ("[`Hand<??>ler`]", "types.lua", 12),
+            ("[`fi<??>o`]", "fio.lua", 0),
+            ("[`fio.op<??>en`]", "fio.lua", 2),
+            ("[`g_con<??>fig`]", "globals.lua", 1),
+            ("[`g_config.g<??>et`]", "globals.lua", 2),
+        ] {
+            let content = format!(
+                r#"
+                --- See {link}.
+                local x = 1
+                "#
+            );
+            check!(
+                ws.check_definition(
+                    &content,
+                    vec![Expected {
+                        file: file.to_string(),
+                        line,
+                    }],
+                ),
+                "link: {link}",
+            );
+        }
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_goto_intra_doc_link_in_param_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "widget.lua",
+            r#"
+                ---@class Widget
+            "#,
+        );
+        check!(ws.check_definition(
+            r#"
+                ---@param value string See [`Wid<??>get`].
+                local function f(value) end
+            "#,
+            vec![Expected {
+                file: "widget.lua".to_string(),
+                line: 1,
+            }],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_goto_intra_doc_link_ignores_non_links() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "widget.lua",
+            r#"
+                ---@class Widget
+            "#,
+        );
+
+        check!(ws.check_no_definition(
+            r#"
+                --- See [`Miss<??>ing`].
+                local x = 1
+            "#,
+        ));
+        check!(ws.check_no_definition(
+            r#"
+                --- See [Wid<??>get].
+                local x = 1
+            "#,
+        ));
+        check!(ws.check_no_definition(
+            r#"
+                --- See [`Wid<??>get`](https://example.com).
+                local x = 1
+            "#,
+        ));
+        Ok(())
+    }
 }

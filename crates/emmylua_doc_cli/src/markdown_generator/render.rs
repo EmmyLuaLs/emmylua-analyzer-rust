@@ -1,4 +1,5 @@
 use crate::common::render_typ;
+use crate::doc_links::LinkContext;
 use crate::doc_model::{DocModel, DocSignature};
 use crate::markdown_generator::markdown_types::MemberParam;
 use emmylua_code_analysis::{LuaType, RenderLevel};
@@ -21,8 +22,9 @@ pub fn function_details_md(
     model: &DocModel,
     typ: &LuaType,
     signature: Option<&DocSignature>,
+    links: Option<&LinkContext>,
 ) -> Option<FunctionDetails> {
-    let (params, returns) = if let Some(signature) = signature {
+    let (mut params, mut returns) = if let Some(signature) = signature {
         let params = signature
             .params
             .iter()
@@ -61,6 +63,15 @@ pub fn function_details_md(
     } else {
         return None;
     };
+
+    if let Some(links) = links {
+        for param in params.iter_mut().chain(returns.iter_mut()) {
+            param.description = param
+                .description
+                .as_deref()
+                .map(|description| links.rewrite_markdown(description));
+        }
+    }
 
     let has_details = params
         .iter()

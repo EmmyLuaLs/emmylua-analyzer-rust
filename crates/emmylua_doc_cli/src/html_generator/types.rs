@@ -1,8 +1,9 @@
 use serde::Serialize;
 
+use crate::doc_links::LinkContext;
 use crate::markdown_generator::markdown_types;
 
-use super::markdown::render_markdown;
+use super::markdown::render_markdown_with_links;
 use super::render::html_escape;
 
 /// A navigation entry pointing to a generated page.
@@ -137,11 +138,19 @@ pub struct HtmlDoc {
 impl HtmlDoc {
     /// Stores rendered doc fields. Description / see / other are rendered as
     /// markdown HTML; deprecated is escaped plain text.
-    pub fn set_property(&mut self, property: markdown_types::Property) {
-        self.description = property.description.map(|s| render_markdown(&s));
+    pub fn set_property(
+        &mut self,
+        property: markdown_types::Property,
+        links: Option<&LinkContext>,
+    ) {
+        self.description = property
+            .description
+            .map(|s| render_markdown_with_links(&s, links));
         self.deprecated = property.deprecated.map(|s| html_escape(&s));
-        self.see = property.see.map(|s| render_markdown(&s));
-        self.other = property.other.map(|s| render_markdown(&s));
+        self.see = property.see.map(|s| render_markdown_with_links(&s, links));
+        self.other = property
+            .other
+            .map(|s| render_markdown_with_links(&s, links));
     }
 
     pub fn set_namespace(&mut self, namespace: &str) {
@@ -159,8 +168,11 @@ impl HtmlMember {
         short_name: String,
         display: String,
         property: markdown_types::Property,
+        links: Option<&LinkContext>,
     ) -> HtmlMember {
-        let description = property.description.map(|s| render_markdown(&s));
+        let description = property
+            .description
+            .map(|s| render_markdown_with_links(&s, links));
         // The summary is the rendered first paragraph of the description.
         let summary = description.as_deref().and_then(|html| {
             let end = html.find("</p>").map(|i| i + 4).unwrap_or(0);
@@ -177,8 +189,10 @@ impl HtmlMember {
             summary,
             description,
             deprecated: property.deprecated.map(|s| html_escape(&s)),
-            see: property.see.map(|s| render_markdown(&s)),
-            other: property.other.map(|s| render_markdown(&s)),
+            see: property.see.map(|s| render_markdown_with_links(&s, links)),
+            other: property
+                .other
+                .map(|s| render_markdown_with_links(&s, links)),
             params: Vec::new(),
             returns: Vec::new(),
             overloads: Vec::new(),
