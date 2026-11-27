@@ -4,7 +4,7 @@ use crate::VirtualWorkspace;
 use smol_str::SmolStr;
 use std::{rc::Rc, sync::Arc};
 
-use crate::{AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel};
+use crate::{AsyncState, LuaFunctionType, LuaType, LuaTypeDeclId, SemanticModel};
 use crate::{
     Emmyrc, FileId, InFiled, LuaArrayType, LuaGenericType, LuaInstanceType, SemanticDatabase,
 };
@@ -37,7 +37,7 @@ fn doc_fun(params: Vec<Option<LuaType>>, ret: LuaType) -> LuaType {
 }
 
 fn union(types: Vec<LuaType>) -> LuaType {
-    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+    LuaType::union(types)
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn test_union_intersection() {
     assert!(!ok(&s_union, &LT::Number));
     assert!(!ok(&s_union, &LT::Boolean));
     // A nullable value cannot supply a required integer.
-    let nullable = LT::Union(Rc::new(LuaUnionType::Nullable(LT::Integer)));
+    let nullable = LT::optional(LT::Integer);
     assert!(!ok(&nullable, &LT::Integer));
 }
 

@@ -956,9 +956,9 @@ fn call_argument_type(
                 return LuaType::DocFunction(func);
             }
             if let LuaType::Union(union) = &ty {
-                for component in union.into_vec() {
+                for component in union.iter() {
                     if let LuaType::DocFunction(func) = component {
-                        return LuaType::DocFunction(func);
+                        return LuaType::DocFunction(func.clone());
                     }
                 }
             }
@@ -971,7 +971,7 @@ fn call_argument_type(
 fn is_function_like_type(ty: &LuaType) -> bool {
     match ty {
         LuaType::DocFunction(_) | LuaType::Signature(_) => true,
-        LuaType::Union(union) => union.into_vec().iter().any(is_function_like_type),
+        LuaType::Union(union) => union.iter().any(is_function_like_type),
         LuaType::Intersection(intersection) => {
             intersection.get_types().iter().any(is_function_like_type)
         }
@@ -1092,7 +1092,7 @@ fn contains_mapped(ty: &LuaType) -> bool {
         Mapped(_) => true,
         Array(array) => contains_mapped(array.get_base()),
         Tuple(tuple) => tuple.get_types().iter().any(contains_mapped),
-        Union(union) => union.into_vec().iter().any(contains_mapped),
+        Union(union) => union.iter().any(contains_mapped),
         Intersection(intersection) => intersection.get_types().iter().any(contains_mapped),
         Object(object) => {
             object.get_fields().values().any(contains_mapped)

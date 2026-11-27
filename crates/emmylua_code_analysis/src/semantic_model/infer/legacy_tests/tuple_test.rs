@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticCode, LuaType, LuaUnionType, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     #[test]
     fn test_issue_231() {
@@ -41,10 +41,8 @@ mod tests {
             "#,
         );
         let ty = ws.expr_ty("A");
-        let expected_ty = LuaType::Union(
-            LuaUnionType::from_vec(vec![LuaType::IntegerConst(36), LuaType::IntegerConst(826)])
-                .into(),
-        );
+        let expected_ty =
+            LuaType::union(vec![LuaType::IntegerConst(36), LuaType::IntegerConst(826)]);
         assert_eq!(ty, expected_ty);
     }
 

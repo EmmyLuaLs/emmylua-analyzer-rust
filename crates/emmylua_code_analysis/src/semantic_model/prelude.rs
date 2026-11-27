@@ -32,8 +32,7 @@ pub(crate) use crate::signature::LuaSignatureId;
 pub(crate) use crate::{
     AsyncState, DocGenericParam, FileExports, FileFacts, FileId, GenericParam, GenericTpl,
     GenericTplId, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType, LuaIntersectionType,
-    LuaObjectType, LuaTupleStatus, LuaTupleType, LuaTypeDeclId, LuaUnionType, VariadicType,
-    WorkspaceId,
+    LuaObjectType, LuaTupleStatus, LuaTupleType, LuaTypeDeclId, VariadicType, WorkspaceId,
 };
 
 pub(crate) use super::{CallSiteAnalysis, ResolvedMember, SemanticInfo, SemanticModel};

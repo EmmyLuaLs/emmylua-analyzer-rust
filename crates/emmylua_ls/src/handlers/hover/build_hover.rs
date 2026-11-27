@@ -1065,12 +1065,14 @@ fn build_decl_hover(
         return (code, Some(description));
     }
     let display_typ = hover_expand_type(model, typ);
-    let code = format!(
-        "{}{}: {}",
-        prefix,
-        name,
-        humanize(model, &widen_decl_const(&display_typ))
-    );
+    // Explicit `---@type` contracts keep literal/keyof results; only inferred
+    // locals and globals widen constants to their base types.
+    let display_typ = if decl_info.doc_type_syntax.is_some() {
+        display_typ
+    } else {
+        widen_decl_const(&display_typ)
+    };
+    let code = format!("{}{}: {}", prefix, name, humanize(model, &display_typ));
     (code, Some(description))
 }
 

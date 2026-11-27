@@ -812,14 +812,14 @@ impl<'db> SemanticModel<'db> {
                 } else if keys.len() == 1 {
                     keys.pop()?
                 } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(keys)))
+                    LuaType::union(keys)
                 };
                 let value_ty = if values.is_empty() {
                     LuaType::Unknown
                 } else if values.len() == 1 {
                     values.pop()?
                 } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(values)))
+                    LuaType::union(values)
                 };
                 (key_ty, value_ty)
             }
@@ -905,7 +905,7 @@ impl<'db> SemanticModel<'db> {
         let value_ty = if values.len() == 1 {
             values.pop()?
         } else {
-            LuaType::Union(Rc::new(LuaUnionType::from_vec(values)))
+            LuaType::union(values)
         };
         Some(if index == 0 {
             LuaType::Integer
@@ -1663,7 +1663,7 @@ impl<'db> SemanticModel<'db> {
                     continue;
                 }
                 LuaType::Union(union) => {
-                    pending.extend(union.into_vec().into_iter().rev());
+                    pending.extend(union.iter().rev().cloned());
                     continue;
                 }
                 _ => continue,
@@ -1691,10 +1691,10 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
                 ])));
             }
             Some(LuaTypeBinaryOperator::Union) => {
-                return LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![
+                return LuaType::union(vec![
                     project_base_type(model, def, left),
                     project_base_type(model, def, right),
-                ])));
+                ]);
             }
             _ => {}
         }
@@ -1707,9 +1707,7 @@ fn project_base_type(model: &SemanticModel<'_>, def: &TypeDef, doc_type: LuaDocT
 
 fn widen_assignment_type(ty: LuaType) -> LuaType {
     match ty {
-        LuaType::Union(union) => {
-            LuaType::from_vec(union.iter().cloned().map(widen_assignment_type).collect())
-        }
+        LuaType::Union(union) => LuaType::union(union.iter().cloned().map(widen_assignment_type)),
         LuaType::FloatConst(_) => LuaType::Number,
         _ => infer::vm::widen_variadic_const(&ty),
     }
@@ -1717,21 +1715,14 @@ fn widen_assignment_type(ty: LuaType) -> LuaType {
 
 /// Removes nil from a type (used for generic for loop keys: the loop stops when the first value is nil).
 fn remove_nil_from_type(ty: LuaType) -> LuaType {
-    match ty {
-        LuaType::Union(union) => {
-            let types: Vec<LuaType> = union
-                .into_vec()
-                .into_iter()
-                .filter(|t| !t.is_nil())
-                .collect();
-            match types.len() {
-                0 => LuaType::Unknown,
-                1 => types.into_iter().next().expect("len checked"),
-                _ => LuaType::Union(Rc::new(LuaUnionType::from_vec(types))),
-            }
-        }
-        LuaType::Nil => LuaType::Unknown,
-        other => other,
+    if ty.is_never() {
+        return ty;
+    }
+    let filtered = ty.filter_components(|component| !component.is_nil());
+    if filtered.is_never() {
+        LuaType::Unknown
+    } else {
+        filtered
     }
 }
 

@@ -1199,8 +1199,7 @@ mod tests {
     use lsp_types::Uri;
 
     use crate::{
-        Emmyrc, EmmyrcLuaVersion, LuaGenericType, LuaType, LuaTypeDeclId, LuaUnionType,
-        SemanticDatabase,
+        Emmyrc, EmmyrcLuaVersion, LuaGenericType, LuaType, LuaTypeDeclId, SemanticDatabase,
     };
 
     use super::*;
@@ -1494,10 +1493,10 @@ mod tests {
             "---@class A\n---@field x number\n---@class B\n---@field y string\nlocal A = {}\nlocal B = {}",
         );
         let model = env.model();
-        let union = LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![
+        let union = LuaType::union(vec![
             LuaType::Ref(LuaTypeDeclId::global("A")),
             LuaType::Ref(LuaTypeDeclId::global("B")),
-        ])));
+        ]);
         let infos = model.member_infos(&union);
         let map = member_map(&infos);
         assert_eq!(map.get("x"), Some(&LuaType::Number));

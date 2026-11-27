@@ -40,7 +40,7 @@ use crate::semantic_db::flow::{
 };
 use crate::{
     FileId, GenericTplId, LuaArrayLen, LuaArrayType, LuaFunctionType, LuaMemberKey, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaUnionType, TypeDef, TypeDefKind, VariadicType,
+    LuaTupleType, LuaType, TypeDef, TypeDefKind, VariadicType,
 };
 
 use super::SemanticModel;
@@ -4093,9 +4093,7 @@ fn widen_const_type(ty: LuaType) -> LuaType {
         LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => LuaType::Integer,
         LuaType::FloatConst(_) => LuaType::Number,
         LuaType::StringConst(_) | LuaType::DocStringConst(_) => LuaType::String,
-        LuaType::Union(union) => {
-            LuaType::from_vec(union.into_vec().into_iter().map(widen_const_type).collect())
-        }
+        LuaType::Union(union) => LuaType::union(union.iter().cloned().map(widen_const_type)),
         LuaType::Variadic(variadic) => {
             let widened = match variadic.as_ref() {
                 VariadicType::Base(base) => VariadicType::Base(widen_const_type(base.clone())),
@@ -5595,47 +5593,45 @@ fn direct_narrow_condition_false(
 }
 
 /// Remove falsy components (false / nil).
+///
+/// Flow narrowing keeps an empty result as `Unknown` (no information) rather
+/// than `Never`; changing that is a semantic decision separate from the union
+/// representation cleanup.
 fn remove_falsy(ty: LuaType) -> LuaType {
-    let mut types: Vec<LuaType> = Vec::new();
-    for component in match ty {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other],
-    } {
-        if !matches!(
+    if ty.is_never() {
+        return ty;
+    }
+    let filtered = ty.filter_components(|component| {
+        !matches!(
             component,
             LuaType::Nil
                 | LuaType::Boolean
                 | LuaType::BooleanConst(false)
                 | LuaType::DocBooleanConst(false)
-        ) {
-            types.push(component);
-        }
-    }
-    match types.len() {
-        0 => LuaType::Unknown,
-        1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+        )
+    });
+    if filtered.is_never() {
+        LuaType::Unknown
+    } else {
+        filtered
     }
 }
 
 /// Remove truthy components (keep only false / nil).
 fn remove_truthy(ty: LuaType) -> LuaType {
-    let mut types: Vec<LuaType> = Vec::new();
-    for component in match ty {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other],
-    } {
-        if matches!(
+    if ty.is_never() {
+        return ty;
+    }
+    let filtered = ty.filter_components(|component| {
+        matches!(
             component,
             LuaType::Nil | LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false)
-        ) {
-            types.push(component);
-        }
-    }
-    match types.len() {
-        0 => LuaType::Unknown,
-        1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+        )
+    });
+    if filtered.is_never() {
+        LuaType::Unknown
+    } else {
+        filtered
     }
 }
 
@@ -5664,26 +5660,18 @@ fn type_is_removed_by(component: &LuaType, removed: &LuaType) -> bool {
 
 /// Remove the specified components from a type (when `removed` is a union, remove all its components).
 fn remove_type(ty: LuaType, removed: &LuaType) -> LuaType {
-    let removed_components: Vec<LuaType> = match removed {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other.clone()],
-    };
-    let mut types: Vec<LuaType> = Vec::new();
-    for component in match ty {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other],
-    } {
-        if !removed_components
-            .iter()
-            .any(|removed| type_is_removed_by(&component, removed))
-        {
-            types.push(component);
-        }
+    if ty.is_never() {
+        return ty;
     }
-    match types.len() {
-        0 => LuaType::Unknown,
-        1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+    let filtered = ty.filter_components(|component| {
+        !removed
+            .components()
+            .any(|removed| type_is_removed_by(component, removed))
+    });
+    if filtered.is_never() {
+        LuaType::Unknown
+    } else {
+        filtered
     }
 }
 
@@ -5727,21 +5715,18 @@ fn member_type_more_specific(model: &SemanticModel, prefix: &LuaType, base: &Lua
     }
     match (prefix, base) {
         (LuaType::Union(prefix_union), LuaType::Union(base_union)) => {
-            let base_types = base_union.into_vec();
-            prefix_union.into_vec().iter().all(|component| {
-                base_types
+            prefix_union.iter().all(|component| {
+                base_union
                     .iter()
                     .any(|base| model.type_check(component, base))
             })
         }
         (LuaType::Union(prefix_union), _) => prefix_union
-            .into_vec()
             .iter()
             .all(|component| model.type_check(component, base)),
-        (_, LuaType::Union(base_union)) => base_union
-            .into_vec()
-            .iter()
-            .any(|base| model.type_check(prefix, base)),
+        (_, LuaType::Union(base_union)) => {
+            base_union.iter().any(|base| model.type_check(prefix, base))
+        }
         _ => model.type_check(prefix, base),
     }
 }
@@ -5818,11 +5803,7 @@ fn filter_type_by_primitive(
             kept.push(component);
         }
     }
-    match kept.len() {
-        0 => LuaType::Never,
-        1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
-    }
+    LuaType::union(kept)
 }
 
 /// Member discriminant narrowing: when `x.kind == 'A'`, filter union components by whether their member type overlaps the literal.
@@ -5862,11 +5843,7 @@ fn filter_type_by_member_discriminant(
             kept.push(component);
         }
     }
-    match kept.len() {
-        0 => LuaType::Never,
-        1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
-    }
+    LuaType::union(kept)
 }
 
 /// Dynamic member truthiness narrowing: when `obj[key]` is true, keep union components whose member is truthy;
@@ -5902,19 +5879,11 @@ fn filter_type_by_member_truthiness(
             kept.push(component);
         }
     }
-    match kept.len() {
-        0 => LuaType::Never,
-        1 => kept.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(kept).into()),
-    }
+    LuaType::union(kept)
 }
 
 fn type_is_truthy(ty: &LuaType) -> bool {
-    let components: Vec<LuaType> = match ty {
-        LuaType::Union(union) => union.into_vec(),
-        other => vec![other.clone()],
-    };
-    !components.iter().all(|component| {
+    !ty.components().all(|component| {
         matches!(
             component,
             LuaType::Nil | LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false)
@@ -6438,10 +6407,10 @@ fn intersect_types(left: LuaType, right: LuaType) -> LuaType {
 }
 
 fn merge_components(types: Vec<LuaType>) -> LuaType {
-    match types.len() {
-        0 => LuaType::Unknown,
-        1 => types.into_iter().next().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+    if types.is_empty() {
+        LuaType::Unknown
+    } else {
+        LuaType::union(types)
     }
 }
 
@@ -6461,7 +6430,7 @@ fn merge_types(left: LuaType, right: LuaType) -> LuaType {
     for ty in [left, right] {
         match ty {
             LuaType::Unknown => {}
-            LuaType::Union(union) => candidates.extend(union.into_vec()),
+            LuaType::Union(union) => candidates.extend(union.iter().cloned()),
             other => candidates.push(other),
         }
     }
@@ -6474,10 +6443,10 @@ fn merge_types(left: LuaType, right: LuaType) -> LuaType {
         types.retain(|existing| !type_is_broader(&ty, existing));
         types.push(ty);
     }
-    match types.len() {
-        0 => LuaType::Unknown,
-        1 => types.pop().expect("len checked"),
-        _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+    if types.is_empty() {
+        LuaType::Unknown
+    } else {
+        LuaType::union(types)
     }
 }
 

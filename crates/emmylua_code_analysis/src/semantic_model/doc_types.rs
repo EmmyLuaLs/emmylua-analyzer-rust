@@ -396,11 +396,11 @@ impl<'db> SemanticModel<'db> {
                         let mut types = Vec::new();
                         for ty in [left_ty, right_ty] {
                             match ty {
-                                LuaType::Union(union) => types.extend(union.into_vec()),
+                                LuaType::Union(union) => types.extend(union.iter().cloned()),
                                 other => types.push(other),
                             }
                         }
-                        LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+                        LuaType::union(types)
                     }
                     _ => self.analysis().doc_type_node_lua(file_id, doc_ty, generics),
                 }
@@ -409,14 +409,7 @@ impl<'db> SemanticModel<'db> {
                 .get_type()
                 .map(|inner| {
                     let ty = self.project_doc_type_impl(&inner, scope);
-                    let mut types = match ty {
-                        LuaType::Union(union) => union.into_vec(),
-                        ty => vec![ty],
-                    };
-                    if !types.contains(&LuaType::Nil) {
-                        types.push(LuaType::Nil);
-                    }
-                    LuaType::from_vec(types)
+                    LuaType::optional(ty)
                 })
                 .unwrap_or(LuaType::Unknown),
             LuaDocType::Literal(literal) => match literal.get_literal() {
@@ -462,7 +455,7 @@ impl<'db> SemanticModel<'db> {
                 if members.is_empty() {
                     self.analysis().doc_type_node_lua(file_id, doc_ty, generics)
                 } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(members)))
+                    LuaType::union(members)
                 }
             }
             LuaDocType::MultiLineUnion(multi) => {
@@ -476,14 +469,14 @@ impl<'db> SemanticModel<'db> {
                         continue;
                     }
                     match ty {
-                        LuaType::Union(union) => types.extend(union.into_vec()),
+                        LuaType::Union(union) => types.extend(union.iter().cloned()),
                         other => types.push(other),
                     }
                 }
                 if types.is_empty() {
                     self.analysis().doc_type_node_lua(file_id, doc_ty, generics)
                 } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+                    LuaType::union(types)
                 }
             }
             LuaDocType::Variadic(variadic) => variadic
@@ -597,11 +590,11 @@ impl<'db> SemanticModel<'db> {
                         let mut types = Vec::new();
                         for ty in [left_ty, right_ty] {
                             match ty {
-                                LuaType::Union(union) => types.extend(union.into_vec()),
+                                LuaType::Union(union) => types.extend(union.iter().cloned()),
                                 other => types.push(other),
                             }
                         }
-                        LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+                        LuaType::union(types)
                     }
                     Some(LuaTypeBinaryOperator::Intersection) => {
                         LuaType::Intersection(Rc::new(LuaIntersectionType::new(vec![

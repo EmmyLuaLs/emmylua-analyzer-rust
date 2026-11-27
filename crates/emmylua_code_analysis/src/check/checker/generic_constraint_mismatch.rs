@@ -19,7 +19,7 @@ use crate::semantic_model::infer::unify;
 use crate::semantic_model::type_check::is_compatible;
 use crate::{
     FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaIntersectionType, LuaStringTplType,
-    LuaType, LuaUnionType,
+    LuaType,
 };
 
 use super::param_count::first_param_is_self;
@@ -532,17 +532,10 @@ fn bind_owner_generic_type(
                 Some(ty.clone())
             }
         }
-        LuaType::Union(union) => {
-            let types = union
-                .into_vec()
-                .iter()
-                .map(|component| {
-                    bind_owner_generic_type(component, owner_constraints)
-                        .unwrap_or_else(|| component.clone())
-                })
-                .collect();
-            Some(LuaType::Union(Rc::new(LuaUnionType::from_vec(types))))
-        }
+        LuaType::Union(union) => Some(LuaType::union(union.iter().map(|component| {
+            bind_owner_generic_type(component, owner_constraints)
+                .unwrap_or_else(|| component.clone())
+        }))),
         _ => Some(ty.clone()),
     }
 }
@@ -655,8 +648,8 @@ fn collect_tpl_refs(ty: &LuaType, out: &mut Vec<Rc<GenericTpl>>, depth: usize) {
     match ty {
         LuaType::TplRef(tpl) => out.push(tpl.clone()),
         LuaType::Union(union) => {
-            for component in union.into_vec() {
-                collect_tpl_refs(&component, out, depth + 1);
+            for component in union.iter() {
+                collect_tpl_refs(component, out, depth + 1);
             }
         }
         LuaType::Intersection(intersection) => {
@@ -682,8 +675,8 @@ fn collect_str_tpl_refs(ty: &LuaType, out: &mut Vec<Rc<LuaStringTplType>>, depth
     match ty {
         LuaType::StrTplRef(str_tpl) => out.push(str_tpl.clone()),
         LuaType::Union(union) => {
-            for component in union.into_vec() {
-                collect_str_tpl_refs(&component, out, depth + 1);
+            for component in union.iter() {
+                collect_str_tpl_refs(component, out, depth + 1);
             }
         }
         _ => {}
@@ -808,11 +801,11 @@ fn project_doc_type_with(
                     let mut types = Vec::new();
                     for ty in [left_ty, right_ty] {
                         match ty {
-                            LuaType::Union(union) => types.extend(union.into_vec()),
+                            LuaType::Union(union) => types.extend(union.iter().cloned()),
                             other => types.push(other),
                         }
                     }
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+                    LuaType::union(types)
                 }
                 _ => semantic_model.project_doc_type(file_id, syntax, &[]),
             }
@@ -881,11 +874,10 @@ fn keyof_type_def(semantic_model: &SemanticModel<'_>, def: &TypeDef) -> LuaType 
     if keys.is_empty() {
         return LuaType::Unknown;
     }
-    let types = keys
-        .into_iter()
-        .map(|name| LuaType::StringConst(smol_str::SmolStr::new(name).into()))
-        .collect();
-    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
+    LuaType::union(
+        keys.into_iter()
+            .map(|name| LuaType::StringConst(smol_str::SmolStr::new(name).into())),
+    )
 }
 
 fn collect_key_names(

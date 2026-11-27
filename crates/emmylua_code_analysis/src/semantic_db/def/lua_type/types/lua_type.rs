@@ -82,41 +82,54 @@ impl PartialEq for LuaType {
             (LuaType::BooleanConst(a), LuaType::BooleanConst(b)) => a == b,
             (LuaType::StringConst(a), LuaType::StringConst(b)) => a == b,
             (LuaType::IntegerConst(a), LuaType::IntegerConst(b)) => a == b,
-            (LuaType::FloatConst(a), LuaType::FloatConst(b)) => a == b,
+            (LuaType::FloatConst(a), LuaType::FloatConst(b)) => float_bits_eq(*a, *b),
             (LuaType::TableConst(a), LuaType::TableConst(b)) => a == b,
             (LuaType::Ref(a), LuaType::Ref(b)) => a == b,
             (LuaType::Def(a), LuaType::Def(b)) => a == b,
-            (LuaType::Array(a), LuaType::Array(b)) => a == b,
-            (LuaType::Call(a), LuaType::Call(b)) => a == b,
-            (LuaType::Tuple(a), LuaType::Tuple(b)) => a == b,
-            (LuaType::DocFunction(a), LuaType::DocFunction(b)) => a == b,
-            (LuaType::Object(a), LuaType::Object(b)) => a == b,
-            (LuaType::Union(a), LuaType::Union(b)) => a == b,
-            (LuaType::Intersection(a), LuaType::Intersection(b)) => a == b,
-            (LuaType::Generic(a), LuaType::Generic(b)) => a == b,
-            (LuaType::TableGeneric(a), LuaType::TableGeneric(b)) => a == b,
-            (LuaType::TplRef(a), LuaType::TplRef(b)) => a == b,
-            (LuaType::StrTplRef(a), LuaType::StrTplRef(b)) => a == b,
-            (LuaType::Variadic(a), LuaType::Variadic(b)) => a == b,
+            // Rc-backed payloads are frequently shared. The pointer check is a
+            // cheap fast path for cache lookups; fall back to structural equality.
+            (LuaType::Array(a), LuaType::Array(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Call(a), LuaType::Call(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Tuple(a), LuaType::Tuple(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::DocFunction(a), LuaType::DocFunction(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Object(a), LuaType::Object(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Union(a), LuaType::Union(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Intersection(a), LuaType::Intersection(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Generic(a), LuaType::Generic(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::TableGeneric(a), LuaType::TableGeneric(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::TplRef(a), LuaType::TplRef(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::StrTplRef(a), LuaType::StrTplRef(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Variadic(a), LuaType::Variadic(b)) => Rc::ptr_eq(a, b) || a == b,
             (LuaType::DocBooleanConst(a), LuaType::DocBooleanConst(b)) => a == b,
             (LuaType::Signature(a), LuaType::Signature(b)) => a == b,
-            (LuaType::Instance(a), LuaType::Instance(b)) => a == b,
+            (LuaType::Instance(a), LuaType::Instance(b)) => Rc::ptr_eq(a, b) || a == b,
             (LuaType::DocStringConst(a), LuaType::DocStringConst(b)) => a == b,
             (LuaType::DocIntegerConst(a), LuaType::DocIntegerConst(b)) => a == b,
             (LuaType::Namespace(a), LuaType::Namespace(b)) => a == b,
-            (LuaType::MultiLineUnion(a), LuaType::MultiLineUnion(b)) => a == b,
-            (LuaType::TypeGuard(a), LuaType::TypeGuard(b)) => a == b,
+            (LuaType::MultiLineUnion(a), LuaType::MultiLineUnion(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::TypeGuard(a), LuaType::TypeGuard(b)) => Rc::ptr_eq(a, b) || a == b,
             (LuaType::Never, LuaType::Never) => true,
             (LuaType::Language(a), LuaType::Language(b)) => a == b,
             (LuaType::ModuleRef(a), LuaType::ModuleRef(b)) => a == b,
-            (LuaType::Conditional(a), LuaType::Conditional(b)) => a == b,
-            (LuaType::Mapped(a), LuaType::Mapped(b)) => a == b,
+            (LuaType::Conditional(a), LuaType::Conditional(b)) => Rc::ptr_eq(a, b) || a == b,
+            (LuaType::Mapped(a), LuaType::Mapped(b)) => Rc::ptr_eq(a, b) || a == b,
             _ => false,
         }
     }
 }
 
 impl Eq for LuaType {}
+
+/// `-0.0 == 0.0` and `NaN != NaN` under `f64::eq`, but `LuaType` is used as a
+/// hash-map key and implements `Eq`. Compare float constants by bit pattern,
+/// normalizing both zeros to the same value so `Eq` and `Hash` agree.
+fn float_bits(value: f64) -> u64 {
+    if value == 0.0 { 0 } else { value.to_bits() }
+}
+
+fn float_bits_eq(left: f64, right: f64) -> bool {
+    float_bits(left) == float_bits(right)
+}
 
 impl Hash for LuaType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -138,10 +151,7 @@ impl Hash for LuaType {
             LuaType::BooleanConst(a) => (14, a).hash(state),
             LuaType::StringConst(a) => (15, a).hash(state),
             LuaType::IntegerConst(a) => (16, a).hash(state),
-            LuaType::FloatConst(a) => {
-                let bits = if *a == 0.0 { 0 } else { a.to_bits() };
-                (17, bits).hash(state);
-            }
+            LuaType::FloatConst(a) => (17, float_bits(*a)).hash(state),
             LuaType::TableConst(a) => (18, a).hash(state),
             LuaType::Ref(a) => (19, a).hash(state),
             LuaType::Def(a) => (20, a).hash(state),

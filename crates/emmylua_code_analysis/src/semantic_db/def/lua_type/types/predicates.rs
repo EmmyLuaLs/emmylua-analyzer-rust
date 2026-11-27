@@ -1,5 +1,3 @@
-use hashbrown::HashSet;
-
 use super::{LuaType, LuaTypeNode, LuaUnionType, VariadicType};
 
 #[allow(unused)]
@@ -307,37 +305,12 @@ impl LuaType {
         matches!(self, LuaType::MultiLineUnion(_))
     }
 
+    /// Build a canonical union.
+    ///
+    /// Kept as an alias for [`LuaType::union`] for existing callers; new code
+    /// should prefer `LuaType::union` / `LuaType::optional`.
     pub fn from_vec(types: Vec<LuaType>) -> Self {
-        match types.len() {
-            0 => LuaType::Nil,
-            1 => types[0].clone(),
-            _ => {
-                let mut result_types = Vec::new();
-                let mut hash_set = HashSet::new();
-                for typ in types {
-                    match typ {
-                        LuaType::Union(u) => {
-                            for t in u.iter().cloned() {
-                                if hash_set.insert(t.clone()) {
-                                    result_types.push(t);
-                                }
-                            }
-                        }
-                        _ => {
-                            if hash_set.insert(typ.clone()) {
-                                result_types.push(typ);
-                            }
-                        }
-                    }
-                }
-
-                match result_types.len() {
-                    0 => LuaType::Nil,
-                    1 => result_types[0].clone(),
-                    _ => LuaType::Union(LuaUnionType::from_vec(result_types).into()),
-                }
-            }
-        }
+        Self::union_vec(types)
     }
 
     pub fn is_module_ref(&self) -> bool {
@@ -350,18 +323,10 @@ impl LuaType {
     /// union (`A | B` becomes a single `A | B | nil`) instead of nesting a
     /// `Nullable(Union(...))` that call matching cannot unwrap.
     pub fn make_nullable(ty: Self) -> Self {
-        if ty.is_nullable() {
-            ty
-        } else {
-            Self::from_vec(vec![ty, Self::Nil])
-        }
+        Self::optional(ty)
     }
 }
 
 fn union_contains_multi_return(union: &LuaUnionType) -> bool {
-    match union {
-        LuaUnionType::Basic(_) => false,
-        LuaUnionType::Nullable(ty) => ty.contain_multi_return(),
-        LuaUnionType::Multi(types) => types.get_types().iter().any(LuaType::contain_multi_return),
-    }
+    union.iter().any(LuaType::contain_multi_return)
 }

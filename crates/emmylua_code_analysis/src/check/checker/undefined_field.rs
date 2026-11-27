@@ -264,7 +264,7 @@ fn is_valid_member(
         LuaType::Intersection(intersection) => intersection.get_types().iter().any(|component| {
             is_valid_member(semantic_model, component, prefix, index_expr, index_key)
         }),
-        LuaType::Union(union) => union.into_vec().iter().any(|component| {
+        LuaType::Union(union) => union.iter().any(|component| {
             is_valid_member(semantic_model, component, prefix, index_expr, index_key)
         }),
         LuaType::Object(_) => {
@@ -430,7 +430,7 @@ fn is_string_key(ty: &LuaType) -> bool {
         | LuaType::StringConst(_)
         | LuaType::DocStringConst(_)
         | LuaType::StrTplRef(_) => true,
-        LuaType::Union(union) => union.into_vec().iter().any(is_string_key),
+        LuaType::Union(union) => union.iter().any(is_string_key),
         _ => false,
     }
 }
@@ -442,9 +442,9 @@ fn numeric_key(ty: &LuaType) -> bool {
         | LuaType::IntegerConst(_)
         | LuaType::FloatConst(_)
         | LuaType::DocIntegerConst(_) => true,
-        LuaType::Union(union) => union.into_vec().iter().any(numeric_key),
+        LuaType::Union(union) => union.iter().any(numeric_key),
         LuaType::MultiLineUnion(union) => match union.to_union() {
-            LuaType::Union(union) => union.into_vec().iter().any(numeric_key),
+            LuaType::Union(union) => union.iter().any(numeric_key),
             _ => false,
         },
         LuaType::Ref(_) | LuaType::Def(_) => false,

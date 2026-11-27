@@ -3,7 +3,7 @@ mod test {
     use emmylua_parser::{LuaAstNode, LuaIndexExpr};
     use smol_str::SmolStr;
 
-    use crate::{LuaIndexAccessKey, LuaObjectType, LuaType, LuaUnionType, VirtualWorkspace};
+    use crate::{LuaIndexAccessKey, LuaObjectType, LuaType, VirtualWorkspace};
 
     // 可选对象字段在短路条件前后都应保留具名字段类型.
     #[test]
@@ -16,7 +16,7 @@ mod test {
             )])
             .into(),
         );
-        let optional_post = LuaType::Union(LuaUnionType::Nullable(post.clone()).into());
+        let optional_post = LuaType::optional(post.clone());
         let headers = ws.ty("string?");
         let file_id = ws.def(
             r#"
@@ -57,7 +57,7 @@ mod test {
             )])
             .into(),
         );
-        let optional = LuaType::Union(LuaUnionType::Nullable(object.clone()).into());
+        let optional = LuaType::optional(object.clone());
         for (type_repr, expected) in [
             ("{ a: string }?", optional.clone()),
             ("{ a: string }|nil", optional),
@@ -117,16 +117,13 @@ mod test {
                 (LuaIndexAccessKey::String("a".into()), LuaType::String),
                 (
                     LuaIndexAccessKey::String("nested".into()),
-                    LuaType::Union(LuaUnionType::Nullable(nested.clone()).into()),
+                    LuaType::optional(nested.clone()),
                 ),
                 (LuaIndexAccessKey::Type(LuaType::Integer), nested),
             ])
             .into(),
         );
-        assert_eq!(
-            ws.expr_ty("Post"),
-            LuaType::Union(LuaUnionType::Nullable(post).into())
-        );
+        assert_eq!(ws.expr_ty("Post"), LuaType::optional(post));
         let optional_string = ws.ty("string?");
         for name in ["A", "Nested"] {
             assert_eq!(ws.expr_ty(name), optional_string, "{name}");
@@ -274,15 +271,12 @@ mod test {
 
         let c_ty = ws.expr_ty("c");
 
-        let union_type = LuaType::Union(
-            LuaUnionType::from_vec(vec![
-                LuaType::StringConst(SmolStr::new("a").into()),
-                LuaType::StringConst(SmolStr::new("b").into()),
-                LuaType::StringConst(SmolStr::new("c").into()),
-                LuaType::Nil,
-            ])
-            .into(),
-        );
+        let union_type = LuaType::union(vec![
+            LuaType::StringConst(SmolStr::new("a").into()),
+            LuaType::StringConst(SmolStr::new("b").into()),
+            LuaType::StringConst(SmolStr::new("c").into()),
+            LuaType::Nil,
+        ]);
 
         assert_eq!(c_ty, union_type);
     }
@@ -429,8 +423,7 @@ mod test {
         );
 
         let ty = ws.expr_ty("A");
-        let expected =
-            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::String, LuaType::Number]).into());
+        let expected = LuaType::union(vec![LuaType::String, LuaType::Number]);
         assert_eq!(ty, expected);
     }
 

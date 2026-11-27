@@ -230,8 +230,8 @@ fn call_operator_self_type_inner(
         }
         LuaType::Union(union) => {
             let mut callable = Vec::new();
-            for member in union.into_vec() {
-                if let Some(self_ty) = call_operator_self_type_inner(model, &member, visited) {
+            for member in union.iter() {
+                if let Some(self_ty) = call_operator_self_type_inner(model, member, visited) {
                     if !callable.contains(&self_ty) {
                         callable.push(self_ty);
                     }
@@ -391,7 +391,7 @@ fn type_contains_tpl_ref(ty: &LuaType) -> bool {
         TplRef(_) => true,
         Array(array) => type_contains_tpl_ref(array.get_base()),
         Tuple(tuple) => tuple.get_types().iter().any(type_contains_tpl_ref),
-        Union(union) => union.into_vec().iter().any(type_contains_tpl_ref),
+        Union(union) => union.iter().any(type_contains_tpl_ref),
         Intersection(intersection) => intersection.get_types().iter().any(type_contains_tpl_ref),
         Generic(generic) => generic.get_params().iter().any(type_contains_tpl_ref),
         TableGeneric(generic) => generic.iter().any(type_contains_tpl_ref),
@@ -777,15 +777,15 @@ fn pcall_callback_ret_inner(
         LuaType::Any | LuaType::Unknown => Some((LuaType::Unknown, true)),
         LuaType::Union(union) => {
             let mut types = Vec::new();
-            for component in union.into_vec() {
-                if let LuaType::DocFunction(fun) = &component
+            for component in union.iter() {
+                if let LuaType::DocFunction(fun) = component
                     && !call_args.is_empty()
                     && match_call_candidate(model, fun, call_args, false, None).is_none()
                 {
                     continue;
                 }
                 if let Some((ret, _)) =
-                    pcall_callback_ret_inner(model, &component, owner, closure_syntax, call_args)
+                    pcall_callback_ret_inner(model, component, owner, closure_syntax, call_args)
                 {
                     if !types.contains(&ret) {
                         types.push(ret);

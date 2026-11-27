@@ -121,7 +121,7 @@ fn check_str_tpl_constraint_call(
 fn str_tpl_contains_tpl(ty: &LuaType) -> bool {
     match ty {
         LuaType::StrTplRef(_) => true,
-        LuaType::Union(union) => union.into_vec().iter().any(str_tpl_contains_tpl),
+        LuaType::Union(union) => union.iter().any(str_tpl_contains_tpl),
         _ => false,
     }
 }

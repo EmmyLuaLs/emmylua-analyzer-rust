@@ -278,16 +278,11 @@ fn substitute_tpl_constraints(
                 constraint,
             )))
         }
-        LuaType::Union(union) => {
-            let components = union
-                .into_vec()
+        LuaType::Union(union) => LuaType::union(
+            union
                 .iter()
-                .map(|component| substitute_tpl_constraints(component.clone(), generics))
-                .collect();
-            LuaType::Union(Rc::new(emmylua_code_analysis::LuaUnionType::from_vec(
-                components,
-            )))
-        }
+                .map(|component| substitute_tpl_constraints(component.clone(), generics)),
+        ),
         other => other,
     }
 }
@@ -379,16 +374,11 @@ fn substitute_tpl_in_type(ty: &LuaType, bindings: &[(String, LuaType)]) -> LuaTy
             .find(|(name, _)| name == str_tpl.get_name())
             .map(|(_, bound)| bound.clone())
             .unwrap_or_else(|| ty.clone()),
-        LuaType::Union(union) => {
-            let components = union
-                .into_vec()
+        LuaType::Union(union) => LuaType::union(
+            union
                 .iter()
-                .map(|component| substitute_tpl_in_type(component, bindings))
-                .collect();
-            LuaType::Union(Rc::new(emmylua_code_analysis::LuaUnionType::from_vec(
-                components,
-            )))
-        }
+                .map(|component| substitute_tpl_in_type(component, bindings)),
+        ),
         LuaType::Array(array) => {
             let base = substitute_tpl_in_type(array.get_base(), bindings);
             LuaType::Array(Rc::new(

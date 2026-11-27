@@ -31,10 +31,7 @@ use super::query::{
     signature_return,
 };
 use super::types::{PrimitiveType, TypeCandidate, TypeShell};
-use crate::{
-    AsyncState, FileId, InFiled, LuaFunctionType, LuaGenericType, LuaType, LuaTypeDeclId,
-    LuaUnionType,
-};
+use crate::{AsyncState, FileId, InFiled, LuaFunctionType, LuaGenericType, LuaType, LuaTypeDeclId};
 
 /// Owned member list wrapper.
 ///
@@ -728,10 +725,10 @@ impl<'db> AnalysisView<'db> {
                 types.push(typ);
             }
         }
-        match types.len() {
-            0 => LuaType::Unknown,
-            1 => types.pop().expect("len checked"),
-            _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
+        if types.is_empty() {
+            LuaType::Unknown
+        } else {
+            LuaType::union(types)
         }
     }
 

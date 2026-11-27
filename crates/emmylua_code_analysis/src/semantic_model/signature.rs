@@ -771,7 +771,7 @@ impl<'db> SemanticModel<'db> {
         match &doc_ty {
             LuaType::DocFunction(fun) => docs_out.push(fun.as_ref().clone()),
             LuaType::Union(union) => {
-                for ty in union.into_vec() {
+                for ty in union.iter() {
                     if let LuaType::DocFunction(fun) = ty {
                         docs_out.push(fun.as_ref().clone());
                     }

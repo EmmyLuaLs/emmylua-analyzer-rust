@@ -86,7 +86,7 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
             .get_constraint()
             .is_some_and(|constraint| is_callable(model, constraint)),
         // Union: pass only if all non-nil components are callable (function|nil OK, function|integer reports).
-        LuaType::Union(union) => union.into_vec().iter().all(|t| is_callable(model, t)),
+        LuaType::Union(union) => union.iter().all(|t| is_callable(model, t)),
         // Intersection: callable if any component is callable (`{ field: string } & fun()`).
         LuaType::Intersection(intersection) => intersection
             .get_types()

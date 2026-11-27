@@ -31,7 +31,7 @@ pub fn is_sub_type_of(
                     continue;
                 }
                 LuaType::Union(union) => {
-                    pending.extend(union.into_vec().into_iter().rev());
+                    pending.extend(union.iter().rev().cloned());
                     continue;
                 }
                 other => match get_base_type_id(&other) {

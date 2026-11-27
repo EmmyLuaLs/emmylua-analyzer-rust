@@ -478,8 +478,11 @@ impl<'a> TypeHumanizer<'a> {
     fn write_union<W: Write>(&mut self, union: &LuaUnionType, w: &mut W) -> fmt::Result {
         let num = self.level.max_union_items();
 
+        // Unions are canonical, but distinct types may still render to the same
+        // text (for example a string-template `T` and a generic `T`). Keep the
+        // rendered-text dedup so the display never shows `(T|T)`.
+        let mut members: Vec<&LuaType> = Vec::with_capacity(union.len());
         let mut seen = HashSet::new();
-        let mut unique = Vec::new();
         let mut has_nil = false;
         let mut has_function = false;
 
@@ -497,13 +500,13 @@ impl<'a> TypeHumanizer<'a> {
             let _ = self.write_type(ty, &mut key);
             self.level = saved;
             if seen.insert(key) {
-                unique.push(ty);
+                members.push(ty);
             }
         }
 
-        unique.sort_by_key(|ty| self.union_type_rank(ty));
+        members.sort_by_key(|ty| self.union_type_rank(ty));
 
-        let total = unique.len();
+        let total = members.len();
         let show_dots = total > num;
         let needs_parens = total > 1 || (total == 1 && has_function && has_nil);
 
@@ -511,7 +514,7 @@ impl<'a> TypeHumanizer<'a> {
             w.write_char('(')?;
         }
 
-        for (i, ty) in unique.iter().take(num).enumerate() {
+        for (i, ty) in members.iter().take(num).enumerate() {
             if i > 0 {
                 w.write_char('|')?;
             }

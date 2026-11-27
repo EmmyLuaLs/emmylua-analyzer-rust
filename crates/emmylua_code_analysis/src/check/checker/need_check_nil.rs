@@ -3,14 +3,11 @@
 //! M0: if the call callee type is nullable, the index prefix is nullable, or the operand of `#`
 //! or of arithmetic is nullable, report NeedCheckNil; safe navigation (`?.`/`?:`) skips.
 
-use std::rc::Rc;
-
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAstNode, LuaBinaryExpr, LuaCallExpr, LuaExpr, LuaIndexExpr,
     LuaUnaryExpr, PathTrait, UnaryOperator,
 };
 
-use crate::LuaUnionType;
 use crate::semantic_model::SemanticModel;
 use crate::{DiagnosticCode, LuaType};
 
@@ -274,7 +271,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
             ) {
                 base
             } else if semantic_model.strict_array_index() || base.is_nullable() {
-                LuaType::Union(Rc::new(LuaUnionType::from_vec(vec![base, LuaType::Nil])))
+                LuaType::optional(base)
             } else {
                 base
             }
@@ -282,7 +279,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
         LuaType::Union(union) => {
             let mut types = Vec::new();
             let mut found = false;
-            for component in union.into_vec() {
+            for component in union.iter() {
                 if let LuaType::Array(array) = component {
                     let base = array.get_base().clone();
                     found = true;
@@ -294,15 +291,7 @@ fn prefix_type(semantic_model: &SemanticModel<'_>, prefix: &LuaExpr) -> LuaType 
                     }
                 }
             }
-            if found {
-                if types.len() == 1 {
-                    types.pop().expect("len checked")
-                } else {
-                    LuaType::Union(Rc::new(LuaUnionType::from_vec(types)))
-                }
-            } else {
-                ty
-            }
+            if found { LuaType::union(types) } else { ty }
         }
         _ => ty,
     }

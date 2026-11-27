@@ -12,7 +12,7 @@ use crate::{
     GenericParam, GenericTplId, LuaAliasCallType, LuaArrayType, LuaConditionalType,
     LuaFunctionType, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType,
     LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType,
-    LuaUnionType, VariadicType,
+    VariadicType,
 };
 
 pub type TplBindings = HashMap<GenericTplId, LuaType>;
@@ -309,14 +309,7 @@ pub fn substitute(ty: &LuaType, bindings: &TplBindings) -> LuaType {
                 Some(fun.get_generic_params().to_vec()),
             )))
         }
-        Union(union) => {
-            let types = union
-                .into_vec()
-                .iter()
-                .map(|t| substitute(t, bindings))
-                .collect();
-            Union(Rc::new(LuaUnionType::from_vec(types)))
-        }
+        Union(union) => LuaType::union(union.iter().map(|t| substitute(t, bindings))),
         Generic(generic) => Generic(Rc::new(LuaGenericType::new(
             generic.get_base_type_id(),
             generic
