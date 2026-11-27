@@ -1,6 +1,6 @@
 mod test;
 
-use hashbrown::HashMap;
+use std::collections::BTreeMap;
 
 use serde_json::Value;
 
@@ -8,13 +8,13 @@ use crate::config::Emmyrc;
 
 #[derive(Debug, Clone)]
 pub struct FlattenConfigObject {
-    config: HashMap<String, Value>,
+    config: BTreeMap<String, Value>,
 }
 
 impl FlattenConfigObject {
     pub fn parse(luals_json: Value) -> Self {
         let defaults = serde_json::to_value(Emmyrc::default()).unwrap_or(Value::Null);
-        let mut config = HashMap::new();
+        let mut config = BTreeMap::new();
         flatten_object("", &luals_json, &defaults, &mut config);
         Self { config }
     }
@@ -28,7 +28,7 @@ fn flatten_object(
     prefix: &str,
     val: &Value,
     defaults: &Value,
-    config: &mut HashMap<String, Value>,
+    config: &mut BTreeMap<String, Value>,
 ) {
     match val {
         Value::Object(map) if !is_map_setting(prefix, defaults) => {
@@ -58,21 +58,17 @@ fn is_map_setting(path: &str, defaults: &Value) -> bool {
 
 fn to_emmyrc_json(config: &FlattenConfigObject) -> Value {
     let mut emmyrc = Value::Object(Default::default());
-    for (k, v) in &config.config {
-        let keys: Vec<&str> = k.split('.').collect();
-        let mut current = &mut emmyrc;
-        for i in 0..keys.len() {
-            let key = keys[i];
-            if i == keys.len() - 1 {
-                current[key] = v.clone();
-            } else {
-                current = current
-                    .as_object_mut()
-                    .expect("always an object")
-                    .entry(key.to_string())
-                    .or_insert(Value::Object(Default::default()));
+    // The sorted paths visit a parent before any dotted children. A more
+    // specific setting can therefore replace an invalid scalar parent.
+    for (path, value) in &config.config {
+        let mut node = &mut emmyrc;
+        for key in path.split('.') {
+            if !node.is_object() {
+                *node = Value::Object(Default::default());
             }
+            node = &mut node[key];
         }
+        *node = value.clone();
     }
     emmyrc
 }
