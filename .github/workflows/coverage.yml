@@ -1,0 +1,63 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CLICOLOR: 1
+
+# Cancel stale PR runs, but let main pushes finish.
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage (llvm-cov -> Coveralls)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo/target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate LCOV
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+
+      - name: Upload to Coveralls
+        # Secrets are not exposed to PRs from forks, so skip the upload there
+        # instead of failing the job.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        uses: coverallsapp/github-action@v2
+        with:
+          file: lcov.info
+          format: lcov
+          github-token: ${{ secrets.GITHUB_TOKEN }}
