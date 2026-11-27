@@ -83,10 +83,47 @@ pub fn load_configs_raw(config_files: Vec<PathBuf>, partial_emmyrcs: Option<Vec<
 
 pub fn load_configs(config_files: Vec<PathBuf>, partial_emmyrcs: Option<Vec<Value>>) -> Emmyrc {
     let emmyrc_json_value = load_configs_raw(config_files, partial_emmyrcs);
-    serde_json::from_value(emmyrc_json_value).unwrap_or_else(|err| {
+    serde_json::from_value(emmyrc_json_value.clone()).unwrap_or_else(|err| {
         log::error!("Failed to parse config: error: {:?}", err);
-        Emmyrc::default()
+        parse_valid_settings(emmyrc_json_value)
     })
+}
+
+/// Keeps every setting that parses on its own, so one invalid value only drops that value.
+fn parse_valid_settings(config: Value) -> Emmyrc {
+    let mut valid = Value::Object(Default::default());
+    if let Value::Object(sections) = config {
+        for (section, value) in sections {
+            keep_valid_setting(&mut valid, &mut vec![section], value);
+        }
+    }
+    serde_json::from_value(valid).unwrap_or_default()
+}
+
+/// Adds `value` at `path` if the config still parses, otherwise keeps each of its entries that does.
+fn keep_valid_setting(valid: &mut Value, path: &mut Vec<String>, value: Value) {
+    let mut candidate = valid.clone();
+    let slot = path
+        .iter()
+        .fold(&mut candidate, |node, key| &mut node[key.as_str()]);
+    *slot = value.clone();
+    let Err(err) = serde_json::from_value::<Emmyrc>(candidate.clone()) else {
+        *valid = candidate;
+        return;
+    };
+    match value {
+        Value::Object(entries) if !entries.is_empty() => {
+            for (key, value) in entries {
+                path.push(key);
+                keep_valid_setting(valid, path, value);
+                path.pop();
+            }
+        }
+        _ => log::error!(
+            "Ignoring invalid config setting `{}`: {err}",
+            path.join(".")
+        ),
+    }
 }
 
 fn merge_values(base: &mut Value, overlay: Value) {
@@ -114,5 +151,31 @@ fn merge_values(base: &mut Value, overlay: Value) {
         (base_slot, overlay_value) => {
             *base_slot = overlay_value;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_configs;
+    use crate::{DiagnosticCode, DiagnosticSeveritySetting, EmmyrcLuaVersion};
+
+    #[test]
+    fn test_invalid_setting_keeps_the_rest_of_the_config() {
+        let config = serde_json::json!({
+            "diagnostics": {
+                "severity": { "need-check-nil": "info", "undefined-global": "hint" },
+                "disable": ["unused"]
+            },
+            "runtime": { "version": "LuaJIT" }
+        });
+        let emmyrc = load_configs(Vec::new(), Some(vec![config]));
+        let severity = &emmyrc.diagnostics.severity;
+        assert!(!severity.contains_key(&DiagnosticCode::NeedCheckNil));
+        assert!(matches!(
+            severity.get(&DiagnosticCode::UndefinedGlobal),
+            Some(DiagnosticSeveritySetting::Hint)
+        ));
+        assert!(emmyrc.diagnostics.disable.contains(&DiagnosticCode::Unused));
+        assert!(matches!(emmyrc.runtime.version, EmmyrcLuaVersion::LuaJIT));
     }
 }
