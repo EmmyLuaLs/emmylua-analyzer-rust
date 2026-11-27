@@ -60,7 +60,10 @@ pub fn resolve_alias_origin(model: &SemanticModel<'_>, decl: &SemanticId) -> Opt
                             _ => return None,
                         }
                     }
-                    _ => return None,
+                    // A non-alias expression is a terminal value: there is no declaration
+                    // identity farther along the chain. Keep this declaration as the origin,
+                    // including table exports (`local M = {}`) and call/literal initializers.
+                    _ => return Some(current),
                 }
             }
             SemanticId::Member(key) => {

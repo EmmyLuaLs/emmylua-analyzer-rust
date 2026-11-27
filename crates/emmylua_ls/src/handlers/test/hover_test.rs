@@ -575,6 +575,55 @@ mod tests {
         Ok(())
     }
 
+    #[gtest]
+    fn test_hover_required_module_local_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "mod.lua",
+            r#"
+                --- Module documentation.
+                ---@class Mod
+                local M = {}
+
+                --- Function documentation.
+                function M.fn() end
+
+                return M
+            "#,
+        );
+        check!(ws.check_hover(
+            r#"
+                local <??>m = require("mod")
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal M: Mod {\n    fn: function,\n}\n```\n\n---\n\nModule documentation."
+                    .to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            r#"
+                local m = require("mod")
+                m.<??>fn()
+            "#,
+            VirtualHoverResult {
+                value:
+                    "```lua\nfunction Mod.fn()\n```\n\n---\n\nFunction documentation.".to_string(),
+            },
+        ));
+        check!(ws.check_hover(
+            r#"
+                local m = require("mod")
+                local alias = m
+                local <??>chained = alias
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal M: Mod {\n    fn: function,\n}\n```\n\n---\n\nModule documentation."
+                    .to_string(),
+            },
+        ));
+        Ok(())
+    }
+
     // M3 batch 2 retirement: depends on the old humanize rendering stack (constant value / alias / keyof / overloaded attributes / narrowing / cross-file declared type projection, etc.); see migration notes §M3.
     #[gtest]
     fn test_hover_class_bound_member_description() -> Result<()> {
