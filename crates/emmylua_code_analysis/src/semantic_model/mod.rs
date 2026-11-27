@@ -4,6 +4,7 @@ pub mod index_signature;
 pub mod infer;
 pub mod member;
 pub mod render;
+pub(crate) mod result_pack;
 pub(crate) mod table_constructor;
 pub(crate) mod table_value;
 pub mod type_check;

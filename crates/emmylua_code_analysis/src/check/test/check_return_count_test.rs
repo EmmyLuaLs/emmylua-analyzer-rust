@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::check::test::{check_source, count_by_code};
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     fn assert_missing_return_ok(code: &str) {
@@ -13,23 +14,29 @@ mod tests {
     }
 
     #[test]
-    fn test_1() {
-        let mut ws = VirtualWorkspace::new();
-
-        assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::RedundantReturnValue,
-            r#"
+    fn test_contextual_callback_return_count() {
+        let source = r#"
             ---@class Completion2.A
             ---@field event fun(aaa)
+            ---@field query fun(bbb): unknown
 
             ---@type Completion2.A
             local a = {
                 event = function(aaa)
                     return aaa
                 end,
+                query = function(bbb)
+                    return bbb
+                end,
             }
-        "#
-        ));
+        "#;
+        let diagnostics = check_source(source);
+        let extras: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::RedundantReturnValue)
+            .map(|diagnostic| &source[diagnostic.range])
+            .collect();
+        assert_eq!(extras, ["aaa"]);
     }
 
     #[test]
@@ -73,6 +80,134 @@ mod tests {
             end
         "#
         ));
+    }
+
+    #[test]
+    fn test_forwarded_missing_return_value_with_parameter_docs() {
+        let diagnostics = check_source(
+            r#"
+            ---@param flag boolean
+            local function no_result(flag) end
+
+            ---@return string
+            local function forward()
+                return no_result(false)
+            end
+            return forward
+            "#,
+        );
+
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::MissingReturnValue),
+            1
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+            0
+        );
+    }
+
+    #[test]
+    fn test_nonfinal_call_supplies_one_return_value() {
+        let diagnostics = check_source(
+            r#"
+            ---@param flag boolean
+            local function two(flag)
+                return 'hello', 1
+            end
+
+            ---@param flag boolean
+            local function none(flag) end
+
+            ---@return string, integer
+            local function forward_two()
+                return two(false), 2
+            end
+
+            ---@return nil, integer
+            local function forward_none()
+                return none(false), 2
+            end
+            return forward_two, forward_none
+            "#,
+        );
+
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::RedundantReturnValue),
+            0
+        );
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::MissingReturnValue),
+            0
+        );
+    }
+
+    #[test]
+    fn test_named_return_pack_count() {
+        let source = r#"
+            ---@alias Pair [string, integer]...
+
+            ---@return Pair
+            local function pair()
+                return 'hello', 1
+            end
+
+            ---@return Pair
+            local function forward()
+                return pair()
+            end
+
+            ---@return Pair
+            local function truncate()
+                return pair(), 2
+            end
+
+            ---@return Pair
+            local function short()
+                return 'hello'
+            end
+
+            ---@return Pair
+            local function long()
+                return 'hello', 1, true
+            end
+
+            ---@return Pair
+            local function wrong_type()
+                return 'hello', 'oops'
+            end
+
+            ---@alias MaybePair ([string]...) | ([string, integer]...)
+            ---@param more boolean
+            ---@return MaybePair
+            local function maybe_pair(more)
+                if more then return 'hello', 1 end
+                return 'hello'
+            end
+
+            ---@param more boolean
+            ---@return string, integer?
+            local function forward_maybe_pair(more)
+                return maybe_pair(more)
+            end
+
+            return forward, truncate, short, long, wrong_type, forward_maybe_pair
+        "#;
+        let diagnostics = check_source(source);
+
+        let snippets_for = |code: DiagnosticCode| {
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == code)
+                .map(|diagnostic| &source[diagnostic.range])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            snippets_for(DiagnosticCode::MissingReturnValue),
+            ["return 'hello'"]
+        );
+        assert_eq!(snippets_for(DiagnosticCode::RedundantReturnValue), ["true"]);
+        assert_eq!(snippets_for(DiagnosticCode::ReturnTypeMismatch), ["'oops'"]);
     }
 
     #[test]

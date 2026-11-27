@@ -2752,22 +2752,6 @@ impl<'a> InferVm<'a> {
         ))
     }
 
-    /// Multi-return projection: a single return keeps its type; multiple / variadic returns
-    /// are packed as `Variadic::Multi`.
-    fn return_types_lua(&self, returns: &[LuaSyntaxId], scope: &DocTypeScope) -> LuaType {
-        if returns.is_empty() {
-            return LuaType::Unknown;
-        }
-        let mut types = returns
-            .iter()
-            .map(|syntax| self.model.project_doc_type_in_scope(*syntax, scope))
-            .collect::<Vec<_>>();
-        if types.len() == 1 {
-            return types.pop().unwrap_or(LuaType::Unknown);
-        }
-        LuaType::Variadic(Rc::new(VariadicType::Multi(types)))
-    }
-
     /// `---@return_overload` multi-return slot merge (union across rows, missing slots
     /// filled with nil).
     fn return_overload_types_lua(
@@ -2777,7 +2761,9 @@ impl<'a> InferVm<'a> {
         bindings: Option<&unify::TplBindings>,
     ) -> LuaType {
         if docs.return_overload_rows.is_empty() {
-            return self.return_types_lua(&docs.returns, scope);
+            return self
+                .model
+                .project_return_types_in_scope(&docs.returns, scope);
         }
 
         fn flatten_row_types(

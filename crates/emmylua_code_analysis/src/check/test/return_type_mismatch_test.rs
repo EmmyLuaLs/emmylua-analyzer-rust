@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::check::test::check_source;
+    use crate::check::test::{check_source, count_by_code};
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
     use emmylua_parser::{LuaAstNode, LuaIndexExpr};
 
@@ -369,6 +369,409 @@ mod tests {
             end
         "#
         ));
+    }
+
+    #[test]
+    fn test_type_mismatches_only_for_declared_return_slots() {
+        let source = r#"
+            ---@class Reader
+            ---@field read fun(): string, integer
+
+            ---@type Reader
+            local valid = {
+                read = function()
+                    return 'hello', 1
+                end,
+            }
+
+            ---@type Reader
+            local invalid = {
+                read = function()
+                    return 'hello', 'oops'
+                end,
+            }
+
+            ---@return string
+            local function extra()
+                return 'hello', 1
+            end
+
+            local overloads = {}
+            ---@overload fun(flag: true): string
+            ---@overload fun(flag: false): integer, integer
+            function overloads.read(flag)
+                if flag then return 'hello' end
+                return 1, 2
+            end
+
+            return valid, invalid, extra, overloads
+        "#;
+        let diagnostics = check_source(source);
+        let mut returns: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.code,
+                    DiagnosticCode::ReturnTypeMismatch | DiagnosticCode::RedundantReturnValue
+                )
+            })
+            .collect();
+        returns.sort_by_key(|diagnostic| diagnostic.range.start());
+        let actual: Vec<_> = returns
+            .iter()
+            .map(|diagnostic| {
+                let range = diagnostic.range;
+                let text = &source[usize::from(range.start())..usize::from(range.end())];
+                (diagnostic.code, text)
+            })
+            .collect();
+
+        assert_eq!(
+            actual,
+            [
+                (DiagnosticCode::ReturnTypeMismatch, "'oops'"),
+                (DiagnosticCode::RedundantReturnValue, "1"),
+            ],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[googletest::gtest]
+    fn test_declared_return_slots() {
+        use googletest::prelude::*;
+
+        for (annotation, values, expected) in [
+            ("string, integer", "1, 1", 1),
+            ("string, integer", "'hello', 'oops'", 1),
+            ("string, integer", "pair()", 0),
+            ("string, string", "pair()", 1),
+            ("string, integer", "pair(), 1", 0),
+            ("string, string", "pair(), 'hello'", 0),
+            ("boolean, string, integer", "true, pair()", 0),
+            ("boolean, string, string", "true, pair()", 1),
+            ("string, integer...", "pair()", 0),
+            ("string, string...", "pair()", 1),
+            ("string, string...", "'hello', ...", 1),
+            ("[string, integer]...", "'hello', 1", 0),
+            ("[string, integer]...", "'hello', 'oops'", 1),
+            ("[string, integer]...", "pair()", 0),
+            ("Pair", "'hello', 1", 0),
+            ("Pair", "'hello', 'oops'", 1),
+            ("boolean, Pair", "true, pair()", 0),
+            ("boolean, Pair", "true, 'hello', 'oops'", 1),
+            ("string, integer", "aliased_pair()", 0),
+            ("string, string", "aliased_pair()", 1),
+            ("string, string", "aliased_pair(), 'ok'", 0),
+            ("boolean, string, string", "prefixed_alias()", 1),
+            ("string, string", "either_pair(flag)", 1),
+            ("boolean, string, integer", "prefixed_callback()", 0),
+            ("boolean, string, string", "prefixed_callback()", 1),
+            (
+                "string, string...",
+                "wrap(function() return 'a', 'b', 1 end)",
+                1,
+            ),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@alias Pair [string, integer]...
+
+                ---@return string, integer
+                local function pair()
+                    return 'hello', 1
+                end
+
+                ---@return Pair
+                local function aliased_pair()
+                    return 'hello', 1
+                end
+
+                local function prefixed_alias()
+                    return true, aliased_pair()
+                end
+
+                local function either_pair(flag)
+                    if flag then
+                        return aliased_pair()
+                    end
+                    return 'ok', 'also ok'
+                end
+
+                ---@generic R
+                ---@param fn fun(): R...
+                ---@return R...
+                local function wrap(fn) end
+
+                local function prefixed_callback()
+                    return true, wrap(function() return 'hello', 1 end)
+                end
+
+                ---@param flag boolean
+                ---@param ... integer
+                ---@return {annotation}
+                local function check(flag, ...)
+                    return {values}
+                end
+                "#,
+            ));
+
+            expect_that!(
+                count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+                eq(expected),
+                "---@return {annotation} with return {values}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_forwarded_generic_result_slots_across_files() {
+        use std::sync::Arc;
+
+        use crate::check::{CheckConfig, check_file};
+
+        for (wrapper, valid, invalid, actual) in [
+            (
+                r#"
+                ---@generic R
+                ---@param callback fun(): R...
+                ---@return R...
+                local function wrap(callback)
+                    return callback()
+                end
+
+                function M.prefix()
+                    return true, wrap(function() return 'hello', 1 end)
+                end
+                "#,
+                "string, integer",
+                "string, string",
+                "integer",
+            ),
+            (
+                r#"
+                ---@generic T
+                ---@param value T
+                ---@return T[]
+                local function wrap(value)
+                    return { value }
+                end
+
+                function M.prefix()
+                    return true, wrap('hello')
+                end
+                "#,
+                "string[]",
+                "integer[]",
+                "string[]",
+            ),
+        ] {
+            let mut ws = VirtualWorkspace::new();
+            ws.def_file(
+                "source.lua",
+                &format!("local M = {{}}\n{wrapper}\nreturn M"),
+            );
+            let source = format!(
+                r#"
+                local source = require 'source'
+
+                ---@return boolean, {valid}
+                local function valid()
+                    return source.prefix()
+                end
+
+                ---@return boolean, {invalid}
+                local function invalid()
+                    return source.prefix()
+                end
+                "#,
+            );
+            let file = ws.def_file("consumer.lua", &source);
+            let model = ws.analysis.semantic_model(file);
+            let config = Arc::new(CheckConfig::new(&ws.analysis.get_emmyrc()));
+            let diagnostics = check_file(&model, config);
+            let mismatches: Vec<_> = diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch)
+                .collect();
+
+            let call = "source.prefix()";
+            let start = rowan::TextSize::try_from(source.rfind(call).unwrap()).unwrap();
+            assert_eq!(mismatches.len(), 1, "{diagnostics:#?}");
+            assert_eq!(
+                mismatches[0].range,
+                rowan::TextRange::at(start, rowan::TextSize::of(call))
+            );
+            assert!(mismatches[0].message.contains(&format!("found `{actual}`")));
+        }
+    }
+
+    #[test]
+    fn test_forwarded_variadic_return_tail_may_be_empty() {
+        for (tail, expected) in [("", 0), (", nil", 1)] {
+            let diagnostics = check_source(&format!(
+                r#"
+                local function source(ok)
+                    if ok then
+                        return true, 'hello'
+                    end
+                    return false{tail}
+                end
+
+                ---@param ok boolean
+                ---@return boolean, string...
+                local function forward(ok)
+                    return source(ok)
+                end
+                "#,
+            ));
+
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+                expected,
+                "return false{tail}: {diagnostics:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_forwarded_variadic_return_checks_nested_alternatives() {
+        let diagnostics = check_source(
+            r#"
+            local function source(ok)
+                if ok then
+                    return 'a', 'b', 'c', 1
+                end
+                return 'd', 'e', 'f', 'g'
+            end
+
+            local function prefix(ok)
+                return true, source(ok)
+            end
+
+            ---@param ok boolean
+            ---@return boolean, string...
+            local function forward(ok)
+                return prefix(ok)
+            end
+            "#,
+        );
+
+        assert_eq!(
+            count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+            1,
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn test_forwarded_fixed_return_slots_check_callback_alternatives() {
+        for (result, expected) in [("1", 0), ("'wrong'", 1)] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@generic R
+                ---@param callback fun(): R...
+                ---@return boolean, R...
+                local function prefix(callback) end
+
+                ---@param ok boolean
+                ---@return boolean, string, integer?
+                local function forward(ok)
+                    return prefix(function()
+                        if ok then
+                            return 'a', {result}
+                        end
+                        return 'b'
+                    end)
+                end
+                "#,
+            ));
+
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+                expected,
+                "return 'a', {result}: {diagnostics:#?}"
+            );
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::MissingReturnValue),
+                0
+            );
+            assert_eq!(
+                count_by_code(&diagnostics, DiagnosticCode::RedundantReturnValue),
+                0
+            );
+        }
+    }
+
+    #[googletest::gtest]
+    fn test_declared_return_slots_keep_generic_identity() {
+        use googletest::prelude::*;
+
+        for (parameter, annotation, value, expected) in [
+            ("T", "T", "value", 0),
+            ("T", "T?", "value", 0),
+            ("T?", "T?", "value", 0),
+            ("T?", "T", "value", 1),
+            ("T", "T", "42", 1),
+            ("T[]", "T[]", "value", 0),
+            ("number[]", "T[]", "value", 1),
+        ] {
+            let diagnostics = check_source(&format!(
+                r#"
+                ---@generic T: number
+                ---@param value {parameter}
+                ---@return boolean, {annotation}
+                local function check(value)
+                    return true, {value}
+                end
+                "#,
+            ));
+
+            expect_that!(
+                count_by_code(&diagnostics, DiagnosticCode::ReturnTypeMismatch),
+                eq(expected),
+                "---@param value {parameter}, @return boolean, {annotation}, return true, {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_declared_return_slots_use_the_lexical_generic_constraint() {
+        let source = r#"
+            ---@generic T: string
+            ---@param value T
+            local function first(value) end
+
+            ---@generic T: number
+            ---@param value T
+            ---@return string, boolean
+            local function invalid(value)
+                return value, true -- T is number here
+            end
+
+            ---@generic T: number
+            ---@param value T
+            local function outer(value)
+                ---@return number, boolean
+                local function inner()
+                    return value, true
+                end
+                return inner()
+            end
+        "#;
+        let diagnostics = check_source(source);
+        let mismatches: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch)
+            .collect();
+        let invalid_value = source.find("value, true -- T is number here").unwrap();
+        let start = rowan::TextSize::try_from(invalid_value).unwrap();
+
+        assert_eq!(mismatches.len(), 1, "{diagnostics:#?}");
+        assert_eq!(
+            mismatches[0].range,
+            rowan::TextRange::at(start, rowan::TextSize::of("value"))
+        );
+        assert!(mismatches[0].message.contains("found `number`"));
     }
 
     #[test]
