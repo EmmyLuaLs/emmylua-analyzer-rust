@@ -723,18 +723,20 @@ fn param_count_range(
     };
     let variadic_slot = variadic_index.and_then(|i| params.get(i));
 
+    // Arguments are positional: the minimum is the last required param's position, so an optional
+    // param before it still needs an argument (`f(a?, x)` called as `f(1)` misses `x`).
     let mut min = params
         .iter()
         .enumerate()
-        .filter(|(idx, (name, ty))| {
-            Some(*idx) != variadic_index
+        .rposition(|(idx, (name, ty))| {
+            Some(idx) != variadic_index
                 && name != "..."
                 && !matches!(ty, None | Some(LuaType::Any | LuaType::Unknown))
                 && !ty
                     .as_ref()
                     .is_some_and(|ty| is_optional(semantic_model, ty))
         })
-        .count();
+        .map_or(0, |last| last + 1);
 
     // 未实例化的 `fun(...: T...)`：T 仍然未知或命名引用时，不能当作无界可变参数。
     let unresolved_variadic = variadic_slot.is_some_and(|(_, ty)| {
