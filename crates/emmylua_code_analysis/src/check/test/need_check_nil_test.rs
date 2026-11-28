@@ -1897,4 +1897,33 @@ mod test {
             "#
         ));
     }
+
+    /// A call that may return nothing is a nilable prefix: its first result slot decides, as in
+    /// the VM. Read raw, `string|()` hid its nil, while the parenthesized `(g(1)).x` was reported.
+    #[test]
+    fn test_call_that_may_return_nothing_may_be_nil_as_a_prefix() {
+        let mut ws = VirtualWorkspace::new();
+        let maybe = r#"
+            local function g(x)
+              if x then
+                return ""
+              end
+            end
+        "#;
+        for use_ in ["print(g(1).x)", "print(g(1):upper())"] {
+            assert!(
+                !ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, &format!("{maybe}\n{use_}")),
+                "{use_}"
+            );
+        }
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            local function h()
+              return ""
+            end
+            print(h():upper())
+            "#
+        ));
+    }
 }
