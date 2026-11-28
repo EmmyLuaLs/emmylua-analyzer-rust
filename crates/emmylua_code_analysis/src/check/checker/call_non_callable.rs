@@ -81,6 +81,10 @@ fn is_callable(model: &SemanticModel, ty: &LuaType) -> bool {
         | LuaType::SelfInfer
         | LuaType::Global => true,
         LuaType::TableConst(_) => !model.callable_functions_cached(ty).is_empty(),
+        // `---@module "name"`: callable when the module exports a callable value.
+        LuaType::ModuleRef(file_id) => model
+            .module_export_type_of(*file_id)
+            .is_some_and(|ty| is_callable(model, &ty)),
         // Generic parameters: pass when the constraint is a callable type.
         LuaType::TplRef(tpl) => tpl
             .get_constraint()

@@ -120,6 +120,34 @@ impl<'db> SemanticModel<'db> {
         };
         self.analysis().type_shell_lua(module_file, &shell)
     }
+    /// Value a module file exports. A `---@module` value it re-exports is replaced by that
+    /// module's export, so the result never contains a module reference (cycles are dropped).
+    pub(crate) fn module_export_type_of(&self, module_file: FileId) -> Option<LuaType> {
+        let mut visited = vec![module_file];
+        let mut pending = vec![module_file];
+        let mut types = Vec::new();
+        while let Some(file) = pending.pop() {
+            let Some(shell) = self.analysis().module_export_type(file) else {
+                continue;
+            };
+            let members = match self.analysis().type_shell_lua(file, &shell) {
+                LuaType::Union(union) => union.into_vec(),
+                ty => vec![ty],
+            };
+            for member in members {
+                match member {
+                    LuaType::ModuleRef(next) => {
+                        if !visited.contains(&next) {
+                            visited.push(next);
+                            pending.push(next);
+                        }
+                    }
+                    member => types.push(member),
+                }
+            }
+        }
+        (!types.is_empty()).then(|| LuaType::from_vec(types))
+    }
     /// require module name -> module file id (consumed by require_module_visibility checks).
     pub fn module_file_of(&self, module_name: &str) -> Option<FileId> {
         self.analysis()

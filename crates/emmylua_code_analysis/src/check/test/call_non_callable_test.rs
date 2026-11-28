@@ -58,6 +58,59 @@ mod test {
     }
 
     #[test]
+    fn test_module_annotation_calls_the_exported_value() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def_files(vec![
+            (
+                "callable.lua",
+                "---@param value string\n---@return string\nlocal function callable(value) return value end\nreturn callable\n",
+            ),
+            (
+                "reexport.lua",
+                "---@module 'callable'\nlocal callable = require('callable')\nreturn callable\n",
+            ),
+            (
+                "cycle_a.lua",
+                "---@module 'cycle_b'\nlocal b = require('cycle_b')\nreturn b\n",
+            ),
+            (
+                "cycle_b.lua",
+                "---@module 'cycle_a'\nlocal a = require('cycle_a')\nreturn a\n",
+            ),
+            ("tbl.lua", "local M = {}\nreturn M\n"),
+        ]);
+        let file_id = ws.def(
+            r#"
+            ---@module 'callable'
+            local callable = require('callable')
+            callable('hello')
+            ---@module 'reexport'
+            local declared
+            declared('hello')
+            ---@module 'cycle_a'
+            local cyclic
+            cyclic()
+            ---@module 'tbl'
+            local tbl = require('tbl')
+            tbl()
+            "#,
+        );
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::CallNonCallable.get_name().to_string(),
+        ));
+        let non_callable: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect();
+        assert_eq!(non_callable.len(), 1, "{diagnostics:#?}");
+        assert_eq!(non_callable[0].range.start.line, 12, "{diagnostics:#?}");
+    }
+
+    #[test]
     fn test_callable_table_accepts_valid_arguments() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         let file_id = ws.def(
